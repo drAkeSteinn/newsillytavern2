@@ -1,0 +1,92 @@
+{
+  "id": "exploracion-bosque",
+  "name": "Exploración del Bosque Encantado",
+  "description": "Un misterioso bosque ha aparecido cerca del pueblo. Explora sus profundidades y descubre sus secretos.",
+  
+  "activation": {
+    "key": "exploracion:inicio",
+    "keys": ["exploration:start", "bosque:entrada", "forest:begin"],
+    "caseSensitive": false,
+    "method": "keyword"
+  },
+  
+  "objectives": [
+    {
+      "id": "obj-explorar",
+      "description": "Explorar el bosque encantado",
+      "type": "discover",
+      "completion": {
+        "key": "bosque:explorado",
+        "keys": ["forest:explored", "bosque:descubierto"],
+        "caseSensitive": false
+      },
+      "target": "Bosque encantado",
+      "targetCount": 1,
+      "isOptional": false
+    },
+    {
+      "id": "obj-criaturas",
+      "description": "Encontrar 3 criaturas mágicas",
+      "type": "discover",
+      "completion": {
+        "key": "criatura:avistada",
+        "keys": ["creature:spotted", "criatura:vista"],
+        "caseSensitive": false
+      },
+      "target": "Criaturas mágicas",
+      "targetCount": 3,
+      "isOptional": false
+    },
+    {
+      "id": "obj-secreto",
+      "description": "Descubrir el secreto del bosque",
+      "type": "discover",
+      "completion": {
+        "key": "secreto:descubierto",
+        "keys": ["secret:found", "secreto:revelado"],
+        "caseSensitive": false
+      },
+      "target": "Secreto del bosque",
+      "targetCount": 1,
+      "isOptional": false
+    }
+  ],
+  
+  "completion": {
+    "key": "exploracion:completada",
+    "keys": ["exploration:complete", "bosque:completado"],
+    "caseSensitive": false
+  },
+  
+  "chain": {
+    "type": "specific",
+    "nextQuestId": "recompensa-naturalista",
+    "autoStart": false
+  },
+  
+  "rewards": [
+    {
+      "id": "reward-exp",
+      "type": "attribute",
+      "key": "exp",
+      "value": 50,
+      "action": "add"
+    },
+    {
+      "id": "reward-naturaleza",
+      "type": "attribute",
+      "key": "naturaleza",
+      "value": 5,
+      "action": "add"
+    }
+  ],
+  
+  "priority": "side",
+  "icon": "🌲",
+  "color": "green",
+  "isRepeatable": true,
+  "isHidden": false,
+  "prerequisites": [],
+  "createdAt": "2025-01-01T00:00:00.000Z",
+  "updatedAt": "2025-01-01T00:00:00.000Z"
+}

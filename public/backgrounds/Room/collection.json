@@ -1,0 +1,49 @@
+{
+  "name": "Room",
+  "description": "Habitación principal - fondos de la habitación del personaje",
+  "version": "1.0",
+  "transitionDuration": 500,
+  "entries": [
+    {
+      "id": "room_default",
+      "name": "Habitación",
+      "url": "/backgrounds/Room/Room (1).png",
+      "triggerKeys": [],
+      "contextKeys": [],
+      "tags": [
+        "interior",
+        "default"
+      ]
+    },
+    {
+      "id": "room_night",
+      "name": "Habitación Nocturna2",
+      "url": "/backgrounds/Room/Room (2).png",
+      "triggerKeys": [],
+      "contextKeys": [],
+      "tags": [
+        "interior",
+        "nocturno"
+      ]
+    },
+    {
+      "id": "room_morning",
+      "name": "Habitación Matutina",
+      "url": "/backgrounds/Room/Room (3).png",
+      "triggerKeys": [],
+      "contextKeys": [],
+      "tags": [
+        "interior",
+        "matutino"
+      ]
+    },
+    {
+      "id": "bg_1775203629530_jstjqg",
+      "name": "1775203629528-psmcuu",
+      "url": "/backgrounds/Room/1775203629528-psmcuu.jpg",
+      "triggerKeys": [],
+      "contextKeys": [],
+      "tags": []
+    }
+  ]
+}

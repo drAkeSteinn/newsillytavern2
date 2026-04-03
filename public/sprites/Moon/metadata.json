@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "collectionName": "Moon",
+  "sprites": {
+    "1772240870166-656lst.webm": {
+      "label": "01",
+      "filename": "1772240870166-656lst.webm",
+      "createdAt": "2026-03-01T00:08:23.741Z",
+      "updatedAt": "2026-03-19T00:19:26.894Z",
+      "duration": 5000,
+      "timeline": {
+        "duration": 5000,
+        "loop": true,
+        "tracks": [
+          {
+            "id": "a5eebd09-d595-468f-85d0-61064b264046",
+            "type": "sound",
+            "name": "Sound Track 1",
+            "keyframes": [
+              {
+                "id": "d6cc0f40-d3dd-4f1f-8460-131093a814bf",
+                "time": 1152.5925925925926,
+                "value": {
+                  "type": "sound",
+                  "soundUrl": "",
+                  "soundTriggerId": "f0fe8a3f-4153-4320-8ded-6b65b438e00f",
+                  "soundTriggerName": "glohg",
+                  "volume": 0.8,
+                  "pan": 0,
+                  "play": true,
+                  "stop": false
+                },
+                "interpolation": "hold"
+              },
+              {
+                "id": "d0ee7688-dc0d-4bda-bb46-4994c064673f",
+                "time": 2000,
+                "value": {
+                  "type": "sound",
+                  "soundUrl": "",
+                  "soundTriggerId": "f0fe8a3f-4153-4320-8ded-6b65b438e00f",
+                  "soundTriggerName": "glohg",
+                  "volume": 0.8,
+                  "pan": 0,
+                  "play": true,
+                  "stop": false
+                },
+                "interpolation": "hold"
+              },
+              {
+                "id": "c5dfc354-e08e-48f6-bd00-c4e936bf793d",
+                "time": 2700,
+                "value": {
+                  "type": "sound",
+                  "soundUrl": "",
+                  "soundTriggerId": "f0fe8a3f-4153-4320-8ded-6b65b438e00f",
+                  "soundTriggerName": "glohg",
+                  "volume": 0.8,
+                  "pan": 0,
+                  "play": true,
+                  "stop": false
+                },
+                "interpolation": "hold"
+              }
+            ],
+            "enabled": true,
+            "locked": false,
+            "muted": false,
+            "volume": 1
+          },
+          {
+            "id": "000227f7-7645-451e-8dcc-cf5014d776c4",
+            "type": "sound",
+            "name": "Sound Track 2",
+            "keyframes": [
+              {
+                "id": "a8e8d704-e59e-4528-be57-9218b547fd3d",
+                "time": 1900,
+                "value": {
+                  "type": "sound",
+                  "soundUrl": "",
+                  "soundTriggerId": "7435a464-45d4-4bb4-bbff-d86215394558",
+                  "soundTriggerName": "gluck",
+                  "volume": 0.8,
+                  "pan": 0,
+                  "play": true,
+                  "stop": false
+                },
+                "interpolation": "hold"
+              },
+              {
+                "id": "592d964c-b4df-4c8b-a138-48fe35649d3a",
+                "time": 3700,
+                "value": {
+                  "type": "sound",
+                  "soundUrl": "",
+                  "soundTriggerId": "7435a464-45d4-4bb4-bbff-d86215394558",
+                  "soundTriggerName": "gluck",
+                  "volume": 0.8,
+                  "pan": 0,
+                  "play": true,
+                  "stop": false
+                },
+                "interpolation": "hold"
+              }
+            ],
+            "enabled": true,
+            "locked": false,
+            "muted": false,
+            "volume": 1
+          }
+        ]
+      }
+    },
+    "1772241191129-43nt0y.webm": {
+      "label": "talk",
+      "filename": "1772241191129-43nt0y.webm",
+      "createdAt": "2026-03-01T00:09:32.794Z",
+      "updatedAt": "2026-03-01T00:09:32.794Z"
+    },
+    "d4215817-2000-4ab4-9da9-0542e68cad77.png": {
+      "label": "BLACK",
+      "filename": "d4215817-2000-4ab4-9da9-0542e68cad77.png",
+      "createdAt": "2026-03-01T00:42:59.878Z"
+    },
+    "1772325779628-igzukb.png": {
+      "label": "goth",
+      "filename": "1772325779628-igzukb.png",
+      "createdAt": "2026-03-01T00:43:12.413Z",
+      "updatedAt": "2026-03-01T00:43:12.413Z"
+    },
+    "1772316532074-3ni00o.png": {
+      "label": "win",
+      "filename": "1772316532074-3ni00o.png",
+      "createdAt": "2026-03-04T10:36:58.254Z",
+      "updatedAt": "2026-03-04T10:36:58.254Z"
+    }
+  },
+  "createdAt": "2026-03-01T00:08:23.740Z",
+  "updatedAt": "2026-03-19T00:19:26.894Z"
+}

@@ -1,0 +1,46 @@
+[
+  {
+    "id": "default",
+    "name": "drAke",
+    "description": "Un hombre tranquilo y sereno",
+    "avatar": "",
+    "isActive": true,
+    "createdAt": "2026-03-01T21:37:31.485Z",
+    "updatedAt": "2026-03-14T21:22:50.632Z",
+    "statsConfig": {
+      "enabled": true,
+      "attributes": [],
+      "skills": [],
+      "intentions": [],
+      "invitations": [
+        {
+          "id": "invitation-1773401043535",
+          "name": "Analisis psyquiatrico",
+          "requirements": [],
+          "objetivo": {
+            "characterId": "fbbdc8e8-12e1-421b-8a38-d4a37231de2a",
+            "solicitudId": "sol-1773397776153"
+          }
+        }
+      ],
+      "solicitudDefinitions": [
+        {
+          "id": "solicitud-1773401167519",
+          "name": "Test",
+          "peticionKey": "pedir_test",
+          "solicitudKey": "dar_test",
+          "peticionDescription": "Le pides a {{solicitado}} que se realice un test medico",
+          "solicitudDescription": "{{solicitante}} le pide a {{solicitado}} un test medico",
+          "requirements": [],
+          "completionDescription": "{{solicitado}} acepto aplicar un test medico a {{solicitante}}"
+        }
+      ],
+      "blockHeaders": {
+        "skills": "[ACCIONES DISPONIBLES]",
+        "intentions": "Intenciones disponibles:",
+        "invitations": "[PETICIONES POSIBLES]",
+        "solicitudesRecibidas": "[SOLICITUDES RECIBIDAS]"
+      }
+    }
+  }
+]

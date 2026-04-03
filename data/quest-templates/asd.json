@@ -1,0 +1,130 @@
+{
+  "id": "asd",
+  "name": "Mision imposible",
+  "description": "Muy imposible de hacer esto",
+  "priority": "main",
+  "icon": "📜",
+  "isRepeatable": false,
+  "isHidden": false,
+  "prerequisites": [],
+  "activation": {
+    "key": "imposiblexD",
+    "keys": [],
+    "caseSensitive": false,
+    "method": "keyword"
+  },
+  "objectives": [
+    {
+      "id": "obj-mmafuc58",
+      "description": "Objetivo tenebroso y medico",
+      "type": "custom",
+      "completion": {
+        "key": "holis",
+        "keys": [],
+        "caseSensitive": false,
+        "valueCondition": {
+          "valueType": "presence"
+        }
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "rewards": [
+        {
+          "id": "obj-reward-mmbwbjul",
+          "type": "attribute",
+          "key": "resistencia",
+          "value": 10,
+          "action": "add"
+        },
+        {
+          "id": "obj-reward-mmeystt4",
+          "type": "trigger",
+          "trigger": {
+            "category": "sprite",
+            "key": "sprite:ind01",
+            "targetMode": "self"
+          }
+        },
+        {
+          "id": "obj-reward-mmeywuus",
+          "type": "trigger",
+          "trigger": {
+            "category": "soundSequence",
+            "key": "sec1",
+            "targetMode": "self"
+          }
+        },
+        {
+          "id": "obj-reward-mmezfvr3",
+          "type": "trigger",
+          "trigger": {
+            "category": "background",
+            "key": "test",
+            "targetMode": "self"
+          }
+        }
+      ],
+      "characterFilter": {
+        "enabled": true,
+        "mode": "include",
+        "characterIds": [
+          "fbbdc8e8-12e1-421b-8a38-d4a37231de2a"
+        ]
+      },
+      "completionDescription": "descripcion del objetivo 1"
+    },
+    {
+      "id": "obj-mmbwe737",
+      "description": "objetivo sin precedentes",
+      "type": "custom",
+      "completion": {
+        "key": "asdddasd",
+        "keys": [],
+        "caseSensitive": false,
+        "valueCondition": {
+          "valueType": "presence"
+        }
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "characterFilter": {
+        "enabled": true,
+        "mode": "include",
+        "characterIds": [
+          "611876f7-399e-49a3-a32f-aa847e8f28da"
+        ]
+      },
+      "completionDescription": "descripcion del objetivo 2"
+    }
+  ],
+  "completion": {
+    "key": "mision:completa",
+    "keys": [],
+    "caseSensitive": false
+  },
+  "rewards": [
+    {
+      "id": "reward-mmaftw2r",
+      "type": "attribute",
+      "key": "resistencia",
+      "value": 50,
+      "action": "add"
+    },
+    {
+      "id": "reward-mmbwmbbp",
+      "type": "sprite",
+      "key": "sprite:win",
+      "value": 0,
+      "action": "add",
+      "returnToIdleMs": 5000,
+      "trigger": {
+        "category": "sprite",
+        "key": "sprite:win",
+        "targetMode": "all",
+        "returnToIdleMs": 5000
+      }
+    }
+  ],
+  "createdAt": "2026-03-03T10:00:43.053Z",
+  "updatedAt": "2026-03-20T21:38:11.779Z"
+}

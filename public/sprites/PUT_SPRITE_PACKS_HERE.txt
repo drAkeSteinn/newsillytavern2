@@ -1,0 +1,23 @@
+Put your sprite packs here.
+
+Structure:
+Sprites/<PackFolder>/pack.json
+Sprites/<PackFolder>/<media files...>
+
+Then add the folder name to Sprites/packs.json under "folders".
+
+Example pack.json:
+{
+  "title": "Dormitorio - Cama",
+  "match": {"ubicacion":"DORMITORIO","lugar":"CAMA"},
+  "defaultAction": "IDLE",
+  "actions": {
+    "CAMINAR": {
+      "sequence": [
+        {"file":"walk.webm","durationMs":1200}
+      ],
+      "idle": "idle.webp"
+    },
+    "IDLE": {"idle":"idle.webp"}
+  }
+}

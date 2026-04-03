@@ -1,0 +1,92 @@
+{
+  "dialogueSettings": {
+    "enabled": true,
+    "bubbleStyle": "modern",
+    "showCharacterAvatar": true,
+    "avatarPosition": "right",
+    "avatarSize": "lg",
+    "formatting": {
+      "dialogueMarkers": {
+        "open": "\"",
+        "close": "\""
+      },
+      "actionMarkers": {
+        "open": "*",
+        "close": "*"
+      },
+      "thoughtMarkers": {
+        "open": "(",
+        "close": ")"
+      },
+      "whisperMarkers": {
+        "open": "~",
+        "close": "~"
+      }
+    },
+    "typewriter": {
+      "enabled": true,
+      "speed": 50,
+      "startDelay": 0,
+      "pauseOnPunctuation": true,
+      "punctuationPauseMs": 100,
+      "cursorChar": "▋",
+      "showCursor": true,
+      "cursorBlinkMs": 530
+    },
+    "typography": {
+      "fontFamily": "sans",
+      "fontSize": "sm",
+      "fontWeight": "medium",
+      "lineHeight": "normal",
+      "letterSpacing": "normal"
+    },
+    "contentStyles": {
+      "dialogue": {
+        "color": "text-amber-600 dark:text-amber-400",
+        "fontWeight": "normal",
+        "fontStyle": "normal",
+        "textDecoration": "none"
+      },
+      "action": {
+        "color": "text-muted-foreground",
+        "fontWeight": "normal",
+        "fontStyle": "italic",
+        "textDecoration": "none"
+      },
+      "thought": {
+        "color": "text-purple-600 dark:text-purple-400",
+        "fontWeight": "normal",
+        "fontStyle": "italic",
+        "textDecoration": "none"
+      },
+      "whisper": {
+        "color": "text-muted-foreground",
+        "fontWeight": "normal",
+        "fontStyle": "italic",
+        "textDecoration": "none",
+        "opacity": 80
+      },
+      "emotion": {
+        "showIndicator": true,
+        "highlightText": false
+      },
+      "narration": {
+        "color": "text-cyan-600 dark:text-cyan-400",
+        "fontWeight": "normal",
+        "fontStyle": "normal"
+      }
+    },
+    "characterStyles": [],
+    "userBubbleColor": "bg-blue-500/20",
+    "assistantBubbleColor": "bg-purple-500/20",
+    "systemBubbleColor": "bg-muted",
+    "messageSpacing": "compact",
+    "bubbleMaxWidth": 55,
+    "animateEntry": true,
+    "entryAnimation": "fade",
+    "animationDurationMs": 200,
+    "parseEmotions": true,
+    "highlightActions": true,
+    "separateDialogue": false
+  }
+}

@@ -1,0 +1,35 @@
+[
+  {
+    "name": "Moon",
+    "description": "Stats",
+    "fields": [
+      {
+        "id": "9cbc7bdc-991d-410f-8271-1df603d9d66a",
+        "name": "HUD",
+        "key": "hp",
+        "type": "number",
+        "style": "progress",
+        "color": "green",
+        "min": 0,
+        "max": 100,
+        "defaultValue": 0,
+        "unit": "pts",
+        "showLabel": true,
+        "showValue": true
+      }
+    ],
+    "position": "top-left",
+    "style": "minimal",
+    "opacity": 1,
+    "compact": false,
+    "id": "41b36aa1-f1b7-4cf3-9593-dbd7640a08da",
+    "createdAt": "2026-03-02T10:09:15.831Z",
+    "updatedAt": "2026-03-31T00:26:10.583Z",
+    "context": {
+      "enabled": true,
+      "content": "[HUD – FORMATO OBLIGATORIO]\nHUD [Lugar=<LUGAR o NONE> | Accion=<KEY o NONE> | Peticion=<KEY o NONE> | CumplirSolicitud=<KEY o NONE> | Objetivo=<KEY o NONE>]\n\n[HUD – REGLAS]\n- El HUD va siempre en la última línea exacta.\n- No lo menciones dentro del diálogo.\n- Lugar debe ser una etiqueta breve y clara como BOSQUE, ASERRADERO, CAMPAMENTO, ZONA_DE_CORTE, TRONCO_GRANDE.\n- Accion debe ser una key válida de ACCIONES DISPONIBLES o NONE.\n- Peticion debe ser una key válida de PETICIONES POSIBLES o NONE.\n- CumplirSolicitud debe ser una key válida de SOLICITUDES RECIBIDAS que realmente resolviste este turno, o NONE.\n- Objetivo debe ser una key exacta de un objetivo pendiente completado este turno, o NONE.",
+      "position": 5,
+      "scanDepth": 1
+    }
+  }
+]

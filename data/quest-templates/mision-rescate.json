@@ -1,0 +1,123 @@
+{
+  "id": "mision-rescate",
+  "name": "Misión de Rescate",
+  "description": "Rescata al prisionero de la mazmorra oscura. Un guerrero valiente ha sido capturado y necesita tu ayuda para escapar.",
+  
+  "activation": {
+    "key": "mision:rescate",
+    "keys": ["mission:rescue", "quest:rescate", "rescate:inicio"],
+    "caseSensitive": false,
+    "method": "keyword"
+  },
+  
+  "objectives": [
+    {
+      "id": "obj-entrada",
+      "description": "Encontrar la entrada a la mazmorra",
+      "type": "discover",
+      "completion": {
+        "key": "entrada:encontrada",
+        "keys": ["found:entrance", "entrada:descubierta", "llegado:entrada"],
+        "caseSensitive": false
+      },
+      "target": "Entrada de la mazmorra",
+      "targetCount": 1,
+      "isOptional": false
+    },
+    {
+      "id": "obj-guardian",
+      "description": "Derrotar al guardián de la mazmorra",
+      "type": "defeat",
+      "completion": {
+        "key": "guardian:derrotado",
+        "keys": ["guardian:defeated", "guardian:vencido", "guardian:muerto"],
+        "caseSensitive": false
+      },
+      "target": "Guardián de la mazmorra",
+      "targetCount": 1,
+      "isOptional": false
+    },
+    {
+      "id": "obj-prisionero",
+      "description": "Liberar al prisionero",
+      "type": "talk",
+      "completion": {
+        "key": "prisionero:libre",
+        "keys": ["prisoner:free", "prisionero:liberado", "prisionero:salvado"],
+        "caseSensitive": false
+      },
+      "target": "Prisionero capturado",
+      "targetCount": 1,
+      "isOptional": false
+    },
+    {
+      "id": "obj-tesoro",
+      "description": "Encontrar el tesoro escondido",
+      "type": "collect",
+      "completion": {
+        "key": "tesoro:encontrado",
+        "keys": ["treasure:found", "tesoro:descubierto"],
+        "caseSensitive": false
+      },
+      "target": "Tesoro secreto",
+      "targetCount": 1,
+      "isOptional": true
+    }
+  ],
+  
+  "completion": {
+    "key": "rescate:completado",
+    "keys": ["rescue:complete", "mision:completada", "rescate:exito"],
+    "caseSensitive": false
+  },
+  
+  "chain": {
+    "type": "random",
+    "randomPool": ["celebracion-victoria", "nueva-aventura", "recompensa-heroica"],
+    "autoStart": true
+  },
+  
+  "rewards": [
+    {
+      "id": "reward-hp",
+      "type": "attribute",
+      "key": "HP",
+      "value": 20,
+      "action": "add"
+    },
+    {
+      "id": "reward-exp",
+      "type": "attribute",
+      "key": "exp",
+      "value": 100,
+      "action": "add"
+    },
+    {
+      "id": "reward-sprite",
+      "type": "sprite",
+      "key": "victory",
+      "value": "victory"
+    },
+    {
+      "id": "reward-sound",
+      "type": "sound",
+      "key": "victory",
+      "value": "victory"
+    },
+    {
+      "id": "reward-background",
+      "type": "background",
+      "key": "celebration",
+      "value": "celebration"
+    }
+  ],
+  
+  "priority": "main",
+  "icon": "⚔️",
+  "color": "amber",
+  "isRepeatable": false,
+  "isHidden": false,
+  "prerequisites": [],
+  "createdAt": "2025-01-01T00:00:00.000Z",
+  "updatedAt": "2025-01-01T00:00:00.000Z"
+}

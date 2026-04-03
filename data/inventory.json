@@ -1,0 +1,151 @@
+{
+  "items": [
+    {
+      "name": "Pipa",
+      "description": "de crack",
+      "category": "misc",
+      "rarity": "epic",
+      "stackable": false,
+      "maxStack": 1,
+      "value": 100,
+      "weight": 1.5,
+      "usable": true,
+      "consumable": true,
+      "equippable": false,
+      "id": "item-1772916773983-8hebwr1xi",
+      "createdAt": "2026-03-07T20:52:53.983Z",
+      "updatedAt": "2026-03-07T20:53:03.252Z"
+    }
+  ],
+  "containers": [],
+  "currencies": [
+    {
+      "name": "Nueva Divisa",
+      "amount": 0,
+      "id": "currency-1772463805729-gwaywlf7e"
+    },
+    {
+      "name": "Nueva Divisa",
+      "amount": 0,
+      "id": "currency-1772463812075-powlaeypw"
+    },
+    {
+      "name": "Nueva Divisa",
+      "amount": 40,
+      "id": "currency-1772916791564-a0vg47jax"
+    }
+  ],
+  "inventorySettings": {
+    "enabled": false
+  },
+  "inventoryNotifications": [
+    {
+      "type": "currency_changed",
+      "itemName": "Nueva Divisa",
+      "quantity": 10,
+      "message": "Nueva Divisa: +10 (Total: 40)",
+      "id": "notif-1772916796630-ldx5a6x93",
+      "timestamp": "2026-03-07T20:53:16.630Z",
+      "read": false
+    },
+    {
+      "type": "currency_changed",
+      "itemName": "Nueva Divisa",
+      "quantity": 10,
+      "message": "Nueva Divisa: +10 (Total: 30)",
+      "id": "notif-1772916796432-zjigkpt7y",
+      "timestamp": "2026-03-07T20:53:16.432Z",
+      "read": false
+    },
+    {
+      "type": "currency_changed",
+      "itemName": "Nueva Divisa",
+      "quantity": 10,
+      "message": "Nueva Divisa: +10 (Total: 20)",
+      "id": "notif-1772916796044-zn3kupctn",
+      "timestamp": "2026-03-07T20:53:16.044Z",
+      "read": false
+    },
+    {
+      "type": "currency_changed",
+      "itemName": "Nueva Divisa",
+      "quantity": 10,
+      "message": "Nueva Divisa: +10 (Total: 10)",
+      "id": "notif-1772916795204-morekn64p",
+      "timestamp": "2026-03-07T20:53:15.204Z",
+      "read": false
+    },
+    {
+      "type": "currency_changed",
+      "itemName": "Nueva Divisa",
+      "quantity": -10,
+      "message": "Nueva Divisa: -10 (Total: 0)",
+      "id": "notif-1772916794532-3js0v12yj",
+      "timestamp": "2026-03-07T20:53:14.532Z",
+      "read": false
+    },
+    {
+      "type": "currency_changed",
+      "itemName": "Nueva Divisa",
+      "quantity": -10,
+      "message": "Nueva Divisa: -10 (Total: 0)",
+      "id": "notif-1772916793660-ycnkxp0v0",
+      "timestamp": "2026-03-07T20:53:13.660Z",
+      "read": false
+    },
+    {
+      "type": "currency_changed",
+      "itemName": "Nueva Divisa",
+      "quantity": -10,
+      "message": "Nueva Divisa: -10 (Total: 0)",
+      "id": "notif-1772463810325-1kl2ws95g",
+      "timestamp": "2026-03-02T15:03:30.325Z",
+      "read": false
+    },
+    {
+      "type": "currency_changed",
+      "itemName": "Nueva Divisa",
+      "quantity": 10,
+      "message": "Nueva Divisa: +10 (Total: 10)",
+      "id": "notif-1772463810010-q3wbbvw0h",
+      "timestamp": "2026-03-02T15:03:30.010Z",
+      "read": false
+    },
+    {
+      "type": "currency_changed",
+      "itemName": "Nueva Divisa",
+      "quantity": -10,
+      "message": "Nueva Divisa: -10 (Total: 0)",
+      "id": "notif-1772463809725-odo3nrcca",
+      "timestamp": "2026-03-02T15:03:29.725Z",
+      "read": false
+    },
+    {
+      "type": "currency_changed",
+      "itemName": "Nueva Divisa",
+      "quantity": 10,
+      "message": "Nueva Divisa: +10 (Total: 10)",
+      "id": "notif-1772463809433-spp2ky6j7",
+      "timestamp": "2026-03-02T15:03:29.433Z",
+      "read": false
+    },
+    {
+      "type": "currency_changed",
+      "itemName": "Nueva Divisa",
+      "quantity": -10,
+      "message": "Nueva Divisa: -10 (Total: 0)",
+      "id": "notif-1772463809072-ws55wgq0q",
+      "timestamp": "2026-03-02T15:03:29.072Z",
+      "read": false
+    },
+    {
+      "type": "currency_changed",
+      "itemName": "Nueva Divisa",
+      "quantity": 10,
+      "message": "Nueva Divisa: +10 (Total: 10)",
+      "id": "notif-1772463808724-3s1155prg",
+      "timestamp": "2026-03-02T15:03:28.724Z",
+      "read": false
+    }
+  ]
+}

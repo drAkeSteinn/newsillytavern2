@@ -1,0 +1,66 @@
+[
+  {
+    "name": "33",
+    "provider": "z-ai",
+    "endpoint": "",
+    "apiKey": "",
+    "model": "",
+    "parameters": {
+      "temperature": 0.7,
+      "topP": 0.9,
+      "topK": 40,
+      "maxTokens": 512,
+      "contextSize": 4096,
+      "repetitionPenalty": 1.1,
+      "frequencyPenalty": 0,
+      "presencePenalty": 0,
+      "stopStrings": [],
+      "stream": true
+    },
+    "isActive": false,
+    "id": "960e8af8-9196-4108-8eb7-221fb69010a8"
+  },
+  {
+    "name": "Text Generation WebUI",
+    "provider": "text-generation-webui",
+    "endpoint": "http://localhost:5000",
+    "apiKey": "",
+    "model": "",
+    "parameters": {
+      "temperature": 0.7,
+      "topP": 0.9,
+      "topK": 40,
+      "maxTokens": 512,
+      "contextSize": 4096,
+      "repetitionPenalty": 1.1,
+      "frequencyPenalty": 0,
+      "presencePenalty": 0,
+      "stopStrings": [],
+      "stream": true
+    },
+    "isActive": false,
+    "id": "505a0acf-6e68-4c3b-a404-3de46efa7a46"
+  },
+  {
+    "name": "01",
+    "provider": "test-mock",
+    "endpoint": "",
+    "apiKey": "",
+    "model": "",
+    "parameters": {
+      "temperature": 0.7,
+      "topP": 0.9,
+      "topK": 40,
+      "maxTokens": 512,
+      "contextSize": 4096,
+      "repetitionPenalty": 1.1,
+      "frequencyPenalty": 0,
+      "presencePenalty": 0,
+      "stopStrings": [],
+      "stream": true
+    },
+    "isActive": true,
+    "id": "2d7a0ecb-31f9-44df-b3e8-c2cc75789111",
+    "mockResponse": "Accion=hab1 sd"
+  }
+]
