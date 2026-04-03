@@ -1002,3 +1002,29 @@ Stage Summary:
 - **Trigger priority preserved**: If any trigger activated during generation, it overrides ALL automatic state transitions. TTS state changes are ignored while trigger is active.
 - **No TTS**: Behavior unchanged (thinking during streaming → idle when done)
 - Files: character-sprite.tsx, group-sprites.tsx, spriteSlice.ts, chat-panel.tsx
+---
+Task ID: 19
+Agent: Main Agent
+Task: Agregar LM Studio como proveedor LLM
+
+Work Log:
+- Analizado el sistema completo de proveedores LLM (tipos, streaming, generation, UI, rutas API)
+- LM Studio es OpenAI-compatible, por lo que se reutiliza el handler existente de streamOpenAICompatible/callOpenAICompatible
+- Agregado `'lm-studio'` al tipo `LLMProvider` en `src/types/index.ts`
+- Agregado `'lm-studio'` al array `SUPPORTED_PROVIDERS` en `src/lib/llm/types.ts`
+- Agregado `case 'lm-studio':` al switch en `src/lib/llm/streaming.ts` (grupo openai/vllm/lm-studio/custom)
+- Agregado `case 'lm-studio':` al switch en `src/lib/llm/generation.ts` (grupo openai/vllm/lm-studio/custom)
+- Agregada entrada LM Studio al array `LLM_PROVIDERS` en `src/components/tavern/settings-panel.tsx` (label, defaultEndpoint: http://localhost:1234/v1, description)
+- Agregado `case 'lm-studio':` al switch en `src/app/api/chat/stream/route.ts`
+- Agregado `case 'lm-studio':` al switch en `src/app/api/chat/group-stream/route.ts`
+- Agregado `case 'lm-studio':` al switch en `src/app/api/chat/regenerate/route.ts`
+- Agregado `case 'lm-studio':` al switch en `src/app/api/chat/generate/route.ts`
+- Lint pasado (error pre-existente en fullscreen-editor.tsx, no relacionado)
+- Servidor de desarrollo funcionando correctamente
+
+Stage Summary:
+- LM Studio agregado exitosamente como proveedor LLM en 9 archivos
+- Endpoint por defecto: http://localhost:1234/v1
+- Reutiliza el handler OpenAI-compatible existente (sin código duplicado)
+- Disponible en todas las rutas: stream, group-stream, regenerate, generate
+- Visible en el panel de configuración con label "LM Studio" y descripción en español

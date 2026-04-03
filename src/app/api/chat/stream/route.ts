@@ -389,6 +389,7 @@ Y cambiar mi expresión:
 
             case 'openai':
             case 'vllm':
+            case 'lm-studio':
             case 'custom': {
               // These need a valid endpoint
               if (!llmConfig.endpoint) {

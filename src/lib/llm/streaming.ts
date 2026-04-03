@@ -33,6 +33,7 @@ export async function* getStreamGenerator(
 
     case 'openai':
     case 'vllm':
+    case 'lm-studio':
     case 'custom': {
       if (!config.endpoint) {
         throw new Error(`${provider} requires an endpoint URL`);

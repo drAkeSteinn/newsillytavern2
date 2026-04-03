@@ -273,6 +273,7 @@ export async function POST(request: NextRequest) {
 
             case 'openai':
             case 'vllm':
+            case 'lm-studio':
             case 'custom': {
               if (!llmConfig.endpoint) {
                 throw new Error(`${llmConfig.provider} requires an endpoint URL`);

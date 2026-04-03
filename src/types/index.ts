@@ -648,6 +648,7 @@ export type LLMProvider =
   | 'ollama'
   | 'koboldcpp'
   | 'vllm'
+  | 'lm-studio'
   | 'z-ai'
   | 'custom'
   | 'test-mock';  // Test provider for peticiones/solicitudes testing

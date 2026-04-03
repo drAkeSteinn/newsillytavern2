@@ -133,6 +133,7 @@ export const SUPPORTED_PROVIDERS = [
   'anthropic',
   'ollama',
   'vllm',
+  'lm-studio',
   'koboldcpp',
   'text-generation-webui',
   'custom'
