@@ -1112,3 +1112,32 @@ Stage Summary:
 - Los audios generados se cachean como blobs para reproducción inmediata
 - Race condition corregida: si el audio actual termina antes de que el siguiente se genere, el sistema se recupera automáticamente
 - La pre-generación permite que la reproducción sea continua sin pausas entre segmentos
+---
+Task ID: 22
+Agent: Main Agent
+Task: Selector de modelos LM Studio con dropdown y botón de refrescar
+
+Work Log:
+- Analizado cómo LM Studio expone modelos: GET /v1/models devuelve { data: [{ id: "..." }] }
+- LM Studio acepta model: "loaded" para usar el modelo cargado actualmente
+- Creado componente LMStudioModelSelector en settings-panel.tsx
+- Dropdown con modelos obtenidos de LM Studio + opción "Por defecto (cargado en LM Studio)"
+- Botón de refrescar (RefreshCw icon) con spinner de carga
+- Auto-fetch de modelos cuando el endpoint cambia
+- Input manual para escribir un nombre de modelo personalizado
+- Indicador visual cuando se usa "loaded" (modelo por defecto)
+- Mensajes de error cuando no hay conexión o no hay modelos
+- Importados Select, SelectSeparator de shadcn/ui; RefreshCw, Loader2 de lucide-react
+
+**Comportamiento:**
+- Al seleccionar LM Studio como proveedor y configurar endpoint → auto-fetch de modelos
+- "Por defecto" → envía model: "loaded" → LM Studio usa el que esté cargado
+- Seleccionar un modelo específico → lo envía tal cual en la petición
+- Input manual permite escribir cualquier nombre → se envía directamente
+- Botón de refrescar re-fetch modelos (útil al cambiar de modelo en LM Studio)
+- Los nombres de modelo se muestran limpios (solo el nombre, sin la ruta completa)
+
+Stage Summary:
+- LM Studio ahora tiene selector de modelos con dropdown refrescable
+- Opción "Por defecto" usa el modelo cargado en LM Studio sin necesidad de saber el nombre
+- Los usuarios pueden refrescar la lista al cambiar de modelo en LM Studio

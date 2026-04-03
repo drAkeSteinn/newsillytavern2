@@ -45,7 +45,17 @@ import {
   Sparkles,
   X,
   ChevronDown,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -82,6 +92,186 @@ import { AppearanceSettingsPanel } from './appearance-settings-panel';
 import { TTSSettingsPanel } from './tts-settings-panel';
 import { SpriteGeneralPanel } from './sprite-general-panel';
 import { EmbeddingsSettingsPanel } from '@/components/embeddings/embeddings-settings-panel';
+
+// ============================================
+// LM Studio Model Selector
+// Fetches available models from LM Studio's /v1/models endpoint
+// ============================================
+
+interface LMStudioModelSelectorProps {
+  endpoint: string;
+  currentModel: string;
+  onModelChange: (model: string) => void;
+}
+
+function LMStudioModelSelector({ endpoint, currentModel, onModelChange }: LMStudioModelSelectorProps) {
+  const [models, setModels] = useState<Array<{ id: string; name: string }>>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const fetchModels = useCallback(async () => {
+    if (!endpoint) {
+      toast({ variant: 'destructive', description: 'Configura el endpoint de LM Studio primero' });
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // LM Studio's endpoint is like http://localhost:1234/v1
+      // Models API is at /v1/models (or just /models relative to the base)
+      const baseUrl = endpoint.replace(/\/v1\/?$/, '');
+      const response = await fetch(`${baseUrl}/v1/models`, {
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Servidor respondió con ${response.status}`);
+      }
+
+      const data = await response.json();
+      const modelList = (data.data || [])
+        .map((m: { id: string }) => ({
+          id: m.id,
+          name: m.id.split('/').pop() || m.id, // Show just the model name, not full path
+        }))
+        .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
+
+      if (modelList.length === 0) {
+        setError('No se encontraron modelos');
+        toast({ description: 'No hay modelos disponibles en LM Studio', variant: 'destructive' });
+      } else {
+        setModels(modelList);
+        toast({ description: `${modelList.length} modelo(s) encontrado(s) en LM Studio` });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error de conexión';
+      setError(msg);
+      toast({ variant: 'destructive', description: `Error al obtener modelos: ${msg}` });
+    } finally {
+      setLoading(false);
+    }
+  }, [endpoint, toast]);
+
+  // Auto-fetch models when endpoint changes and we haven't loaded yet
+  const lastFetchedEndpoint = useRef<string>('');
+  useEffect(() => {
+    if (endpoint && endpoint !== lastFetchedEndpoint.current) {
+      lastFetchedEndpoint.current = endpoint;
+      fetchModels();
+    }
+  }, [endpoint, fetchModels]);
+
+  // Check if current model is in the fetched list
+  const isModelInList = models.some(m => m.id === currentModel);
+
+  return (
+    <div className="mt-1 space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        {/* Model dropdown */}
+        <Select
+          value={isModelInList ? currentModel : '__custom__'}
+          onValueChange={(value) => {
+            if (value === '__default__') {
+              onModelChange('loaded');
+            } else if (value === '__custom__') {
+              // Keep current custom value
+            } else {
+              onModelChange(value);
+            }
+          }}
+        >
+          <SelectTrigger className="h-8 text-sm flex-1">
+            <SelectValue placeholder="Seleccionar modelo..." />
+          </SelectTrigger>
+          <SelectContent className="max-h-60">
+            {/* Default: use whatever is loaded in LM Studio */}
+            <SelectItem value="__default__">
+              <span className="flex items-center gap-2">
+                <Cpu className="h-3.5 w-3.5 text-emerald-500" />
+                <span className="font-medium">Por defecto (cargado en LM Studio)</span>
+              </span>
+            </SelectItem>
+
+            {models.length > 0 && <SelectSeparator />}
+
+            {models.map((model) => (
+              <SelectItem key={model.id} value={model.id}>
+                <span className="truncate block max-w-[280px]" title={model.id}>
+                  {model.name}
+                </span>
+              </SelectItem>
+            ))}
+
+            {/* Show custom option if current model isn't in the list */}
+            {!isModelInList && currentModel && (
+              <>
+                <SelectSeparator />
+                <SelectItem value="__custom__" disabled>
+                  <span className="truncate text-muted-foreground" title={currentModel}>
+                    {currentModel} (personalizado)
+                  </span>
+                </SelectItem>
+              </>
+            )}
+          </SelectContent>
+        </Select>
+
+        {/* Refresh button */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={fetchModels}
+                disabled={loading || !endpoint}
+              >
+                {loading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Refrescar modelos desde LM Studio</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+
+      {/* Manual input for custom model name */}
+      <div className="flex items-center gap-2">
+        <Input
+          value={currentModel === 'loaded' ? '' : currentModel}
+          onChange={(e) => onModelChange(e.target.value || 'loaded')}
+          placeholder={currentModel === 'loaded' ? 'Usando modelo cargado en LM Studio' : 'O escribe un nombre personalizado...'}
+          className="h-7 text-xs"
+        />
+      </div>
+
+      {/* Info text */}
+      {currentModel === 'loaded' && (
+        <p className="text-xs text-muted-foreground flex items-center gap-1">
+          <CheckCircle className="h-3 w-3 text-emerald-500" />
+          Usará el modelo que tengas cargado en LM Studio
+        </p>
+      )}
+
+      {/* Error message */}
+      {error && models.length === 0 && (
+        <p className="text-xs text-destructive flex items-center gap-1">
+          <AlertCircle className="h-3 w-3" />
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
 
 const LLM_PROVIDERS: { value: LLMProvider; label: string; defaultEndpoint: string; needsEndpoint: boolean; description: string }[] = [
   { value: 'test-mock', label: '🧪 Test Mock (Prueba)', defaultEndpoint: '', needsEndpoint: false, description: 'Prueba del sistema de peticiones sin LLM real' },
@@ -843,17 +1033,27 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
                             )}
                             
                             {/* Model field - for providers that need model selection */}
-                            {config.provider !== 'z-ai' && (
+                            {config.provider !== 'z-ai' && config.provider !== 'test-mock' && (
                               <div>
-                                <Label className="text-xs">Modelo (opcional)</Label>
-                                <Input
-                                  value={config.model || ''}
-                                  onChange={(e) => 
-                                    updateLLMConfig(config.id, { model: e.target.value })
-                                  }
-                                  placeholder={config.provider === 'openai' ? 'gpt-4o-mini' : config.provider === 'anthropic' ? 'claude-3-sonnet' : ''}
-                                  className="mt-1 h-8 text-sm"
-                                />
+                                <Label className="text-xs">Modelo {config.provider === 'lm-studio' ? '' : '(opcional)'}</Label>
+                                
+                                {/* LM Studio: Model selector with refresh and dropdown */}
+                                {config.provider === 'lm-studio' ? (
+                                  <LMStudioModelSelector
+                                    endpoint={config.endpoint}
+                                    currentModel={config.model || ''}
+                                    onModelChange={(model) => updateLLMConfig(config.id, { model })}
+                                  />
+                                ) : (
+                                  <Input
+                                    value={config.model || ''}
+                                    onChange={(e) => 
+                                      updateLLMConfig(config.id, { model: e.target.value })
+                                    }
+                                    placeholder={config.provider === 'openai' ? 'gpt-4o-mini' : config.provider === 'anthropic' ? 'claude-sonnet-4-20250514' : ''}
+                                    className="mt-1 h-8 text-sm"
+                                  />
+                                )}
                               </div>
                             )}
                             
