@@ -31,6 +31,7 @@ import {
 import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import type { MemoryEvent, RelationshipMemory } from '@/types';
+import { useToast } from '@/hooks/use-toast';
 
 // Extract the event type from MemoryEvent
 type MemoryEventType = MemoryEvent['type'];
@@ -65,6 +66,7 @@ export function CharacterMemoryEditor({
     removeRelationship,
     setCharacterNotes
   } = useTavernStore();
+  const { toast } = useToast();
   
   const memory = getCharacterMemory(characterId);
   const [addEventOpen, setAddEventOpen] = useState(false);
@@ -82,20 +84,57 @@ export function CharacterMemoryEditor({
     notes: ''
   });
 
-  const handleAddEvent = useCallback(() => {
+  // Map UI event types to embedding memory types
+  const mapEventType = (uiType: MemoryEventType): string => {
+    const map: Record<string, string> = {
+      fact: 'hecho', relationship: 'relacion', event: 'evento',
+      emotion: 'otro', location: 'hecho', item: 'hecho', state_change: 'evento',
+    };
+    return map[uiType] || 'hecho';
+  };
+
+  const handleAddEvent = useCallback(async () => {
     if (!newEvent.content?.trim()) return;
     
-    addMemoryEvent(characterId, {
-      id: `event-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    const eventId = `event-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const eventData: MemoryEvent = {
+      id: eventId,
       type: newEvent.type || 'fact',
       content: newEvent.content,
       timestamp: new Date().toISOString(),
       importance: newEvent.importance || 0.5
+    };
+
+    // Save to Zustand immediately
+    addMemoryEvent(characterId, eventData);
+
+    // Also create as embedding in LanceDB (async, non-blocking)
+    fetch('/api/embeddings/manual-memory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: newEvent.content,
+        characterId,
+        characterName,
+        memoryType: mapEventType(newEvent.type || 'fact'),
+        importance: Math.round((newEvent.importance || 0.5) * 5), // Convert 0-1 to 1-5
+      }),
+    }).then(res => res.json()).then(result => {
+      if (result.success) {
+        // Store embedding ID so we can delete it later
+        // We add it as a hidden property on the event
+        addMemoryEvent(characterId, {
+          ...eventData,
+          embeddingId: result.data.id,
+        } as any);
+      }
+    }).catch(err => {
+      console.warn('[CharacterMemory] Failed to create embedding (memory saved locally):', err);
     });
-    
+
     setNewEvent({ type: 'fact', content: '', importance: 0.5 });
     setAddEventOpen(false);
-  }, [characterId, newEvent, addMemoryEvent]);
+  }, [characterId, newEvent, addMemoryEvent, characterName]);
 
   const handleAddRelation = useCallback(() => {
     if (!newRelation.targetName?.trim() || !newRelation.relationship?.trim()) return;

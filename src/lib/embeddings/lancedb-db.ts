@@ -460,37 +460,23 @@ export class LanceDBWrapper {
 
     let results: any[];
 
-    if (namespace && namespace !== 'default' && namespace !== 'all') {
-      try {
-        const nsTable = await db!.openTable(namespace);
-        const searchResults = await nsTable
-          .vectorSearch(normalizedQueryVector)
-          .limit(limit * 5)
-          .toArray();
-        results = searchResults.map((row: any) => ({
-          ...row,
-          similarity: l2ToCosineSimilarity(row._distance || 0),
-        })).filter((r: any) => r.similarity >= threshold);
-      } catch {
-        results = [];
-      }
-    } else {
-      const allResults = await table
-        .vectorSearch(normalizedQueryVector)
-        .limit(limit * 10)
-        .toArray();
+    // All embeddings are stored in the main table with a 'namespace' column.
+    // Always search the main table and filter by namespace in-memory.
+    const allResults = await table
+      .vectorSearch(normalizedQueryVector)
+      .limit(limit * 10)
+      .toArray();
 
-      results = allResults
-        .map((row: any) => ({
-          ...row,
-          similarity: l2ToCosineSimilarity(row._distance || 0),
-        }))
-        .filter((r: any) => {
-          if (!namespace || namespace === 'all') return r.similarity >= threshold;
-          return (r.namespace || 'default') === namespace && r.similarity >= threshold;
-        })
-        .slice(0, limit);
-    }
+    results = allResults
+      .map((row: any) => ({
+        ...row,
+        similarity: l2ToCosineSimilarity(row._distance || 0),
+      }))
+      .filter((r: any) => {
+        if (!namespace || namespace === 'all') return r.similarity >= threshold;
+        return (r.namespace || 'default') === namespace && r.similarity >= threshold;
+      })
+      .slice(0, limit);
 
     return results.map((row: any) => ({
       id: row.id,

@@ -367,6 +367,25 @@ export async function saveMemoriesAsEmbeddings(
   try {
     const client = getEmbeddingClient();
 
+    // Register namespace so it appears in the UI
+    try {
+      await client.upsertNamespace({
+        namespace,
+        description: groupId
+          ? `Memorias auto-extraídas del grupo (${groupId})`
+          : `Memorias auto-extraídas del personaje (${characterId})`,
+        metadata: {
+          type: 'memory',
+          character_id: characterId,
+          session_id: sessionId,
+          group_id: groupId || undefined,
+          auto_created: true,
+        },
+      });
+    } catch (nsErr) {
+      console.warn('[Memory] Failed to upsert namespace (non-blocking):', nsErr);
+    }
+
     for (const fact of validFacts) {
       try {
         const params: CreateEmbeddingParams = {
