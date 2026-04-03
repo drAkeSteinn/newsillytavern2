@@ -59,8 +59,29 @@
       "stopStrings": [],
       "stream": true
     },
-    "isActive": true,
+    "isActive": false,
     "id": "2d7a0ecb-31f9-44df-b3e8-c2cc75789111",
     "mockResponse": "Accion=hab1 sd"
+  },
+  {
+    "name": "LM Studio",
+    "provider": "lm-studio",
+    "endpoint": "http://localhost:1234/v1",
+    "apiKey": "",
+    "model": "",
+    "parameters": {
+      "temperature": 0.7,
+      "topP": 0.9,
+      "topK": 40,
+      "maxTokens": 512,
+      "contextSize": 4096,
+      "repetitionPenalty": 1.1,
+      "frequencyPenalty": 0,
+      "presencePenalty": 0,
+      "stopStrings": [],
+      "stream": true
+    },
+    "isActive": true,
+    "id": "14105a9e-cebd-4a80-b717-c4ed015edb67"
   }
 ]

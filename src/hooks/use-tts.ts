@@ -216,10 +216,17 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
       return; // Silently skip — server is known to be offline
     }
 
-    // Check connection only if status is unknown or online (might have just gone offline)
-    const connected = await checkConnection();
-    if (!connected) {
-      return;
+    // If status is 'online', skip the async check — we know it works
+    // If status is 'unknown', don't block with a network check —
+    // let addToQueue proceed and the service will handle connection errors on generation
+    if (cachedStatus === 'online') {
+      // Already confirmed online — proceed directly
+    } else {
+      // Status is 'unknown' — do a quick connection check
+      const connected = await checkConnection();
+      if (!connected) {
+        return;
+      }
     }
 
     // Use voice settings or fall back to global config
@@ -275,10 +282,15 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
       return; // Silently skip — server is known to be offline
     }
 
-    // Check connection only if status is unknown or online
-    const connected = await checkConnection();
-    if (!connected) {
-      return;
+    // If status is 'online', skip the async check — we know it works
+    if (cachedStatus === 'online') {
+      // Already confirmed online — proceed directly
+    } else {
+      // Status is 'unknown' — do a quick connection check
+      const connected = await checkConnection();
+      if (!connected) {
+        return;
+      }
     }
 
     if (!voiceSettings.enabled) {
@@ -409,7 +421,15 @@ export function useTTSAutoGeneration(
     if (!ttsConfig?.enabled) return;
     if (!ttsConfig?.autoGeneration) return;
     if (!speak || !speakWithDualVoice) return;
-    if (!isConnected) return;
+
+    // Check connection using the SERVICE's cached status directly.
+    // We do NOT rely on React's isConnected state here because it starts as false
+    // and only becomes true after the first async checkConnection() completes.
+    // If a message arrives before the check completes, auto-TTS would be skipped.
+    // Using the service's cache is synchronous and always up-to-date.
+    const cachedStatus = ttsService.getCachedConnectionStatus();
+    if (cachedStatus === 'offline') return;
+    // If status is 'unknown' or 'online', proceed — let the service handle connection errors
 
     // Check if message count increased (new message added)
     lastMessageCountRef.current = currentMessageCount;
@@ -428,11 +448,6 @@ export function useTTSAutoGeneration(
     // Mark as processed immediately to prevent duplicate processing
     lastProcessedIdRef.current = lastMessage.id;
 
-    // Fire TTS SYNCHRONOUSLY (no setTimeout!) using refs for latest closures.
-    // addToQueue inside speakWithDualVoice is synchronous when connection is cached as online.
-    // This ensures TTS is committed before any effect cleanup can cancel it.
-    if (ttsService.getCachedConnectionStatus() === 'offline') return;
-
     const character = charactersRef.current.find(c => c.id === lastMessage.characterId);
     const voiceSettings = character?.voice;
 
@@ -447,7 +462,6 @@ export function useTTSAutoGeneration(
     enabled,
     ttsConfig?.enabled,
     ttsConfig?.autoGeneration,
-    isConnected,
     speak,
     speakWithDualVoice,
   ]);

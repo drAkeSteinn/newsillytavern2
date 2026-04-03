@@ -99,6 +99,7 @@ class TTSService {
   private queue: TTSQueueItem[] = [];
   private currentAudio: HTMLAudioElement | null = null;
   private isPlaying: boolean = false;
+  private isGenerating: boolean = false;  // Track if pre-generation is in progress
   private voicesCache: VoiceInfo[] = [];
   private lastVoicesFetch: number = 0;
   private voicesCacheTTL: number = 5 * 60 * 1000; // 5 minutes
@@ -448,6 +449,15 @@ class TTSService {
     }
 
     const item = this.queue[0];
+
+    // If item was pre-generated (ready), go straight to playback — no generation wait
+    if (item.status === 'ready' && item.audioUrl) {
+      this.isPlaying = true;
+      this.pregenerateNext();
+      await this.playItem(item);
+      return;
+    }
+
     if (item.status !== 'pending') {
       return;
     }
@@ -480,7 +490,10 @@ class TTSService {
         item.audioBlob = audioBlob;
         this.onQueueUpdate?.(this.queue);
 
-        // Play audio
+        // Start pre-generating the next item in the background WHILE current plays
+        this.pregenerateNext();
+
+        // Play audio (does NOT block next generation — pregen is already running)
         await this.playItem(item);
         return; // Success — exit retry loop
       } catch (error) {
@@ -507,6 +520,56 @@ class TTSService {
         this.onQueueUpdate?.(this.queue);
         return;
       }
+    }
+  }
+
+  /**
+   * Pre-generate the next pending item in the queue while the current one is playing.
+   * This dramatically reduces perceived latency by overlapping generation with playback.
+   */
+  private async pregenerateNext() {
+    // Find the next pending item (index 1, since index 0 is the one currently playing)
+    const nextIndex = this.queue.findIndex(
+      (item, idx) => idx > 0 && item.status === 'pending'
+    );
+    if (nextIndex === -1 || this.isGenerating) {
+      return; // No pending items or already pre-generating
+    }
+
+    const nextItem = this.queue[nextIndex];
+    this.isGenerating = true;
+    nextItem.status = 'generating';
+    this.onQueueUpdate?.(this.queue);
+
+    try {
+      const { audioBlob } = await this.generateSpeech(nextItem.text, nextItem.voiceConfig);
+
+      // Validate audio size
+      if (audioBlob.size < TTSService.MIN_AUDIO_SIZE) {
+        console.warn(`[TTS] Pre-gen audio too small (${audioBlob.size} bytes), will retry on play`);
+        nextItem.status = 'pending'; // Reset so processQueue will try again
+        this.onQueueUpdate?.(this.queue);
+        return;
+      }
+
+      nextItem.status = 'ready';
+      nextItem.audioUrl = URL.createObjectURL(audioBlob);
+      nextItem.audioBlob = audioBlob;
+      this.onQueueUpdate?.(this.queue);
+      console.log(`[TTS] Pre-generated next item: "${nextItem.text.substring(0, 40)}..."`);
+
+      // If queue was cleared or item removed during generation, clean up
+      if (!this.queue.includes(nextItem)) {
+        if (nextItem.audioUrl) URL.revokeObjectURL(nextItem.audioUrl);
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`[TTS] Pre-generation failed for next item:`, errorMsg);
+      // Reset to pending so processQueue will retry when it's time
+      nextItem.status = 'pending';
+      this.onQueueUpdate?.(this.queue);
+    } finally {
+      this.isGenerating = false;
     }
   }
 
@@ -644,7 +707,8 @@ class TTSService {
     this.isPlaying = false;
     this.onQueueUpdate?.(this.queue);
 
-    // Process next item
+    // Process next item — if it was pre-generated (status='ready'),
+    // processQueue will skip generation and go straight to playback
     if (this.queue.length > 0) {
       this.processQueue();
     }
@@ -673,6 +737,7 @@ class TTSService {
     
     this.queue = [];
     this.isPlaying = false;
+    this.isGenerating = false;
     this.autoplayBlocked = false;
     this.onQueueUpdate?.(this.queue);
   }

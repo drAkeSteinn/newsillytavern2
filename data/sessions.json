@@ -1298,21 +1298,73 @@
     "name": "Chat with Rick",
     "messages": [
       {
-        "id": "4dafdd83-2c08-4c30-a15c-b5e0b8fc89a3",
+        "id": "9331ab0b-0653-4cc5-8cd9-9e89f840a5cf",
         "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
         "role": "assistant",
-        "content": "\"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\" \"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\" \"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\" \"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\"",
-        "timestamp": "2026-04-03T09:30:02.144Z",
+        "content": "\"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\"",
+        "timestamp": "2026-04-03T21:07:20.083Z",
         "isDeleted": false,
-        "swipeId": "b3fff144-3c96-41bf-8136-903d03b1900e",
+        "swipeId": "385542c3-c57d-42c0-a986-e0c5439ac83f",
         "swipeIndex": 0,
         "swipes": [
-          "\"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\" \"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\" \"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\" \"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\""
+          "\"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\""
+        ]
+      },
+      {
+        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
+        "role": "user",
+        "content": "hola",
+        "isDeleted": false,
+        "swipeId": "8f9d7e23-c2c3-4c7f-9d5d-9c882fc61da4",
+        "swipeIndex": 0,
+        "id": "b59da32b-e579-4bbc-aa17-9db9576f4e59",
+        "timestamp": "2026-04-03T21:10:13.987Z",
+        "swipes": [
+          "hola"
+        ]
+      },
+      {
+        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
+        "role": "system",
+        "content": "⚠️ fetch failed",
+        "isDeleted": false,
+        "swipeId": "b4987241-d83a-4774-83a0-218deb97e9fa",
+        "swipeIndex": 0,
+        "id": "92b34519-9d68-4e5b-b257-f015f818db45",
+        "timestamp": "2026-04-03T21:10:23.470Z",
+        "swipes": [
+          "⚠️ fetch failed"
+        ]
+      },
+      {
+        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
+        "role": "user",
+        "content": "que paso?",
+        "isDeleted": false,
+        "swipeId": "36052f50-30df-4f51-8554-730fe0804c31",
+        "swipeIndex": 0,
+        "id": "26e324bf-db17-49c2-a6e8-d0896d4d49e5",
+        "timestamp": "2026-04-03T21:10:44.209Z",
+        "swipes": [
+          "que paso?"
+        ]
+      },
+      {
+        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
+        "role": "system",
+        "content": "⚠️ fetch failed",
+        "isDeleted": false,
+        "swipeId": "58aa4d05-5cb0-40af-af1e-61d8a3553494",
+        "swipeIndex": 0,
+        "id": "da8fe7ef-35a7-42f2-8f69-dd029e846380",
+        "timestamp": "2026-04-03T21:10:52.353Z",
+        "swipes": [
+          "⚠️ fetch failed"
         ]
       }
     ],
     "createdAt": "2026-04-03T05:25:29.237Z",
-    "updatedAt": "2026-04-03T11:09:22.379Z",
+    "updatedAt": "2026-04-03T21:10:52.353Z",
     "sessionStats": {
       "characterStats": {
         "7e6b6d7b-905e-4199-a15a-797f2efac746": {
@@ -1323,10 +1375,10 @@
       },
       "solicitudes": {
         "characterSolicitudes": {},
-        "lastModified": 1775208602144
+        "lastModified": 1775250440083
       },
       "initialized": true,
-      "lastModified": 1775208602144
+      "lastModified": 1775250440083
     },
     "sessionQuests": [],
     "turnCount": 0

@@ -1028,3 +1028,39 @@ Stage Summary:
 - Reutiliza el handler OpenAI-compatible existente (sin código duplicado)
 - Disponible en todas las rutas: stream, group-stream, regenerate, generate
 - Visible en el panel de configuración con label "LM Studio" y descripción en español
+---
+Task ID: 20
+Agent: Main Agent
+Task: Corregir auto-activación TTS y optimizar cola con pre-generación en paralelo
+
+Work Log:
+- Analizado sistema completo de TTS (hook, service, cola, conexión)
+- Identificada causa raíz del Problema 1: `isConnected` de React inicia como `false`, y el effect de auto-generation lo comprueba antes de que el primer check async complete. Si llega un mensaje antes, se salta el TTS.
+- Identificada causa raíz del Problema 2: `processQueue()` es estrictamente secuencial: genera → reproduce → genera el siguiente. No hay superposición entre generación y reproducción.
+
+**Fix 1 - Auto-activación TTS (`src/hooks/use-tts.ts`):**
+- Cambiado `useTTSAutoGeneration` para usar `ttsService.getCachedConnectionStatus()` directamente en vez de `isConnected` de React
+- Solo se salta si el status es 'offline' (confirmadamente no hay servidor)
+- Si status es 'unknown' o 'online', procede — el servicio maneja errores de conexión
+- Removido `isConnected` del array de dependencias del effect
+- Optimizado `speak()` y `speakWithDualVoice()`: cuando status es 'online', saltan el check async y proceden directamente al addToQueue
+
+**Fix 2 - Pre-generación en paralelo (`src/lib/tts/tts-service.ts`):**
+- Agregado flag `isGenerating` para rastrear si hay pre-generación en curso
+- Nuevo método `pregenerateNext()`: busca el siguiente item 'pending' en la cola y lo genera en background mientras el actual se reproduce
+- Modificado `processQueue()`: después de generar el audio actual, llama `pregenerateNext()` ANTES de `await playItem()`
+- Modificado `processQueue()`: si el siguiente item ya está 'ready' (pre-generado), salta la generación y va directo a reproducción
+- Actualizado `stop()`: resetea `isGenerating` además de `isPlaying`
+- Actualizado `playNext()`: comentarios aclaratorios sobre el flujo pre-gen → play
+
+**Flujo optimizado:**
+```
+Antes: generate(2s) → play(5s) → generate(2s) → play(4s) → ...  Total: 13s para 2 items
+Después: generate(2s) → [play(5s) + generate(2s) en paralelo] → play(4s) inmediata  Total: 9s para 2 items
+```
+
+Stage Summary:
+- Auto-TTS ahora se activa inmediatamente sin necesidad de prueba de voz previa
+- Cola TTS ahora pre-genera el siguiente audio mientras reproduce el actual
+- Para mensajes con múltiples segmentos, el tiempo total se reduce significativamente
+- Lint limpio (solo error pre-existente en fullscreen-editor.tsx)
