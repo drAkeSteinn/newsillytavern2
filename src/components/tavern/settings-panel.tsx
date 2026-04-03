@@ -120,22 +120,21 @@ function LMStudioModelSelector({ endpoint, currentModel, onModelChange }: LMStud
     setError(null);
 
     try {
-      // LM Studio's endpoint is like http://localhost:1234/v1
-      // Models API is at /v1/models (or just /models relative to the base)
-      const baseUrl = endpoint.replace(/\/v1\/?$/, '');
-      const response = await fetch(`${baseUrl}/v1/models`, {
-        signal: AbortSignal.timeout(5000),
+      // Use server-side proxy to avoid CORS issues with localhost
+      const response = await fetch(`/api/lm-studio/models?endpoint=${encodeURIComponent(endpoint)}`, {
+        signal: AbortSignal.timeout(8000),
       });
 
       if (!response.ok) {
-        throw new Error(`Servidor respondió con ${response.status}`);
+        const errData = await response.json().catch(() => ({ error: 'Error desconocido' }));
+        throw new Error(errData.error || `Servidor respondió con ${response.status}`);
       }
 
       const data = await response.json();
       const modelList = (data.data || [])
         .map((m: { id: string }) => ({
           id: m.id,
-          name: m.id.split('/').pop() || m.id, // Show just the model name, not full path
+          name: m.id.split('/').pop() || m.id,
         }))
         .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
 
