@@ -68,7 +68,7 @@
     "provider": "lm-studio",
     "endpoint": "http://localhost:1234/v1",
     "apiKey": "",
-    "model": "",
+    "model": "loaded",
     "parameters": {
       "temperature": 0.7,
       "topP": 0.9,
