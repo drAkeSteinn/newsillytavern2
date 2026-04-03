@@ -1064,3 +1064,51 @@ Stage Summary:
 - Cola TTS ahora pre-genera el siguiente audio mientras reproduce el actual
 - Para mensajes con múltiples segmentos, el tiempo total se reduce significativamente
 - Lint limpio (solo error pre-existente en fullscreen-editor.tsx)
+---
+Task ID: 21
+Agent: Main Agent
+Task: Revisar y corregir serialización de peticiones TTS + fix race condition
+
+Work Log:
+- Analizado el flujo completo de la cola TTS para verificar serialización
+- Encontrado bug de race condition: si un audio termina de reproducirse ANTES de que pregenerateNext() termine de generar el siguiente, la cola se quedaba estancada
+- Identificado que las peticiones TTS YA estaban serializadas correctamente (isGenerating previene overlap), pero faltaba el mecanismo de recuperación
+
+**Fix - Race condition en pregenerateNext():**
+- Cuando pregenerateNext() termina de generar un item, ahora verifica si ese item pasó a ser el primero en la cola (porque el anterior terminó de reproducirse durante la generación)
+- Si `this.queue[0] === nextItem && !this.isPlaying` → llama processQueue() para reproducir inmediatamente
+- También aplica el mismo check en el catch (por si la generación falló pero el item ya está en posición 0)
+
+**Fix - processQueue() case para 'generating':**
+- Agregado caso explícito: si queue[0].status === 'generating' → return (esperar a que pregenerateNext termine y dispare processQueue)
+- Antes se caía en el `if (item.status !== 'pending') return` genérico, que era correcto pero silencioso
+
+**Diseño final del pipeline serial:**
+```
+Solo 1 petición TTS a la vez (serializado):
+
+[processQueue]                  [pregenerateNext]
+     │                                │
+     ├─ await generateSpeech(#1)      │
+     │                                │
+     ├─ status='ready'                │
+     ├─ pregenerateNext() ───────────►├─ await generateSpeech(#2)
+     ├─ await playItem(#1)            │
+     │         │                       ├─ status='ready'
+     │         │◄──────────────────────┤  (si #1 terminó: processQueue())
+     │         ▼                       │
+     ├─ playItem(#2) inmediato        │  (si #1 sigue: esperar)
+     │         │                       │
+     ...
+```
+
+State machine por item:
+  pending → generating → ready → playing → completed
+                              ↑          ↑
+                              └──────────┘ (pre-generated, 0ms wait)
+
+Stage Summary:
+- Las peticiones TTS están serializadas: solo 1 petición al servidor a la vez
+- Los audios generados se cachean como blobs para reproducción inmediata
+- Race condition corregida: si el audio actual termina antes de que el siguiente se genere, el sistema se recupera automáticamente
+- La pre-generación permite que la reproducción sea continua sin pausas entre segmentos

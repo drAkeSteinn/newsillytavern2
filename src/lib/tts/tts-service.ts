@@ -443,6 +443,21 @@ class TTSService {
   private static readonly RETRY_DELAY_MS = 1000;
   private static readonly MIN_AUDIO_SIZE = 1024; // 1KB minimum - anything less is likely empty/invalid
 
+  /**
+   * Process the queue — the main pipeline loop.
+   * 
+   * SERIALIZATION GUARANTEE: Only ONE TTS API request is in flight at any time.
+   * The pipeline works as a chain:
+   *   1. Generate item → cache audio blob
+   *   2. While playing item, start generating the NEXT item in background
+   *   3. When playback ends, if next is pre-cached → play immediately (0ms wait)
+   *   4. Repeat until queue is empty
+   * 
+   * State machine per item:
+   *   pending → generating → ready → playing → completed
+   *                                ↑         ↑
+   *                                └─────────┘  (if pre-generated, skip generating)
+   */
   private async processQueue() {
     if (this.isPlaying || this.queue.length === 0) {
       return;
@@ -450,14 +465,24 @@ class TTSService {
 
     const item = this.queue[0];
 
-    // If item was pre-generated (ready), go straight to playback — no generation wait
+    // ── Case 1: Item already pre-generated (ready) → play immediately ──
     if (item.status === 'ready' && item.audioUrl) {
       this.isPlaying = true;
+      // Start pre-generating the NEXT item while we play this one
       this.pregenerateNext();
       await this.playItem(item);
       return;
     }
 
+    // ── Case 2: Item is being pre-generated right now → wait for it ──
+    // playNext() will call processQueue() again when the current item finishes,
+    // and if this item is still generating, we get here. The pregenerateNext()
+    // method will detect this item is now at index 0 and trigger playback.
+    if (item.status === 'generating') {
+      return; // pregenerateNext() will call processQueue() when done
+    }
+
+    // ── Case 3: Item is pending → generate it now ──
     if (item.status !== 'pending') {
       return;
     }
@@ -485,15 +510,19 @@ class TTSService {
           throw new Error(lastError);
         }
 
+        // Cache the audio blob — generation is done
         item.status = 'ready';
         item.audioUrl = URL.createObjectURL(audioBlob);
         item.audioBlob = audioBlob;
         this.onQueueUpdate?.(this.queue);
 
-        // Start pre-generating the next item in the background WHILE current plays
+        // Start pre-generating the next item in background (fire-and-forget).
+        // This is serialized: pregenerateNext() checks isGenerating to prevent
+        // overlapping requests. Only 1 TTS request is ever in flight.
         this.pregenerateNext();
 
-        // Play audio (does NOT block next generation — pregen is already running)
+        // Play the current item. This blocks until playback ends.
+        // Meanwhile, pregenerateNext() runs in background.
         await this.playItem(item);
         return; // Success — exit retry loop
       } catch (error) {
@@ -524,16 +553,28 @@ class TTSService {
   }
 
   /**
-   * Pre-generate the next pending item in the queue while the current one is playing.
-   * This dramatically reduces perceived latency by overlapping generation with playback.
+   * Pre-generate the next pending item in the queue while the current one plays.
+   * 
+   * SERIALIZATION: Uses `isGenerating` flag to ensure only one TTS request
+   * is in flight at any time (including the one in processQueue).
+   * 
+   * RACE CONDITION HANDLING: When this method finishes generating an item,
+   * it checks if that item has become the first in the queue (because previous
+   * items finished playing during generation). If so, it triggers processQueue()
+   * to start playback immediately.
    */
   private async pregenerateNext() {
-    // Find the next pending item (index 1, since index 0 is the one currently playing)
+    // Guard: don't start if already generating — ensures serialization
+    if (this.isGenerating) {
+      return;
+    }
+
+    // Find the next pending item (skip index 0, which is the one currently playing)
     const nextIndex = this.queue.findIndex(
       (item, idx) => idx > 0 && item.status === 'pending'
     );
-    if (nextIndex === -1 || this.isGenerating) {
-      return; // No pending items or already pre-generating
+    if (nextIndex === -1) {
+      return; // No more items to pre-generate
     }
 
     const nextItem = this.queue[nextIndex];
@@ -547,27 +588,43 @@ class TTSService {
       // Validate audio size
       if (audioBlob.size < TTSService.MIN_AUDIO_SIZE) {
         console.warn(`[TTS] Pre-gen audio too small (${audioBlob.size} bytes), will retry on play`);
-        nextItem.status = 'pending'; // Reset so processQueue will try again
+        nextItem.status = 'pending'; // Reset so processQueue will try again later
         this.onQueueUpdate?.(this.queue);
         return;
       }
 
+      // Cache the audio — ready for immediate playback
       nextItem.status = 'ready';
       nextItem.audioUrl = URL.createObjectURL(audioBlob);
       nextItem.audioBlob = audioBlob;
       this.onQueueUpdate?.(this.queue);
       console.log(`[TTS] Pre-generated next item: "${nextItem.text.substring(0, 40)}..."`);
 
-      // If queue was cleared or item removed during generation, clean up
+      // If queue was cleared or item removed during generation, clean up blob
       if (!this.queue.includes(nextItem)) {
         if (nextItem.audioUrl) URL.revokeObjectURL(nextItem.audioUrl);
+        return;
+      }
+
+      // ── RACE CONDITION FIX ──
+      // If the previous item finished playing while we were generating,
+      // this item is now at index 0 and nothing is playing.
+      // Trigger processQueue() to play it immediately.
+      if (this.queue[0] === nextItem && !this.isPlaying) {
+        this.processQueue();
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       console.warn(`[TTS] Pre-generation failed for next item:`, errorMsg);
-      // Reset to pending so processQueue will retry when it's time
+      // Reset to pending so processQueue will retry when it's this item's turn
       nextItem.status = 'pending';
       this.onQueueUpdate?.(this.queue);
+
+      // Same race condition check — if this item is now at index 0 and nothing
+      // is playing, trigger processQueue to attempt normal generation
+      if (this.queue[0] === nextItem && !this.isPlaying) {
+        this.processQueue();
+      }
     } finally {
       this.isGenerating = false;
     }
