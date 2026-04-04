@@ -47,7 +47,7 @@ export interface MemoryExtractionResult {
 export interface MemoryExtractionSettings {
   /** Whether auto-extraction is enabled */
   enabled: boolean;
-  /** Extract every N messages (default: 5) */
+  /** Extract every N turns (default: 5). A turn = 1 user message + responses. */
   frequency: number;
   /** Minimum importance to save (1-5, default: 2) */
   minImportance: number;
@@ -478,13 +478,14 @@ export async function extractAndSaveMemories(
 }
 
 /**
- * Check if memory extraction should trigger based on message count.
+ * Check if memory extraction should trigger based on turn count.
+ * A turn = 1 user message + N assistant responses.
  */
 export function shouldExtractMemory(
-  currentMessageCount: number,
+  turnCount: number,
   settings: MemoryExtractionSettings = DEFAULT_EXTRACTION_SETTINGS,
 ): boolean {
-  return settings.enabled && currentMessageCount > 0 && currentMessageCount % settings.frequency === 0;
+  return settings.enabled && turnCount > 0 && turnCount % settings.frequency === 0;
 }
 
 export { DEFAULT_EXTRACTION_SETTINGS };

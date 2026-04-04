@@ -2047,16 +2047,16 @@ function EmbeddingsChatIntegration() {
                   {embeddingsChat.memoryExtractionEnabled && (
                     <div className="space-y-3 pl-1 border-l-2 border-violet-300/30">
                       <div className="space-y-2">
-                        <Label className="text-xs">Frecuencia: cada {embeddingsChat.memoryExtractionFrequency || 5} mensajes</Label>
+                        <Label className="text-xs">Frecuencia: cada {embeddingsChat.memoryExtractionFrequency || 5} turnos</Label>
                         <Slider
                           value={[embeddingsChat.memoryExtractionFrequency || 5]}
-                          min={2}
+                          min={1}
                           max={20}
                           step={1}
                           onValueChange={([v]) => handleFrequencyChange(v)}
                         />
                         <p className="text-[10px] text-muted-foreground">
-                          Cada cuántos mensajes se analiza la respuesta para extraer memoria. Más frecuente = más contexto, pero más uso del LLM.
+                          Un turno = 1 mensaje del usuario + respuesta(s). Más frecuente = más contexto, pero más uso del LLM.
                         </p>
                       </div>
 

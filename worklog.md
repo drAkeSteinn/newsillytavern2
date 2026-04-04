@@ -1141,3 +1141,23 @@ Stage Summary:
 - LM Studio ahora tiene selector de modelos con dropdown refrescable
 - Opción "Por defecto" usa el modelo cargado en LM Studio sin necesidad de saber el nombre
 - Los usuarios pueden refrescar la lista al cambiar de modelo en LM Studio
+---
+Task ID: 2
+Agent: Main Agent
+Task: Change memory extraction from per-message to per-turn counting + configure chat history limits
+
+Work Log:
+- Analyzed full memory extraction flow: memory-extraction.ts → stream/route.ts → group-stream/route.ts
+- Analyzed context manager: context-manager.ts with sliding window (maxMessages=50, maxTokens=4096, keepFirstN=1, keepLastN=20)
+- Analyzed memory-settings-panel.tsx for existing context limit UI
+- Changed stream/route.ts: extraction now counts by user messages (turns) instead of all messages
+- Changed group-stream/route.ts: same turn-based counting for group chats
+- Updated memory-extraction.ts: shouldExtractMemory() documentation now references turns
+- Updated embeddings-settings-panel.tsx: label changed from "mensajes" to "turnos", min=1, description updated
+- Confirmed context limits (maxMessages, maxTokens, keepFirstN, keepLastN) are already configurable via UI and persisted in localStorage via Zustand store
+
+Stage Summary:
+- Memory extraction now counts by TURNS (user messages) not individual messages
+- A turn = 1 user message + N responses (consistent for both normal and group chats)
+- Context history limits already exist in Configuración → Memoria → Límites de Contexto
+- Settings persist via Zustand → localStorage (survives browser restart)

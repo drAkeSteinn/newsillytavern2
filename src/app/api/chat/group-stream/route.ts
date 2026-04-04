@@ -848,11 +848,15 @@ export async function POST(request: NextRequest) {
           }
 
           // Check if memory extraction should trigger BEFORE closing stream
+          // Count by TURNS (user messages) instead of individual messages.
+          // A turn = 1 user message + N assistant responses.
+          const turnCount = messages.filter(m => m.role === 'user').length;
+          const extractionFrequency = embeddingsChat.memoryExtractionFrequency || 5;
           const shouldExtractGroupMemory =
             embeddingsChat.memoryExtractionEnabled &&
             responsesThisTurn.length > 0 &&
-            messages.length > 0 &&
-            messages.length % (embeddingsChat.memoryExtractionFrequency || 5) === 0 &&
+            turnCount > 0 &&
+            turnCount % extractionFrequency === 0 &&
             !!llmConfig;
 
           if (shouldExtractGroupMemory) {
