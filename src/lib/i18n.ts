@@ -78,6 +78,7 @@ const translations: Record<Language, TranslationDictionary> = {
     'chat.error.noConfig': 'No hay configuración LLM activa',
     'chat.resetPosition': 'Restablecer posición',
     'chat.messagesCount': ' mensajes',
+    'chat.turnsCount': ' turnos',
     
     // === Chat Message ===
     'message.you': 'Tú',
@@ -358,6 +359,7 @@ const translations: Record<Language, TranslationDictionary> = {
     'chat.error.noConfig': 'No active LLM configuration',
     'chat.resetPosition': 'Reset Position',
     'chat.messagesCount': ' msgs',
+    'chat.turnsCount': ' turns',
     
     // === Chat Message ===
     'message.you': 'You',

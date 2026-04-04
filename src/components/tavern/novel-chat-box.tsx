@@ -942,10 +942,10 @@ export function NovelChatBox({
               {headerName}
             </span>
             
-            {/* Message count - only show on chat tab */}
+            {/* Turn count - only show on chat tab (1 turn = 1 user message) */}
             {activeTab === 'chat' && (
               <span className="text-xs text-muted-foreground">
-                {activeSession.messages.filter(m => !m.isDeleted).length}{t('chat.messagesCount')}
+                {activeSession.messages.filter(m => !m.isDeleted && m.role === 'user').length}{t('chat.turnsCount')}
               </span>
             )}
           </div>
