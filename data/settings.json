@@ -47,8 +47,8 @@
     "novelMode": true,
     "chatWidth": 49.39787950596018,
     "chatHeight": 49.753086419753096,
-    "chatX": 27.481627303863092,
-    "chatY": 74.50617283950616,
+    "chatX": 30.765699553452585,
+    "chatY": 75.12345679012346,
     "chatOpacity": 0.95,
     "blurBackground": false,
     "showCharacterSprite": true
@@ -149,6 +149,12 @@
     "maxTokenBudget": 1024,
     "namespaceStrategy": "character",
     "showInPromptViewer": true,
-    "memoryExtractionEnabled": true
+    "memoryExtractionEnabled": true,
+    "memoryExtractionFrequency": 5,
+    "memoryExtractionMinImportance": 2,
+    "memoryConsolidationEnabled": false,
+    "memoryConsolidationThreshold": 50,
+    "memoryConsolidationKeepRecent": 10,
+    "memoryConsolidationKeepHighImportance": 4
   }
 }

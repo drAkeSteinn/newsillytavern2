@@ -92,6 +92,15 @@ export const defaultSettings: AppSettings = {
     maxTokenBudget: 1024,
     namespaceStrategy: 'character',
     showInPromptViewer: true,
+    // Memory extraction settings
+    memoryExtractionEnabled: false,
+    memoryExtractionFrequency: 5,
+    memoryExtractionMinImportance: 2,
+    // Memory consolidation settings
+    memoryConsolidationEnabled: false,
+    memoryConsolidationThreshold: 50,
+    memoryConsolidationKeepRecent: 10,
+    memoryConsolidationKeepHighImportance: 4,
   }
 };
 

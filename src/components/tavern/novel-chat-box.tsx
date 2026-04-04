@@ -86,6 +86,8 @@ interface NovelChatBoxProps {
   activePersona?: Persona | null;
   /** Whether TTS is currently playing audio (used to pause KWS during TTS) */
   ttsPlaying?: boolean;
+  /** Whether memory extraction is currently running (triggers auto-refresh of memories tab) */
+  memoryExtracting?: boolean;
 }
 
 // Format memory date to relative time
@@ -184,6 +186,7 @@ export function NovelChatBox({
   characters = [],
   activePersona = null,
   ttsPlaying = false,
+  memoryExtracting = false,
 }: NovelChatBoxProps) {
   const [input, setInput] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -845,6 +848,20 @@ export function NovelChatBox({
       loadMemories();
     }
   }, [activeTab, loadMemories]);
+
+  // Auto-refresh memories after extraction completes
+  // When memoryExtracting goes from true → false, wait a few seconds then refresh
+  const prevExtractingRef = useRef(memoryExtracting);
+  useEffect(() => {
+    if (prevExtractingRef.current && !memoryExtracting) {
+      // Extraction just finished — refresh memories after a delay
+      const timer = setTimeout(() => {
+        setMemoriesLoaded(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+    prevExtractingRef.current = memoryExtracting;
+  }, [memoryExtracting]);
 
   // Get character name for a namespace
   const getCharacterNameForNamespace = useCallback((ns: string) => {
@@ -2311,10 +2328,27 @@ export function NovelChatBox({
 
                 {/* Info Footer */}
                 {!memoriesLoading && memories.length > 0 && (
-                  <div className="pt-2 border-t mt-2">
+                  <div className="pt-2 border-t mt-2 space-y-2">
                     <p className="text-[10px] text-muted-foreground text-center">
-                      💡 Activa la extracción automática en Configuración → Embeddings → Extracción de Memoria
+                      🧠 Namespace: <code className="text-violet-400">{isGroupMode && activeGroup ? `group-${activeGroup.id}` : activeCharacter ? `character-${activeCharacter.id}` : '—'}</code>
                     </p>
+                    <p className="text-[10px] text-muted-foreground text-center">
+                      💡 Para gestionar más memorias, ve a Configuración → Embeddings → Examinar
+                    </p>
+                  </div>
+                )}
+
+                {/* Empty state - more helpful info */}
+                {!memoriesLoading && memories.length === 0 && (
+                  <div className="pt-2 border-t mt-2 space-y-2">
+                    <div className="bg-muted/30 rounded-lg p-2.5 space-y-1.5">
+                      <p className="text-[10px] font-medium text-foreground">Para activar la extracción automática:</p>
+                      <ol className="text-[10px] text-muted-foreground space-y-0.5 list-decimal list-inside">
+                        <li>Ollama debe estar corriendo con un modelo de embeddings</li>
+                        <li>Configuración → Embeddings → Usar embeddings en chat ✅</li>
+                        <li>Configuración → Embeddings → Extracción Automática ✅</li>
+                      </ol>
+                    </div>
                   </div>
                 )}
               </div>

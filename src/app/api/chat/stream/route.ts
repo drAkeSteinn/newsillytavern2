@@ -472,11 +472,14 @@ Y cambiar mi expresión:
           }
 
           // Check if memory extraction should trigger BEFORE closing stream
+          // Use original messages.length (total history) NOT allMessages (context window)
+          // because the window stabilizes at ~maxMessages and the modulo would get stuck.
+          const totalMessageCount = messages.length;
           const shouldExtract =
             embeddingsChat.memoryExtractionEnabled &&
             accumulatedContent.length > 50 &&
-            allMessages.length > 0 &&
-            allMessages.length % (embeddingsChat.memoryExtractionFrequency || 5) === 0 &&
+            totalMessageCount > 0 &&
+            totalMessageCount % (embeddingsChat.memoryExtractionFrequency || 5) === 0 &&
             !!llmConfig;
 
           if (shouldExtract) {

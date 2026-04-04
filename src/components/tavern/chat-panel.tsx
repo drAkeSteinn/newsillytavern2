@@ -1349,6 +1349,7 @@ export function ChatPanel() {
         characters={characters}
         activePersona={activePersona}
         ttsPlaying={isTTSPlaying}
+        memoryExtracting={memoryExtractingInfo.active}
       />
 
       {/* Quest Notifications */}
