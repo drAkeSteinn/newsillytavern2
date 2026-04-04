@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
       llmConfig,
       minImportance = 2,
       consolidationSettings,
+      customPrompt,
     } = body;
 
     if (!lastMessage || !characterName || !characterId) {
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
       characterId,
       sessionId || '',
       llmConfig,
-      { groupId, minImportance }
+      { groupId, minImportance, customPrompt }
     );
 
     // Auto-consolidation: check if namespace needs consolidation after saving

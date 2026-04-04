@@ -901,6 +901,7 @@ export async function POST(request: NextRequest) {
                           parameters: llmConfig.parameters,
                         },
                         minImportance: embeddingsChat.memoryExtractionMinImportance || 2,
+                        customPrompt: embeddingsChat.memoryExtractionPrompt,
                         consolidationSettings: embeddingsChat.memoryConsolidationEnabled ? {
                           enabled: true,
                           threshold: embeddingsChat.memoryConsolidationThreshold || 50,

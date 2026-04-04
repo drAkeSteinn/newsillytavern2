@@ -15,6 +15,7 @@ import { generateResponse } from '@/lib/llm/generation';
 import type { LLMConfig, ChatApiMessage } from '@/lib/llm/types';
 import { getEmbeddingClient } from '@/lib/embeddings/client';
 import type { CreateEmbeddingParams } from '@/lib/embeddings/types';
+import { DEFAULT_MEMORY_EXTRACTION_PROMPT } from './memory-extraction-prompts';
 
 // ============================================
 // Types
@@ -63,35 +64,8 @@ const DEFAULT_EXTRACTION_SETTINGS: MemoryExtractionSettings = {
   minImportance: 2,
 };
 
-const MEMORY_EXTRACTION_PROMPT = `Eres un analista de memoria para un personaje de rol. Tu ÚNICA tarea es extraer hechos memorables del mensaje de un personaje.
-
-Reglas estrictas:
-- Solo extrae información NUEVA y RELEVANTE sobre el jugador, relaciones, eventos importantes, secretos o preferencias
-- Ignora saludos, descripciones genéricas, acciones rutinarias y narrativa decorativa
-- Ignora información que ya es conocimiento general del personaje
-- Cada hecho debe ser una FRASE concisa (máximo 50 palabras) en tercera persona
-- Si NO hay nada memorable, responde EXACTAMENTE: []
-
-Responde SOLO con un JSON array, sin explicaciones, sin markdown, sin texto adicional.
-
-Ejemplos:
-
-Mensaje del personaje:
-"*mira con recelo* No confío en ti desde que robaste las gemas del templo. Y sé que le debes dinero a Claudec."
-
-Respuesta correcta:
-[{"contenido":"El personaje no confía en el jugador desde que robó las gemas del templo","tipo":"relacion","importancia":4},{"contenido":"El jugador le debe dinero a Claudec","tipo":"hecho","importancia":3}]
-
-Mensaje del personaje:
-"¡Buenos días! ¿En qué puedo ayudarte hoy?"
-
-Respuesta correcta:
-[]
-
-Ahora analiza este mensaje:
-
-Nombre del personaje: {characterName}
-{lastMessage}`;
+// Use the prompt from the clean prompts file
+const MEMORY_EXTRACTION_PROMPT = DEFAULT_MEMORY_EXTRACTION_PROMPT;
 
 // ============================================
 // Robust JSON Parser (3-layer fallback)
@@ -291,12 +265,14 @@ export async function extractMemories(
   lastAssistantMessage: string,
   characterName: string,
   llmConfig: LLMConfig,
+  customPrompt?: string,
 ): Promise<MemoryFact[]> {
   if (!lastAssistantMessage?.trim() || lastAssistantMessage.length < 20) {
     return []; // Too short to contain meaningful memories
   }
 
-  const prompt = MEMORY_EXTRACTION_PROMPT
+  const promptTemplate = (customPrompt && customPrompt.trim()) ? customPrompt : MEMORY_EXTRACTION_PROMPT;
+  const prompt = promptTemplate
     .replace('{characterName}', characterName)
     .replace('{lastMessage}', lastAssistantMessage);
 
@@ -435,9 +411,10 @@ export async function extractAndSaveMemories(
   options: {
     groupId?: string;
     minImportance?: number;
+    customPrompt?: string;
   } = {}
 ): Promise<MemoryExtractionResult> {
-  const { groupId, minImportance = 2 } = options;
+  const { groupId, minImportance = 2, customPrompt } = options;
 
   const emptyResult: MemoryExtractionResult = {
     count: 0,
@@ -449,7 +426,7 @@ export async function extractAndSaveMemories(
 
   try {
     // Step 1: Extract facts via LLM
-    const facts = await extractMemories(lastAssistantMessage, characterName, llmConfig);
+    const facts = await extractMemories(lastAssistantMessage, characterName, llmConfig, customPrompt);
 
     if (facts.length === 0) {
       return emptyResult;

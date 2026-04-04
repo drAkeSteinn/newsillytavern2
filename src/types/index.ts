@@ -1542,6 +1542,8 @@ export interface EmbeddingsChatSettings {
   memoryConsolidationKeepRecent?: number;
   /** Keep all memories with importance >= this value (default: 4) */
   memoryConsolidationKeepHighImportance?: number;
+  /** Custom prompt for memory extraction (overrides default prompt) */
+  memoryExtractionPrompt?: string;
 }
 
 // ============ API Types ============

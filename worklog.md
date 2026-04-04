@@ -1161,3 +1161,80 @@ Stage Summary:
 - A turn = 1 user message + N responses (consistent for both normal and group chats)
 - Context history limits already exist in Configuración → Memoria → Límites de Contexto
 - Settings persist via Zustand → localStorage (survives browser restart)
+
+---
+## Task ID: 19 - embeddings-panel-restructure-7tabs
+### Work Task
+Reorganize the embeddings settings panel from a collapsible-based layout into a 7-tab structure, add a new Prompts tab for custom memory extraction prompt editing, and wire up the custom prompt through the full stack.
+
+### Work Summary
+
+**Files Modified:**
+
+1. **`src/types/index.ts`** — Added `memoryExtractionPrompt?: string` to `EmbeddingsChatSettings` interface
+
+2. **`src/store/defaults.ts`** — Added `memoryExtractionPrompt` default value (full Spanish extraction prompt with `{characterName}` and `{lastMessage}` variables) to the `embeddingsChat` object in `defaultSettings`
+
+3. **`src/lib/embeddings/memory-extraction.ts`** — Three changes:
+   - Exported `MEMORY_EXTRACTION_PROMPT` constant so the UI can use it for "Restore Default"
+   - Added `customPrompt?: string` parameter to `extractMemories()` — uses custom prompt if provided and non-empty, falls back to default
+   - Added `customPrompt?: string` to `extractAndSaveMemories()` options — passes through to `extractMemories()`
+
+4. **`src/app/api/embeddings/extract-memory/route.ts`** — Added `customPrompt` to destructured body, passes it through to `extractAndSaveMemories()`
+
+5. **`src/app/api/chat/stream/route.ts`** — Added `customPrompt: embeddingsChat.memoryExtractionPrompt` to the extract-memory fetch body
+
+6. **`src/app/api/chat/group-stream/route.ts`** — Added `customPrompt: embeddingsChat.memoryExtractionPrompt` to the extract-memory fetch body
+
+7. **`src/components/embeddings/embeddings-settings-panel.tsx`** — Complete restructure:
+   - Removed outer collapsible wrappers (Configuración, Integración con Chat)
+   - Converted `EmbeddingsChatIntegration` from a Collapsible component to `EmbeddingsChatIntegrationContent` (flat Card, no wrapper)
+   - Created new `PromptsTabContent` sub-component with textarea, preview, save/restore buttons
+   - Reorganized into 7 tabs with `grid-cols-7` layout:
+     - Tab 1: Configuración (Settings) — Service status cards + Ollama URL + model + thresholds + advanced + save/test
+     - Tab 2: Integración — Chat integration settings, memory extraction, memory consolidation
+     - Tab 3: Búsqueda — Semantic search
+     - Tab 4: Archivos — File upload + chunking
+     - Tab 5: Namespaces — Namespace management
+     - Tab 6: Examinar — Browse embeddings
+     - Tab 7: Prompts (NEW) — Custom memory extraction prompt editor with:
+       - Textarea for editing the prompt
+       - Preview button showing variables replaced with example values
+       - "Restore Default" button
+       - Character count and unsaved changes indicator
+       - Save button
+   - Removed `configOpen` state (no longer needed since config is in a tab)
+   - Header info banner kept above tabs
+   - All dialogs remain outside tabs
+   - Added imports: `RotateCcw`, `Pencil`, `MEMORY_EXTRACTION_PROMPT`
+
+**ESLint:** Zero new errors introduced (only pre-existing error in `fullscreen-editor.tsx` remains)
+---
+Task ID: 3
+Agent: Main Agent
+Task: Review embeddings flow, reorganize panel tabs, add configurable extraction prompt
+
+Work Log:
+- Reviewed full embeddings retrieval flow: retrieveEmbeddingsContext() in chat-context.ts
+- Confirmed: only user message (sanitizedMessage) is used as search query — NOT chat history
+- Confirmed: group chat calls retrieveEmbeddingsContext per-responder with responder.id, so each character's memories are found
+- Reorganized embeddings panel from 4 tabs + 2 collapsibles into 7 flat tabs:
+  1. Configuración (service status, Ollama URL, model, thresholds)
+  2. Integración (chat integration, memory extraction, consolidation — flattened from Collapsible)
+  3. Búsqueda (semantic search — unchanged)
+  4. Archivos (file upload — unchanged)
+  5. Namespaces (namespace management — unchanged)
+  6. Examinar (browse embeddings — unchanged)
+  7. Prompts (NEW — custom memory extraction prompt with preview, save, restore default)
+- Created clean prompts file: src/lib/embeddings/memory-extraction-prompts.ts (no server imports, client-safe)
+- Added memoryExtractionPrompt to EmbeddingsChatSettings type and store defaults
+- Modified extractMemories/extractAndSaveMemories to accept customPrompt parameter
+- Updated extract-memory API route to pass customPrompt through
+- Updated stream/group-stream routes to send customPrompt from settings
+- Fixed browser-side crash: extracted prompt constant to separate file to avoid importing lancedb in client bundle
+
+Stage Summary:
+- Embeddings retrieval confirmed working for both normal and group chat
+- Search query = user message only (not chat history) — this is correct for semantic search
+- 7-tab layout implemented with all existing functionality preserved
+- Custom extraction prompt fully configurable and persisted in localStorage

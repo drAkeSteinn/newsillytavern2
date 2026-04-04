@@ -101,6 +101,8 @@ export const defaultSettings: AppSettings = {
     memoryConsolidationThreshold: 50,
     memoryConsolidationKeepRecent: 10,
     memoryConsolidationKeepHighImportance: 4,
+    // Custom memory extraction prompt
+    memoryExtractionPrompt: `Eres un analista de memoria para un personaje de rol. Tu ÚNICA tarea es extraer hechos memorables del mensaje de un personaje.\n\nReglas estrictas:\n- Solo extrae información NUEVA y RELEVANTE sobre el jugador, relaciones, eventos importantes, secretos o preferencias\n- Ignora saludos, descripciones genéricas, acciones rutinarias y narrativa decorativa\n- Ignora información que ya es conocimiento general del personaje\n- Cada hecho debe ser una FRASE concisa (máximo 50 palabras) en tercera persona\n- Si NO hay nada memorable, responde EXACTAMENTE: []\n\nResponde SOLO con un JSON array, sin explicaciones, sin markdown, sin texto adicional.\n\nEjemplos:\n\nMensaje del personaje:\n"*mira con recelo* No confío en ti desde que robaste las gemas del templo. Y sé que le debes dinero a Claudec."\n\nRespuesta correcta:\n[{"contenido":"El personaje no confía en el jugador desde que robó las gemas del templo","tipo":"relacion","importancia":4},{"contenido":"El jugador le debe dinero a Claudec","tipo":"hecho","importancia":3}]\n\nMensaje del personaje:\n"¡Buenos días! ¿En qué puedo ayudarte hoy?"\n\nRespuesta correcta:\n[]\n\nAhora analiza este mensaje:\n\nNombre del personaje: {characterName}\n{lastMessage}`,
   }
 };
 
