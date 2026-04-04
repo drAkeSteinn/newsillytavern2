@@ -1334,3 +1334,23 @@ Stage Summary:
 - Group chats search in both group-{gid}-{sid} and character-{id}-{sid} namespaces
 - Ollama model always uses latest configured model (no stale singleton)
 - Lint clean on all modified files
+---
+Task ID: 9
+Agent: main
+Task: Fix critical bug — Memories tab UI not finding saved memories (namespace mismatch)
+
+Work Log:
+- Diagnosed root cause: Backend saves memories with sessionId in namespace (`character-{id}-{sessionId}`), but UI fetches without it (`character-{id}`)
+- Added `sessionId` prop to `NovelChatBoxProps` interface
+- Updated `loadMemories()` callback to include sessionId in namespace fetch pattern
+  - Single mode: fetches `character-{id}-{sessionId}` (primary) + `character-{id}` (fallback for backward compat)
+  - Group mode: fetches `group-{gid}-{sessionId}` + `character-{id}-{sessionId}` per member (primary) + generic namespaces (fallback)
+  - Added deduplication of both namespaces and memory IDs across fetch results
+- Updated memory reset effect to trigger on sessionId change (not just character/group change)
+- Updated namespace footer display to show session-scoped namespace with truncated sessionId
+- Passed `activeSessionId` from chat-panel.tsx to NovelChatBox component
+
+Stage Summary:
+- Critical bug fixed: Memories tab now finds and displays memories saved by the extraction system
+- Session-scoped namespaces prevent cross-session memory leakage
+- Backward compatible: still fetches generic namespaces as fallback for manually created lore

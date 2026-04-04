@@ -88,6 +88,8 @@ interface NovelChatBoxProps {
   ttsPlaying?: boolean;
   /** Whether memory extraction is currently running (triggers auto-refresh of memories tab) */
   memoryExtracting?: boolean;
+  /** Current session ID for session-scoped memory namespaces */
+  sessionId?: string;
 }
 
 // Format memory date to relative time
@@ -187,6 +189,7 @@ export function NovelChatBox({
   activePersona = null,
   ttsPlaying = false,
   memoryExtracting = false,
+  sessionId,
 }: NovelChatBoxProps) {
   const [input, setInput] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -785,14 +788,20 @@ export function NovelChatBox({
     if (memoriesLoaded) return;
     setMemoriesLoading(true);
     try {
+      const sessionSuffix = sessionId ? `-${sessionId}` : '';
       let namespacesToFetch: string[] = [];
       if (isGroupMode && activeGroup) {
-        // Group mode: fetch group namespace + each member's character namespace
+        // Group mode: fetch session-scoped group namespace + each member's character namespace
         const memberIds = activeGroup.members?.map(m => m.characterId) || activeGroup.characterIds || [];
-        namespacesToFetch = [`group-${activeGroup.id}`, ...memberIds.map(id => `character-${id}`)];
+        // Prioritize session-scoped namespaces (primary), also fallback to generic (for manually created lore)
+        const sessionNS = sessionSuffix ? [`group-${activeGroup.id}${sessionSuffix}`, ...memberIds.map(id => `character-${id}${sessionSuffix}`)] : [];
+        const genericNS = [`group-${activeGroup.id}`, ...memberIds.map(id => `character-${id}`)];
+        namespacesToFetch = [...sessionNS, ...genericNS];
       } else if (activeCharacter) {
-        // Single mode: fetch character namespace
-        namespacesToFetch = [`character-${activeCharacter.id}`];
+        // Single mode: fetch session-scoped character namespace
+        // Also include generic namespace for backward compat and manually created lore
+        namespacesToFetch = [`character-${activeCharacter.id}${sessionSuffix}`];
+        if (sessionSuffix) namespacesToFetch.push(`character-${activeCharacter.id}`);
       }
 
       if (namespacesToFetch.length === 0) {
@@ -801,9 +810,12 @@ export function NovelChatBox({
         return;
       }
 
+      // Deduplicate namespaces
+      const uniqueNamespaces = [...new Set(namespacesToFetch)];
+
       // Fetch all namespaces in parallel
       const results = await Promise.all(
-        namespacesToFetch.map(ns =>
+        uniqueNamespaces.map(ns =>
           fetch(`/api/embeddings?namespace=${encodeURIComponent(ns)}&source_type=memory&limit=200`)
             .then(r => r.json())
             .then(data => (data.success ? data.data.embeddings : []))
@@ -811,10 +823,18 @@ export function NovelChatBox({
         )
       );
 
-      // Flatten and sort by created_at (newest first)
-      const allMemories = results.flat().sort((a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
+      // Flatten, deduplicate by id, and sort by created_at (newest first)
+      const seenIds = new Set<string>();
+      const allMemories = results
+        .flat()
+        .filter((m: any) => {
+          if (seenIds.has(m.id)) return false;
+          seenIds.add(m.id);
+          return true;
+        })
+        .sort((a: any, b: any) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
 
       setMemories(allMemories);
       setMemoriesLoaded(true);
@@ -823,7 +843,7 @@ export function NovelChatBox({
     } finally {
       setMemoriesLoading(false);
     }
-  }, [isGroupMode, activeGroup, activeCharacter, memoriesLoaded]);
+  }, [isGroupMode, activeGroup, activeCharacter, memoriesLoaded, sessionId]);
 
   const deleteMemory = useCallback(async (memoryId: string) => {
     try {
@@ -836,11 +856,11 @@ export function NovelChatBox({
     }
   }, []);
 
-  // Reset memories when character/group changes
+  // Reset memories when character/group/session changes
   useEffect(() => {
     setMemoriesLoaded(false);
     setMemories([]);
-  }, [activeCharacter?.id, activeGroup?.id, isGroupMode]);
+  }, [activeCharacter?.id, activeGroup?.id, isGroupMode, sessionId]);
 
   // Load memories when tab is selected
   useEffect(() => {
@@ -2330,7 +2350,7 @@ export function NovelChatBox({
                 {!memoriesLoading && memories.length > 0 && (
                   <div className="pt-2 border-t mt-2 space-y-2">
                     <p className="text-[10px] text-muted-foreground text-center">
-                      🧠 Namespace: <code className="text-violet-400">{isGroupMode && activeGroup ? `group-${activeGroup.id}` : activeCharacter ? `character-${activeCharacter.id}` : '—'}</code>
+                      🧠 Namespace: <code className="text-violet-400">{isGroupMode && activeGroup ? `group-${activeGroup.id}${sessionId ? `-${sessionId.slice(0, 8)}` : ''}` : activeCharacter ? `character-${activeCharacter.id}${sessionId ? `-${sessionId.slice(0, 8)}` : ''}` : '—'}</code>
                     </p>
                     <p className="text-[10px] text-muted-foreground text-center">
                       💡 Para gestionar más memorias, ve a Configuración → Embeddings → Examinar
