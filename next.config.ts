@@ -7,8 +7,10 @@ const nextConfig: NextConfig = {
   },
   reactStrictMode: false,
   allowedDevOrigins: [
+    'preview-chat-0874b2c1-f82e-468f-93c9-02daabc4ba05.space.z.ai',
     'preview-chat-27e4e197-62c7-4b1a-9264-f4ba5d69a857.space.z.ai',
     '.space.z.ai',
+    '*.space.z.ai',
     'localhost',
   ],
 

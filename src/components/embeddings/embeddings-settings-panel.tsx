@@ -1285,7 +1285,7 @@ export function EmbeddingsSettingsPanel() {
             <Settings className="w-3 h-3 mr-1" />Configuración
           </TabsTrigger>
           <TabsTrigger value="integracion" className="text-xs">
-            <MessageSquare className="w-3 h-3 mr-1" />Integración
+            <MessageSquare className="w-3 h-3 mr-1" />Integración del chat
           </TabsTrigger>
           <TabsTrigger value="search" className="text-xs">
             <Search className="w-3 h-3 mr-1" />Búsqueda

@@ -1238,3 +1238,22 @@ Stage Summary:
 - Search query = user message only (not chat history) — this is correct for semantic search
 - 7-tab layout implemented with all existing functionality preserved
 - Custom extraction prompt fully configurable and persisted in localStorage
+
+---
+Task ID: 1
+Agent: Main
+Task: Fix app not visible in browser - CORS and dev server issues
+
+Work Log:
+- Diagnosed app not rendering: dev server was not running after context reset
+- Found CORS blocking issue: `allowedDevOrigins` in next.config.ts had old session ID
+- Added current session ID `preview-chat-0874b2c1-f82e-468f-93c9-02daabc4ba05.space.z.ai` and `*.space.z.ai` wildcard
+- Cleared `.next` cache and restarted dev server
+- Verified HTTP 200 response (26KB HTML), no CORS warnings
+- Renamed "Integración" tab to "Integración del chat" in embeddings panel
+
+Stage Summary:
+- App now renders correctly in preview panel (HTTP 200, no CORS errors)
+- Embeddings panel tabs: Configuración, Integración del chat, Búsqueda, Archivos, Namespaces, Examinar, Prompts
+- All 7 tabs fully implemented with sub-components
+- Server compiles in ~4.5s after cache warm
