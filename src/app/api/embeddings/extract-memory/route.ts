@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
       minImportance = 2,
       consolidationSettings,
       customPrompt,
+      chatContext, // NEW: recent messages for context-aware extraction
     } = body;
 
     if (!lastMessage || !characterName || !characterId) {
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
       characterId,
       sessionId || '',
       llmConfig,
-      { groupId, minImportance, customPrompt }
+      { groupId, minImportance, customPrompt, chatContext }
     );
 
     // Auto-consolidation: check if namespace needs consolidation after saving

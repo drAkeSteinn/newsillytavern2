@@ -1257,3 +1257,28 @@ Stage Summary:
 - Embeddings panel tabs: Configuración, Integración del chat, Búsqueda, Archivos, Namespaces, Examinar, Prompts
 - All 7 tabs fully implemented with sub-components
 - Server compiles in ~4.5s after cache warm
+
+---
+Task ID: 2
+Agent: Main
+Task: Implement context-aware embeddings improvements
+
+Work Log:
+- Added 3 new settings to EmbeddingsChatSettings type: memoryExtractionContextDepth, searchContextDepth, groupDynamicsExtraction
+- Updated defaults.ts with new settings (context depth 2, search depth 1, group dynamics off)
+- Updated memory-extraction-prompts.ts: added {chatContext} variable, updated default prompt with context examples, added DEFAULT_GROUP_DYNAMICS_PROMPT
+- Modified memory-extraction.ts: extractMemories() now accepts optional chatContext, added extractGroupDynamics() function
+- Modified extract-memory API route to accept chatContext parameter
+- Created /api/embeddings/extract-group-dynamics API route for group dynamics extraction
+- Modified stream/route.ts: enriched search query with searchContextDepth, pass chatContext to extraction
+- Modified group-stream/route.ts: enriched search query, pass turn context to each character extraction, added group dynamics extraction call
+- Updated embeddings-settings-panel.tsx UI: added Context Depth slider, Search Context slider, Group Dynamics toggle, updated info boxes
+- Fixed duplicate 'preferencia' key in TYPE_ALIASES
+- Fixed TS2322 error in setEditCustomTypeText
+
+Stage Summary:
+- Chat normal: memories now extracted with N recent messages as context (configurable 0-5)
+- Chat grupal: each character sees the full turn context + group dynamics extraction available
+- Search: enriched query includes recent messages for better semantic matching
+- All new settings configurable in "Integración del chat" tab
+- App compiles successfully (HTTP 200)

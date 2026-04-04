@@ -195,6 +195,9 @@ const DEFAULT_EMBEDDINGS_CHAT = {
   memoryConsolidationKeepRecent: 10,
   memoryConsolidationKeepHighImportance: 4,
   memoryExtractionPrompt: DEFAULT_MEMORY_EXTRACTION_PROMPT,
+  memoryExtractionContextDepth: 2,
+  searchContextDepth: 1,
+  groupDynamicsExtraction: false,
 };
 
 // ============================================
@@ -262,6 +265,24 @@ function EmbeddingsChatIntegrationContent() {
   const handleKeepHighImportanceChange = (value: number) => {
     updateSettings({
       embeddingsChat: { ...embeddingsChat, memoryConsolidationKeepHighImportance: value },
+    });
+  };
+
+  const handleExtractionContextDepthChange = (value: number) => {
+    updateSettings({
+      embeddingsChat: { ...embeddingsChat, memoryExtractionContextDepth: value },
+    });
+  };
+
+  const handleSearchContextDepthChange = (value: number) => {
+    updateSettings({
+      embeddingsChat: { ...embeddingsChat, searchContextDepth: value },
+    });
+  };
+
+  const handleToggleGroupDynamics = (enabled: boolean) => {
+    updateSettings({
+      embeddingsChat: { ...embeddingsChat, groupDynamicsExtraction: enabled },
     });
   };
 
@@ -380,15 +401,28 @@ function EmbeddingsChatIntegrationContent() {
                     </p>
                   </div>
 
+                  <div className="space-y-2">
+                    <Label className="text-xs">Profundidad de contexto: {embeddingsChat.memoryExtractionContextDepth ?? 2} mensajes</Label>
+                    <Slider
+                      value={[embeddingsChat.memoryExtractionContextDepth ?? 2]}
+                      min={0}
+                      max={5}
+                      step={1}
+                      onValueChange={([v]) => handleExtractionContextDepthChange(v)}
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      Cuántos mensajes recientes incluir como contexto para el LLM. 0 = solo la respuesta del personaje. Más contexto = mejor comprensión de referencias, pero más tokens.
+                    </p>
+                  </div>
+
                   <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
                     <div className="flex items-start gap-2">
                       <Brain className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
                       <div className="space-y-1">
-                        <p className="text-xs font-medium text-amber-600 dark:text-amber-400">Memoria Automática</p>
+                        <p className="text-xs font-medium text-amber-600 dark:text-amber-400">Memoria con Contexto</p>
                         <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
-                          <li>Después de cada N respuestas, el LLM analiza el mensaje y extrae hechos memorables</li>
-                          <li>Los hechos se guardan en namespaces automáticos (character-{'{id}'} o group-{'{id}'})</li>
-                          <li>Se filtran por importancia (1=bajo, 5=crítico)</li>
+                          <li>Se incluyen los últimos N mensajes como contexto para que el LLM entienda referencias implícitas</li>
+                          <li>En grupo, cada personaje ve las respuestas de los demás para capturar dinámicas de conversación</li>
                           <li>La extracción es asíncrona — no afecta la velocidad de respuesta</li>
                         </ul>
                       </div>
@@ -480,6 +514,55 @@ function EmbeddingsChatIntegrationContent() {
               )}
             </div>
 
+            {/* Search Context Depth */}
+            <div className="space-y-2">
+              <Label className="text-xs">Contexto de búsqueda: {embeddingsChat.searchContextDepth ?? 1} mensajes</Label>
+              <Slider
+                value={[embeddingsChat.searchContextDepth ?? 1]}
+                min={0}
+                max={5}
+                step={1}
+                onValueChange={([v]) => handleSearchContextDepthChange(v)}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Mensajes recientes que se agregan a tu pregunta para enriquecer la búsqueda de embeddings. 0 = solo tu mensaje. Valores altos = mejores resultados con referencias implícitas ("¿recuerdas eso?").
+              </p>
+            </div>
+
+            {/* Group Dynamics Extraction */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label className="text-sm flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-fuchsia-500" />
+                  Dinámicas Grupales
+                </Label>
+                <p className="text-[10px] text-muted-foreground">
+                  Extrae relaciones entre personajes en chats de grupo
+                </p>
+              </div>
+              <Switch
+                checked={!!embeddingsChat.groupDynamicsExtraction}
+                onCheckedChange={handleToggleGroupDynamics}
+              />
+            </div>
+
+            {embeddingsChat.groupDynamicsExtraction && (
+              <div className="bg-fuchsia-500/5 border border-fuchsia-500/20 rounded-lg p-3">
+                <div className="flex items-start gap-2">
+                  <Layers className="w-4 h-4 text-fuchsia-500 mt-0.5 shrink-0" />
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-fuchsia-600 dark:text-fuchsia-400">Dinámicas de Grupo</p>
+                    <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
+                      <li>Analiza todo el turno de conversación para detectar interacciones entre personajes</li>
+                      <li>Extrae alianzas, conflictos, y tendencias de relación</li>
+                      <li>Se ejecuta automáticamente cuando 2+ personajes responden en el mismo turno</li>
+                      <li>Las dinámicas se guardan en el namespace del grupo</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="bg-violet-500/5 border border-violet-500/20 rounded-lg p-3">
               <div className="flex items-start gap-2">
                 <Brain className="w-4 h-4 text-violet-500 mt-0.5 shrink-0" />
@@ -487,6 +570,7 @@ function EmbeddingsChatIntegrationContent() {
                   <p className="text-xs font-medium text-violet-600 dark:text-violet-400">Cómo funciona</p>
                   <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
                     <li>Cuando envías un mensaje, el sistema genera un vector embedding de tu texto</li>
+                    <li>Si hay contexto de búsqueda, se concatena con tu mensaje para encontrar resultados más relevantes</li>
                     <li>Busca en los namespaces seleccionados embeddings similares</li>
                     <li>Los mejores resultados se inyectan en el prompt de la IA como contexto</li>
                     <li>La IA usa este contexto para generar respuestas más informadas</li>
@@ -526,7 +610,8 @@ function PromptsTabContent() {
 
   const previewText = localPrompt
     .replace('{characterName}', 'Alvar')
-    .replace('{lastMessage}', '"*mira con recelo* No confío en ti desde que robaste las gemas del templo."');
+    .replace('{chatContext}', 'Contexto reciente de la conversación:\n  Jugador: "Me acabo de mudar a la costa, tengo un gato llamado Milo"\n  Personaje: "¡Qué genial! ¿Y cómo te va adaptando?"\n')
+    .replace('{lastMessage}', '"Milo se lleva súper bien con los vecinos."');
 
   const hasChanges = localPrompt !== (embeddingsChat.memoryExtractionPrompt || DEFAULT_MEMORY_EXTRACTION_PROMPT);
 
@@ -539,7 +624,7 @@ function PromptsTabContent() {
             <p className="text-xs font-medium text-violet-600 dark:text-violet-400">Prompt de Extracción de Memoria</p>
             <p className="text-[10px] text-muted-foreground">
               Personaliza el prompt que el LLM usa para extraer hechos memorables de los mensajes del personaje.
-              Variables disponibles: <code className="bg-muted px-1 py-0.5 rounded text-[10px]">{'{characterName}'}</code> y <code className="bg-muted px-1 py-0.5 rounded text-[10px]">{'{lastMessage}'}</code>
+              Variables disponibles: <code className="bg-muted px-1 py-0.5 rounded text-[10px]">{'{characterName}'}</code>, <code className="bg-muted px-1 py-0.5 rounded text-[10px]">{'{lastMessage}'}</code> y <code className="bg-muted px-1 py-0.5 rounded text-[10px]">{'{chatContext}'}</code> (se inserta automáticamente según la profundidad de contexto configurada)
             </p>
           </div>
         </div>
@@ -1902,7 +1987,7 @@ export function EmbeddingsSettingsPanel() {
                               onClick={() => {
                                 const isCustomType = ns.type && !['MEMORIA DEL PERSONAJE', 'EVENTOS RECIENTES', 'LORE DEL MUNDO', 'REGLAS Y MECANICAS', 'RELACIONES'].includes(ns.type);
                                 setEditingNamespace({ ...ns, type: isCustomType ? '__custom__' : (ns.type || '') });
-                                setEditCustomTypeText(isCustomType ? ns.type : '');
+                                setEditCustomTypeText(isCustomType ? (ns.type || '') : '');
                               }}
                               title="Editar tipo"
                             >

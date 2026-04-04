@@ -15,7 +15,7 @@ import { generateResponse } from '@/lib/llm/generation';
 import type { LLMConfig, ChatApiMessage } from '@/lib/llm/types';
 import { getEmbeddingClient } from '@/lib/embeddings/client';
 import type { CreateEmbeddingParams } from '@/lib/embeddings/types';
-import { DEFAULT_MEMORY_EXTRACTION_PROMPT } from './memory-extraction-prompts';
+import { DEFAULT_MEMORY_EXTRACTION_PROMPT, DEFAULT_GROUP_DYNAMICS_PROMPT } from './memory-extraction-prompts';
 
 // ============================================
 // Types
@@ -218,7 +218,6 @@ const TYPE_ALIASES: Record<string, MemoryType> = {
   'relacion': 'relacion',
   'relationship': 'relacion',
   'preferencia': 'preferencia',
-  'preferencia': 'preferencia',
   'secreto': 'secreto',
   'secret': 'secreto',
   'other': 'otro',
@@ -260,19 +259,29 @@ function clampImportance(val: number): number {
 /**
  * Extract memorable facts from the last assistant message using LLM.
  * Uses robust multi-layer JSON parsing.
+ *
+ * @param chatContext - Optional recent messages to provide context (improves fact extraction quality)
  */
 export async function extractMemories(
   lastAssistantMessage: string,
   characterName: string,
   llmConfig: LLMConfig,
   customPrompt?: string,
+  chatContext?: string,
 ): Promise<MemoryFact[]> {
   if (!lastAssistantMessage?.trim() || lastAssistantMessage.length < 20) {
     return []; // Too short to contain meaningful memories
   }
 
   const promptTemplate = (customPrompt && customPrompt.trim()) ? customPrompt : MEMORY_EXTRACTION_PROMPT;
+
+  // Build the context section if provided
+  const contextSection = chatContext?.trim()
+    ? `Contexto reciente de la conversación:\n${chatContext}\n`
+    : '';
+
   const prompt = promptTemplate
+    .replace('{chatContext}', contextSection)
     .replace('{characterName}', characterName)
     .replace('{lastMessage}', lastAssistantMessage);
 
@@ -399,6 +408,52 @@ export async function saveMemoriesAsEmbeddings(
 // ============================================
 
 /**
+ * Extract group dynamics from a full turn of conversation.
+ * Analyzes inter-character relationships and interactions.
+ */
+export async function extractGroupDynamics(
+  turnContext: string,
+  llmConfig: LLMConfig,
+): Promise<MemoryFact[]> {
+  if (!turnContext?.trim() || turnContext.length < 50) {
+    return [];
+  }
+
+  const prompt = DEFAULT_GROUP_DYNAMICS_PROMPT
+    .replace('{turnContext}', turnContext);
+
+  try {
+    const extractionConfig: LLMConfig = {
+      ...llmConfig,
+      parameters: {
+        ...llmConfig.parameters,
+        temperature: 0.1,
+        maxTokens: 512,
+      },
+    };
+
+    const chatMessages: ChatApiMessage[] = [
+      { role: 'assistant', content: 'Eres un extractor de dinámicas grupales. Responde SOLO con JSON.' },
+      { role: 'user', content: prompt },
+    ];
+
+    const result = await generateResponse(
+      llmConfig.provider,
+      chatMessages,
+      extractionConfig,
+      'GroupDynamicsExtractor'
+    );
+
+    const facts = extractFactsFromLLMOutput(result.message || '');
+    console.log(`[Memory] Extracted ${facts.length} group dynamics facts`);
+    return facts;
+  } catch (error) {
+    console.warn('[Memory] Group dynamics extraction failed:', error);
+    return [];
+  }
+}
+
+/**
  * Full pipeline: Extract memories from message → Save as embeddings.
  * This is the main entry point called from chat routes.
  */
@@ -412,9 +467,10 @@ export async function extractAndSaveMemories(
     groupId?: string;
     minImportance?: number;
     customPrompt?: string;
+    chatContext?: string;
   } = {}
 ): Promise<MemoryExtractionResult> {
-  const { groupId, minImportance = 2, customPrompt } = options;
+  const { groupId, minImportance = 2, customPrompt, chatContext } = options;
 
   const emptyResult: MemoryExtractionResult = {
     count: 0,
@@ -425,8 +481,8 @@ export async function extractAndSaveMemories(
   };
 
   try {
-    // Step 1: Extract facts via LLM
-    const facts = await extractMemories(lastAssistantMessage, characterName, llmConfig, customPrompt);
+    // Step 1: Extract facts via LLM (with optional chat context)
+    const facts = await extractMemories(lastAssistantMessage, characterName, llmConfig, customPrompt, chatContext);
 
     if (facts.length === 0) {
       return emptyResult;

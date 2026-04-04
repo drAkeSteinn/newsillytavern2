@@ -139,9 +139,26 @@ export async function POST(request: NextRequest) {
     // ========================================
     // Embeddings Context Retrieval
     // ========================================
-    // Retrieve relevant embeddings based on user message and settings
+    // Enrich search query with recent context for better semantic matching
+    const searchContextDepth = embeddingsChat.searchContextDepth || 0;
+    let enrichedSearchQuery = sanitizedMessage;
+    if (searchContextDepth > 0) {
+      // Collect recent messages from history for context enrichment
+      const recentHistory = messages
+        .filter(m => !m.isDeleted)
+        .slice(-(searchContextDepth * 2 + 1)) // user+assistant pairs
+        .map(m => m.content?.trim())
+        .filter(Boolean)
+        .slice(0, -1); // exclude current message (already in sanitizedMessage)
+      
+      if (recentHistory.length > 0) {
+        enrichedSearchQuery = recentHistory.join(' ') + ' ' + sanitizedMessage;
+      }
+    }
+
+    // Retrieve relevant embeddings based on enriched query and settings
     const embeddingsResult = await retrieveEmbeddingsContext(
-      sanitizedMessage,
+      enrichedSearchQuery,
       characterId || effectiveCharacter.id,
       sessionId,
       embeddingsChat
@@ -499,6 +516,25 @@ Y cambiar mi expresión:
           if (shouldExtract) {
             setTimeout(async () => {
               try {
+                // Build chat context for context-aware extraction
+                const extractionContextDepth = embeddingsChat.memoryExtractionContextDepth || 0;
+                let chatContextForExtraction: string | undefined;
+                if (extractionContextDepth > 0) {
+                  const contextMessages = messages
+                    .filter(m => !m.isDeleted && m.content?.trim())
+                    .slice(-(extractionContextDepth * 2 + 1));
+                  
+                  if (contextMessages.length > 0) {
+                    chatContextForExtraction = contextMessages
+                      .map(m => {
+                        const role = m.role === 'user' ? 'Jugador' : effectiveCharacter.name;
+                        const content = m.content.trim().slice(0, 300); // limit per message
+                        return `${role}: ${content}`;
+                      })
+                      .join('\n  ');
+                  }
+                }
+
                 const response = await fetch('/api/embeddings/extract-memory', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -516,6 +552,7 @@ Y cambiar mi expresión:
                     },
                     minImportance: embeddingsChat.memoryExtractionMinImportance || 2,
                     customPrompt: embeddingsChat.memoryExtractionPrompt,
+                    chatContext: chatContextForExtraction, // NEW: pass recent context
                     consolidationSettings: embeddingsChat.memoryConsolidationEnabled ? {
                       enabled: true,
                       threshold: embeddingsChat.memoryConsolidationThreshold || 50,
