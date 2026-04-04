@@ -947,7 +947,7 @@ export async function POST(request: NextRequest) {
                           parameters: llmConfig.parameters,
                         },
                         minImportance: embeddingsChat.memoryExtractionMinImportance || 2,
-                        customPrompt: embeddingsChat.memoryExtractionPrompt,
+                        customPrompt: embeddingsChat.groupMemoryExtractionPrompt || embeddingsChat.memoryExtractionPrompt,
                         chatContext: characterContext, // NEW: pass turn context
                         consolidationSettings: embeddingsChat.memoryConsolidationEnabled ? {
                           enabled: true,

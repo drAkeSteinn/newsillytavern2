@@ -66,7 +66,7 @@ import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { useTavernStore } from '@/store/tavern-store';
-import { DEFAULT_MEMORY_EXTRACTION_PROMPT, MEMORY_PROMPT_VARIABLES } from '@/lib/embeddings/memory-extraction-prompts';
+import { DEFAULT_MEMORY_EXTRACTION_PROMPT, DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT, MEMORY_PROMPT_VARIABLES, GROUP_MEMORY_PROMPT_VARIABLES } from '@/lib/embeddings/memory-extraction-prompts';
 
 interface EmbeddingConfig {
   ollamaUrl: string;
@@ -195,6 +195,7 @@ const DEFAULT_EMBEDDINGS_CHAT = {
   memoryConsolidationKeepRecent: 10,
   memoryConsolidationKeepHighImportance: 4,
   memoryExtractionPrompt: DEFAULT_MEMORY_EXTRACTION_PROMPT,
+  groupMemoryExtractionPrompt: DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT,
   memoryExtractionContextDepth: 2,
   searchContextDepth: 1,
   groupDynamicsExtraction: false,
@@ -589,46 +590,121 @@ function EmbeddingsChatIntegrationContent() {
 // Prompts Tab Sub-component
 // ============================================
 
+/** Preview data for each prompt type */
+const NORMAL_PREVIEW = {
+  characterName: 'Alvar',
+  chatContext: 'Contexto reciente de la conversación:\n  Jugador: "Me acabo de mudar a la costa, tengo un gato llamado Milo"\n  Personaje: "¡Qué genial! ¿Y cómo te va adaptando?"\n',
+  lastMessage: '"Milo se lleva súper bien con los vecinos."',
+};
+
+const GROUP_PREVIEW = {
+  characterName: 'Kai',
+  chatContext: 'Contexto reciente del grupo:\n  Jugador: "¿Qué opinan del plan de Luna?"\n  Luna: "Yo creo que deberíamos ir por la ruta norte, es más segura."\n  Rex: "No me fío, la última vez que fuimos por ahí casi nos atrapan."\n',
+  lastMessage: '"Rex tiene razón en desconfiar, pero yo prefiero arriesgarme. Además, Kai tiene contactos en el norte que podrían ayudarnos."',
+};
+
 function PromptsTabContent() {
   const embeddingsChat = useTavernStore((state) => state.settings.embeddingsChat) ?? DEFAULT_EMBEDDINGS_CHAT;
   const updateSettings = useTavernStore((state) => state.updateSettings);
+  const [activePromptTab, setActivePromptTab] = useState<'normal' | 'group'>('normal');
   const [localPrompt, setLocalPrompt] = useState(() => embeddingsChat.memoryExtractionPrompt || DEFAULT_MEMORY_EXTRACTION_PROMPT);
+  const [localGroupPrompt, setLocalGroupPrompt] = useState(() => embeddingsChat.groupMemoryExtractionPrompt || DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT);
   const [showPreview, setShowPreview] = useState(false);
 
+  const isNormal = activePromptTab === 'normal';
+  const currentPrompt = isNormal ? localPrompt : localGroupPrompt;
+  const currentStored = isNormal ? (embeddingsChat.memoryExtractionPrompt || DEFAULT_MEMORY_EXTRACTION_PROMPT) : (embeddingsChat.groupMemoryExtractionPrompt || DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT);
+  const previewData = isNormal ? NORMAL_PREVIEW : GROUP_PREVIEW;
+
   const handleSavePrompt = () => {
-    updateSettings({
-      embeddingsChat: { ...embeddingsChat, memoryExtractionPrompt: localPrompt },
-    });
+    if (isNormal) {
+      updateSettings({ embeddingsChat: { ...embeddingsChat, memoryExtractionPrompt: localPrompt } });
+    } else {
+      updateSettings({ embeddingsChat: { ...embeddingsChat, groupMemoryExtractionPrompt: localGroupPrompt } });
+    }
   };
 
   const handleRestoreDefault = () => {
-    setLocalPrompt(DEFAULT_MEMORY_EXTRACTION_PROMPT);
-    updateSettings({
-      embeddingsChat: { ...embeddingsChat, memoryExtractionPrompt: DEFAULT_MEMORY_EXTRACTION_PROMPT },
-    });
+    if (isNormal) {
+      setLocalPrompt(DEFAULT_MEMORY_EXTRACTION_PROMPT);
+      updateSettings({ embeddingsChat: { ...embeddingsChat, memoryExtractionPrompt: DEFAULT_MEMORY_EXTRACTION_PROMPT } });
+    } else {
+      setLocalGroupPrompt(DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT);
+      updateSettings({ embeddingsChat: { ...embeddingsChat, groupMemoryExtractionPrompt: DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT } });
+    }
   };
 
-  const previewText = localPrompt
-    .replace('{characterName}', 'Alvar')
-    .replace('{chatContext}', 'Contexto reciente de la conversación:\n  Jugador: "Me acabo de mudar a la costa, tengo un gato llamado Milo"\n  Personaje: "¡Qué genial! ¿Y cómo te va adaptando?"\n')
-    .replace('{lastMessage}', '"Milo se lleva súper bien con los vecinos."');
+  const handleChange = (value: string) => {
+    if (isNormal) setLocalPrompt(value);
+    else setLocalGroupPrompt(value);
+  };
 
-  const hasChanges = localPrompt !== (embeddingsChat.memoryExtractionPrompt || DEFAULT_MEMORY_EXTRACTION_PROMPT);
+  const previewText = currentPrompt
+    .replace('{characterName}', previewData.characterName)
+    .replace('{chatContext}', previewData.chatContext)
+    .replace('{lastMessage}', previewData.lastMessage);
+
+  const hasChanges = currentPrompt !== currentStored;
 
   return (
     <div className="space-y-4">
+      {/* Prompt type selector */}
       <div className="bg-violet-500/5 border border-violet-500/20 rounded-lg p-3">
         <div className="flex items-start gap-2">
           <Pencil className="w-4 h-4 text-violet-500 mt-0.5 shrink-0" />
           <div className="space-y-1">
-            <p className="text-xs font-medium text-violet-600 dark:text-violet-400">Prompt de Extracción de Memoria</p>
+            <p className="text-xs font-medium text-violet-600 dark:text-violet-400">Prompts de Extracción de Memoria</p>
             <p className="text-[10px] text-muted-foreground">
-              Personaliza el prompt que el LLM usa para extraer hechos memorables de los mensajes del personaje.
-              Variables disponibles: <code className="bg-muted px-1 py-0.5 rounded text-[10px]">{'{characterName}'}</code>, <code className="bg-muted px-1 py-0.5 rounded text-[10px]">{'{lastMessage}'}</code> y <code className="bg-muted px-1 py-0.5 rounded text-[10px]">{'{chatContext}'}</code> (se inserta automáticamente según la profundidad de contexto configurada)
+              Personaliza los prompts que el LLM usa para extraer hechos memorables. Puedes configurar un prompt diferente para chat normal y chats de grupo.
             </p>
           </div>
         </div>
       </div>
+
+      {/* Sub-tabs for normal vs group */}
+      <div className="flex gap-1 p-1 bg-muted rounded-lg">
+        <button
+          className={cn(
+            'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
+            isNormal ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+          )}
+          onClick={() => setActivePromptTab('normal')}
+        >
+          <MessageSquare className="w-3 h-3" />
+          Chat Normal
+          {embeddingsChat.memoryExtractionPrompt && embeddingsChat.memoryExtractionPrompt !== DEFAULT_MEMORY_EXTRACTION_PROMPT && (
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Personalizado" />
+          )}
+        </button>
+        <button
+          className={cn(
+            'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
+            !isNormal ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+          )}
+          onClick={() => setActivePromptTab('group')}
+        >
+          <Layers className="w-3 h-3" />
+          Chat Grupo
+          {embeddingsChat.groupMemoryExtractionPrompt && embeddingsChat.groupMemoryExtractionPrompt !== DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT && (
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Personalizado" />
+          )}
+        </button>
+      </div>
+
+      {/* Info box for current prompt type */}
+      {isNormal ? (
+        <div className="text-[10px] text-muted-foreground space-y-1 bg-blue-500/5 border border-blue-500/20 rounded-lg p-2.5">
+          <p className="font-medium text-blue-600 dark:text-blue-400">Chat Normal (1:1)</p>
+          <p>Optimizado para la relación entre el jugador y un único personaje. Se enfoca en hechos sobre el usuario, preferencias y eventos compartidos.</p>
+          <p>Variables: <code className="bg-muted px-1 py-0.5 rounded">{'{characterName}'}</code> <code className="bg-muted px-1 py-0.5 rounded">{'{lastMessage}'}</code> <code className="bg-muted px-1 py-0.5 rounded">{'{chatContext}'}</code></p>
+        </div>
+      ) : (
+        <div className="text-[10px] text-muted-foreground space-y-1 bg-fuchsia-500/5 border border-fuchsia-500/20 rounded-lg p-2.5">
+          <p className="font-medium text-fuchsia-600 dark:text-fuchsia-400">Chat Grupo (individual por personaje)</p>
+          <p>Optimizado para capturar interacciones entre personajes. Presta atención a reacciones, opiniones sobre otros y dinámicas interpersonales del contexto grupal.</p>
+          <p>Variables: <code className="bg-muted px-1 py-0.5 rounded">{'{characterName}'}</code> <code className="bg-muted px-1 py-0.5 rounded">{'{lastMessage}'}</code> <code className="bg-muted px-1 py-0.5 rounded">{'{chatContext}'}</code> (incluye respuestas de otros personajes)</p>
+        </div>
+      )}
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -655,15 +731,15 @@ function PromptsTabContent() {
           </div>
         </div>
         <Textarea
-          value={localPrompt}
-          onChange={(e) => setLocalPrompt(e.target.value)}
+          value={currentPrompt}
+          onChange={(e) => handleChange(e.target.value)}
           rows={18}
           className="text-xs font-mono leading-relaxed"
-          placeholder="Escribe el prompt personalizado para extracción de memoria..."
+          placeholder={isNormal ? "Escribe el prompt personalizado para extracción de memoria en chat normal..." : "Escribe el prompt personalizado para extracción de memoria en chat de grupo..."}
         />
         <div className="flex items-center justify-between">
           <p className="text-[10px] text-muted-foreground">
-            {localPrompt.length} caracteres
+            {currentPrompt.length} caracteres
             {hasChanges && (
               <span className="text-amber-500 ml-2">● Sin guardar</span>
             )}
@@ -682,13 +758,15 @@ function PromptsTabContent() {
         <div className="space-y-2">
           <Label className="text-xs flex items-center gap-1.5">
             <Eye className="w-3 h-3" />
-            Vista Previa (con variables reemplazadas)
+            Vista Previa — {isNormal ? 'Chat Normal' : 'Chat Grupo'} (con variables reemplazadas)
           </Label>
           <div className="p-3 rounded-lg border bg-muted/30 max-h-96 overflow-y-auto">
             <pre className="text-xs font-mono whitespace-pre-wrap text-muted-foreground">{previewText}</pre>
           </div>
           <p className="text-[10px] text-muted-foreground">
-            Las variables <code className="bg-muted px-1 py-0.5 rounded text-[10px]">{'{characterName}'}</code> → &quot;Alvar&quot; y <code className="bg-muted px-1 py-0.5 rounded text-[10px]">{'{lastMessage}'}</code> → un mensaje de ejemplo fueron reemplazadas.
+            Variables reemplazadas: <code className="bg-muted px-1 py-0.5 rounded text-[10px]">{'{characterName}'}</code> → &quot;{previewData.characterName}&quot;,
+            <code className="bg-muted px-1 py-0.5 rounded text-[10px] ml-1">{'{chatContext}'}</code> → contexto de ejemplo,
+            <code className="bg-muted px-1 py-0.5 rounded text-[10px] ml-1">{'{lastMessage}'}</code> → un mensaje de ejemplo.
           </p>
         </div>
       )}

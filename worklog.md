@@ -1282,3 +1282,28 @@ Stage Summary:
 - Search: enriched query includes recent messages for better semantic matching
 - All new settings configurable in "Integración del chat" tab
 - App compiles successfully (HTTP 200)
+---
+Task ID: 7
+Agent: main
+Task: Implement two separate editable prompts for memory extraction (normal chat + group chat)
+
+Work Log:
+- Created DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT in memory-extraction-prompts.ts with group-optimized instructions (focus on inter-character dynamics, reactions, opinions about others)
+- Created GROUP_MEMORY_PROMPT_VARIABLES export for documentation
+- Added groupMemoryExtractionPrompt field to EmbeddingsChatSettings type (types/index.ts)
+- Added groupMemoryExtractionPrompt to DEFAULT_EMBEDDINGS_CHAT default values (embeddings-settings-panel.tsx)
+- Rewrote PromptsTabContent with internal sub-tabs: "Chat Normal" and "Chat Grupo"
+  - Each tab has its own local state for editing
+  - Amber dot indicator when a prompt has been customized
+  - Different preview data per tab type (normal preview vs multi-character group preview)
+  - Different info box per tab explaining the prompt's purpose
+  - Save and Restore Default buttons work independently per tab
+- Updated group-stream/route.ts to use groupMemoryExtractionPrompt (fallback to memoryExtractionPrompt) for individual character extraction in group chats
+- Normal chat (stream/route.ts) continues using memoryExtractionPrompt (no changes needed)
+- Lint passes clean on all modified files (pre-existing error in fullscreen-editor.tsx unrelated)
+
+Stage Summary:
+- Two independent editable prompts: one for 1:1 chat, one for group chat individual extraction
+- Group prompt optimized for inter-character awareness (names, reactions, opinions, agreements/disagreements)
+- UI has clean tab switcher with customization indicators
+- Group dynamics prompt (DEFAULT_GROUP_DYNAMICS_PROMPT) remains separate and unchanged (analyzes full turn, not individual response)

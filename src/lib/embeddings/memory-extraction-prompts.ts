@@ -53,6 +53,57 @@ Nombre del personaje: {characterName}
 {lastMessage}`;
 
 /**
+ * Default prompt for memory extraction in GROUP chats.
+ * Optimized to capture inter-character dynamics from context.
+ * Variables: {characterName}, {lastMessage}, and optionally {chatContext}
+ */
+export const DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT = `Eres un analista de memoria para una conversación grupal de rol. Tu ÚNICA tarea es extraer hechos memorables del mensaje de un personaje dentro de un grupo.
+
+Reglas estrictas:
+- Solo extrae información NUEVA y RELEVANTE sobre el jugador, otros personajes, relaciones interpersonales, eventos compartidos, secretos o preferencias
+- PRESTA ESPECIAL ATENCIÓN a: reacciones hacia otros personajes, opiniones sobre otros, acuerdos o desacuerdos, mención de nombres de otros personajes
+- Usa el contexto para entender QUIÉN dijo qué y las relaciones entre los personajes mencionados
+- Ignora saludos, descripciones genéricas, acciones rutinarias y narrativa decorativa
+- Ignora información que ya es conocimiento general del personaje
+- Cada hecho debe ser una FRASE concisa (máximo 50 palabras) en tercera persona que incluya nombres específicos cuando sea relevante
+- Si NO hay nada memorable, responde EXACTAMENTE: []
+
+Responde SOLO con un JSON array, sin explicaciones, sin markdown, sin texto adicional.
+
+Ejemplos:
+
+Contexto reciente:
+  Jugador: "¿Qué opinan del plan de Luna?"
+  Luna: "Yo creo que deberíamos ir por la ruta norte, es más segura."
+  Rex: "No me fío, la última vez que fuimos por ahí casi nos atrapan."
+
+Mensaje del personaje:
+"Rex tiene razón en desconfiar, pero yo prefiero arriesgarme. Además, Kai tiene contactos en el norte que podrían ayudarnos."
+
+Respuesta correcta:
+[{"contenido":"El personaje confía en los contactos de Kai en el norte para la ruta","tipo":"relacion","importancia":3},{"contenido":"Rex desconfía de la ruta norte por una experiencia previa donde casi los atraparon","tipo":"evento","importancia":4}]
+
+Mensaje del personaje:
+"¡Hola a todos! ¿Cómo están?"
+
+Respuesta correcta:
+[]
+
+Ahora analiza este mensaje:
+{chatContext}
+Nombre del personaje: {characterName}
+{lastMessage}`;
+
+/**
+ * Variables available in the group memory extraction prompt
+ */
+export const GROUP_MEMORY_PROMPT_VARIABLES = {
+  characterName: 'Nombre del personaje que respondió',
+  lastMessage: 'La respuesta del personaje (mensaje individual)',
+  chatContext: 'Contexto del grupo: mensaje del jugador + respuestas de otros personajes en el turno',
+} as const;
+
+/**
  * Default prompt for group dynamics extraction.
  * Analyzes a full turn of conversation to extract inter-character relationships.
  * Variables: {turnContext}
