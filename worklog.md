@@ -1307,3 +1307,30 @@ Stage Summary:
 - Group prompt optimized for inter-character awareness (names, reactions, opinions, agreements/disagreements)
 - UI has clean tab switcher with customization indicators
 - Group dynamics prompt (DEFAULT_GROUP_DYNAMICS_PROMPT) remains separate and unchanged (analyzes full turn, not individual response)
+---
+Task ID: 8
+Agent: main
+Task: Fix memory extraction pipeline — namespaces, model config, and search strategy
+
+Work Log:
+- Fixed namespace pattern to include sessionId: `character-{characterId}-{sessionId}` and `group-{groupId}-{sessionId}`
+  - Prevents memory leaking between different chat sessions of the same character
+  - Updated descriptions to include session info
+- Updated getNamespacesForStrategy() to search BOTH session-specific AND generic namespaces
+  - character strategy: searches character-{id}-{sid}, character-{id}, default, world, world-building
+  - session strategy: searches character-{id}-{sid}, group-{gid}-{sid}, session-{sid}, character-{id}, group-{gid}, default, world
+  - Added groupId parameter to retrieveEmbeddingsContext() and getNamespacesForStrategy()
+  - group-stream/route.ts now passes group.id to retrieveEmbeddingsContext()
+- Fixed Ollama client model refresh: added refreshOllamaClient() method
+  - Called before createEmbedding(), searchSimilar(), and searchInNamespace()
+  - Compares current model with persisted config and resets singleton if changed
+  - Eliminates duplicate code in searchSimilar
+- Verified sessionId flows correctly from stream routes to extract-memory endpoint
+- Verified both stream/route.ts (normal chat) and group-stream/route.ts (group chat) pass sessionId
+
+Stage Summary:
+- Memories now isolated per session (namespace includes sessionId)
+- Search covers both session-specific and generic namespaces
+- Group chats search in both group-{gid}-{sid} and character-{id}-{sid} namespaces
+- Ollama model always uses latest configured model (no stale singleton)
+- Lint clean on all modified files

@@ -26,9 +26,37 @@ export class EmbeddingClient {
 
   getActiveClient() { return this.ollamaClient; }
 
+  /**
+   * Ensure the Ollama client uses the latest persisted config.
+   * If the model changed, reset the singleton and create a fresh client.
+   * Uses require() for sync access (loadConfig is already lazy-cached).
+   */
+  private refreshOllamaClient(): void {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { loadConfig } = require('./config-persistence');
+      const cfg = loadConfig();
+      const currentModel = this.getActiveClient().getConfig().model;
+      if (currentModel !== cfg.model) {
+        resetOllamaClient();
+        const fresh = getOllamaClient({
+          ollamaUrl: cfg.ollamaUrl,
+          model: cfg.model,
+          dimension: cfg.dimension,
+          similarityThreshold: cfg.similarityThreshold,
+          maxResults: cfg.maxResults,
+        });
+        (this as any).ollamaClient = fresh;
+      }
+    } catch { /* proceed with existing client */ }
+  }
+
   /** Create a new embedding (generate vector + store) */
   async createEmbedding(params: CreateEmbeddingParams): Promise<string> {
     const { content, metadata = {}, namespace, source_type, source_id } = params;
+
+    // Always ensure the Ollama client uses the latest persisted config
+    this.refreshOllamaClient();
 
     const vector = await this.getActiveClient().embedText(content);
 
@@ -93,22 +121,7 @@ export class EmbeddingClient {
     } catch { /* use defaults */ }
 
     // Ensure the Ollama client uses the latest model from persisted config
-    try {
-      const { getConfig } = await import('./config-persistence');
-      const cfg = getConfig();
-      const currentModel = this.getActiveClient().getConfig().model;
-      if (currentModel !== cfg.model) {
-        resetOllamaClient();
-        const fresh = getOllamaClient({
-          ollamaUrl: cfg.ollamaUrl,
-          model: cfg.model,
-          dimension: cfg.dimension,
-          similarityThreshold: cfg.similarityThreshold,
-          maxResults: cfg.maxResults,
-        });
-        (this as any).ollamaClient = fresh;
-      }
-    } catch { /* proceed with existing client */ }
+    this.refreshOllamaClient();
 
     let vector: number[];
     if (queryVector) {
@@ -195,6 +208,8 @@ export class EmbeddingClient {
     threshold?: number;
   }): Promise<SearchResult[]> {
     const { namespace, query, limit, threshold } = params;
+    // Ensure latest model config
+    this.refreshOllamaClient();
     const vector = await this.getActiveClient().embedText(query);
     return this.db.searchInNamespace({ namespace, queryVector: vector, limit: limit || 10, threshold: threshold || 0.5 });
   }

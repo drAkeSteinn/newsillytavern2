@@ -520,7 +520,8 @@ export async function POST(request: NextRequest) {
               groupEnrichedQuery,
               responder.id,
               sessionId,
-              effectiveEmbeddingsChat
+              effectiveEmbeddingsChat,
+              group.id,
             );
             
             if (embeddingsResult.found) {

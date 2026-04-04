@@ -341,10 +341,12 @@ export async function saveMemoriesAsEmbeddings(
     return { saved: 0, embeddingIds: [], namespace: '' };
   }
 
-  // Determine namespace
+  // Determine namespace (include sessionId to isolate memories per session)
+  // Pattern: character-{characterId}-{sessionId} or group-{groupId}-{sessionId}
+  const sessionSuffix = sessionId && sessionId !== 'unknown' ? `-${sessionId}` : '';
   const namespace = groupId
-    ? `group-${groupId}`
-    : `character-${characterId}`;
+    ? `group-${groupId}${sessionSuffix}`
+    : `character-${characterId}${sessionSuffix}`;
 
   const sourceId = sessionId || 'unknown';
   const embeddingIds: string[] = [];
@@ -357,8 +359,8 @@ export async function saveMemoriesAsEmbeddings(
       await client.upsertNamespace({
         namespace,
         description: groupId
-          ? `Memorias auto-extraídas del grupo (${groupId})`
-          : `Memorias auto-extraídas del personaje (${characterId})`,
+          ? `Memorias del grupo (${groupId}) — sesión ${sessionId || 'global'}`
+          : `Memorias de personaje (${characterId}) — sesión ${sessionId || 'global'}`,
         metadata: {
           type: 'memory',
           character_id: characterId,

@@ -98,7 +98,8 @@ export async function retrieveEmbeddingsContext(
   userMessage: string,
   characterId?: string,
   sessionId?: string,
-  settings?: Partial<EmbeddingsChatSettings>
+  settings?: Partial<EmbeddingsChatSettings>,
+  groupId?: string,
 ): Promise<EmbeddingsContextResult> {
   if (!settings?.enabled) {
     return emptyResult();
@@ -119,7 +120,8 @@ export async function retrieveEmbeddingsContext(
       : getNamespacesForStrategy(
           settings.namespaceStrategy || 'character',
           characterId,
-          sessionId
+          sessionId,
+          groupId,
         );
 
     if (namespaces.length === 0) {
@@ -286,31 +288,49 @@ async function getNamespaceTypesMap(results: SearchResult[]): Promise<Record<str
 
 /**
  * Determine which namespaces to search based on the configured strategy.
+ *
+ * Memory namespaces now include sessionId:
+ *   - character-{characterId}-{sessionId}
+ *   - group-{groupId}-{sessionId}
+ *
+ * So we search BOTH the session-specific AND the generic namespace to cover
+ * memories from the current session and any manually created embeddings.
  */
 function getNamespacesForStrategy(
   strategy: EmbeddingsChatSettings['namespaceStrategy'],
   characterId?: string,
-  sessionId?: string
+  sessionId?: string,
+  groupId?: string,
 ): string[] {
   switch (strategy) {
     case 'global':
       return ['*'];
 
-    case 'character':
-      return [
-        ...(characterId ? [`character-${characterId}`] : []),
-        'default',
-        'world',
-        'world-building',
-      ].filter(Boolean);
+    case 'character': {
+      const ns: string[] = [];
+      // Session-specific memory namespaces (primary — memories from this session)
+      if (characterId && sessionId) ns.push(`character-${characterId}-${sessionId}`);
+      if (groupId && sessionId) ns.push(`group-${groupId}-${sessionId}`);
+      // Also search the generic character/group namespace for manually created lore
+      if (characterId) ns.push(`character-${characterId}`);
+      if (groupId) ns.push(`group-${groupId}`);
+      // Always include common lore/world namespaces
+      ns.push('default', 'world', 'world-building');
+      return ns;
+    }
 
-    case 'session':
-      return [
-        ...(sessionId ? [`session-${sessionId}`] : []),
-        ...(characterId ? [`character-${characterId}`] : []),
-        'default',
-        'world',
-      ].filter(Boolean);
+    case 'session': {
+      const ns: string[] = [];
+      // Session-specific namespaces (primary)
+      if (characterId && sessionId) ns.push(`character-${characterId}-${sessionId}`);
+      if (groupId && sessionId) ns.push(`group-${groupId}-${sessionId}`);
+      if (sessionId) ns.push(`session-${sessionId}`);
+      // Also search generic namespaces for manually created content
+      if (characterId) ns.push(`character-${characterId}`);
+      if (groupId) ns.push(`group-${groupId}`);
+      ns.push('default', 'world');
+      return ns;
+    }
 
     default:
       return ['*'];
