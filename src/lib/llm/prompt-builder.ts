@@ -176,50 +176,60 @@ export function injectHUDContextIntoMessages(
       break;
 
     case 5: // At top of chat (after system, before first message)
-      const firstNonSysIdx = result.findIndex(m => m.role !== 'system');
-      if (firstNonSysIdx > 0) {
-        result.splice(firstNonSysIdx, 0, {
-          role: 'system',
-          content: contextContent
-        });
-      } else {
-        result.push({
-          role: 'system',
-          content: contextContent
-        });
+      // Merge into the first system message to avoid breaking alternation
+      {
+        const sysMsgIdx5 = result.findIndex(m => m.role === 'system');
+        if (sysMsgIdx5 >= 0) {
+          result[sysMsgIdx5] = {
+            ...result[sysMsgIdx5],
+            content: result[sysMsgIdx5].content + '\n\n' + contextContent
+          };
+        }
       }
       break;
 
     case 6: // At bottom of chat (after all messages)
-      result.push({
-        role: 'system',
-        content: contextContent
-      });
+      // Merge into the first system message to avoid breaking alternation
+      {
+        const sysMsgIdx6 = result.findIndex(m => m.role === 'system');
+        if (sysMsgIdx6 >= 0) {
+          result[sysMsgIdx6] = {
+            ...result[sysMsgIdx6],
+            content: result[sysMsgIdx6].content + '\n\n' + contextContent
+          };
+        }
+      }
       break;
 
     case 7: // After lorebook / Author's Note position
-      // Insert after the first assistant message (system prompt), similar to lorebook
-      const sysMsgIdx = result.findIndex(m => m.role === 'assistant' || m.role === 'system');
-      if (sysMsgIdx >= 0) {
-        // Insert after system prompt
-        result.splice(sysMsgIdx + 1, 0, {
-          role: 'system',
-          content: contextContent
-        });
-      } else {
-        // No system message found, add at beginning
-        result.unshift({
-          role: 'system',
-          content: contextContent
-        });
+      // Merge into the first system message to avoid breaking alternation
+      {
+        const sysMsgIdx7 = result.findIndex(m => m.role === 'system' || m.role === 'assistant');
+        if (sysMsgIdx7 >= 0) {
+          result[sysMsgIdx7] = {
+            ...result[sysMsgIdx7],
+            content: result[sysMsgIdx7].content + '\n\n' + contextContent
+          };
+        }
       }
       break;
 
     default:
-      result.push({
-        role: 'system',
-        content: contextContent
-      });
+      // Merge into the first system message to avoid breaking alternation
+      {
+        const sysMsgIdxDef = result.findIndex(m => m.role === 'system');
+        if (sysMsgIdxDef >= 0) {
+          result[sysMsgIdxDef] = {
+            ...result[sysMsgIdxDef],
+            content: result[sysMsgIdxDef].content + '\n\n' + contextContent
+          };
+        } else {
+          result.push({
+            role: 'system',
+            content: contextContent
+          });
+        }
+      }
       break;
   }
 
@@ -590,56 +600,86 @@ export function buildChatMessages(
   postHistoryInstructions?: string,
   authorNote?: string,
   useSystemRole: boolean = false,
-  embeddingsContext?: string  // NEW: embeddings injected before chat history
+  embeddingsContext?: string  // embeddings injected before chat history
 ): ChatApiMessage[] {
+  // =============================================
+  // Step 1: Build all system content as ONE message
+  // =============================================
+  // Consolidate system prompt + embeddings + author note + post-history
+  // into a single system message to avoid consecutive system messages
+  // which break Jinja templates in models like LM Studio.
+  const systemParts: string[] = [];
+
+  // Main system prompt
+  if (systemPrompt.trim()) {
+    systemParts.push(systemPrompt);
+  }
+
+  // Embeddings Context
+  if (embeddingsContext?.trim()) {
+    systemParts.push(embeddingsContext);
+  }
+
+  // Author's Note
+  if (authorNote?.trim()) {
+    systemParts.push(`[Author's Note]\n${authorNote}`);
+  }
+
+  // Post-History Instructions
+  if (postHistoryInstructions?.trim()) {
+    systemParts.push(postHistoryInstructions);
+  }
+
   const chatMessages: ChatApiMessage[] = [];
 
-  // 1. System message (just the system prompt, NOT post-history instructions)
-  chatMessages.push({
-    role: useSystemRole ? 'system' : 'assistant',
-    content: systemPrompt
-  });
-
-  // 1.5. Embeddings Context - injected BEFORE chat history for recency primacy
-  // LLMs attend more to recent context, so placing memories right before
-  // the conversation makes them more influential in the response.
-  if (embeddingsContext?.trim()) {
+  // Single system message (or assistant if useSystemRole is false)
+  if (systemParts.length > 0) {
     chatMessages.push({
-      role: 'system',
-      content: embeddingsContext
+      role: useSystemRole ? 'system' : 'assistant',
+      content: systemParts.join('\n\n---\n\n')
     });
   }
 
-  // 2. Chat history
-  // Note: Narrator messages are excluded from prompt building
-  // They can still activate triggers but won't appear in chat history for other characters
+  // =============================================
+  // Step 2: Build chat history with proper alternation
+  // =============================================
+  // Merge consecutive same-role messages and ensure
+  // strict user/assistant alternation for OpenAI-compatible APIs.
   const visibleMessages = messages.filter(m => !m.isDeleted && !m.isNarratorMessage);
 
+  // First pass: merge consecutive same-role messages
+  const mergedMessages: ChatApiMessage[] = [];
   for (const msg of visibleMessages) {
-    if (msg.role === 'user') {
-      chatMessages.push({ role: 'user', content: msg.content });
-    } else if (msg.role === 'assistant') {
-      chatMessages.push({ role: 'assistant', content: msg.content });
+    const role = msg.role === 'user' ? 'user' : 'assistant';
+    const last = mergedMessages[mergedMessages.length - 1];
+    if (last && last.role === role) {
+      // Merge into previous message
+      last.content += '\n' + msg.content;
+    } else {
+      mergedMessages.push({ role, content: msg.content });
     }
   }
 
-  // 3. Author's Note - injected AFTER chat history, BEFORE post-history instructions
-  // This is the correct SillyTavern behavior
-  if (authorNote?.trim()) {
-    chatMessages.push({
-      role: 'system',
-      content: authorNote
-    });
+  // Second pass: enforce user/assistant alternation
+  // If the first chat message is 'assistant', prepend a synthetic user message
+  if (mergedMessages.length > 0 && mergedMessages[0].role === 'assistant') {
+    mergedMessages.unshift({ role: 'user', content: '*continúa*' });
   }
 
-  // 4. Post-History Instructions - injected AFTER Author's Note
-  // This is the correct SillyTavern behavior
-  if (postHistoryInstructions?.trim()) {
-    chatMessages.push({
-      role: 'system',
-      content: postHistoryInstructions
-    });
+  // If two same-role messages are still adjacent (shouldn't happen after merge,
+  // but as safety), insert a bridging message
+  const finalHistory: ChatApiMessage[] = [];
+  for (const msg of mergedMessages) {
+    const last = finalHistory[finalHistory.length - 1];
+    if (last && last.role === msg.role) {
+      // Insert bridging message
+      const bridgeRole = msg.role === 'user' ? 'assistant' : 'user';
+      finalHistory.push({ role: bridgeRole, content: '*continúa*' });
+    }
+    finalHistory.push(msg);
   }
+
+  chatMessages.push(...finalHistory);
 
   return chatMessages;
 }
@@ -866,70 +906,94 @@ export function buildGroupChatMessages(
   postHistoryInstructions?: string,
   authorNote?: string,
   isForNarrator: boolean = false,
-  embeddingsContext?: string  // NEW: embeddings injected before chat history
+  embeddingsContext?: string  // embeddings injected before chat history
 ): GroupPromptBuildResult {
+  // =============================================
+  // Step 1: Build all system content as ONE message
+  // =============================================
+  const systemParts: string[] = [];
+
+  if (systemPrompt.trim()) {
+    systemParts.push(systemPrompt);
+  }
+  if (embeddingsContext?.trim()) {
+    systemParts.push(embeddingsContext);
+  }
+  if (authorNote?.trim()) {
+    systemParts.push(`[Author's Note]\n${authorNote}`);
+  }
+  if (postHistoryInstructions?.trim()) {
+    systemParts.push(postHistoryInstructions);
+  }
+
   const chatMessages: ChatApiMessage[] = [];
 
-  // 1. System message (just the character/group prompt, no chat history here)
-  chatMessages.push({ role: 'assistant', content: systemPrompt });
-
-  // 1.5. Embeddings Context - injected BEFORE chat history for recency primacy
-  if (embeddingsContext?.trim()) {
+  // Single system/assistant message
+  if (systemParts.length > 0) {
     chatMessages.push({
-      role: 'system',
-      content: embeddingsContext
+      role: 'assistant',
+      content: systemParts.join('\n\n---\n\n')
     });
   }
 
-  // Filter visible messages
-  // - For narrator: show all messages (including other narrator messages)
-  // - For non-narrator: exclude narrator messages (they are "ghost" messages)
+  // =============================================
+  // Step 2: Build chat history with proper alternation
+  // =============================================
   const visibleMessages = isForNarrator
     ? messages.filter(m => !m.isDeleted)
     : messages.filter(m => !m.isDeleted && !m.isNarratorMessage);
 
-  // Build chat history content for prompt viewer
   const historyLines: string[] = [];
 
-  // 2. Add all historical messages
+  // Build history lines + API messages
   for (const msg of visibleMessages) {
     const speaker = msg.role === 'user' ? userName :
       (allCharacters.find(c => c.id === msg.characterId)?.name || 'Character');
     historyLines.push(`${speaker}: ${msg.content}`);
+  }
 
-    // Add to API messages
-    if (msg.role === 'user') {
-      chatMessages.push({ role: 'user', content: msg.content });
-    } else if (msg.role === 'assistant') {
-      chatMessages.push({ role: 'assistant', content: msg.content });
+  // Build merged API messages with proper alternation
+  const mergedMessages: ChatApiMessage[] = [];
+  for (const msg of visibleMessages) {
+    const role = msg.role === 'user' ? 'user' : 'assistant';
+    const last = mergedMessages[mergedMessages.length - 1];
+    if (last && last.role === role) {
+      last.content += '\n' + msg.content;
+    } else {
+      mergedMessages.push({ role, content: msg.content });
     }
   }
 
-  // 3. Add previous responses from this turn AFTER the user's message
+  // Add previous responses from this turn
   if (previousResponses && previousResponses.length > 0) {
     for (const resp of previousResponses) {
       historyLines.push(`${resp.characterName}: ${resp.content}`);
-      chatMessages.push({ role: 'assistant', content: resp.content });
+      const last = mergedMessages[mergedMessages.length - 1];
+      if (last && last.role === 'assistant') {
+        last.content += '\n' + resp.content;
+      } else {
+        mergedMessages.push({ role: 'assistant', content: resp.content });
+      }
     }
   }
 
-  // 4. Author's Note - injected AFTER chat history, BEFORE post-history instructions
-  // This is the correct SillyTavern behavior
-  if (authorNote?.trim()) {
-    chatMessages.push({
-      role: 'system',
-      content: authorNote
-    });
+  // Enforce alternation: if first is assistant, prepend synthetic user
+  if (mergedMessages.length > 0 && mergedMessages[0].role === 'assistant') {
+    mergedMessages.unshift({ role: 'user', content: '*continúa*' });
   }
 
-  // 5. Post-History Instructions - injected AFTER Author's Note
-  // This is the correct SillyTavern behavior
-  if (postHistoryInstructions?.trim()) {
-    chatMessages.push({
-      role: 'system',
-      content: postHistoryInstructions
-    });
+  // Safety: insert bridging messages if any same-role adjacency remains
+  const finalHistory: ChatApiMessage[] = [];
+  for (const msg of mergedMessages) {
+    const last = finalHistory[finalHistory.length - 1];
+    if (last && last.role === msg.role) {
+      const bridgeRole = msg.role === 'user' ? 'assistant' : 'user';
+      finalHistory.push({ role: bridgeRole, content: '*continúa*' });
+    }
+    finalHistory.push(msg);
   }
+
+  chatMessages.push(...finalHistory);
 
   // Build chat history section for prompt viewer
   let chatHistorySection: PromptSection | undefined;
