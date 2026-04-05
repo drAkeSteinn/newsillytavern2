@@ -1423,3 +1423,30 @@ Fix native tool calling in group chat (group-stream route). Previously, the grou
 
 **ESLint:** Only pre-existing error in `fullscreen-editor.tsx` (unrelated)
 **Dev server:** Compiles successfully
+---
+Task ID: 3
+Agent: Main Agent
+Task: Fix tool calling for models that output JSON as text content instead of native tool_calls
+
+Work Log:
+- Analyzed console logs: LLM (anubis-mini-8b-v1 via LM Studio) outputs tool call JSON as `delta.content` instead of `delta.tool_calls`
+- The content `{"type": "function", "name": "search_web", "parameters": {...}}` was being streamed as text to the client
+- Enhanced `src/lib/tools/parsers/prompt-parser.ts` with:
+  - `mightContainToolCall()` fast pre-check function
+  - `splitIntoChunks()` helper for replaying buffered content
+  - Improved regex patterns for LM Studio format (`"type": "function"` prefix, `"arguments"` alternative key)
+  - Embedded JSON detection (tool call within text)
+- Modified `src/app/api/chat/stream/route.ts` (OpenAI, Anthropic, Ollama cases):
+  - Changed from streaming directly to client to BUFFERING content during first tool round
+  - After buffering: check native tool calls → text-based tool calls → regular text
+  - Text-based tool calls emit proper `tool_call_start`/`tool_call_result` SSE events
+  - Tool results injected as user message for follow-up call
+- Modified `src/app/api/chat/group-stream/route.ts` (same logic for all 3 providers)
+- Exported new functions from `src/lib/tools/index.ts`
+
+Stage Summary:
+- Tool calling now works for models that output JSON as text (LM Studio, small models)
+- Text-based tool call detection: parses JSON, strips from display, executes, sends notification SSE
+- Notifications (tool_call_start/result/error) now properly emitted for both native AND text-based tool calls
+- Regular text responses are buffered then replayed as small chunks (minor latency, no flash)
+- ESLint: only pre-existing error in fullscreen-editor.tsx

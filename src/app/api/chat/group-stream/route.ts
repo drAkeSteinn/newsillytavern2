@@ -57,6 +57,10 @@ import {
   buildToolMessagesForAnthropic,
   createAnthropicToolState,
   anthropicStateToToolCalls,
+  parseToolCallFromText,
+  mightContainToolCall,
+  stripToolCallFromText,
+  splitIntoChunks,
   type NativeToolCall,
 } from '@/lib/tools';
 import {
@@ -886,41 +890,91 @@ export async function POST(request: NextRequest) {
                     const accumulator = createToolCallAccumulator(charAvailableTools);
                     let roundContent = '';
                     
+                    // BUFFER content for tool call detection
                     for await (const chunk of streamOpenAIWithTools(openaiMessages as any, llmConfig, llmConfig.provider, charAvailableTools, accumulator)) {
                       roundContent += chunk;
                       fullContent += chunk;
-                      controller.enqueue(createSSEJSON({
-                        type: 'token',
-                        characterId: responder.id,
-                        characterName: responder.name,
-                        content: chunk
-                      }));
                     }
 
                     if (hasToolCalls(accumulator) && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'stop')) {
-                      // Tool calls detected! Execute them
+                      // Native tool calls detected! Execute them
+                      if (roundContent.trim()) {
+                        for (const chunk of splitIntoChunks(roundContent)) {
+                          controller.enqueue(createSSEJSON({
+                            type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+                          }));
+                        }
+                      }
                       const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller
                       );
                       if (shouldContinue) {
-                        // Build follow-up messages with tool results
                         const toolResultPairs = accumulator.toolCalls.map(tc => ({
                           success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
                         }));
                         const toolMessages = buildToolMessagesForOpenAI(accumulator.toolCalls, toolResultPairs);
                         const followUpMessages = [...openaiMessages, ...toolMessages];
                         
-                        // Clear previous content (tool call JSON) and stream follow-up response
                         fullContent = '';
                         for await (const chunk of streamOpenAICompatible(followUpMessages as any, llmConfig, llmConfig.provider)) {
                           fullContent += chunk;
                           controller.enqueue(createSSEJSON({
-                            type: 'token',
-                            characterId: responder.id,
-                            characterName: responder.name,
-                            content: chunk
+                            type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
                           }));
                         }
+                      }
+                    } else if (mightContainToolCall(roundContent)) {
+                      // Check for text-based tool call (model outputting JSON as content)
+                      const textToolCall = parseToolCallFromText(roundContent);
+                      if (textToolCall) {
+                        console.log(`[GroupStream-Tools] Text-based tool call detected: ${textToolCall.name}`);
+
+                        const cleanContent = stripToolCallFromText(roundContent);
+                        if (cleanContent.trim()) {
+                          for (const chunk of splitIntoChunks(cleanContent)) {
+                            controller.enqueue(createSSEJSON({
+                              type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+                            }));
+                          }
+                        }
+
+                        const nativeTC: NativeToolCall = {
+                          id: `text_call_${Date.now()}`,
+                          name: textToolCall.name,
+                          arguments: textToolCall.arguments,
+                          rawArguments: JSON.stringify(textToolCall.arguments),
+                        };
+
+                        const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
+                          [nativeTC], charAvailableTools, responder, sessionId || '', effectiveUserName, controller
+                        );
+                        if (shouldContinue) {
+                          fullContent = '';
+                          const followUpMessages = [
+                            ...openaiMessages,
+                            { role: 'user', content: `[Resultado de herramienta: ${textToolCall.name}]\n${displayMessages}\n\nResponde de forma natural usando esta información.` },
+                          ] as any;
+                          for await (const chunk of streamOpenAICompatible(followUpMessages, llmConfig, llmConfig.provider)) {
+                            fullContent += chunk;
+                            controller.enqueue(createSSEJSON({
+                              type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+                            }));
+                          }
+                        }
+                      } else {
+                        // Not a tool call - stream buffered content
+                        for (const chunk of splitIntoChunks(roundContent)) {
+                          controller.enqueue(createSSEJSON({
+                            type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+                          }));
+                        }
+                      }
+                    } else {
+                      // Regular text response - stream buffered content
+                      for (const chunk of splitIntoChunks(roundContent)) {
+                        controller.enqueue(createSSEJSON({
+                          type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+                        }));
                       }
                     }
                   } else {
@@ -946,19 +1000,21 @@ export async function POST(request: NextRequest) {
                     const toolState = createAnthropicToolState();
                     let roundContent = '';
                     
+                    // BUFFER content for tool call detection
                     for await (const chunk of streamAnthropicWithTools(anthropicMessages as any, llmConfig, charAvailableTools, toolState)) {
                       roundContent += chunk;
                       fullContent += chunk;
-                      controller.enqueue(createSSEJSON({
-                        type: 'token',
-                        characterId: responder.id,
-                        characterName: responder.name,
-                        content: chunk
-                      }));
                     }
 
                     const toolCalls = anthropicStateToToolCalls(toolState);
                     if (toolCalls.length > 0 && (toolState.stopReason === 'tool_use')) {
+                      if (roundContent.trim()) {
+                        for (const chunk of splitIntoChunks(roundContent)) {
+                          controller.enqueue(createSSEJSON({
+                            type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+                          }));
+                        }
+                      }
                       const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
                         toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller
                       );
@@ -973,12 +1029,54 @@ export async function POST(request: NextRequest) {
                         for await (const chunk of streamAnthropic(followUpMessages as any, llmConfig)) {
                           fullContent += chunk;
                           controller.enqueue(createSSEJSON({
-                            type: 'token',
-                            characterId: responder.id,
-                            characterName: responder.name,
-                            content: chunk
+                            type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
                           }));
                         }
+                      }
+                    } else if (mightContainToolCall(roundContent)) {
+                      const textToolCall = parseToolCallFromText(roundContent);
+                      if (textToolCall) {
+                        console.log(`[GroupStream-Tools] Text-based tool call detected (Anthropic): ${textToolCall.name}`);
+                        const cleanContent = stripToolCallFromText(roundContent);
+                        if (cleanContent.trim()) {
+                          for (const chunk of splitIntoChunks(cleanContent)) {
+                            controller.enqueue(createSSEJSON({
+                              type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+                            }));
+                          }
+                        }
+                        const nativeTC: NativeToolCall = {
+                          id: `text_call_${Date.now()}`, name: textToolCall.name,
+                          arguments: textToolCall.arguments, rawArguments: JSON.stringify(textToolCall.arguments),
+                        };
+                        const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
+                          [nativeTC], charAvailableTools, responder, sessionId || '', effectiveUserName, controller
+                        );
+                        if (shouldContinue) {
+                          fullContent = '';
+                          const followUpMessages = [
+                            ...anthropicMessages,
+                            { role: 'user', content: `[Resultado de herramienta: ${textToolCall.name}]\n${displayMessages}\n\nResponde de forma natural.` },
+                          ] as any;
+                          for await (const chunk of streamAnthropic(followUpMessages, llmConfig)) {
+                            fullContent += chunk;
+                            controller.enqueue(createSSEJSON({
+                              type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+                            }));
+                          }
+                        }
+                      } else {
+                        for (const chunk of splitIntoChunks(roundContent)) {
+                          controller.enqueue(createSSEJSON({
+                            type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+                          }));
+                        }
+                      }
+                    } else {
+                      for (const chunk of splitIntoChunks(roundContent)) {
+                        controller.enqueue(createSSEJSON({
+                          type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+                        }));
                       }
                     }
                   } else {
@@ -1001,18 +1099,20 @@ export async function POST(request: NextRequest) {
                     const accumulator = createToolCallAccumulator(charAvailableTools);
                     let roundContent = '';
                     
+                    // BUFFER content for tool call detection
                     for await (const chunk of streamOllamaWithTools(ollamaMessages as any, llmConfig, charAvailableTools, accumulator)) {
                       roundContent += chunk;
                       fullContent += chunk;
-                      controller.enqueue(createSSEJSON({
-                        type: 'token',
-                        characterId: responder.id,
-                        characterName: responder.name,
-                        content: chunk
-                      }));
                     }
 
                     if (hasToolCalls(accumulator) && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'tool use')) {
+                      if (roundContent.trim()) {
+                        for (const chunk of splitIntoChunks(roundContent)) {
+                          controller.enqueue(createSSEJSON({
+                            type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+                          }));
+                        }
+                      }
                       const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller
                       );
@@ -1030,12 +1130,57 @@ export async function POST(request: NextRequest) {
                         for await (const chunk of streamOllama(combinedPrompt, llmConfig)) {
                           fullContent += chunk;
                           controller.enqueue(createSSEJSON({
-                            type: 'token',
-                            characterId: responder.id,
-                            characterName: responder.name,
-                            content: chunk
+                            type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
                           }));
                         }
+                      }
+                    } else if (mightContainToolCall(roundContent)) {
+                      const textToolCall = parseToolCallFromText(roundContent);
+                      if (textToolCall) {
+                        console.log(`[GroupStream-Tools] Text-based tool call detected (Ollama): ${textToolCall.name}`);
+                        const cleanContent = stripToolCallFromText(roundContent);
+                        if (cleanContent.trim()) {
+                          for (const chunk of splitIntoChunks(cleanContent)) {
+                            controller.enqueue(createSSEJSON({
+                              type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+                            }));
+                          }
+                        }
+                        const nativeTC: NativeToolCall = {
+                          id: `text_call_${Date.now()}`, name: textToolCall.name,
+                          arguments: textToolCall.arguments, rawArguments: JSON.stringify(textToolCall.arguments),
+                        };
+                        const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
+                          [nativeTC], charAvailableTools, responder, sessionId || '', effectiveUserName, controller
+                        );
+                        if (shouldContinue) {
+                          fullContent = '';
+                          const followUpMessages = [
+                            ...ollamaMessages,
+                            { role: 'user', content: `[Resultado de herramienta: ${textToolCall.name}]\n${displayMessages}\n\nResponde de forma natural.` },
+                          ] as any;
+                          const combinedPrompt = followUpMessages.map(m =>
+                            `${(m as any).role}: ${(m as any).content}`
+                          ).join('\n') + `\n${responder.name}:`;
+                          for await (const chunk of streamOllama(combinedPrompt, llmConfig)) {
+                            fullContent += chunk;
+                            controller.enqueue(createSSEJSON({
+                              type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+                            }));
+                          }
+                        }
+                      } else {
+                        for (const chunk of splitIntoChunks(roundContent)) {
+                          controller.enqueue(createSSEJSON({
+                            type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+                          }));
+                        }
+                      }
+                    } else {
+                      for (const chunk of splitIntoChunks(roundContent)) {
+                        controller.enqueue(createSSEJSON({
+                          type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+                        }));
                       }
                     }
                   } else {

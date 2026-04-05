@@ -3,12 +3,19 @@
 // ============================================
 //
 // Parses tool calls from LLM text output when the model
-// doesn't support native tool calling.
+// doesn't support native tool calling (e.g., LM Studio with
+// models that generate tool call JSON as text content).
 //
-// Expected format in LLM output:
+// Expected formats in LLM output:
 //   ```tool_call
 //   {"name": "tool_name", "parameters": {"key": "value"}}
 //   ```
+//
+//   TOOL_CALL: name | {"key": "value"}
+//
+//   {"type": "function", "name": "search_web", "parameters": {"query": "..."}}
+//
+//   {"name": "search_web", "arguments": {"query": "..."}}
 
 import type { ParsedToolCall } from '../types';
 
@@ -20,6 +27,12 @@ export function parseToolCallFromText(text: string): ParsedToolCall | null {
   if (!text) return null;
 
   const trimmed = text.trim();
+
+  // Early exit: if text is long and doesn't look like a tool call at all
+  // (tool call JSON is typically < 500 chars)
+  if (trimmed.length > 2000 && !trimmed.includes('"name"')) {
+    return null;
+  }
 
   // Pattern 1: ```tool_call ... ``` (preferred format)
   const fencedMatch = trimmed.match(/```tool_call\s*\n?([\s\S]*?)\n?```/);
@@ -42,10 +55,16 @@ export function parseToolCallFromText(text: string): ParsedToolCall | null {
     }
   }
 
-  // Pattern 3: Standalone JSON with "name" and "parameters" keys
-  // Look for JSON object at start of text or on its own line
+  // Pattern 3: Standalone JSON tool call (LM Studio / small models format)
+  // Matches formats like:
+  //   {"type": "function", "name": "search_web", "parameters": {"query": "..."}}
+  //   {"name": "search_web", "parameters": {"query": "..."}}
+  //   {"name": "search_web", "arguments": {"query": "..."}}
   const jsonPatterns = [
-    /^\s*\{[\s\S]*?"name"\s*:\s*"[^"]+"[\s\S]*?"parameters"\s*:\s*\{[\s\S]*?\}\s*\}/m,
+    // At start of text/line: {"type": "function", "name": "...", "parameters": {...}}
+    /^\s*\{[^{}]*"type"\s*:\s*"function"[^{}]*"name"\s*:\s*"[^"]+"[^{}]*(?:parameters|arguments)\s*:\s*\{[^{}]*\}\s*\}/m,
+    // At start of text/line: {"name": "...", "parameters": {...}}
+    /^\s*\{[^{}]*"name"\s*:\s*"[^"]+"[^{}]*(?:parameters|arguments)\s*:\s*\{[^{}]*\}\s*\}/m,
   ];
 
   for (const pattern of jsonPatterns) {
@@ -56,7 +75,39 @@ export function parseToolCallFromText(text: string): ParsedToolCall | null {
     }
   }
 
+  // Pattern 4: Try extracting JSON object from any position in text
+  // This handles cases where the LLM adds text before the JSON
+  const embeddedMatch = trimmed.match(/\{[^{}]*"type"\s*:\s*"function"[^{}]*"name"\s*:\s*"[^"]+"[^{}]*(?:parameters|arguments)\s*:\s*\{[^{}]*\}\s*\}/);
+  if (embeddedMatch) {
+    const parsed = parseToolCallJSON(embeddedMatch[0]);
+    if (parsed) return parsed;
+  }
+
+  // Pattern 5: Simple JSON without "type" field, embedded in text
+  const simpleEmbeddedMatch = trimmed.match(/\{[^{}]*"name"\s*:\s*"[^"]+"[^{}]*(?:parameters|arguments)\s*:\s*\{[^{}]*\}\s*\}/);
+  if (simpleEmbeddedMatch) {
+    const parsed = parseToolCallJSON(simpleEmbeddedMatch[0]);
+    if (parsed) return parsed;
+  }
+
   return null;
+}
+
+/**
+ * Check if text looks like it might contain a tool call.
+ * This is a fast pre-check to avoid full parsing on obvious non-tool-call text.
+ */
+export function mightContainToolCall(text: string): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+
+  // Fast checks for likely tool call indicators
+  if (trimmed.startsWith('```tool_call')) return true;
+  if (trimmed.match(/TOOL_CALL:/i)) return true;
+  if (trimmed.startsWith('{') && trimmed.includes('"name"') && (trimmed.includes('"parameters"') || trimmed.includes('"arguments"'))) return true;
+  if (trimmed.includes('"type": "function"') || trimmed.includes('"type":"function"')) return true;
+
+  return false;
 }
 
 /**
@@ -111,8 +162,23 @@ export function stripToolCallFromText(text: string): string {
   // Remove TOOL_CALL: lines
   result = result.replace(/TOOL_CALL:\s*\w+\s*\|\s*\{[\s\S]*?\}/gi, '');
 
-  // Remove standalone JSON tool calls
-  result = result.replace(/^\s*\{[\s\S]*?"name"\s*:\s*"[^"]+"[\s\S]*?"parameters"\s*:\s*\{[\s\S]*?\}\s*\}\s*/gm, '');
+  // Remove standalone JSON tool calls with "type": "function"
+  result = result.replace(/\{[^{}]*"type"\s*:\s*"function"[^{}]*"name"\s*:\s*"[^"]+"[^{}]*(?:parameters|arguments)\s*:\s*\{[^{}]*\}\s*\}/g, '');
+
+  // Remove standalone JSON tool calls without "type" field
+  result = result.replace(/\{[^{}]*"name"\s*:\s*"[^"]+"[^{}]*(?:parameters|arguments)\s*:\s*\{[^{}]*\}\s*\}/g, '');
 
   return result.trim();
+}
+
+/**
+ * Split text into chunks for replaying buffered content as streaming tokens.
+ */
+export function splitIntoChunks(text: string, chunkSize: number = 3): string[] {
+  if (!text) return [];
+  const chunks: string[] = [];
+  for (let i = 0; i < text.length; i += chunkSize) {
+    chunks.push(text.slice(i, i + chunkSize));
+  }
+  return chunks;
 }
