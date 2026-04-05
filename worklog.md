@@ -1380,3 +1380,46 @@ Stage Summary:
 - UI de configuración de tools integrada en el panel de settings
 - Notificaciones visuales de tool calls en el chat panel
 - Lint pasa correctamente (solo error preexistente en fullscreen-editor.tsx)
+---
+## Task ID: 19 - group-chat-native-tool-calling-fix
+### Work Task
+Fix native tool calling in group chat (group-stream route). Previously, the group stream route only used regular streaming functions without tool support, and referenced a non-existent `buildGroupCompletionPrompt` function.
+
+### Work Summary
+
+**Problem Analysis:**
+1. **Group stream (group-stream/route.ts)**: Used `streamOpenAICompatible` and `streamAnthropic` (NO tools support) instead of `streamOpenAIWithTools` and `streamAnthropicWithTools`
+2. **No tool execution loop**: When the LLM responded with tool calls, they were ignored
+3. **Fake tool comment**: Lines 871-880 had a misleading comment saying tools were "handled internally" when they weren't
+4. **`buildGroupCompletionPrompt`**: Referenced but never existed (would cause ReferenceError at runtime for Ollama/text-generation-webui)
+5. **Normal chat (stream/route.ts)**: Already had complete working tool calling
+
+**Changes Made to `/src/app/api/chat/group-stream/route.ts`:**
+
+1. **Added missing imports:**
+   - `buildCompletionPrompt` from `@/lib/llm` (for Ollama/text-gen fallback)
+   - `type NativeToolCall` from `@/lib/tools` (for executeGroupToolCalls helper)
+
+2. **Added `executeGroupToolCalls` helper function:**
+   - Executes detected tool calls for group chat
+   - Sends `tool_call_start` and `tool_call_result` SSE events for each tool
+   - Returns `{ results, shouldContinue }`
+
+3. **Replaced provider switch cases with tool-aware streaming:**
+   - **OpenAI/vLLM/lm-studio/custom**: Uses `streamOpenAIWithTools` + `createToolCallAccumulator` when tools enabled, with follow-up `streamOpenAICompatible` call
+   - **Anthropic**: Uses `streamAnthropicWithTools` + `createAnthropicToolState` when tools enabled, with follow-up `streamAnthropic` call
+   - **Ollama**: Uses `streamOllamaWithTools` when tools enabled, with follow-up completion prompt; falls back to `buildCompletionPrompt` without tools
+   - **text-generation-webui/koboldcpp/default**: Uses `buildCompletionPrompt` (no tool support)
+
+4. **Removed dead code:**
+   - Deleted fake tool handling comment block
+   - Deleted unused `buildGroupCompletionPrompt` function definition
+   - Changed `generator` type to `AsyncGenerator<string> | undefined` with `if (generator)` guard
+
+**Frontend (already working):**
+- `ToolCallNotification` component renders in chat-panel for both normal and group chat
+- SSE events `tool_call_start`, `tool_call_result`, `tool_call_error` handled in both chat paths
+- Visual notification shows tool name, icon, parameters during execution and result after completion
+
+**ESLint:** Only pre-existing error in `fullscreen-editor.tsx` (unrelated)
+**Dev server:** Compiles successfully

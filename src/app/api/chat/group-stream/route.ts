@@ -18,6 +18,7 @@ import {
   buildGroupSystemPrompt,
   buildGroupChatMessages,
   buildPostHistorySection,
+  buildCompletionPrompt,
   getEffectiveUserName,
   createUserMessage,
   streamZAI,
@@ -56,6 +57,7 @@ import {
   buildToolMessagesForAnthropic,
   createAnthropicToolState,
   anthropicStateToToolCalls,
+  type NativeToolCall,
 } from '@/lib/tools';
 import {
   streamOpenAIWithTools,
@@ -304,6 +306,73 @@ function getResponders(
       return { responders: eligibleCharacters.slice(0, 1), stopForUser: false, reasons };
     }
   }
+}
+
+// ============================================
+// Group Tool Execution Helper
+// ============================================
+
+/**
+ * Execute detected tool calls for group chat and send SSE events.
+ * Returns { results: display messages, shouldContinue: true if tools were executed }
+ */
+async function executeGroupToolCalls(
+  toolCalls: NativeToolCall[],
+  availableTools: Array<{ id: string; name: string; label: string; icon: string }>,
+  character: CharacterCard,
+  sessionId: string,
+  userName: string,
+  controller: { enqueue: (chunk: string) => void },
+): Promise<{ results: string; shouldContinue: boolean }> {
+  if (toolCalls.length === 0) {
+    return { results: '', shouldContinue: false };
+  }
+
+  let allDisplayMessages = '';
+
+  for (const tc of toolCalls) {
+    const toolDef = availableTools.find(t => t.name === tc.name);
+
+    // Send tool_call_start event
+    controller.enqueue(createSSEJSON({
+      type: 'tool_call_start',
+      toolName: tc.name,
+      toolLabel: toolDef?.label || tc.name,
+      toolIcon: toolDef?.icon || 'Wrench',
+      params: tc.arguments,
+    }));
+
+    console.log(`[GroupStream-Tools] Executing: ${tc.name}`, tc.arguments);
+
+    // Execute the tool
+    const toolResult = await executeTool(
+      tc.name,
+      tc.arguments,
+      {
+        characterId: character.id,
+        characterName: character.name,
+        sessionId,
+        userName,
+      },
+    );
+
+    // Send tool_call_result event
+    controller.enqueue(createSSEJSON({
+      type: 'tool_call_result',
+      toolName: tc.name,
+      success: toolResult.success,
+      displayMessage: toolResult.displayMessage,
+      duration: toolResult.duration || 0,
+    }));
+
+    console.log(`[GroupStream-Tools] ${tc.name}: success=${toolResult.success}`);
+
+    if (toolResult.displayMessage) {
+      allDisplayMessages += (allDisplayMessages ? '\n' : '') + toolResult.displayMessage;
+    }
+  }
+
+  return { results: allDisplayMessages, shouldContinue: true };
 }
 
 // ============================================
@@ -760,7 +829,9 @@ export async function POST(request: NextRequest) {
 
             try {
               // Get the appropriate streaming generator based on provider
-              let generator: AsyncGenerator<string>;
+              // For tool-aware providers (openai, anthropic, ollama), the stream is consumed inline
+              // and generator is NOT assigned. The `if (generator)` check after the switch handles this.
+              let generator: AsyncGenerator<string> | undefined;
 
               // Inject HUD context into chat messages if enabled
               const finalChatMessages = hudContextSection && typedHUDContext
@@ -806,12 +877,60 @@ export async function POST(request: NextRequest) {
                   if (!llmConfig.endpoint) {
                     throw new Error(`${llmConfig.provider} requires an endpoint URL`);
                   }
-                  // Convert assistant role to system for first message
-                  const openaiMessages = finalChatMessages.map((m, idx) => ({
-                    role: m.role === 'assistant' && idx === 0 ? 'system' : m.role,
-                    content: m.content
-                  }));
-                  generator = streamOpenAICompatible(openaiMessages, llmConfig, llmConfig.provider);
+                  if (charShouldUseTools) {
+                    // Use tool-aware streaming
+                    const openaiMessages = finalChatMessages.map((m, idx) => ({
+                      role: m.role === 'assistant' && idx === 0 ? 'system' : m.role,
+                      content: m.content
+                    }));
+                    const accumulator = createToolCallAccumulator(charAvailableTools);
+                    let roundContent = '';
+                    
+                    for await (const chunk of streamOpenAIWithTools(openaiMessages as any, llmConfig, llmConfig.provider, charAvailableTools, accumulator)) {
+                      roundContent += chunk;
+                      fullContent += chunk;
+                      controller.enqueue(createSSEJSON({
+                        type: 'token',
+                        characterId: responder.id,
+                        characterName: responder.name,
+                        content: chunk
+                      }));
+                    }
+
+                    if (hasToolCalls(accumulator) && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'stop')) {
+                      // Tool calls detected! Execute them
+                      const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
+                        accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller
+                      );
+                      if (shouldContinue) {
+                        // Build follow-up messages with tool results
+                        const toolResultPairs = accumulator.toolCalls.map(tc => ({
+                          success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+                        }));
+                        const toolMessages = buildToolMessagesForOpenAI(accumulator.toolCalls, toolResultPairs);
+                        const followUpMessages = [...openaiMessages, ...toolMessages];
+                        
+                        // Clear previous content (tool call JSON) and stream follow-up response
+                        fullContent = '';
+                        for await (const chunk of streamOpenAICompatible(followUpMessages as any, llmConfig, llmConfig.provider)) {
+                          fullContent += chunk;
+                          controller.enqueue(createSSEJSON({
+                            type: 'token',
+                            characterId: responder.id,
+                            characterName: responder.name,
+                            content: chunk
+                          }));
+                        }
+                      }
+                    }
+                  } else {
+                    // Standard streaming without tools
+                    const openaiMessages = finalChatMessages.map((m, idx) => ({
+                      role: m.role === 'assistant' && idx === 0 ? 'system' : m.role,
+                      content: m.content
+                    }));
+                    generator = streamOpenAICompatible(openaiMessages, llmConfig, llmConfig.provider);
+                  }
                   break;
                 }
 
@@ -819,64 +938,150 @@ export async function POST(request: NextRequest) {
                   if (!llmConfig.apiKey) {
                     throw new Error('Anthropic requires an API key');
                   }
-                  // Convert assistant role to system for first message
-                  const anthropicMessages = finalChatMessages.map((m, idx) => ({
-                    role: m.role === 'assistant' && idx === 0 ? 'system' : m.role,
-                    content: m.content
-                  }));
-                  generator = streamAnthropic(anthropicMessages, llmConfig);
+                  if (charShouldUseTools) {
+                    const anthropicMessages = finalChatMessages.map((m, idx) => ({
+                      role: m.role === 'assistant' && idx === 0 ? 'system' : m.role,
+                      content: m.content
+                    }));
+                    const toolState = createAnthropicToolState();
+                    let roundContent = '';
+                    
+                    for await (const chunk of streamAnthropicWithTools(anthropicMessages as any, llmConfig, charAvailableTools, toolState)) {
+                      roundContent += chunk;
+                      fullContent += chunk;
+                      controller.enqueue(createSSEJSON({
+                        type: 'token',
+                        characterId: responder.id,
+                        characterName: responder.name,
+                        content: chunk
+                      }));
+                    }
+
+                    const toolCalls = anthropicStateToToolCalls(toolState);
+                    if (toolCalls.length > 0 && (toolState.stopReason === 'tool_use')) {
+                      const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
+                        toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller
+                      );
+                      if (shouldContinue) {
+                        const toolResultPairs = toolCalls.map(tc => ({
+                          success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+                        }));
+                        const toolMessages = buildToolMessagesForAnthropic(toolCalls, toolResultPairs);
+                        const followUpMessages = [...anthropicMessages, ...toolMessages.flatMap(m => m)];
+                        
+                        fullContent = '';
+                        for await (const chunk of streamAnthropic(followUpMessages as any, llmConfig)) {
+                          fullContent += chunk;
+                          controller.enqueue(createSSEJSON({
+                            type: 'token',
+                            characterId: responder.id,
+                            characterName: responder.name,
+                            content: chunk
+                          }));
+                        }
+                      }
+                    }
+                  } else {
+                    const anthropicMessages = finalChatMessages.map((m, idx) => ({
+                      role: m.role === 'assistant' && idx === 0 ? 'system' : m.role,
+                      content: m.content
+                    }));
+                    generator = streamAnthropic(anthropicMessages, llmConfig);
+                  }
                   break;
                 }
 
                 case 'ollama': {
-                  // Build completion prompt for Ollama
-                  const prompt = buildGroupCompletionPrompt(
-                    finalSystemPrompt,
-                    messagesForPrompt,
-                    responder,
-                    effectiveUserName,
-                    previousResponses
-                  );
-                  generator = streamOllama(prompt, llmConfig);
+                  if (charShouldUseTools) {
+                    // Use /api/chat with tools support
+                    const ollamaMessages = finalChatMessages.map((m, idx) => ({
+                      role: m.role === 'assistant' && idx === 0 ? 'system' : m.role,
+                      content: m.content
+                    }));
+                    const accumulator = createToolCallAccumulator(charAvailableTools);
+                    let roundContent = '';
+                    
+                    for await (const chunk of streamOllamaWithTools(ollamaMessages as any, llmConfig, charAvailableTools, accumulator)) {
+                      roundContent += chunk;
+                      fullContent += chunk;
+                      controller.enqueue(createSSEJSON({
+                        type: 'token',
+                        characterId: responder.id,
+                        characterName: responder.name,
+                        content: chunk
+                      }));
+                    }
+
+                    if (hasToolCalls(accumulator) && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'tool use')) {
+                      const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
+                        accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller
+                      );
+                      if (shouldContinue) {
+                        const toolResultPairs = accumulator.toolCalls.map(tc => ({
+                          success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+                        }));
+                        const toolResultMessages = buildToolMessagesForOllama(accumulator.toolCalls, toolResultPairs);
+                        const followUpMessages = [...ollamaMessages, ...toolResultMessages];
+                        
+                        fullContent = '';
+                        const combinedPrompt = followUpMessages.map(m =>
+                          `${(m as any).role}: ${(m as any).content}`
+                        ).join('\n') + `\n${responder.name}:`;
+                        for await (const chunk of streamOllama(combinedPrompt, llmConfig)) {
+                          fullContent += chunk;
+                          controller.enqueue(createSSEJSON({
+                            type: 'token',
+                            characterId: responder.id,
+                            characterName: responder.name,
+                            content: chunk
+                          }));
+                        }
+                      }
+                    }
+                  } else {
+                    // Standard completion prompt (no tools)
+                    const prompt = buildCompletionPrompt({
+                      systemPrompt: finalSystemPrompt,
+                      messages: messagesForPrompt,
+                      character: responder,
+                      userName: effectiveUserName,
+                      postHistoryInstructions: resolvedPostHistoryInstructions,
+                      embeddingsContext: memoryContextString
+                    });
+                    generator = streamOllama(prompt, llmConfig);
+                  }
                   break;
                 }
 
                 case 'text-generation-webui':
                 case 'koboldcpp':
                 default: {
-                  // Build completion prompt for Text Generation WebUI
-                  const prompt = buildGroupCompletionPrompt(
-                    finalSystemPrompt,
-                    messagesForPrompt,
-                    responder,
-                    effectiveUserName,
-                    previousResponses
-                  );
+                  // These providers don't support native tool calling
+                  const prompt = buildCompletionPrompt({
+                    systemPrompt: finalSystemPrompt,
+                    messages: messagesForPrompt,
+                    character: responder,
+                    userName: effectiveUserName,
+                    postHistoryInstructions: resolvedPostHistoryInstructions,
+                    embeddingsContext: memoryContextString
+                  });
                   generator = streamTextGenerationWebUI(prompt, llmConfig);
                   break;
                 }
               }
 
-              for await (const chunk of generator) {
-                fullContent += chunk;
-                // Stream token to client
-                controller.enqueue(createSSEJSON({
-                  type: 'token',
-                  characterId: responder.id,
-                  characterName: responder.name,
-                  content: chunk
-                }));
-              }
-
-              // ===== TOOL/ACTION SYSTEM: Native tool calling for group chat =====
-              // If charShouldUseTools, the streaming function already handled tool detection.
-              // For now, group chat uses simplified tool handling: execute tools and
-              // append results as narrative text (no follow-up LLM call per character).
-              if (charShouldUseTools) {
-                // The tool-aware streaming already sent SSE events.
-                // For group chat, tool results are embedded in the response.
-                // The native streaming functions handle this internally.
-                console.log(`[GroupStream-Tools] Native tool calling active for ${responder.name}`);
+              // For providers that don't use inline tool streaming, consume the generator
+              if (generator) {
+                for await (const chunk of generator) {
+                  fullContent += chunk;
+                  // Stream token to client
+                  controller.enqueue(createSSEJSON({
+                    type: 'token',
+                    characterId: responder.id,
+                    characterName: responder.name,
+                    content: chunk
+                  }));
+                }
               }
 
               // Clean up the response (remove character name prefix if present)
@@ -1076,47 +1281,4 @@ export async function POST(request: NextRequest) {
       500
     );
   }
-}
-
-// ============================================
-// Helper Functions
-// ============================================
-
-/**
- * Build completion prompt for group chat (for Ollama, Text Generation WebUI, etc.)
- */
-function buildGroupCompletionPrompt(
-  systemPrompt: string,
-  messages: ChatMessage[],
-  character: CharacterCard,
-  userName: string,
-  previousResponses?: Array<{ characterName: string; content: string }>
-): string {
-  const parts: string[] = [];
-
-  parts.push(systemPrompt);
-  parts.push('\n---\n');
-
-  // Add previous responses from this turn
-  if (previousResponses && previousResponses.length > 0) {
-    parts.push('[Previous responses in this turn]');
-    for (const resp of previousResponses) {
-      parts.push(`${resp.characterName}: ${resp.content}`);
-    }
-    parts.push('');
-  }
-
-  const visibleMessages = messages.filter(m => !m.isDeleted);
-
-  for (const msg of visibleMessages) {
-    if (msg.role === 'user') {
-      parts.push(`${userName}: ${msg.content}`);
-    } else if (msg.role === 'assistant') {
-      parts.push(`${character.name}: ${msg.content}`);
-    }
-  }
-
-  parts.push(`\n${character.name}:`);
-
-  return parts.join('\n');
 }
