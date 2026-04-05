@@ -46,7 +46,102 @@ import {
 } from '@/lib/context-manager';
 import { buildQuestPromptSection } from '@/lib/triggers/handlers/quest-handler';
 import { retrieveEmbeddingsContext, formatEmbeddingsForSSE } from '@/lib/embeddings/chat-context';
-import type { EmbeddingsChatSettings } from '@/types';
+import type { EmbeddingsChatSettings, ToolsSettings } from '@/types';
+import {
+  getAllToolDefinitions,
+  getToolDefinitionsByIds,
+  executeTool,
+  getSessionReminders,
+  createToolCallAccumulator,
+  hasToolCalls,
+  buildToolMessagesForOpenAI,
+  buildToolMessagesForOllama,
+  buildToolMessagesForAnthropic,
+  createAnthropicToolState,
+  anthropicStateToToolCalls,
+} from '@/lib/tools';
+import {
+  streamOpenAIWithTools,
+  streamOllamaWithTools,
+  streamAnthropicWithTools,
+} from '@/lib/llm/providers';
+import type { NativeToolCall } from '@/lib/tools';
+import type { CharacterCard } from '@/types';
+
+// ============================================
+// Tool Execution Helper
+// ============================================
+
+/**
+ * Execute detected tool calls, send SSE events, and return results.
+ * Returns { newContent: combined display messages, shouldContinue: true if tools were executed }
+ */
+async function executeToolCallsAndContinue(
+  toolCalls: NativeToolCall[],
+  availableTools: Array<{ id: string; name: string; label: string; icon: string }>,
+  currentRound: number,
+  maxRounds: number,
+  character: CharacterCard,
+  sessionId: string,
+  userName: string,
+  controller: { enqueue: (chunk: string) => void },
+): Promise<{ newContent: string; shouldContinue: boolean }> {
+  if (toolCalls.length === 0 || currentRound >= maxRounds) {
+    return { newContent: '', shouldContinue: false };
+  }
+
+  const toolResults: Array<{ success: boolean; displayMessage: string }> = [];
+  let allDisplayMessages = '';
+
+  for (const tc of toolCalls) {
+    const toolDef = availableTools.find(t => t.name === tc.name);
+
+    // Send tool_call_start event
+    controller.enqueue(createSSEJSON({
+      type: 'tool_call_start',
+      toolName: tc.name,
+      toolLabel: toolDef?.label || tc.name,
+      toolIcon: toolDef?.icon || 'Wrench',
+      params: tc.arguments,
+    }));
+
+    console.log(`[Tools] Executing tool call: ${tc.name}`, tc.arguments);
+
+    // Execute the tool
+    const toolResult = await executeTool(
+      tc.name,
+      tc.arguments,
+      {
+        characterId: character.id,
+        characterName: character.name,
+        sessionId,
+        userName,
+      },
+    );
+
+    // Send tool_call_result event
+    controller.enqueue(createSSEJSON({
+      type: 'tool_call_result',
+      toolName: tc.name,
+      success: toolResult.success,
+      displayMessage: toolResult.displayMessage,
+      duration: toolResult.duration || 0,
+    }));
+
+    console.log(`[Tools] Tool ${tc.name}: success=${toolResult.success} duration=${toolResult.duration}ms`, toolResult.displayMessage);
+
+    toolResults.push({ success: toolResult.success, displayMessage: toolResult.displayMessage });
+    if (toolResult.displayMessage) {
+      allDisplayMessages += (allDisplayMessages ? '\n' : '') + toolResult.displayMessage;
+    }
+  }
+
+  // Return the display messages as content, and signal that a follow-up call is needed
+  return {
+    newContent: allDisplayMessages,
+    shouldContinue: true, // Always continue to get the LLM's natural response
+  };
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -94,6 +189,13 @@ export async function POST(request: NextRequest) {
     const embeddingsChat: Partial<EmbeddingsChatSettings> = body.embeddingsChat || {};
     const sessionId: string | undefined = body.sessionId;
     const characterId: string | undefined = body.characterId;
+    
+    // Extract tools settings for tool/action system (native tool calling only)
+    const toolsSettings: ToolsSettings = {
+      enabled: body.toolsSettings?.enabled ?? true,
+      maxToolCallsPerTurn: body.toolsSettings?.maxToolCallsPerTurn ?? 2,
+      characterConfigs: body.toolsSettings?.characterConfigs || [],
+    };
     
     // Debug: Log sessionStats event fields
     console.log(`[Stream Route] sessionStats event fields:`, {
@@ -297,13 +399,36 @@ export async function POST(request: NextRequest) {
       ? `[${embeddingsResult.memorySection?.label || 'MEMORIA DEL PERSONAJE'}]\n${embeddingsResult.memoryContextString}`
       : undefined;
 
-    // Build the final system prompt (non-memory embeddings + quest section)
+    // Build the final system prompt (non-memory embeddings + quest section + tools)
     let finalSystemPrompt = systemPrompt;
     if (embeddingsResult.nonMemoryContextString?.trim()) {
       finalSystemPrompt += `\n\n[${embeddingsResult.nonMemorySection?.label || 'CONTEXTO'}]\n${embeddingsResult.nonMemoryContextString}`;
     }
     if (questSection) {
       finalSystemPrompt += `\n\n[${questSection.label}]\n${questSection.content}`;
+    }
+
+    // ===== TOOL/ACTION SYSTEM (Native Tool Calling) =====
+    // Build available tools for this character
+    // Tools are NOT injected into the system prompt - they are sent via the API's
+    // native tools parameter. Only models that support tool calling will use them.
+    const characterToolConfig = toolsSettings.characterConfigs.find(
+      c => c.characterId === effectiveCharacter.id
+    );
+    const enabledToolIds = characterToolConfig?.enabledTools || [];
+    const availableTools = enabledToolIds.length > 0
+      ? getToolDefinitionsByIds(enabledToolIds)
+      : getAllToolDefinitions(); // All tools enabled if no specific config
+    const toolsEnabled = toolsSettings.enabled && availableTools.length > 0;
+
+    // Determine if the current provider supports native tool calling
+    const supportsNativeTools = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama'].includes(llmConfig.provider);
+    const shouldUseTools = toolsEnabled && supportsNativeTools;
+
+    if (shouldUseTools) {
+      console.log(`[Tools] Native tool calling enabled for ${effectiveCharacter.name} (${llmConfig.provider}):`, availableTools.map(t => t.name));
+    } else if (toolsEnabled && !supportsNativeTools) {
+      console.log(`[Tools] Tools enabled but provider ${llmConfig.provider} does not support native tool calling - tools will not be used`);
     }
 
     // Prepare messages with new user message (use context-windowed messages)
@@ -341,14 +466,40 @@ export async function POST(request: NextRequest) {
             : undefined;
 
           // Route to appropriate provider
-          switch (llmConfig.provider) {
-            case 'test-mock': {
-              // Test mode: Simulate LLM response with trigger keys for testing
-              // This is useful for testing trigger detection without a real LLM
-              console.log('[Stream Route] Using TEST-MOCK provider for trigger testing');
-              
-              // Use custom mock response from config, or default response
-              const mockResponse = llmConfig.mockResponse || `*El personaje te mira con interés*
+          // If tools are enabled and provider supports native tool calling,
+          // use the tool-aware streaming functions.
+          let accumulatedContent = '';
+          const maxToolRounds = toolsSettings.maxToolCallsPerTurn || 2;
+          let toolRound = 0;
+          let toolContextMessages: Array<Record<string, unknown>> = []; // for tool result messages
+
+          // Build the initial chat messages once (shared across tool rounds for OpenAI/Anthropic)
+          let baseChatMessages: import('@/lib/llm/types').ChatApiMessage[] | null = null;
+          let baseSystemPrompt: string | null = null;
+
+          while (toolRound <= maxToolRounds) {
+            let generator: AsyncGenerator<string>;
+            let isToolRound = toolRound > 0;
+
+            // Get post-history instructions from character and RESOLVE ALL KEYS
+            // This ensures {{user}}, {{char}}, {{stats}}, etc. are replaced
+            if (toolRound === 0) {
+              const rawPostHistoryInstructions = effectiveCharacter.postHistoryInstructions?.trim();
+              const postHistoryInstructions = rawPostHistoryInstructions 
+                ? resolveAllKeys(rawPostHistoryInstructions, keyContext)
+                : undefined;
+              // Store for reuse in tool rounds
+              baseSystemPrompt = finalSystemPrompt;
+            }
+
+            // Route to appropriate provider
+            switch (llmConfig.provider) {
+              case 'test-mock': {
+                // Test mode: Simulate LLM response with trigger keys for testing
+                // This is useful for testing trigger detection without a real LLM
+                console.log('[Stream Route] Using TEST-MOCK provider for trigger testing');
+                
+                const mockResponse = llmConfig.mockResponse || `*El personaje te mira con interés*
 
 ¡Hola! Me alegra verte por aquí. Tenía algo que pedirte...
 
@@ -363,143 +514,267 @@ También puedo ofrecerte algunos sonidos:
 Y cambiar mi expresión:
 
 [sprite:alegre]`;
-              
-              console.log('[Stream Route] Mock response:', mockResponse.slice(0, 100) + '...');
-              
-              generator = async function* mockGenerator() {
-                // Stream word by word to simulate realistic streaming
-                // This matches how the Replay system works and ensures
-                // trigger detection works correctly
-                const words = mockResponse.split(/(\s+)/);
                 
-                for (const word of words) {
-                  yield word;
-                  // Random delay between 30-80ms to simulate realistic typing
-                  // This matches the delay used in the Replay system
-                  await new Promise(resolve => setTimeout(resolve, 30 + Math.random() * 50));
+                console.log('[Stream Route] Mock response:', mockResponse.slice(0, 100) + '...');
+                
+                generator = async function* mockGenerator() {
+                  const words = mockResponse.split(/(\s+)/);
+                  for (const word of words) {
+                    yield word;
+                    await new Promise(resolve => setTimeout(resolve, 30 + Math.random() * 50));
+                  }
+                }();
+                break;
+              }
+
+              case 'z-ai': {
+                // Z.ai does not support native tool calling
+                let chatMessages = buildChatMessages(
+                  baseSystemPrompt || finalSystemPrompt,
+                  allMessages,
+                  effectiveCharacter,
+                  effectiveUserName,
+                  effectiveCharacter.postHistoryInstructions?.trim(),
+                  undefined, false, memoryContextString
+                );
+                if (hudContextSection && hudContext) {
+                  chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
                 }
-              }();
-              break;
-            }
-
-            case 'z-ai': {
-              // Z.ai uses its own SDK
-              let chatMessages = buildChatMessages(
-                finalSystemPrompt,
-                allMessages,
-                effectiveCharacter,
-                effectiveUserName,
-                postHistoryInstructions,  // Injected AFTER chat history
-                undefined,  // authorNote
-                false,      // useSystemRole
-                memoryContextString  // Memory embeddings before chat history
-              );
-              // Inject HUD context into chat messages if enabled
-              if (hudContextSection && hudContext) {
-                chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
+                generator = streamZAI(chatMessages, llmConfig.apiKey);
+                break;
               }
-              // Pass the API key from LLM config as the JWT token (if provided)
-              // This allows per-config token override
-              generator = streamZAI(chatMessages, llmConfig.apiKey);
-              break;
-            }
 
-            case 'openai':
-            case 'vllm':
-            case 'lm-studio':
-            case 'custom': {
-              // These need a valid endpoint
-              if (!llmConfig.endpoint) {
-                throw new Error(`${llmConfig.provider} requires an endpoint URL`);
+              case 'openai':
+              case 'vllm':
+              case 'lm-studio':
+              case 'custom': {
+                if (!llmConfig.endpoint) {
+                  throw new Error(`${llmConfig.provider} requires an endpoint URL`);
+                }
+                let chatMessages = buildChatMessages(
+                  baseSystemPrompt || finalSystemPrompt,
+                  allMessages,
+                  effectiveCharacter,
+                  effectiveUserName,
+                  effectiveCharacter.postHistoryInstructions?.trim(),
+                  undefined, true, memoryContextString
+                );
+                if (hudContextSection && hudContext) {
+                  chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
+                }
+
+                if (shouldUseTools && !isToolRound) {
+                  // First call with tools
+                  baseChatMessages = chatMessages;
+                  const accumulator = createToolCallAccumulator(availableTools);
+                  generator = streamOpenAIWithTools(chatMessages, llmConfig, llmConfig.provider, availableTools, accumulator);
+
+                  // Stream and collect
+                  let roundContent = '';
+                  for await (const chunk of generator) {
+                    roundContent += chunk;
+                    accumulatedContent += chunk;
+                    controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                  }
+
+                  if (hasToolCalls(accumulator) && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'stop')) {
+                    // Tool calls detected! Execute them and loop
+                    const { newContent: displayMessages, shouldContinue } = await executeToolCallsAndContinue(
+                      accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
+                      effectiveCharacter, sessionId || '', effectiveUserName, controller
+                    );
+                    if (shouldContinue) {
+                      // Build tool result messages for the follow-up call
+                      const toolResultPairs = accumulator.toolCalls.map(tc => {
+                        const def = availableTools.find(t => t.name === tc.name);
+                        return { success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]` };
+                      });
+                      toolContextMessages = [
+                        ...baseChatMessages,
+                        ...buildToolMessagesForOpenAI(accumulator.toolCalls, toolResultPairs),
+                      ];
+                      accumulatedContent = ''; // Clear - the follow-up will provide the real response
+                      toolRound++;
+                      continue;
+                    }
+                  }
+                  // No tool calls - done
+                  toolRound = maxToolRounds + 1; // Exit loop
+                  continue;
+                } else if (shouldUseTools && isToolRound) {
+                  // Follow-up call with tool results (no tools in request to avoid loops)
+                  const followUpAccumulator = createToolCallAccumulator([]);
+                  generator = streamOpenAICompatible(toolContextMessages as any, llmConfig, llmConfig.provider);
+                } else {
+                  generator = streamOpenAICompatible(chatMessages, llmConfig, llmConfig.provider);
+                }
+                break;
               }
-              let chatMessages = buildChatMessages(
-                finalSystemPrompt,
-                allMessages,
-                effectiveCharacter,
-                effectiveUserName,
-                postHistoryInstructions,  // Injected AFTER chat history
-                undefined,  // authorNote
-                true,       // useSystemRole
-                memoryContextString  // Memory embeddings before chat history
-              );
-              // Inject HUD context into chat messages if enabled
-              if (hudContextSection && hudContext) {
-                chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
+
+              case 'anthropic': {
+                if (!llmConfig.apiKey) {
+                  throw new Error('Anthropic requires an API key');
+                }
+                let chatMessages = buildChatMessages(
+                  baseSystemPrompt || finalSystemPrompt,
+                  allMessages,
+                  effectiveCharacter,
+                  effectiveUserName,
+                  effectiveCharacter.postHistoryInstructions?.trim(),
+                  undefined, true, memoryContextString
+                );
+                if (hudContextSection && hudContext) {
+                  chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
+                }
+
+                if (shouldUseTools && !isToolRound) {
+                  baseChatMessages = chatMessages;
+                  const toolState = createAnthropicToolState();
+                  generator = streamAnthropicWithTools(chatMessages, llmConfig, availableTools, toolState);
+
+                  let roundContent = '';
+                  for await (const chunk of generator) {
+                    roundContent += chunk;
+                    accumulatedContent += chunk;
+                    controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                  }
+
+                  const toolCalls = anthropicStateToToolCalls(toolState);
+                  if (toolCalls.length > 0 && (toolState.stopReason === 'tool_use')) {
+                    const { newContent: displayMessages, shouldContinue } = await executeToolCallsAndContinue(
+                      toolCalls, availableTools, toolRound, maxToolRounds,
+                      effectiveCharacter, sessionId || '', effectiveUserName, controller
+                    );
+                    if (shouldContinue) {
+                      const toolResultPairs = toolCalls.map(tc => ({
+                        success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+                      }));
+                      const toolMessages = buildToolMessagesForAnthropic(toolCalls, toolResultPairs);
+                      accumulatedContent = '';
+                      toolContextMessages = [
+                        ...baseChatMessages,
+                        ...toolMessages.flatMap(m => m),
+                      ];
+                      toolRound++;
+                      continue;
+                    }
+                  }
+                  toolRound = maxToolRounds + 1;
+                  continue;
+                } else if (shouldUseTools && isToolRound) {
+                  generator = streamAnthropic(toolContextMessages as any, llmConfig);
+                } else {
+                  generator = streamAnthropic(chatMessages, llmConfig);
+                }
+                break;
               }
-              generator = streamOpenAICompatible(chatMessages, llmConfig, llmConfig.provider);
-              break;
-            }
 
-            case 'anthropic': {
-              if (!llmConfig.apiKey) {
-                throw new Error('Anthropic requires an API key');
+              case 'ollama': {
+                if (shouldUseTools && !isToolRound) {
+                  // Use /api/chat with tools support
+                  let chatMessages = buildChatMessages(
+                    baseSystemPrompt || finalSystemPrompt,
+                    allMessages,
+                    effectiveCharacter,
+                    effectiveUserName,
+                    effectiveCharacter.postHistoryInstructions?.trim(),
+                    undefined, true, memoryContextString
+                  );
+                  if (hudContextSection && hudContext) {
+                    chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
+                  }
+                  baseChatMessages = chatMessages;
+                  const accumulator = createToolCallAccumulator(availableTools);
+                  generator = streamOllamaWithTools(chatMessages, llmConfig, availableTools, accumulator);
+
+                  let roundContent = '';
+                  for await (const chunk of generator) {
+                    roundContent += chunk;
+                    accumulatedContent += chunk;
+                    controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                  }
+
+                  if (hasToolCalls(accumulator) && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'tool use')) {
+                    const { newContent: displayMessages, shouldContinue } = await executeToolCallsAndContinue(
+                      accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
+                      effectiveCharacter, sessionId || '', effectiveUserName, controller
+                    );
+                    if (shouldContinue) {
+                      const toolResultPairs = accumulator.toolCalls.map(tc => ({
+                        success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+                      }));
+                      const toolResultMessages = buildToolMessagesForOllama(accumulator.toolCalls, toolResultPairs);
+                      toolContextMessages = [...baseChatMessages, ...toolResultMessages] as any;
+                      toolRound++;
+                      continue;
+                    }
+                  }
+                  toolRound = maxToolRounds + 1;
+                  continue;
+                } else if (shouldUseTools && isToolRound) {
+                  // Follow-up without tools (completion-style)
+                  const combinedPrompt = toolContextMessages.map(m => 
+                    `${(m as any).role}: ${(m as any).content}`
+                  ).join('\n') + `\n${effectiveCharacter.name}:`;
+                  generator = streamOllama(combinedPrompt, llmConfig);
+                } else {
+                  // No tools - use standard completion endpoint
+                  const prompt = buildCompletionPrompt({
+                    systemPrompt: baseSystemPrompt || finalSystemPrompt,
+                    messages: allMessages,
+                    character: effectiveCharacter,
+                    userName: effectiveUserName,
+                    postHistoryInstructions: effectiveCharacter.postHistoryInstructions?.trim(),
+                    embeddingsContext: memoryContextString
+                  });
+                  generator = streamOllama(prompt, llmConfig);
+                }
+                break;
               }
-              let chatMessages = buildChatMessages(
-                finalSystemPrompt,
-                allMessages,
-                effectiveCharacter,
-                effectiveUserName,
-                postHistoryInstructions,  // Injected AFTER chat history
-                undefined,  // authorNote
-                true,       // useSystemRole
-                memoryContextString  // Memory embeddings before chat history
-              );
-              // Inject HUD context into chat messages if enabled
-              if (hudContextSection && hudContext) {
-                chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
+
+              case 'text-generation-webui':
+              case 'koboldcpp':
+              default: {
+                const prompt = buildCompletionPrompt({
+                  systemPrompt: baseSystemPrompt || finalSystemPrompt,
+                  messages: allMessages,
+                  character: effectiveCharacter,
+                  userName: effectiveUserName,
+                  postHistoryInstructions: effectiveCharacter.postHistoryInstructions?.trim(),
+                  embeddingsContext: memoryContextString
+                });
+                generator = streamTextGenerationWebUI(prompt, llmConfig);
+                break;
               }
-              generator = streamAnthropic(chatMessages, llmConfig);
-              break;
             }
 
-            case 'ollama': {
-              const prompt = buildCompletionPrompt({
-                systemPrompt: finalSystemPrompt,
-                messages: allMessages,
-                character: effectiveCharacter,
-                userName: effectiveUserName,
-                postHistoryInstructions,  // Injected AFTER chat history
-                embeddingsContext: memoryContextString  // Memory embeddings before chat history
-              });
-              generator = streamOllama(prompt, llmConfig);
-              break;
+            // Stream the response (for providers that don't handle tool calling inline)
+            for await (const chunk of generator) {
+              accumulatedContent += chunk;
+              controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
             }
 
-            case 'text-generation-webui':
-            case 'koboldcpp':
-            default: {
-              const prompt = buildCompletionPrompt({
-                systemPrompt: finalSystemPrompt,
-                messages: allMessages,
-                character: effectiveCharacter,
-                userName: effectiveUserName,
-                postHistoryInstructions,  // Injected AFTER chat history
-                embeddingsContext: memoryContextString  // Memory embeddings before chat history
-              });
-              generator = streamTextGenerationWebUI(prompt, llmConfig);
-              break;
-            }
-          }
-
-          // Stream the response
-          let accumulatedContent = '';
-          for await (const chunk of generator) {
-            accumulatedContent += chunk;
-            controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+            // Break the tool loop - no more rounds needed
+            break;
           }
 
           // Check if memory extraction should trigger BEFORE closing stream
           // Count by TURNS (user messages) instead of individual messages.
           // A turn = 1 user message + N assistant responses.
           // This gives consistent extraction frequency in both normal and group chats.
-          const turnCount = messages.filter(m => m.role === 'user').length;
+          const userMessages = messages.filter(m => m.role === 'user' && !m.isDeleted);
+          const turnCount = userMessages.length;
           const extractionFrequency = embeddingsChat.memoryExtractionFrequency || 5;
+          const extractionEnabled = embeddingsChat.memoryExtractionEnabled === true;
           const shouldExtract =
-            embeddingsChat.memoryExtractionEnabled &&
+            extractionEnabled &&
             accumulatedContent.length > 50 &&
             turnCount > 0 &&
             turnCount % extractionFrequency === 0 &&
             !!llmConfig;
+
+          // Debug logging for extraction decision
+          console.log(`[Memory] Normal chat extraction check: enabled=${extractionEnabled}, turns=${turnCount}, freq=${extractionFrequency}, contentLen=${accumulatedContent.length}, shouldExtract=${shouldExtract}`);
 
           if (shouldExtract) {
             controller.enqueue(createSSEJSON({
@@ -563,9 +838,14 @@ Y cambiar mi expresión:
                 });
                 if (response.ok) {
                   const result = await response.json();
-                  if (result.success && result.saved > 0) {
-                    console.log(`[Memory] Auto-extracted ${result.saved} memories for ${effectiveCharacter.name}`);
+                  if (result.success) {
+                    console.log(`[Memory] Extraction result for ${effectiveCharacter.name}: extracted=${result.count}, saved=${result.saved}, namespace="${result.namespace}"${result.consolidation ? `, consolidated: -${result.consolidation.removed} +${result.consolidation.created}` : ''}`);
+                  } else {
+                    console.warn(`[Memory] Extraction failed for ${effectiveCharacter.name}:`, result.error);
                   }
+                } else {
+                  const errorText = await response.text().catch(() => 'unknown');
+                  console.warn(`[Memory] Extract-memory API error ${response.status}:`, errorText);
                 }
               } catch (err) {
                 console.warn('[Memory] Async extraction failed:', err);

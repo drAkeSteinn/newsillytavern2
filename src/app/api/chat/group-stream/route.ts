@@ -44,7 +44,24 @@ import {
 import { detectMentions } from '@/lib/mention-detector';
 import { buildQuestPromptSection } from '@/lib/triggers/handlers/quest-handler';
 import { retrieveEmbeddingsContext, formatEmbeddingsForSSE } from '@/lib/embeddings/chat-context';
-import type { EmbeddingsChatSettings } from '@/types';
+import type { EmbeddingsChatSettings, ToolsSettings } from '@/types';
+import {
+  getAllToolDefinitions,
+  getToolDefinitionsByIds,
+  executeTool,
+  createToolCallAccumulator,
+  hasToolCalls,
+  buildToolMessagesForOpenAI,
+  buildToolMessagesForOllama,
+  buildToolMessagesForAnthropic,
+  createAnthropicToolState,
+  anthropicStateToToolCalls,
+} from '@/lib/tools';
+import {
+  streamOpenAIWithTools,
+  streamOllamaWithTools,
+  streamAnthropicWithTools,
+} from '@/lib/llm/providers';
 
 // ============================================
 // Responder Selection Logic
@@ -333,6 +350,13 @@ export async function POST(request: NextRequest) {
     // Extract embeddings chat settings
     const embeddingsChat: Partial<EmbeddingsChatSettings> = body.embeddingsChat || {};
     const sessionId: string | undefined = body.sessionId;
+
+    // Extract tools settings for tool/action system (native tool calling only)
+    const toolsSettings: ToolsSettings = {
+      enabled: body.toolsSettings?.enabled ?? true,
+      maxToolCallsPerTurn: body.toolsSettings?.maxToolCallsPerTurn ?? 2,
+      characterConfigs: body.toolsSettings?.characterConfigs || [],
+    };
 
     // Cast sessionStats to proper type
     const typedSessionStats = sessionStats as SessionStats | undefined;
@@ -641,6 +665,19 @@ export async function POST(request: NextRequest) {
               finalSystemPrompt += `\n\n[${resolvedQuestSection.label}]\n${resolvedQuestSection.content}`;
             }
 
+            // ===== TOOL/ACTION SYSTEM (Native Tool Calling) =====
+            // Tools are NOT injected into the system prompt - sent via API's native tools parameter
+            const charToolConfig = toolsSettings.characterConfigs.find(
+              c => c.characterId === responder.id
+            );
+            const charEnabledToolIds = charToolConfig?.enabledTools || [];
+            const charAvailableTools = charEnabledToolIds.length > 0
+              ? getToolDefinitionsByIds(charEnabledToolIds)
+              : getAllToolDefinitions();
+            const charToolsEnabled = toolsSettings.enabled && charAvailableTools.length > 0;
+            const charSupportsTools = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama'].includes(llmConfig.provider);
+            const charShouldUseTools = charToolsEnabled && charSupportsTools;
+
             // Build chat messages with previous responses from this turn
             const previousResponses = responsesThisTurn.map(r => ({
               characterName: r.characterName,
@@ -831,6 +868,17 @@ export async function POST(request: NextRequest) {
                 }));
               }
 
+              // ===== TOOL/ACTION SYSTEM: Native tool calling for group chat =====
+              // If charShouldUseTools, the streaming function already handled tool detection.
+              // For now, group chat uses simplified tool handling: execute tools and
+              // append results as narrative text (no follow-up LLM call per character).
+              if (charShouldUseTools) {
+                // The tool-aware streaming already sent SSE events.
+                // For group chat, tool results are embedded in the response.
+                // The native streaming functions handle this internally.
+                console.log(`[GroupStream-Tools] Native tool calling active for ${responder.name}`);
+              }
+
               // Clean up the response (remove character name prefix if present)
               const cleanedContent = cleanResponseContent(fullContent, responder.name);
 
@@ -866,14 +914,19 @@ export async function POST(request: NextRequest) {
           // Check if memory extraction should trigger BEFORE closing stream
           // Count by TURNS (user messages) instead of individual messages.
           // A turn = 1 user message + N assistant responses.
-          const turnCount = messages.filter(m => m.role === 'user').length;
+          const userMessages = messages.filter(m => m.role === 'user' && !m.isDeleted);
+          const turnCount = userMessages.length;
           const extractionFrequency = embeddingsChat.memoryExtractionFrequency || 5;
+          const extractionEnabled = embeddingsChat.memoryExtractionEnabled === true;
           const shouldExtractGroupMemory =
-            embeddingsChat.memoryExtractionEnabled &&
+            extractionEnabled &&
             responsesThisTurn.length > 0 &&
             turnCount > 0 &&
             turnCount % extractionFrequency === 0 &&
             !!llmConfig;
+
+          // Debug logging for extraction decision
+          console.log(`[Memory] Group chat extraction check: enabled=${extractionEnabled}, turns=${turnCount}, freq=${extractionFrequency}, responders=${responsesThisTurn.length}, shouldExtract=${shouldExtractGroupMemory}`);
 
           if (shouldExtractGroupMemory) {
             const extractableChars = responsesThisTurn
@@ -960,9 +1013,14 @@ export async function POST(request: NextRequest) {
                     });
                     if (response.ok) {
                       const result = await response.json();
-                      if (result.success && result.saved > 0) {
-                        console.log(`[Memory] Auto-extracted ${result.saved} memories for group char ${resp.characterName}`);
+                      if (result.success) {
+                        console.log(`[Memory] Group extraction result for ${resp.characterName}: extracted=${result.count}, saved=${result.saved}, namespace="${result.namespace}"${result.consolidation ? `, consolidated: -${result.consolidation.removed} +${result.consolidation.created}` : ''}`);
+                      } else {
+                        console.warn(`[Memory] Group extraction failed for ${resp.characterName}:`, result.error);
                       }
+                    } else {
+                      const errorText = await response.text().catch(() => 'unknown');
+                      console.warn(`[Memory] Group extract-memory API error ${response.status}:`, errorText);
                     }
                   }
                 }

@@ -1,93 +1,134 @@
 // ============================================
-// Tool Calling Types
+// Tool System Types
+// ============================================
+//
+// Defines all types for the tool/action system.
+// Tools allow LLM characters to perform actions
+// (roll dice, search memory, get weather, etc.)
+// during chat responses.
+
+// ============================================
+// Tool Definition
 // ============================================
 
-// Tool definition in OpenAI format (used by most providers)
-export interface ToolDefinition {
-  type: 'function';
-  function: {
-    name: string;
-    description: string;
-    parameters: {
-      type: 'object';
-      properties: Record<string, unknown>;
-      required?: string[];
-    };
-  };
+/** Parameter definition using a simplified JSON Schema */
+export interface ToolParameterDef {
+  type: 'string' | 'number' | 'boolean' | 'enum';
+  description: string;
+  enum?: string[];
+  default?: unknown;
+  required: boolean;
 }
 
-// Parsed tool call from LLM response
-export interface ToolCall {
+/** Schema for tool parameters (OpenAI-compatible JSON Schema subset) */
+export interface ToolParameterSchema {
+  type: 'object';
+  properties: Record<string, ToolParameterDef>;
+  required: string[];
+}
+
+/** Tool category */
+export type ToolCategory = 'in_character' | 'cognitive' | 'real_world' | 'system';
+
+/** Permission mode for tool execution */
+export type ToolPermissionMode = 'auto' | 'ask';
+
+/** Full definition of a tool (what the LLM sees) */
+export interface ToolDefinition {
   id: string;
   name: string;
-  arguments: Record<string, unknown>;
+  label: string;
+  icon: string;
+  description: string;
+  category: ToolCategory;
+  parameters: ToolParameterSchema;
+  permissionMode: ToolPermissionMode;
 }
 
-// Result of executing a tool call
-export interface ToolCallResult {
-  toolCallId: string;
-  toolName: string;
+// ============================================
+// Tool Execution
+// ============================================
+
+/** Context provided to tool executors */
+export interface ToolContext {
+  characterId: string;
+  characterName: string;
+  sessionId: string;
+  groupId?: string;
+  userName: string;
+}
+
+/** Result from tool execution */
+export interface ToolExecutionResult {
   success: boolean;
-  result: string;
+  toolName: string;
+  result: unknown;
+  displayMessage: string;
+  duration?: number;
   error?: string;
 }
 
-// Settings for the tool calling system
-export interface ToolsSettings {
+/** Parsed tool call from LLM output */
+export interface ParsedToolCall {
+  name: string;
+  arguments: Record<string, unknown>;
+  raw: string;
+}
+
+// ============================================
+// Tool Settings (persisted in store)
+// ============================================
+
+/** Settings for a single tool */
+export interface ToolSetting {
+  toolId: string;
   enabled: boolean;
-  // Which tools are available
-  enabledTools: string[]; // Tool names that are enabled
-  // Max tool calls per message (loop prevention)
+}
+
+/** Per-character tool configuration */
+export interface CharacterToolConfig {
+  characterId: string;
+  enabledTools: string[];  // Tool IDs that are enabled for this character
+}
+
+/** Global tools settings */
+export interface ToolsSettings {
+  /** Master switch for the entire tool system */
+  enabled: boolean;
+  /** Maximum tool calls per turn (default: 2) */
   maxToolCallsPerTurn: number;
-  // Max total rounds of tool calling (prevent infinite loops)
-  maxToolRounds: number;
+  /** Per-character tool configs */
+  characterConfigs: CharacterToolConfig[];
 }
 
 export const DEFAULT_TOOLS_SETTINGS: ToolsSettings = {
-  enabled: false,
-  enabledTools: ['search_web'],
-  maxToolCallsPerTurn: 5,
-  maxToolRounds: 3,
+  enabled: true,
+  maxToolCallsPerTurn: 2,
+  characterConfigs: [],
 };
 
-// Provider compatibility for native tool calling
-export type ToolCallSupport = 'full' | 'partial' | 'none';
+// ============================================
+// SSE Event Types (sent to client)
+// ============================================
 
-export const PROVIDER_TOOL_SUPPORT: Record<string, { support: ToolCallSupport; notes: string }> = {
-  'openai': { support: 'full', notes: 'OpenAI API soporta tool calling nativo completo' },
-  'anthropic': { support: 'full', notes: 'Anthropic Claude soporta tool calling nativo (tool_use)' },
-  'ollama': { support: 'full', notes: 'Ollama /api/chat soporta tools (modelos compatibles: llama3.1+, mistral, etc.)' },
-  'vllm': { support: 'full', notes: 'vLLM soporta tool calling nativo (OpenAI-compatible)' },
-  'lm-studio': { support: 'full', notes: 'LM Studio v0.3+ soporta tool calling nativo' },
-  'custom': { support: 'partial', notes: 'Depende del endpoint. Si es compatible con OpenAI, debería funcionar' },
-  'z-ai': { support: 'none', notes: 'Z.ai SDK no soporta tool calling nativo' },
-  'text-generation-webui': { support: 'none', notes: 'No soporta tool calling nativo. Usar como custom con OpenAI extension' },
-  'koboldcpp': { support: 'none', notes: 'No soporta tool calling nativo' },
-  'test-mock': { support: 'none', notes: 'Provider de testing, no soporta tool calling' },
-};
-
-// ChatApiMessage extended with tool role
-export interface ToolChatMessage {
-  role: 'system' | 'assistant' | 'user' | 'tool';
-  content: string | null;
-  tool_call_id?: string;
-  tool_calls?: Array<{
-    id: string;
-    type: 'function';
-    function: {
-      name: string;
-      arguments: string;
-    };
-  }>;
+export interface ToolCallStartEvent {
+  type: 'tool_call_start';
+  toolName: string;
+  toolLabel: string;
+  toolIcon: string;
+  params: Record<string, unknown>;
 }
 
-// Stream event from a tool-capable provider
-export interface ToolStreamEvent {
-  type: 'content' | 'tool_call_delta' | 'tool_call_start' | 'done' | 'error';
-  content?: string;
-  toolCallId?: string;
-  toolCallName?: string;
-  toolCallArguments?: string;
-  toolCallIndex?: number;
-  error?: string;
+export interface ToolCallResultEvent {
+  type: 'tool_call_result';
+  toolName: string;
+  success: boolean;
+  displayMessage: string;
+  duration: number;
+}
+
+export interface ToolCallErrorEvent {
+  type: 'tool_call_error';
+  toolName: string;
+  error: string;
 }

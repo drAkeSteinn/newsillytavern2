@@ -3,12 +3,16 @@
 // ============================================
 
 import type { LLMConfig, GenerateResponse } from '../types';
+import type { ChatApiMessage } from '../types';
+import type { ToolDefinition } from '@/lib/tools/types';
+import type { ToolCallAccumulator } from '@/lib/tools/parsers/native-parser';
+import { processOllamaToolDelta } from '@/lib/tools/parsers/native-parser';
 
 // Default timeout: 5 minutes for long group chats
 const DEFAULT_TIMEOUT = 300000;
 
 /**
- * Stream from Ollama API
+ * Stream from Ollama API using /api/generate (completion-style, no tools)
  */
 export async function* streamOllama(
   prompt: string,
@@ -66,6 +70,110 @@ export async function* streamOllama(
   } finally {
     reader.releaseLock();
   }
+}
+
+/**
+ * Stream from Ollama API using /api/chat WITH native tool calling support.
+ *
+ * Ollama's /api/chat endpoint supports tools natively.
+ * It uses messages format (not completion-style prompt).
+ *
+ * Yields text chunks for real-time display. Tool calls are accumulated
+ * in the provided ToolCallAccumulator.
+ */
+export async function* streamOllamaWithTools(
+  messages: ChatApiMessage[],
+  config: LLMConfig,
+  tools: ToolDefinition[],
+  accumulator: ToolCallAccumulator,
+): AsyncGenerator<string> {
+  const endpoint = config.endpoint.replace(/\/$/, '');
+
+  // Convert our ChatApiMessage[] to Ollama's messages format
+  // Ollama expects: [{ role: 'system'|'user'|'assistant', content: string }]
+  const ollamaMessages = messages.map(m => ({
+    role: m.role,
+    content: m.content,
+  }));
+
+  // Convert tools to Ollama format (same structure as OpenAI)
+  const ollamaTools = tools.map(t => ({
+    type: 'function' as const,
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters,
+    },
+  }));
+
+  console.log(`[Ollama+Tools] Streaming with ${ollamaTools.length} tools via /api/chat`);
+
+  const response = await fetch(`${endpoint}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: config.model || 'llama2',
+      messages: ollamaMessages,
+      tools: ollamaTools,
+      stream: true,
+      options: {
+        temperature: config.parameters.temperature,
+        top_p: config.parameters.topP,
+        top_k: config.parameters.topK,
+        num_predict: config.parameters.maxTokens,
+      },
+    }),
+    signal: AbortSignal.timeout(DEFAULT_TIMEOUT)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Ollama Error (${response.status}): ${errorText}`);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('No response body');
+
+  const decoder = new TextDecoder();
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const text = decoder.decode(value, { stream: true });
+      const lines = text.split('\n').filter(Boolean);
+
+      for (const line of lines) {
+        try {
+          const parsed = JSON.parse(line);
+          const message = parsed.message || {};
+
+          // Process for tool calls
+          const textContent = processOllamaToolDelta(message, accumulator);
+          if (textContent) {
+            yield textContent;
+          }
+
+          // Check if done and if there were tool calls
+          if (parsed.done) {
+            // Ollama sends "done_reason": "tool_calls" or "stop"
+            if (parsed.done_reason === 'tool_calls' || parsed.done_reason === 'tool use') {
+              accumulator.finishReason = 'tool_calls';
+            } else {
+              accumulator.finishReason = parsed.done_reason || 'stop';
+            }
+          }
+        } catch {
+          // Skip invalid JSON
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  console.log(`[Ollama+Tools] Stream complete. finishReason=${accumulator.finishReason}, toolCalls=${accumulator.toolCalls.length}`);
 }
 
 /**

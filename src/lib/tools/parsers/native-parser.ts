@@ -1,265 +1,378 @@
 // ============================================
 // Native Tool Call Parser
 // ============================================
-// Parses tool calls from streaming responses for different providers.
-// 
-// OpenAI/Ollama: tool_calls come via delta.tool_calls[].function.arguments (streamed)
-// Anthropic: tool_use blocks via content_block_delta with delta.type === 'input_json_delta'
+//
+// Parses tool_calls from provider API responses.
+// Supports OpenAI-compatible, Ollama, and Anthropic formats.
 
-import type { ToolCall, ToolCallResult, ToolStreamEvent } from '../types';
+import type { ToolDefinition } from '../types';
+
+// ============================================
+// Types
+// ============================================
+
+/** A parsed tool call from a native API response */
+export interface NativeToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+  rawArguments: string; // raw JSON string
+}
+
+/** Mutable accumulator for tool call state during streaming */
+export interface ToolCallAccumulator {
+  /** The tool definitions sent to the API */
+  tools: ToolDefinition[];
+  /** Accumulated tool calls from streaming deltas */
+  toolCalls: NativeToolCall[];
+  /** Buffer for partial tool call arguments (keyed by index) */
+  privateArgsBuffer: Map<number, string>;
+  /** Buffer for tool call IDs (keyed by index) */
+  privateIdsBuffer: Map<number, string>;
+  /** Buffer for tool call names (keyed by index) */
+  privateNamesBuffer: Map<number, string>;
+  /** Finish reason from the API response */
+  finishReason: string | null;
+}
+
+/** Create a new tool call accumulator */
+export function createToolCallAccumulator(tools: ToolDefinition[]): ToolCallAccumulator {
+  return {
+    tools,
+    toolCalls: [],
+    privateArgsBuffer: new Map(),
+    privateIdsBuffer: new Map(),
+    privateNamesBuffer: new Map(),
+    finishReason: null,
+  };
+}
+
+/** Check if any tool calls were accumulated */
+export function hasToolCalls(accumulator: ToolCallAccumulator): boolean {
+  return accumulator.toolCalls.length > 0;
+}
+
+// ============================================
+// OpenAI-Compatible Format Parser
+// ============================================
+// Used by: OpenAI, vLLM, LM Studio, Z.ai, custom
+//
+// Streaming delta format:
+// data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_abc","type":"function","function":{"name":"get_weather","arguments":""}}]}}]}
+// data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"city"}}]}}]}
+// data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\":\"Tokio\"}"}}]}}]}
+// data: {"choices":[{"finish_reason":"tool_calls","delta":{}}]}
 
 /**
- * Accumulator for parsing streaming tool calls from OpenAI-compatible providers.
- * Handles the incremental assembly of tool call arguments from delta chunks.
+ * Process a streaming delta from an OpenAI-compatible API.
+ * Accumulates tool call chunks into the accumulator.
+ * Returns any text content delta.
  */
-export class OpenAIToolCallAccumulator {
-  private toolCalls: Map<number, {
-    id: string;
-    name: string;
-    arguments: string;
-  }> = new Map();
+export function processOpenAIDelta(
+  delta: Record<string, unknown>,
+  accumulator: ToolCallAccumulator,
+): string {
+  let textContent = '';
 
-  private contentBuffer = '';
+  // Extract text content
+  const content = delta.content as string | null | undefined;
+  if (content) {
+    textContent = content;
+  }
 
-  /**
-   * Process a single SSE delta chunk from an OpenAI-compatible streaming response.
-   * Returns an array of events: content tokens and tool call deltas.
-   */
-  processDelta(delta: Record<string, unknown>): ToolStreamEvent[] {
-    const events: ToolStreamEvent[] = [];
+  // Extract tool call deltas
+  const toolCallDeltas = delta.tool_calls as Array<Record<string, unknown>> | undefined;
+  if (toolCallDeltas) {
+    for (const tcDelta of toolCallDeltas) {
+      const index = tcDelta.index as number;
+      const id = tcDelta.id as string | undefined;
+      const func = tcDelta.function as Record<string, unknown> | undefined;
 
-    // Process content delta
-    const content = delta.content as string | undefined;
-    if (content) {
-      this.contentBuffer += content;
-      events.push({ type: 'content', content });
-    }
-
-    // Process tool_calls delta
-    const toolCalls = delta.tool_calls as Array<Record<string, unknown>> | undefined;
-    if (toolCalls) {
-      for (const tc of toolCalls) {
-        const index = tc.index as number;
-        const tcDelta = tc as Record<string, unknown>;
-        const func = tcDelta.function as Record<string, unknown> | undefined;
-        const id = (tcDelta.id as string) || undefined;
-        const name = func?.name as string | undefined;
-        const args = func?.arguments as string | undefined;
-
-        if (!this.toolCalls.has(index)) {
-          this.toolCalls.set(index, {
-            id: id || `call_${Date.now()}_${index}`,
-            name: name || '',
-            arguments: '',
-          });
-          events.push({
-            type: 'tool_call_start',
-            toolCallId: this.toolCalls.get(index)!.id,
-            toolCallName: name || '',
-            toolCallIndex: index,
-          });
-        }
-
-        const existing = this.toolCalls.get(index)!;
-        if (id && !existing.id.includes('Date.now')) {
-          existing.id = id;
-        }
-        if (name) {
-          existing.name = name;
-        }
-        if (args) {
-          existing.arguments += args;
-          events.push({
-            type: 'tool_call_delta',
-            toolCallId: existing.id,
-            toolCallArguments: args,
-            toolCallIndex: index,
-          });
-        }
+      if (id) {
+        accumulator.privateIdsBuffer.set(index, id);
+      }
+      if (func?.name) {
+        accumulator.privateNamesBuffer.set(index, func.name as string);
+      }
+      if (func?.arguments) {
+        const existing = accumulator.privateArgsBuffer.get(index) || '';
+        accumulator.privateArgsBuffer.set(index, existing + (func.arguments as string));
       }
     }
-
-    return events;
   }
 
-  /**
-   * Check if any tool calls were accumulated.
-   */
-  hasToolCalls(): boolean {
-    return this.toolCalls.size > 0;
-  }
+  return textContent;
+}
 
-  /**
-   * Get accumulated content text.
-   */
-  getContent(): string {
-    return this.contentBuffer;
-  }
+/**
+ * Finalize accumulated tool calls after streaming is complete.
+ * Parses the argument strings into objects.
+ */
+export function finalizeToolCalls(accumulator: ToolCallAccumulator): void {
+  const maxIndex = Math.max(
+    ...accumulator.privateIdsBuffer.keys(),
+    ...accumulator.privateNamesBuffer.keys(),
+    ...accumulator.privateArgsBuffer.keys(),
+    -1,
+  );
 
-  /**
-   * Get all accumulated tool calls as parsed ToolCall objects.
-   */
-  getToolCalls(): ToolCall[] {
-    const result: ToolCall[] = [];
-    
-    // Sort by index to maintain order
-    const sortedIndices = [...this.toolCalls.keys()].sort((a, b) => a - b);
-    
-    for (const index of sortedIndices) {
-      const tc = this.toolCalls.get(index)!;
-      
-      // Parse arguments JSON
-      let parsedArgs: Record<string, unknown> = {};
-      try {
-        const argsStr = tc.arguments.trim();
-        if (argsStr) {
-          parsedArgs = JSON.parse(argsStr);
-        }
-      } catch (e) {
-        console.error(`[NativeParser] Failed to parse tool call arguments for ${tc.name}:`, e);
-        console.error(`[NativeParser] Raw arguments:`, tc.arguments);
-        // Try to recover partial JSON
-        parsedArgs = { _raw: tc.arguments };
-      }
+  for (let i = 0; i <= maxIndex; i++) {
+    const id = accumulator.privateIdsBuffer.get(i) || `call_${i}`;
+    const name = accumulator.privateNamesBuffer.get(i);
+    const argsStr = accumulator.privateArgsBuffer.get(i) || '{}';
 
-      result.push({
-        id: tc.id,
-        name: tc.name,
-        arguments: parsedArgs,
-      });
+    if (!name) continue;
+
+    let parsedArgs: Record<string, unknown>;
+    try {
+      parsedArgs = JSON.parse(argsStr);
+    } catch {
+      console.warn(`[NativeParser] Failed to parse tool call arguments for ${name}:`, argsStr);
+      parsedArgs = {};
     }
 
-    return result;
+    accumulator.toolCalls.push({
+      id,
+      name,
+      arguments: parsedArgs,
+      rawArguments: argsStr,
+    });
   }
 }
 
 /**
- * Accumulator for parsing streaming tool calls from Anthropic responses.
- * Anthropic uses content_block_start (with type: 'tool_use') and 
- * content_block_delta (with delta.type: 'input_json_delta') events.
+ * Format tool calls as OpenAI-style assistant message and tool result messages
+ * for the follow-up API call.
  */
-export class AnthropicToolCallAccumulator {
-  private toolCalls: Map<string, {
-    id: string;
-    name: string;
-    arguments: string;
-    contentIndex: number;
-  }> = new Map();
+export function buildToolMessagesForOpenAI(
+  toolCalls: NativeToolCall[],
+  toolResults: Array<{ success: boolean; displayMessage: string }>,
+): Array<{ role: string; content: unknown; tool_calls?: unknown; tool_call_id?: string }> {
+  const messages: Array<{ role: string; content: unknown; tool_calls?: unknown; tool_call_id?: string }> = [];
 
-  private contentBuffer = '';
-  private currentContentBlockIndex = -1;
-  private currentBlockType: string | null = null;
-
-  /**
-   * Process a single SSE event from an Anthropic streaming response.
-   * Pass the full parsed JSON object from the event stream.
-   */
-  processEvent(event: Record<string, unknown>): ToolStreamEvent[] {
-    const events: ToolStreamEvent[] = [];
-    const eventType = event.type as string;
-
-    if (eventType === 'content_block_start') {
-      const block = event.content_block as Record<string, unknown> | undefined;
-      const index = event.index as number;
-      this.currentContentBlockIndex = index;
-
-      if (block?.type === 'tool_use') {
-        const id = block.id as string;
-        const name = block.name as string;
-        this.currentBlockType = 'tool_use';
-        
-        this.toolCalls.set(id, {
-          id,
-          name,
-          arguments: '',
-          contentIndex: index,
-        });
-
-        events.push({
-          type: 'tool_call_start',
-          toolCallId: id,
-          toolCallName: name,
-          toolCallIndex: index,
-        });
-      } else if (block?.type === 'text') {
-        this.currentBlockType = 'text';
-      }
-    } else if (eventType === 'content_block_delta') {
-      const delta = event.delta as Record<string, unknown> | undefined;
-      const deltaType = delta?.type as string;
-
-      if (deltaType === 'text_delta' && delta?.text) {
-        this.contentBuffer += delta.text as string;
-        events.push({ type: 'content', content: delta.text as string });
-      } else if (deltaType === 'input_json_delta' && delta?.partial_json) {
-        // Find the current tool call by content block index
-        for (const [id, tc] of this.toolCalls.entries()) {
-          if (tc.contentIndex === this.currentContentBlockIndex) {
-            tc.arguments += delta.partial_json as string;
-            events.push({
-              type: 'tool_call_delta',
-              toolCallId: id,
-              toolCallArguments: delta.partial_json as string,
-              toolCallIndex: this.currentContentBlockIndex,
-            });
-            break;
-          }
-        }
-      }
-    } else if (eventType === 'content_block_stop') {
-      this.currentBlockType = null;
-    }
-
-    return events;
-  }
-
-  hasToolCalls(): boolean {
-    return this.toolCalls.size > 0;
-  }
-
-  getContent(): string {
-    return this.contentBuffer;
-  }
-
-  getToolCalls(): ToolCall[] {
-    const result: ToolCall[] = [];
-
-    for (const tc of this.toolCalls.values()) {
-      let parsedArgs: Record<string, unknown> = {};
-      try {
-        const argsStr = tc.arguments.trim();
-        if (argsStr) {
-          parsedArgs = JSON.parse(argsStr);
-        }
-      } catch (e) {
-        console.error(`[AnthropicParser] Failed to parse arguments for ${tc.name}:`, e);
-        parsedArgs = { _raw: tc.arguments };
-      }
-
-      result.push({
-        id: tc.id,
+  // Assistant message with tool_calls
+  messages.push({
+    role: 'assistant',
+    content: null,
+    tool_calls: toolCalls.map(tc => ({
+      id: tc.id,
+      type: 'function',
+      function: {
         name: tc.name,
-        arguments: parsedArgs,
-      });
-    }
+        arguments: tc.rawArguments,
+      },
+    })),
+  });
 
-    return result;
+  // Tool result messages
+  for (let i = 0; i < toolCalls.length; i++) {
+    const result = toolResults[i];
+    messages.push({
+      role: 'tool',
+      tool_call_id: toolCalls[i].id,
+      content: result
+        ? JSON.stringify({ success: result.success, result: result.displayMessage })
+        : JSON.stringify({ success: false, result: 'Error: no result' }),
+    });
   }
+
+  return messages;
+}
+
+// ============================================
+// Ollama Format Parser
+// ============================================
+//
+// Ollama /api/chat streaming with tools:
+// {"model":"...","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"get_weather","arguments":{"city":"Tokio"}}}]},"done":false}
+// {"model":"...","message":{"role":"assistant","content":""},"done":true}
+
+export interface OllamaToolCallDelta {
+  function?: {
+    name?: string;
+    arguments?: Record<string, unknown>;
+  };
 }
 
 /**
- * Format tool call results into messages for the follow-up LLM call.
- * Each tool result becomes a 'tool' role message.
+ * Process an Ollama streaming message for tool calls.
+ * Ollama sends complete tool_calls in each delta (not incremental).
  */
-export function formatToolResultsForMessages(
-  toolCallResults: ToolCallResult[],
-  originalToolCalls: ToolCall[]
-): Array<{ role: 'tool'; content: string; tool_call_id: string }> {
-  return toolCallResults.map(result => ({
-    role: 'tool' as const,
-    content: result.success 
-      ? result.result 
-      : `Error ejecutando ${result.toolName}: ${result.error}`,
-    tool_call_id: result.toolCallId,
+export function processOllamaToolDelta(
+  message: Record<string, unknown>,
+  accumulator: ToolCallAccumulator,
+): string {
+  let textContent = '';
+  const content = message.content as string | undefined;
+  if (content) {
+    textContent = content;
+  }
+
+  const toolCalls = message.tool_calls as Array<OllamaToolCallDelta> | undefined;
+  if (toolCalls && toolCalls.length > 0) {
+    // Ollama sends the full tool call in each chunk, so we take the last complete one
+    accumulator.toolCalls = [];
+    for (let i = 0; i < toolCalls.length; i++) {
+      const tc = toolCalls[i];
+      if (tc?.function?.name) {
+        accumulator.toolCalls.push({
+          id: `ollama_call_${i}`,
+          name: tc.function.name,
+          arguments: tc.function.arguments || {},
+          rawArguments: JSON.stringify(tc.function.arguments || {}),
+        });
+      }
+    }
+  }
+
+  return textContent;
+}
+
+/**
+ * Format tool calls and results for Ollama's /api/chat endpoint.
+ * Ollama doesn't use the OpenAI-style tool/role messages.
+ * Instead, we inject tool results into the message history.
+ */
+export function buildToolMessagesForOllama(
+  toolCalls: NativeToolCall[],
+  toolResults: Array<{ success: boolean; displayMessage: string }>,
+): Array<{ role: string; content: string }> {
+  // For Ollama, we include the tool call and result as text context
+  const toolContext = toolCalls.map((tc, i) => {
+    const result = toolResults[i];
+    return `[Herramienta: ${tc.name}]\nResultado: ${result?.displayMessage || 'Error'}`;
+  }).join('\n\n');
+
+  return [{
+    role: 'user',
+    content: `[Resultado de herramientas:\n${toolContext}]\n\nResponde de forma natural al resultado de las herramientas.`,
+  }];
+}
+
+// ============================================
+// Anthropic Format Parser
+// ============================================
+//
+// Anthropic streams tool_use content blocks:
+// data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_abc","name":"get_weather"}}
+// data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"city\":\"Tokio\"}"}}
+// data: {"type":"content_block_stop","index":1}
+// data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}
+
+/** State for tracking Anthropic tool use blocks during streaming */
+export interface AnthropicToolState {
+  /** Current tool use blocks being accumulated */
+  blocks: Array<{
+    id: string;
+    name: string;
+    inputJson: string;
+    index: number;
+  }>;
+  /** Stop reason from the message */
+  stopReason: string | null;
+}
+
+export function createAnthropicToolState(): AnthropicToolState {
+  return { blocks: [], stopReason: null };
+}
+
+/**
+ * Process an Anthropic SSE event for tool use.
+ * Returns text content if applicable.
+ */
+export function processAnthropicEvent(
+  event: Record<string, unknown>,
+  toolState: AnthropicToolState,
+): string {
+  const eventType = event.type as string;
+
+  if (eventType === 'content_block_start') {
+    const block = event.content_block as Record<string, unknown> | undefined;
+    if (block?.type === 'tool_use') {
+      toolState.blocks.push({
+        id: (block.id as string) || `toolu_${toolState.blocks.length}`,
+        name: (block.name as string) || '',
+        inputJson: '',
+        index: (event.index as number) || 0,
+      });
+    }
+    return '';
+  }
+
+  if (eventType === 'content_block_delta') {
+    const delta = event.delta as Record<string, unknown> | undefined;
+    if (delta?.type === 'input_json_delta') {
+      const partialJson = delta.partial_json as string;
+      const lastBlock = toolState.blocks[toolState.blocks.length - 1];
+      if (lastBlock) {
+        lastBlock.inputJson += partialJson;
+      }
+    }
+    if (delta?.type === 'text_delta') {
+      return (delta.text as string) || '';
+    }
+    return '';
+  }
+
+  if (eventType === 'message_delta') {
+    const delta = event.delta as Record<string, unknown> | undefined;
+    if (delta?.stop_reason) {
+      toolState.stopReason = delta.stop_reason as string;
+    }
+  }
+
+  return '';
+}
+
+/**
+ * Convert Anthropic tool state to NativeToolCall array.
+ */
+export function anthropicStateToToolCalls(toolState: AnthropicToolState): NativeToolCall[] {
+  return toolState.blocks.map(block => {
+    let parsedArgs: Record<string, unknown>;
+    try {
+      parsedArgs = block.inputJson ? JSON.parse(block.inputJson) : {};
+    } catch {
+      console.warn(`[NativeParser] Failed to parse Anthropic tool arguments for ${block.name}:`, block.inputJson);
+      parsedArgs = {};
+    }
+
+    return {
+      id: block.id,
+      name: block.name,
+      arguments: parsedArgs,
+      rawArguments: block.inputJson,
+    };
+  });
+}
+
+/**
+ * Format tool calls and results for Anthropic's messages API.
+ * Anthropic uses tool_result content blocks.
+ */
+export function buildToolMessagesForAnthropic(
+  toolCalls: NativeToolCall[],
+  toolResults: Array<{ success: boolean; displayMessage: string }>,
+): Array<{ role: string; content: Array<Record<string, unknown>> | string }> {
+  // Assistant message with tool_use blocks
+  const assistantContent = toolCalls.map(tc => ({
+    type: 'tool_use',
+    id: tc.id,
+    name: tc.name,
+    input: tc.arguments,
   }));
+
+  // User message with tool_result blocks
+  const userContent = toolCalls.map((tc, i) => ({
+    type: 'tool_result',
+    tool_use_id: tc.id,
+    content: toolResults[i]
+      ? JSON.stringify({ success: toolResults[i].success, result: toolResults[i].displayMessage })
+      : JSON.stringify({ success: false, result: 'Error: no result' }),
+  }));
+
+  return [
+    { role: 'assistant', content: assistantContent },
+    { role: 'user', content: userContent },
+  ];
 }

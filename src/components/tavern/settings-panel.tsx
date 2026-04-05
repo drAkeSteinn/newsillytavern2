@@ -47,6 +47,7 @@ import {
   ChevronDown,
   RefreshCw,
   Loader2,
+  Wrench,
 } from 'lucide-react';
 import {
   Select,
@@ -92,6 +93,7 @@ import { AppearanceSettingsPanel } from './appearance-settings-panel';
 import { TTSSettingsPanel } from './tts-settings-panel';
 import { SpriteGeneralPanel } from './sprite-general-panel';
 import { EmbeddingsSettingsPanel } from '@/components/embeddings/embeddings-settings-panel';
+import { ToolsSettingsPanel } from '@/components/tools/tools-settings-panel';
 
 // ============================================
 // LM Studio Model Selector
@@ -773,10 +775,11 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
     { value: 'inventory', label: 'Inventario', icon: Package },
     { value: 'sprites', label: 'Sprites', icon: Sparkles },
     { value: 'embeddings', label: 'Embeddings', icon: Brain },
+    { value: 'tools', label: 'Herramientas', icon: Wrench },
   ];
 
   // Separators after these tabs to group related sections
-  const separatorAfter = new Set(['lorebooks', 'voice', 'data', 'sprites']);
+  const separatorAfter = new Set(['lorebooks', 'voice', 'data', 'sprites', 'tools']);
 
   return (
     <>
@@ -1624,6 +1627,11 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
             </TabsContent>
             <TabsContent value="embeddings" className="h-full overflow-y-auto p-6 m-0 data-[state=inactive]:hidden">
               <EmbeddingsSettingsPanel />
+            </TabsContent>
+
+            {/* Tools / Actions Settings */}
+            <TabsContent value="tools" className="h-full overflow-y-auto p-6 m-0 data-[state=inactive]:hidden">
+              <ToolsSettingsPanel />
             </TabsContent>
                 </div>
                 </Tabs>

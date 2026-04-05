@@ -1513,6 +1513,7 @@ export interface AppSettings {
   context: ContextSettings;
   chatboxAppearance: ChatboxAppearanceSettings;
   embeddingsChat: EmbeddingsChatSettings;
+  tools?: ToolsSettings;
 }
 
 // ============ Embeddings Chat Integration Settings ============
@@ -1553,6 +1554,53 @@ export interface EmbeddingsChatSettings {
   /** Enable group dynamics extraction in group chats (extracts inter-character relationships) */
   groupDynamicsExtraction?: boolean;
 }
+
+// ============ Tools / Actions Settings ============
+
+export type ToolCategory = 'in_character' | 'cognitive' | 'real_world' | 'system';
+export type ToolPermissionMode = 'auto' | 'ask';
+
+export interface ToolParameterDef {
+  type: 'string' | 'number' | 'boolean' | 'enum';
+  description: string;
+  enum?: string[];
+  default?: unknown;
+  required: boolean;
+}
+
+export interface ToolParameterSchema {
+  type: 'object';
+  properties: Record<string, ToolParameterDef>;
+  required: string[];
+}
+
+export interface ToolDefinition {
+  id: string;
+  name: string;
+  label: string;
+  icon: string;
+  description: string;
+  category: ToolCategory;
+  parameters: ToolParameterSchema;
+  permissionMode: ToolPermissionMode;
+}
+
+export interface CharacterToolConfig {
+  characterId: string;
+  enabledTools: string[];
+}
+
+export interface ToolsSettings {
+  enabled: boolean;
+  maxToolCallsPerTurn: number;
+  characterConfigs: CharacterToolConfig[];
+}
+
+export const DEFAULT_TOOLS_SETTINGS: ToolsSettings = {
+  enabled: true,
+  maxToolCallsPerTurn: 2,
+  characterConfigs: [],
+};
 
 // ============ API Types ============
 

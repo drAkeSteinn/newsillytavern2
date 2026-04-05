@@ -3,14 +3,16 @@
 // ============================================
 
 import type { LLMConfig, ChatApiMessage, GenerateResponse } from '../types';
-import type { ToolDefinition, ToolCall, ToolChatMessage } from '@/lib/tools/types';
-import { OpenAIToolCallAccumulator } from '@/lib/tools/parsers/native-parser';
+import type { ToolDefinition } from '@/lib/tools/types';
+import type { ToolCallAccumulator } from '@/lib/tools/parsers/native-parser';
+import { toOpenAITools } from '@/lib/tools/tool-registry';
+import { processOpenAIDelta, finalizeToolCalls } from '@/lib/tools/parsers/native-parser';
 
 // Default timeout: 5 minutes for long group chats
 const DEFAULT_TIMEOUT = 300000;
 
 /**
- * Stream from OpenAI-compatible API (NO tool calling - legacy)
+ * Stream from OpenAI-compatible API (without tools - backward compatible)
  */
 export async function* streamOpenAICompatible(
   messages: ChatApiMessage[],
@@ -99,34 +101,26 @@ export async function* streamOpenAICompatible(
   }
 }
 
-// ============================================
-// Tool Calling Support - OpenAI Compatible
-// ============================================
-
 /**
- * Result from a tool-capable stream.
- * Contains either text content or tool calls (or both).
+ * Stream from OpenAI-compatible API WITH native tool calling support.
+ * 
+ * Yields text chunks for real-time display. Tool calls are accumulated
+ * in the provided ToolCallAccumulator. After the generator completes,
+ * check `accumulator.toolCalls` and `accumulator.finishReason`.
  */
-export interface ToolStreamResult {
-  content: string;
-  toolCalls: ToolCall[];
-  // The assistant message in OpenAI format (for appending to conversation)
-  assistantMessage: ToolChatMessage;
-}
-
-/**
- * Stream from OpenAI-compatible API WITH tool calling support.
- * Sends the `tools` array and processes `delta.tool_calls` from the response.
- * Returns the complete accumulated result (content + tool calls).
- */
-export async function streamOpenAIWithTools(
-  messages: ToolChatMessage[],
+export async function* streamOpenAIWithTools(
+  messages: ChatApiMessage[],
   config: LLMConfig,
+  provider: string,
   tools: ToolDefinition[],
-  provider: string = 'openai'
-): Promise<ToolStreamResult> {
+  accumulator: ToolCallAccumulator,
+): AsyncGenerator<string> {
   const endpoint = config.endpoint.replace(/\/$/, '');
   const timeoutMs = config.parameters.timeout || DEFAULT_TIMEOUT;
+
+  const openAITools = toOpenAITools(tools);
+  
+  console.log(`[OpenAI+Tools] Streaming with ${openAITools.length} tools for ${provider}`);
 
   const requestBody: Record<string, unknown> = {
     model: config.model || 'gpt-3.5-turbo',
@@ -135,7 +129,7 @@ export async function streamOpenAIWithTools(
     temperature: config.parameters.temperature,
     top_p: config.parameters.topP,
     stream: true,
-    tools: tools,
+    tools: openAITools,
   };
 
   if (provider === 'openai') {
@@ -145,8 +139,6 @@ export async function streamOpenAIWithTools(
       requestBody.stop = config.parameters.stopStrings;
     }
   }
-
-  console.log(`[OpenAI WithTools] Sending request with ${tools.length} tool(s) to ${provider}`);
 
   const response = await fetch(`${endpoint}/chat/completions`, {
     method: 'POST',
@@ -175,7 +167,6 @@ export async function streamOpenAIWithTools(
 
   const decoder = new TextDecoder();
   let buffer = '';
-  const accumulator = new OpenAIToolCallAccumulator();
 
   try {
     while (true) {
@@ -195,9 +186,18 @@ export async function streamOpenAIWithTools(
 
         try {
           const parsed = JSON.parse(data);
-          const delta = parsed.choices?.[0]?.delta;
-          if (delta) {
-            accumulator.processDelta(delta);
+          const choice = parsed.choices?.[0];
+
+          // Check finish reason
+          if (choice?.finish_reason) {
+            accumulator.finishReason = choice.finish_reason;
+          }
+
+          // Process delta for both text and tool calls
+          const delta = choice?.delta || {};
+          const textContent = processOpenAIDelta(delta, accumulator);
+          if (textContent) {
+            yield textContent;
           }
         } catch {
           // Skip invalid JSON
@@ -206,33 +206,11 @@ export async function streamOpenAIWithTools(
     }
   } finally {
     reader.releaseLock();
+    // Finalize accumulated tool calls
+    finalizeToolCalls(accumulator);
   }
 
-  const content = accumulator.getContent();
-  const toolCalls = accumulator.getToolCalls();
-
-  // Build the assistant message for the follow-up conversation
-  const assistantMessage: ToolChatMessage = {
-    role: 'assistant',
-    content: content || null,
-  };
-
-  if (toolCalls.length > 0) {
-    assistantMessage.tool_calls = toolCalls.map(tc => ({
-      id: tc.id,
-      type: 'function' as const,
-      function: {
-        name: tc.name,
-        arguments: JSON.stringify(tc.arguments),
-      },
-    }));
-    console.log(`[OpenAI WithTools] Received ${toolCalls.length} tool call(s):`, 
-      toolCalls.map(tc => `${tc.name}(${JSON.stringify(tc.arguments).slice(0, 60)}...)`));
-  } else {
-    console.log(`[OpenAI WithTools] Received text response (${content.length} chars)`);
-  }
-
-  return { content, toolCalls, assistantMessage };
+  console.log(`[OpenAI+Tools] Stream complete. finishReason=${accumulator.finishReason}, toolCalls=${accumulator.toolCalls.length}`);
 }
 
 /**

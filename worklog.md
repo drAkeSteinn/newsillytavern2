@@ -1354,3 +1354,29 @@ Stage Summary:
 - Critical bug fixed: Memories tab now finds and displays memories saved by the extraction system
 - Session-scoped namespaces prevent cross-session memory leakage
 - Backward compatible: still fetches generic namespaces as fallback for manually created lore
+---
+Task ID: 1
+Agent: Main Agent
+Task: Clonar repositorio de referencia y aplicar sistema de Tool Calling nativo
+
+Work Log:
+- Clonado https://github.com/drAkeSteinn/newsillytavern.git a /home/z/newsillytavern-ref
+- Analizado el sistema completo de tools del repositorio de referencia
+- Copiados todos los archivos del sistema de tools: types, definitions, parsers (native + prompt), executor, tool-registry, 7 tool implementations
+- Copiados providers actualizados (openai.ts, ollama.ts, anthropic.ts) con funciones WithTools
+- Copiadas rutas de streaming actualizadas (stream/route.ts, group-stream/route.ts) con loop de tool calling
+- Agregados tipos de ToolsSettings a src/types/index.ts (ToolCategory, ToolPermissionMode, ToolParameterDef, ToolParameterSchema, ToolDefinition, CharacterToolConfig, ToolsSettings, DEFAULT_TOOLS_SETTINGS)
+- Agregado campo `tools?: ToolsSettings` a AppSettings
+- Copiados componentes UI: tools-settings-panel.tsx, tool-call-notification.tsx
+- Agregado tab "Herramientas" al settings-panel con icono Wrench
+- Agregado manejo de eventos SSE (tool_call_start, tool_call_result, tool_call_error) al chat-panel
+- Agregado componente ToolCallNotification al chat-panel
+
+Stage Summary:
+- Sistema de Tool Calling nativo completo copiado del repositorio de referencia
+- Soporta 3 proveedores con tool calling nativo: OpenAI-compatible, Ollama, Anthropic
+- 7 herramientas disponibles: roll_dice, search_memory, get_weather, search_web, set_reminder, modify_stat, check_stat
+- Loop de tool calling implementado en stream route (maxToolRounds configurable)
+- UI de configuración de tools integrada en el panel de settings
+- Notificaciones visuales de tool calls en el chat panel
+- Lint pasa correctamente (solo error preexistente en fullscreen-editor.tsx)
