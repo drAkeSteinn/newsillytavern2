@@ -63,6 +63,7 @@ import {
   mightContainToolCall,
   stripToolCallFromText,
   splitIntoChunks,
+  cleanModelArtifacts,
 } from '@/lib/tools';
 import {
   streamOpenAIWithTools,
@@ -582,6 +583,8 @@ Y cambiar mi expresión:
                     // DO NOT send to client yet - buffer for tool call detection
                   }
 
+                  console.log(`[Tools] Round 0 buffered ${roundContent.length} chars, finishReason=${accumulator.finishReason}, nativeToolCalls=${accumulator.toolCalls.length}`);
+
                   // Check for native tool calls first
                   if (hasToolCalls(accumulator) && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'stop')) {
                     // Stream any text content alongside tool calls
@@ -610,13 +613,16 @@ Y cambiar mi expresión:
                   } else if (mightContainToolCall(roundContent)) {
                     // Check for text-based tool call (model outputting JSON as content)
                     // This handles models like LM Studio that don't properly use native tool calling
+                    console.log(`[Tools] Content might contain text-based tool call, attempting parse...`);
+                    console.log(`[Tools] Content preview: ${roundContent.slice(0, 200)}...`);
                     const textToolCall = parseToolCallFromText(roundContent);
                     if (textToolCall) {
-                      console.log(`[Tools] Text-based tool call detected: ${textToolCall.name}`, textToolCall.arguments);
+                      console.log(`[Tools] ✓ Text-based tool call detected: ${textToolCall.name}`, textToolCall.arguments);
 
                       // Stream any natural text before/after the tool call
                       const cleanContent = stripToolCallFromText(roundContent);
                       if (cleanContent.trim()) {
+                        console.log(`[Tools] Natural text to stream before/after tool call: "${cleanContent.slice(0, 100)}..."`);
                         for (const chunk of splitIntoChunks(cleanContent)) {
                           controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                         }
@@ -639,21 +645,24 @@ Y cambiar mi expresión:
                         // For text-based calls, inject as user message with tool context
                         toolContextMessages = [
                           ...baseChatMessages,
-                          { role: 'user', content: `[Resultado de herramienta: ${textToolCall.name}]\n${displayMessages}\n\nResponde de forma natural usando esta información.` },
+                          { role: 'user', content: `[Resultado de herramienta: ${textToolCall.name}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
                         ] as any;
                         accumulatedContent = '';
                         toolRound++;
                         continue;
                       }
                     } else {
-                      // Content looked like tool call but couldn't parse - stream as regular text
-                      for (const chunk of splitIntoChunks(roundContent)) {
+                      // Content looked like tool call but couldn't parse - clean and stream as regular text
+                      console.log(`[Tools] ✗ Content looked like tool call but parse failed. Cleaning artifacts and streaming.`);
+                      const cleanedContent = cleanModelArtifacts(roundContent);
+                      for (const chunk of splitIntoChunks(cleanedContent)) {
                         controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                       }
                     }
                   } else {
-                    // Regular text response - stream buffered content to client
-                    for (const chunk of splitIntoChunks(roundContent)) {
+                    // Regular text response - stream buffered content to client (clean artifacts)
+                    const cleanedContent = cleanModelArtifacts(roundContent);
+                    for (const chunk of splitIntoChunks(cleanedContent)) {
                       controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                     }
                   }
@@ -661,7 +670,6 @@ Y cambiar mi expresión:
                   continue;
                 } else if (shouldUseTools && isToolRound) {
                   // Follow-up call with tool results (no tools in request to avoid loops)
-                  const followUpAccumulator = createToolCallAccumulator([]);
                   generator = streamOpenAICompatible(toolContextMessages as any, llmConfig, llmConfig.provider);
                 } else {
                   generator = streamOpenAICompatible(chatMessages, llmConfig, llmConfig.provider);
@@ -724,7 +732,7 @@ Y cambiar mi expresión:
                   } else if (mightContainToolCall(roundContent)) {
                     const textToolCall = parseToolCallFromText(roundContent);
                     if (textToolCall) {
-                      console.log(`[Tools] Text-based tool call detected (Anthropic): ${textToolCall.name}`);
+                      console.log(`[Tools] ✓ Text-based tool call detected (Anthropic): ${textToolCall.name}`);
                       const cleanContent = stripToolCallFromText(roundContent);
                       if (cleanContent.trim()) {
                         for (const chunk of splitIntoChunks(cleanContent)) {
@@ -744,19 +752,21 @@ Y cambiar mi expresión:
                       if (shouldContinue) {
                         toolContextMessages = [
                           ...baseChatMessages,
-                          { role: 'user', content: `[Resultado de herramienta: ${textToolCall.name}]\n${displayMessages}\n\nResponde de forma natural usando esta información.` },
+                          { role: 'user', content: `[Resultado de herramienta: ${textToolCall.name}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
                         ] as any;
                         accumulatedContent = '';
                         toolRound++;
                         continue;
                       }
                     } else {
-                      for (const chunk of splitIntoChunks(roundContent)) {
+                      const cleanedContent = cleanModelArtifacts(roundContent);
+                      for (const chunk of splitIntoChunks(cleanedContent)) {
                         controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                       }
                     }
                   } else {
-                    for (const chunk of splitIntoChunks(roundContent)) {
+                    const cleanedContent = cleanModelArtifacts(roundContent);
+                    for (const chunk of splitIntoChunks(cleanedContent)) {
                       controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                     }
                   }
@@ -817,7 +827,7 @@ Y cambiar mi expresión:
                   } else if (mightContainToolCall(roundContent)) {
                     const textToolCall = parseToolCallFromText(roundContent);
                     if (textToolCall) {
-                      console.log(`[Tools] Text-based tool call detected (Ollama): ${textToolCall.name}`);
+                      console.log(`[Tools] ✓ Text-based tool call detected (Ollama): ${textToolCall.name}`);
                       const cleanContent = stripToolCallFromText(roundContent);
                       if (cleanContent.trim()) {
                         for (const chunk of splitIntoChunks(cleanContent)) {
@@ -837,19 +847,21 @@ Y cambiar mi expresión:
                       if (shouldContinue) {
                         toolContextMessages = [
                           ...baseChatMessages,
-                          { role: 'user', content: `[Resultado de herramienta: ${textToolCall.name}]\n${displayMessages}\n\nResponde de forma natural usando esta información.` },
+                          { role: 'user', content: `[Resultado de herramienta: ${textToolCall.name}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
                         ] as any;
                         accumulatedContent = '';
                         toolRound++;
                         continue;
                       }
                     } else {
-                      for (const chunk of splitIntoChunks(roundContent)) {
+                      const cleanedContent = cleanModelArtifacts(roundContent);
+                      for (const chunk of splitIntoChunks(cleanedContent)) {
                         controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                       }
                     }
                   } else {
-                    for (const chunk of splitIntoChunks(roundContent)) {
+                    const cleanedContent = cleanModelArtifacts(roundContent);
+                    for (const chunk of splitIntoChunks(cleanedContent)) {
                       controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                     }
                   }
@@ -892,10 +904,28 @@ Y cambiar mi expresión:
               }
             }
 
-            // Stream the response (for providers that don't handle tool calling inline)
-            for await (const chunk of generator) {
-              accumulatedContent += chunk;
-              controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+            // Stream the response
+            // For tool rounds: buffer → clean artifacts → stream (ensures clean output)
+            // For normal rounds: stream directly (preserve real-time feel)
+            if (isToolRound) {
+              // Buffer the follow-up response to clean model artifacts before sending
+              let followUpContent = '';
+              for await (const chunk of generator) {
+                followUpContent += chunk;
+              }
+              // Clean special tokens from the follow-up response
+              const cleanedFollowUp = cleanModelArtifacts(followUpContent);
+              accumulatedContent += cleanedFollowUp;
+              console.log(`[Tools] Follow-up round ${toolRound}: ${followUpContent.length} chars → cleaned to ${cleanedFollowUp.length} chars`);
+              for (const chunk of splitIntoChunks(cleanedFollowUp)) {
+                controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+              }
+            } else {
+              // Normal response - stream directly in real-time
+              for await (const chunk of generator) {
+                accumulatedContent += chunk;
+                controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+              }
             }
 
             // Break the tool loop - no more rounds needed

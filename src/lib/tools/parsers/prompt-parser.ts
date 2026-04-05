@@ -19,6 +19,63 @@
 
 import type { ParsedToolCall } from '../types';
 
+// ============================================
+// Model Artifact Cleanup
+// ============================================
+
+/**
+ * Clean special tokens and model artifacts from LLM output.
+ * Handles common patterns from:
+ * - LLaMA-based models (LM Studio, Ollama): <|reserved_special_token|>, <|startheader_id|>, etc.
+ * - ChatML models: <im_start>, <im_end>, <|im_start|>, <|im_end|>
+ * - GPT-style: <|endoftext|>, <|endofprompt|>
+ * - Mistral: <s>, </s>
+ * - Generic: [INST], [/INST], <<SYS>>, <</SYS>>
+ */
+export function cleanModelArtifacts(text: string): string {
+  if (!text) return text;
+
+  let result = text;
+
+  // LLaMA special tokens (LM Studio common)
+  // e.g., <|reserved_special_token_0|>, <|reservedspecialtoken4|>
+  result = result.replace(/<\|reserved[_]?special[_]?token[_\d]*\|>/gi, '');
+  // <|startheader_id|>assistant: or <|endheader_id|>
+  result = result.replace(/<\|start[_]?header[_]?id\|>\s*\w*\s*:?/gi, '');
+  result = result.replace(/<\|end[_]?header[_]?id\|>/gi, '');
+  // <|eot_id|>, <|eos_id|>
+  result = result.replace(/<\|e[oa]s[_]?id\|>/gi, '');
+
+  // ChatML / GPT-NeoX tokens
+  result = result.replace(/<\|im_start\|>\s*\w*\s*/gi, '');
+  result = result.replace(/<\|im_end\|>/gi, '');
+
+  // Generic special tokens: <|anything|>
+  result = result.replace(/<\|[^>]+\|>/g, '');
+
+  // GPT-style end tokens
+  result = result.replace(/<\|endoftext\|>/gi, '');
+  result = result.replace(/<\|endofprompt\|>/gi, '');
+
+  // Mistral-style
+  result = result.replace(/<\/?s>/g, '');
+
+  // LLaMA-style instruction tokens
+  result = result.replace(/\[INST\].*?\[\/INST\]\s*/gi, '');
+  result = result.replace(/<<SYS>>.*?<\/SYS>>\s*/gi, '');
+  result = result.replace(/\[\/INST\]/gi, '');
+  result = result.replace(/\[INST\]/gi, '');
+
+  // Clean up multiple consecutive newlines that may result from stripping
+  result = result.replace(/\n{3,}/g, '\n\n');
+
+  return result.trim();
+}
+
+// ============================================
+// Tool Call Detection
+// ============================================
+
 /**
  * Try to parse a tool call from the LLM's text output.
  * Returns null if no tool call is found.
@@ -104,7 +161,13 @@ export function mightContainToolCall(text: string): boolean {
   // Fast checks for likely tool call indicators
   if (trimmed.startsWith('```tool_call')) return true;
   if (trimmed.match(/TOOL_CALL:/i)) return true;
-  if (trimmed.startsWith('{') && trimmed.includes('"name"') && (trimmed.includes('"parameters"') || trimmed.includes('"arguments"'))) return true;
+  // Match JSON starting anywhere (not just at beginning) since models may add prefix text
+  if (trimmed.includes('"name"') && (trimmed.includes('"parameters"') || trimmed.includes('"arguments"'))) {
+    // Additional check: must also have a JSON-like structure
+    if (trimmed.includes('{') && (trimmed.includes('"type": "function"') || trimmed.includes('"type":"function"'))) return true;
+    // Or just {"name": "...", "parameters"/"arguments": {...}}
+    if (/\"name\"\s*:\s*\"[^\"]+\"/.test(trimmed)) return true;
+  }
   if (trimmed.includes('"type": "function"') || trimmed.includes('"type":"function"')) return true;
 
   return false;
@@ -150,6 +213,7 @@ function parseToolCallJSON(jsonStr: string): ParsedToolCall | null {
 /**
  * Remove the tool call portion from the LLM's text,
  * returning only the natural language response.
+ * Also cleans model artifacts (special tokens).
  */
 export function stripToolCallFromText(text: string): string {
   if (!text) return text;
@@ -167,6 +231,9 @@ export function stripToolCallFromText(text: string): string {
 
   // Remove standalone JSON tool calls without "type" field
   result = result.replace(/\{[^{}]*"name"\s*:\s*"[^"]+"[^{}]*(?:parameters|arguments)\s*:\s*\{[^{}]*\}\s*\}/g, '');
+
+  // Clean model artifacts (special tokens from LLaMA, Mistral, etc.)
+  result = cleanModelArtifacts(result);
 
   return result.trim();
 }

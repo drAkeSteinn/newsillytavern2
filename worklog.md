@@ -1450,3 +1450,79 @@ Stage Summary:
 - Notifications (tool_call_start/result/error) now properly emitted for both native AND text-based tool calls
 - Regular text responses are buffered then replayed as small chunks (minor latency, no flash)
 - ESLint: only pre-existing error in fullscreen-editor.tsx
+
+---
+Task ID: 5
+Agent: general-purpose
+Task: Update group-stream/route.ts with tool calling fixes
+
+Work Log:
+- Added cleanModelArtifacts to imports from @/lib/tools
+- Updated 3 text-based tool call fallback sections (OpenAI, Anthropic, Ollama)
+- Updated follow-up response streaming to buffer and clean for tool rounds
+- Added better logging
+
+Stage Summary:
+- All tool call fallback paths now clean model artifacts
+- Follow-up responses in tool rounds are buffered and cleaned before streaming
+- Tool context messages include instruction to not mention tools
+
+---
+## Task ID: 19 - tool-calling-fallback-fix
+### Work Task
+Fix tool calling system to properly handle models that output tool calls as text content (like LM Studio with anubis-mini-8b-v1). Clean model special tokens from all responses and add better debug logging.
+
+### Root Cause
+The model `anubis-mini-8b-v1` via LM Studio receives the `tools` array correctly but responds with tool call JSON as `delta.content` instead of `delta.tool_calls`. While TavernFlow already had a text-based fallback parser, two problems existed:
+1. Model special tokens (`<|reservedspecialtoken4|>`, `<|startheader_id|>assistant:`) were not being cleaned from responses
+2. Follow-up responses after tool execution also contained special tokens
+
+### Work Summary
+
+**New utility: `cleanModelArtifacts()` (`src/lib/tools/parsers/prompt-parser.ts`):**
+- Cleans LLaMA special tokens: `<|reserved_special_token_N|>`, `<|startheader_id|>`, `<|endheader_id|>`, `<|eot_id|>`
+- Cleans ChatML/GPT-NeoX tokens: `<|im_start|>`, `<|im_end|>`
+- Cleans generic special tokens: `<|anything|>`
+- Cleans Mistral tokens: `<s>`, `</s>`
+- Cleans LLaMA instruction tokens: `[INST]`, `[/INST]`, `<<SYS>>`, `<</SYS>>`
+- Cleans up multiple consecutive newlines from stripping
+- Exported from `src/lib/tools/index.ts`
+
+**Updated `stripToolCallFromText()` (`prompt-parser.ts`):**
+- Now calls `cleanModelArtifacts()` after removing tool call JSON
+- Ensures no special tokens leak through in the cleaned content
+
+**Improved `mightContainToolCall()` (`prompt-parser.ts`):**
+- More flexible detection: no longer requires JSON to start at beginning of text
+- Added check for `"name"` + `"parameters"/"arguments"` anywhere in content with JSON-like structure
+
+**Better logging in stream route (`src/app/api/chat/stream/route.ts`):**
+- Added logging after Round 0 buffer: content length, finish reason, native tool call count
+- Added content preview logging when text-based tool call might be detected
+- Added ✓/✗ symbols for quick visual scanning of tool call detection results
+- Added follow-up round content length comparison (before/after cleaning)
+
+**Clean follow-up responses (`src/app/api/chat/stream/route.ts`):**
+- Tool round follow-up responses are now buffered → cleaned → streamed
+- Normal responses stream directly in real-time (no delay)
+- Tool context message now includes "No menciones las herramientas ni el proceso interno" instruction
+
+**All provider fallback paths updated (stream route):**
+- OpenAI/lm-studio/vllm/custom: ✓ clean artifacts on parse failure and regular text
+- Anthropic: ✓ same
+- Ollama: ✓ same
+
+**Group stream route (`src/app/api/chat/group-stream/route.ts`):**
+- All 6 follow-up streaming paths (native + text-based × OpenAI + Anthropic + Ollama) now buffer → clean → stream
+- All 6 fallback paths (parse failure + regular text × 3 providers) now clean artifacts
+- Removed dead `isToolRound` variable (group-stream doesn't use tool round loop)
+- Added `cleanModelArtifacts` to imports
+
+### Answer to User's Question about LM Studio Configuration
+LM Studio does NOT need special configuration for tools. TavernFlow sends the `tools` array via the standard OpenAI-compatible API body parameter. Whether the model uses them properly depends on the model itself. The fallback system now handles models that output tool calls as text.
+
+### Files Modified:
+- `src/lib/tools/parsers/prompt-parser.ts` — Added `cleanModelArtifacts()`, improved `mightContainToolCall()`, updated `stripToolCallFromText()`
+- `src/lib/tools/index.ts` — Exported `cleanModelArtifacts`
+- `src/app/api/chat/stream/route.ts` — Better logging, clean artifacts on all paths, buffer+clean follow-up responses
+- `src/app/api/chat/group-stream/route.ts` — Same fixes for group chat, clean all 6 follow-up streaming paths

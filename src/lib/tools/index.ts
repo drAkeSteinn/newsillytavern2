@@ -43,4 +43,5 @@ export {
   mightContainToolCall,
   stripToolCallFromText,
   splitIntoChunks,
+  cleanModelArtifacts,
 } from './parsers/prompt-parser';
