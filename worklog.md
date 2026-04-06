@@ -1720,3 +1720,34 @@ These 3 bugs explain why Ollama tool calling was failing:
 - Bug 2: Follow-up used wrong endpoint, model couldn't understand tool context
 - Bug 3: Tool results were formatted as plain text, model didn't recognize them as tool results
 
+
+---
+Task ID: 19 - send-button-loading-and-cancel
+### Work Task
+Add loading spinner and cancel/stop button to the chat box send button. When the LLM is processing, the send button should change to a stop button that allows the user to cancel the request.
+
+### Work Summary
+
+**Problem:**
+- The send button showed a `Loader2` spinner when generating but was **disabled**, so users couldn't cancel an ongoing request
+- There was no way to stop a streaming LLM response once it started
+
+**Solution — Minimal 3-file change:**
+
+**1. chat-panel.tsx — Added `handleStopGeneration` callback:**
+- New `useCallback` that sets `generationIdRef.current = null` and `isGenerationInProgressRef.current = false`
+- This triggers the existing cancellation mechanism: `isStillActive()` returns `false` → `reader.cancel()` is called → streaming stops
+- Passed as `onStopGeneration` prop to `NovelChatBox`
+
+**2. novel-chat-box.tsx — Updated send button behavior:**
+- Added `onStopGeneration?: () => void` to `NovelChatBoxProps` interface
+- When `isGenerating` is true: Button shows a filled **Square** icon (stop symbol) and calls `onStopGeneration` on click
+- When `isGenerating` is false: Button shows normal **Send** icon and calls `handleSend` on click
+- Button is no longer disabled during generation — it's now an active stop button
+
+**Behavior:**
+- Before: Send button → disabled spinner (no way to cancel)
+- After: Send button → active stop button (Square icon) → cancels streaming request immediately
+
+**ESLint:** Passes (only pre-existing error in fullscreen-editor.tsx)
+**Dev server:** GET / 200 — all changes compiled successfully

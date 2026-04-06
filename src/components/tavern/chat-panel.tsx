@@ -1022,6 +1022,13 @@ export function ChatPanel() {
     }
   }, [isGenerating, activeSessionId, activeCharacter, activePersona, isGroupMode, activeGroup, characters, addMessage, setGenerating, processTriggers, resetBgDetection, scanForBackgroundTriggers, activeGroupId, settings.context, lorebooks, effectiveLorebookIds, endSpriteGenerationForCharacterWithTTS, ttsConfig, isTTSConnected]);
 
+  // Handle stop generation - cancel the current streaming request
+  const handleStopGeneration = useCallback(() => {
+    generationIdRef.current = null;
+    isGenerationInProgressRef.current = false;
+    chatLogger.info('[ChatPanel] Generation stopped by user');
+  }, []);
+
   // Handle regenerate - create a new swipe alternative for an existing message
   const handleRegenerate = useCallback(async (messageId: string) => {
     if (isGenerating || isGenerationInProgressRef.current || !activeSessionId) return;
@@ -1406,6 +1413,7 @@ export function ChatPanel() {
       <NovelChatBox 
         onSendMessage={(msg) => handleSend(msg)}
         isGenerating={isGenerating}
+        onStopGeneration={handleStopGeneration}
         onResetChat={handleResetChat}
         onClearChat={handleClearChat}
         onRegenerate={handleRegenerate}

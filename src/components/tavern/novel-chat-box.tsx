@@ -70,6 +70,7 @@ type ChatboxTab = 'chat' | 'solicitudes' | 'misiones' | 'memorias';
 interface NovelChatBoxProps {
   onSendMessage: (message: string) => void;
   isGenerating: boolean;
+  onStopGeneration?: () => void;
   onResetChat?: () => void;
   onClearChat?: () => void;
   onRegenerate?: (messageId: string) => void;
@@ -173,6 +174,7 @@ function MemoryItem({ memory, onDelete }: {
 export function NovelChatBox({ 
   onSendMessage, 
   isGenerating, 
+  onStopGeneration,
   onResetChat, 
   onClearChat,
   onRegenerate,
@@ -1720,11 +1722,11 @@ export function NovelChatBox({
                   <Button
                     size="icon"
                     className="h-8 w-8 flex-shrink-0"
-                    onClick={handleSend}
-                    disabled={!input.trim() || isGenerating || isTranscribing}
+                    onClick={isGenerating ? onStopGeneration : handleSend}
+                    disabled={!isGenerating && (!input.trim() || isTranscribing)}
                   >
                     {isGenerating ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Square className="w-4 h-4 fill-current" />
                     ) : (
                       <Send className="w-4 h-4" />
                     )}
