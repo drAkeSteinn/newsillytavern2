@@ -81,10 +81,36 @@
         "swipes": [
           "⚠️ Z.ai: El token X-Token proporcionado no es válido.\n\nVerifique que el token JWT en la configuración esté actualizado y no haya expirado."
         ]
+      },
+      {
+        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
+        "role": "user",
+        "content": "hola",
+        "isDeleted": false,
+        "swipeId": "e4e9f7d1-7714-4ba3-93f4-b380f6825a98",
+        "swipeIndex": 0,
+        "id": "ab2d957d-8917-47c7-aee9-0fccce631d98",
+        "timestamp": "2026-04-06T08:00:21.444Z",
+        "swipes": [
+          "hola"
+        ]
+      },
+      {
+        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
+        "role": "system",
+        "content": "⚠️ Z.ai requiere autenticación X-Token.\n\nEl archivo de configuración no tiene un campo \"token\".\nPara resolver esto, agregue un token JWT válido al archivo /etc/.z-ai-config:\n{\"baseUrl\": \"...\", \"apiKey\": \"...\", \"token\": \"su-jwt-token-aquí\"}\n\nO configure el campo \"API Key\" del proveedor Z.ai con su token JWT.",
+        "isDeleted": false,
+        "swipeId": "1aaae5a1-eff2-4001-80ff-ddddcfa6a677",
+        "swipeIndex": 0,
+        "id": "9df62bda-b2fd-418e-8abb-57d84a9bb42a",
+        "timestamp": "2026-04-06T08:00:30.948Z",
+        "swipes": [
+          "⚠️ Z.ai requiere autenticación X-Token.\n\nEl archivo de configuración no tiene un campo \"token\".\nPara resolver esto, agregue un token JWT válido al archivo /etc/.z-ai-config:\n{\"baseUrl\": \"...\", \"apiKey\": \"...\", \"token\": \"su-jwt-token-aquí\"}\n\nO configure el campo \"API Key\" del proveedor Z.ai con su token JWT."
+        ]
       }
     ],
     "createdAt": "2026-04-04T08:17:17.841Z",
-    "updatedAt": "2026-04-06T07:47:11.636Z",
+    "updatedAt": "2026-04-06T08:00:30.948Z",
     "sessionStats": {
       "characterStats": {
         "7e6b6d7b-905e-4199-a15a-797f2efac746": {
