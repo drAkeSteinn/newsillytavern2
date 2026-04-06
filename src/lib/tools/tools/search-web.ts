@@ -3,7 +3,7 @@
 // ============================================
 // Category: real_world
 // Permission: auto
-// Uses the z-ai-web-dev-sdk web_search function
+// Uses the z-ai-web-dev-sdk web_search function with X-Token fallback
 
 import type { ToolDefinition, ToolContext, ToolExecutionResult } from '../types';
 
@@ -36,6 +36,10 @@ export const searchWebTool: ToolDefinition = {
   permissionMode: 'auto',
 };
 
+/**
+ * Attempt 1: Try using the SDK (may fail with 401 if X-Token header is missing)
+ * Attempt 2: Direct fetch with X-Token header (bypass SDK's Authorization-only header)
+ */
 export async function searchWebExecutor(
   params: Record<string, unknown>,
   _context: ToolContext,
@@ -54,14 +58,47 @@ export async function searchWebExecutor(
   }
 
   try {
-    // Dynamic import to avoid issues in non-server contexts
-    const ZAI = await import('z-ai-web-dev-sdk').then(m => m.default);
-    const zai = await ZAI.create();
+    let results: unknown;
 
-    const results = await zai.functions.invoke('web_search', {
-      query,
-      num: maxResults,
-    });
+    // Attempt 1: Use z-ai-web-dev-sdk
+    try {
+      const ZAI = await import('z-ai-web-dev-sdk').then(m => m.default);
+      const zai = await ZAI.create();
+      results = await zai.functions.invoke('web_search', { query, num: maxResults });
+      console.log(`[Tool:search_web] SDK search succeeded for "${query}"`);
+    } catch (sdkError) {
+      // Attempt 2: Direct fetch with X-Token header
+      console.warn('[Tool:search_web] SDK failed, trying direct fetch with X-Token...', sdkError instanceof Error ? sdkError.message : sdkError);
+
+      const config = await loadZAIConfig();
+      if (!config) {
+        throw new Error('No se encontró configuración de z-ai-web-dev-sdk');
+      }
+
+      const url = `${config.baseUrl}/functions/invoke`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Token': config.apiKey,
+          'X-Z-AI-From': 'Z',
+        },
+        body: JSON.stringify({
+          function_name: 'web_search',
+          arguments: { query, num: maxResults },
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Direct fetch failed with status ${response.status}: ${errorBody}`);
+      }
+
+      const data = await response.json();
+      results = data.result;
+      console.log(`[Tool:search_web] Direct X-Token fetch succeeded for "${query}"`);
+    }
 
     if (!Array.isArray(results) || results.length === 0) {
       return {
@@ -100,4 +137,33 @@ export async function searchWebExecutor(
       error: error instanceof Error ? error.message : 'SDK_UNAVAILABLE',
     };
   }
+}
+
+/** Load z-ai-web-dev-sdk config from standard locations */
+async function loadZAIConfig(): Promise<{ baseUrl: string; apiKey: string } | null> {
+  const fs = await import('fs');
+  const path = await import('path');
+  const os = await import('os');
+
+  const configPaths = [
+    path.join(process.cwd(), '.z-ai-config'),
+    path.join(os.homedir(), '.z-ai-config'),
+    '/etc/.z-ai-config',
+  ];
+
+  for (const configPath of configPaths) {
+    try {
+      if (fs.existsSync(configPath)) {
+        const content = fs.readFileSync(configPath, 'utf-8');
+        const config = JSON.parse(content);
+        if (config.baseUrl && config.apiKey) {
+          return { baseUrl: config.baseUrl, apiKey: config.apiKey };
+        }
+      }
+    } catch {
+      // Skip unreadable files
+    }
+  }
+
+  return null;
 }

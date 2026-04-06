@@ -91,9 +91,9 @@ async function executeToolCallsAndContinue(
   sessionId: string,
   userName: string,
   controller: { enqueue: (chunk: string) => void },
-): Promise<{ newContent: string; shouldContinue: boolean }> {
+): Promise<{ newContent: string; shouldContinue: boolean; toolResults: Array<{ success: boolean; displayMessage: string }> }> {
   if (toolCalls.length === 0 || currentRound >= maxRounds) {
-    return { newContent: '', shouldContinue: false };
+    return { newContent: '', shouldContinue: false, toolResults: [] };
   }
 
   const toolResults: Array<{ success: boolean; displayMessage: string }> = [];
@@ -142,10 +142,11 @@ async function executeToolCallsAndContinue(
     }
   }
 
-  // Return the display messages as content, and signal that a follow-up call is needed
+  // Return the display messages as content, tool results, and signal that a follow-up call is needed
   return {
     newContent: allDisplayMessages,
     shouldContinue: true, // Always continue to get the LLM's natural response
+    toolResults,
   };
 }
 
@@ -605,14 +606,16 @@ Y cambiar mi expresión:
                       }
                     }
                     // Native tool calls detected! Execute them and loop
-                    const { newContent: displayMessages, shouldContinue } = await executeToolCallsAndContinue(
+                    const { newContent: displayMessages, shouldContinue, toolResults: nativeToolResults } = await executeToolCallsAndContinue(
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller
                     );
                     if (shouldContinue) {
-                      const toolResultPairs = accumulator.toolCalls.map(tc => ({
-                        success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
-                      }));
+                      const toolResultPairs = nativeToolResults.length > 0
+                        ? nativeToolResults
+                        : accumulator.toolCalls.map(tc => ({
+                            success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+                          }));
                       toolContextMessages = [
                         ...baseChatMessages,
                         ...buildToolMessagesForOpenAI(accumulator.toolCalls, toolResultPairs),
@@ -724,14 +727,16 @@ Y cambiar mi expresión:
                         controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                       }
                     }
-                    const { newContent: displayMessages, shouldContinue } = await executeToolCallsAndContinue(
+                    const { newContent: displayMessages, shouldContinue, toolResults: anthropicToolResults } = await executeToolCallsAndContinue(
                       toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller
                     );
                     if (shouldContinue) {
-                      const toolResultPairs = toolCalls.map(tc => ({
-                        success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
-                      }));
+                      const toolResultPairs = anthropicToolResults.length > 0
+                        ? anthropicToolResults
+                        : toolCalls.map(tc => ({
+                            success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+                          }));
                       const toolMessages = buildToolMessagesForAnthropic(toolCalls, toolResultPairs);
                       accumulatedContent = '';
                       toolContextMessages = [
@@ -824,14 +829,16 @@ Y cambiar mi expresión:
                         controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                       }
                     }
-                    const { newContent: displayMessages, shouldContinue } = await executeToolCallsAndContinue(
+                    const { newContent: displayMessages, shouldContinue, toolResults: ollamaToolResults } = await executeToolCallsAndContinue(
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller
                     );
                     if (shouldContinue) {
-                      const toolResultPairs = accumulator.toolCalls.map(tc => ({
-                        success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
-                      }));
+                      const toolResultPairs = ollamaToolResults.length > 0
+                        ? ollamaToolResults
+                        : accumulator.toolCalls.map(tc => ({
+                            success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+                          }));
                       const toolResultMessages = buildToolMessagesForOllama(accumulator.toolCalls, toolResultPairs);
                       toolContextMessages = [...baseChatMessages, ...toolResultMessages] as any;
                       toolRound++;

@@ -1630,3 +1630,38 @@ Files modified:
 **ESLint:** Pre-existing error only (fullscreen-editor.tsx), no new errors introduced.
 **Dev server:** Running normally on port 3000.
 
+
+---
+## Task ID: 20 - tool-calling-result-propagation-fix
+
+### Work Task
+Fix tool calling flow: (1) search_web fails because z-ai-web-dev-sdk has auth issue (missing X-Token header). (2) When a tool fails, the system always tells the model it was `success: true`, confusing the model. (3) Ollama model sometimes doesn't respond after tool execution.
+
+### Work Summary
+
+**Bug Fix 1: search_web SDK auth failure (`src/lib/tools/tools/search-web.ts`):**
+- Root cause: `z-ai-web-dev-sdk` sends `Authorization: Bearer <apiKey>` but the remote function server expects `X-Token` header
+- Solution: Added two-layer fallback:
+  - Layer 1: Try SDK normally (works if server accepts Bearer token)
+  - Layer 2: If SDK fails with 401, do direct fetch with `X-Token: <apiKey>` header to `${baseUrl}/functions/invoke`
+- Added `loadZAIConfig()` utility that reads config from `.z-ai-config` (CWD, home, /etc) — same paths as SDK
+- Both layers use 15-second timeout
+
+**Bug Fix 2: Hardcoded `success: true` in tool result propagation (`src/app/api/chat/stream/route.ts`):**
+- `executeToolCallsAndContinue()` now returns `toolResults` array with actual `{ success, displayMessage }` per tool
+- All 3 call sites (OpenAI line ~614, Anthropic line ~735, Ollama line ~837) updated to destructure `toolResults` and use it instead of hardcoded `success: true`
+- Fallback to `success: true` only if `toolResults` is empty (shouldn't happen)
+
+**Bug Fix 3: Ollama model not responding after tool failure (`src/lib/tools/parsers/native-parser.ts`):**
+- `buildToolMessagesForOllama()` now clearly indicates failure status: `(Estado: FALLIDO)` vs `(Estado: EXITOSO)`
+- When ANY tool fails, the instruction to the model changes from "respond naturally" to "AVISO: Una o más herramientas fallaron. Infórmale al usuario sobre el error de manera natural y sugiere alternativas si es posible."
+- This gives the model clear context to inform the user about the failure instead of being confused
+
+**Files Modified:**
+- `src/lib/tools/tools/search-web.ts` — Complete rewrite with dual-layer fetch + X-Token fallback
+- `src/app/api/chat/stream/route.ts` — 3 call sites updated for real tool result propagation
+- `src/lib/tools/parsers/native-parser.ts` — Improved failure messaging in Ollama tool messages
+
+**ESLint:** Pre-existing error only (fullscreen-editor.tsx), no new errors introduced.
+**Dev server:** Running normally.
+

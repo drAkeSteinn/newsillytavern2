@@ -240,12 +240,15 @@ export function buildToolMessagesForOllama(
   // For Ollama, we include the tool call and result as text context
   const toolContext = toolCalls.map((tc, i) => {
     const result = toolResults[i];
-    return `[Herramienta: ${tc.name}]\nResultado: ${result?.displayMessage || 'Error'}`;
+    const status = result?.success ? 'EXITOSO' : 'FALLIDO';
+    return `[Herramienta: ${tc.name}] (Estado: ${status})\nResultado: ${result?.displayMessage || 'Error desconocido'}`;
   }).join('\n\n');
 
   return [{
     role: 'user',
-    content: `[Resultado de herramientas:\n${toolContext}]\n\nResponde de forma natural al resultado de las herramientas.`,
+    content: `[Resultado de herramientas:\n${toolContext}]\n\n${toolResults.some(r => !r.success)
+      ? 'AVISO: Una o más herramientas fallaron. Infórmale al usuario sobre el error de manera natural y sugiere alternativas si es posible.'
+      : 'Responde de forma natural al resultado de las herramientas.'}`,
   }];
 }
 
