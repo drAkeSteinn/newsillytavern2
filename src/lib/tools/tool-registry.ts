@@ -88,14 +88,24 @@ export function toOpenAITools(tools: ToolDefinition[]) {
 }
 
 /** Build the prompt-based tools section for models without native tool calling */
-export function buildPromptBasedToolsSection(tools: ToolDefinition[]): string {
+export function buildPromptBasedToolsSection(
+  tools: ToolDefinition[],
+  characterName?: string,
+): string {
   if (tools.length === 0) return '';
+
+  const charRef = characterName ? `, como ${characterName}` : '';
+  const charNameMsg = characterName
+    ? `Recuerda: estás roleando como ${characterName}. Usa las herramientas cuando la situación del roleplay lo requiera, pero mantén siempre tu personalidad y estilo al responder.`
+    : '';
 
   const lines: string[] = [
     '[HERRAMIENTAS DISPONIBLES]',
-    'Cuando necesites buscar informacion en internet, consultar el clima, tirar dados, buscar en tu memoria o crear un recordatorio, DEBES usar una herramienta. NO inventes respuestas.',
+    `Eres un personaje en un roleplay${charRef}. Cuando necesites buscar información en internet, consultar el clima, tirar dados, buscar en tu memoria o crear un recordatorio, DEBES usar una herramienta. NO inventes respuestas ni datos que no conozcas.`,
+    charNameMsg,
     '',
-    'Para usar una herramienta, incluye EXACTAMENTE este bloque en tu respuesta:',
+    'FORMATO DE USO:',
+    'Para usar una herramienta, incluye EXACTAMENTE este bloque en tu respuesta — sin texto antes ni después:',
     '```tool_call',
     '{"name": "nombre_herramienta", "parameters": {"param1": "valor1"}}',
     '```',
@@ -105,7 +115,7 @@ export function buildPromptBasedToolsSection(tools: ToolDefinition[]): string {
     '{"name": "search_web", "parameters": {"query": "noticias de hoy", "max_results": 3}}',
     '```',
     '',
-    'Herramientas disponibles:',
+    'HERRAMIENTAS DISPONIBLES:',
   ];
 
   for (const tool of tools) {
@@ -123,10 +133,11 @@ export function buildPromptBasedToolsSection(tools: ToolDefinition[]): string {
   }
 
   lines.push('REGLAS IMPORTANTES:');
-  lines.push('1. Cuando uses una herramienta, TU respuesta debe ser SOLO el bloque ```tool_call```. No agregues texto antes o despues.');
-  lines.push('2. Si el usuario NO pide algo que requiera una herramienta (ej: una conversacion normal), responde normalmente SIN usar ```tool_call```.');
-  lines.push('3. Despues de usar una herramienta, el sistema te dara el resultado y podras responder al usuario con esa informacion.');
+  lines.push('1. Cuando uses una herramienta, TU respuesta debe ser SOLO el bloque ```tool_call```. No agregues texto antes ni después del bloque.');
+  lines.push('2. Si el usuario NO pide algo que requiera una herramienta (ej: una conversación normal de roleplay), responde normalmente SIN usar ```tool_call```.');
+  lines.push('3. Después de usar una herramienta, el sistema te dará el resultado y podrás responder al usuario con esa información — SIEMPRE respondiendo en personaje.');
   lines.push('4. NUNCA inventes datos que podrías obtener con una herramienta. Siempre usa la herramienta correspondiente.');
+  lines.push('5. Al recibir los resultados de una herramienta, intégralos naturalmente en tu respuesta de roleplay. No menciones que usaste una herramienta ni el proceso interno.');
 
   return lines.join('\n');
 }

@@ -34,6 +34,7 @@ import {
   Eye,
   ArrowRight,
   Terminal,
+  FileText,
 } from 'lucide-react';
 import { useTavernStore } from '@/store/tavern-store';
 import type { ToolDefinition, ToolsSettings } from '@/types';
@@ -248,8 +249,12 @@ export function ToolsSettingsPanel() {
             </div>
             <p className="text-[10px] text-muted-foreground mt-1">
               {providerSupportsTools
-                ? 'Tu modelo puede usar herramientas de forma nativa. El LLM decide cuándo usarlas según la conversación.'
-                : 'El proveedor actual no soporta tool calling nativo. Las herramientas no estarán disponibles. Cambia a OpenAI, Anthropic u Ollama para usarlas.'
+                ? (localSettings.usePromptBasedFallback
+                  ? 'Tu modelo soporta tool calling nativo, pero estás usando modo texto. Puedes desactivar "Modo texto" para usar tool calling nativo.'
+                  : 'Tu modelo puede usar herramientas de forma nativa. El LLM decide cuándo usarlas según la conversación.')
+                : (localSettings.usePromptBasedFallback
+                  ? 'Modo texto activado: las herramientas funcionarán mediante instrucciones en el prompt, aunque el proveedor no soporte tool calling nativo.'
+                  : 'El proveedor actual no soporta tool calling nativo. Activa "Modo texto" para usar herramientas mediante instrucciones en el prompt.')
               }
             </p>
           </div>
@@ -263,46 +268,94 @@ export function ToolsSettingsPanel() {
             <Zap className="w-4 h-4 text-amber-500" />
           </div>
           <div>
-            <Label className="text-sm font-medium">Sistema de Herramientas</Label>
+            <Label className="text-sm font-medium">Herramientas habilitadas</Label>
             <p className="text-xs text-muted-foreground">Interruptor maestro para todas las herramientas</p>
           </div>
         </div>
         <Switch
-          checked={localSettings.enabled && providerSupportsTools}
-          disabled={!providerSupportsTools}
+          checked={localSettings.enabled}
           onCheckedChange={(checked) =>
             saveSettings({ ...localSettings, enabled: checked })
           }
         />
       </div>
 
-      {localSettings.enabled && providerSupportsTools && (
+      {/* Prompt-Based Fallback Toggle */}
+      {localSettings.enabled && (
+        <div className="flex items-start justify-between p-4 border rounded-lg gap-3">
+          <div className="flex items-start gap-3">
+            <div className="p-1.5 bg-violet-500/15 rounded-md">
+              <FileText className="w-4 h-4 text-violet-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <Label className="text-sm font-medium">Modo texto (prompt-based)</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                En lugar de usar tool calling nativo de la API, inyecta instrucciones de texto
+                en el prompt del sistema. Útil para modelos que no soportan tool calling nativo
+                (ej: ciertos modelos de Ollama) o cuando el tool calling nativo no funciona correctamente.
+              </p>
+            </div>
+          </div>
+          <Switch
+            checked={localSettings.usePromptBasedFallback ?? false}
+            onCheckedChange={(checked) =>
+              saveSettings({ ...localSettings, usePromptBasedFallback: checked })
+            }
+            className="shrink-0 mt-0.5"
+          />
+        </div>
+      )}
+
+      {/* Info banner when prompt-based is active */}
+      {localSettings.enabled && (localSettings.usePromptBasedFallback ?? false) && (
+        <div className="p-3 rounded-lg border bg-violet-500/5 border-violet-500/20">
+          <div className="flex items-start gap-2.5">
+            <FileText className="w-4 h-4 shrink-0 mt-0.5 text-violet-500" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-violet-600 dark:text-violet-400">
+                Modo texto activado
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Las herramientas se inyectarán como instrucciones de texto en el prompt.
+                El modelo usará bloques <code className="bg-muted px-1 rounded">{'```tool_call```'}</code> para ejecutarlas.
+                El sistema detectará y procesará estos bloques automáticamente.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {localSettings.enabled && (
         <>
           <Separator />
 
-          {/* Max tool calls per turn */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">Máximo de herramientas por turno</Label>
-              <span className="text-sm font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                {localSettings.maxToolCallsPerTurn}
-              </span>
-            </div>
-            <Slider
-              value={[localSettings.maxToolCallsPerTurn]}
-              onValueChange={([val]) =>
-                saveSettings({ ...localSettings, maxToolCallsPerTurn: val })
-              }
-              min={1}
-              max={5}
-              step={1}
-            />
-            <p className="text-xs text-muted-foreground">
-              Herramientas que puede usar el personaje en una sola respuesta. Más herramientas = más tokens consumidos.
-            </p>
-          </div>
+          {/* Max tool calls per turn (native mode only) */}
+          {!localSettings.usePromptBasedFallback && providerSupportsTools && (
+            <>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Máximo de herramientas por turno</Label>
+                  <span className="text-sm font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                    {localSettings.maxToolCallsPerTurn}
+                  </span>
+                </div>
+                <Slider
+                  value={[localSettings.maxToolCallsPerTurn]}
+                  onValueChange={([val]) =>
+                    saveSettings({ ...localSettings, maxToolCallsPerTurn: val })
+                  }
+                  min={1}
+                  max={5}
+                  step={1}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Herramientas que puede usar el personaje en una sola respuesta. Más herramientas = más tokens consumidos.
+                </p>
+              </div>
 
-          <Separator />
+              <Separator />
+            </>
+          )}
 
           {/* Character selector */}
           <div className="space-y-3">
@@ -426,48 +479,94 @@ export function ToolsSettingsPanel() {
             </ScrollArea>
           </div>
 
-          {/* How it works - Native Tool Calling flow */}
-          <div className="bg-muted/50 rounded-lg p-4 space-y-3">
-            <h5 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
-              Cómo funciona (Tool Calling Nativo)
-            </h5>
-            <div className="space-y-2.5">
-              {[
-                { step: '1', text: 'Las herramientas se envían al LLM como parámetros de la API (no en el prompt)', icon: Terminal },
-                { step: '2', text: 'El modelo decide si necesita usar una herramienta basándose en la conversación', icon: Brain },
-                { step: '3', text: 'Si la necesita, la API devuelve un tool_call con nombre y parámetros validados', icon: Zap },
-                { step: '4', text: 'El sistema ejecuta la herramienta y muestra una notificación en el chat', icon: Wrench },
-                { step: '5', text: 'El resultado se envía de vuelta al LLM que genera una respuesta natural', icon: Dices },
-              ].map(item => (
-                <div key={item.step} className="flex items-start gap-2.5">
-                  <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
-                    <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center">
-                      {item.step}
-                    </span>
+          {/* How it works section - varies by mode */}
+          {!localSettings.usePromptBasedFallback && providerSupportsTools ? (
+            /* Native Tool Calling flow */
+            <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+              <h5 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
+                Cómo funciona (Tool Calling Nativo)
+              </h5>
+              <p className="text-[10px] text-muted-foreground">
+                Activar &quot;Modo texto&quot; arriba para usar herramientas con cualquier modelo, incluso sin soporte nativo.
+              </p>
+              <div className="space-y-2.5">
+                {[
+                  { step: '1', text: 'Las herramientas se envían al LLM como parámetros de la API (no en el prompt)', icon: Terminal },
+                  { step: '2', text: 'El modelo decide si necesita usar una herramienta basándose en la conversación', icon: Brain },
+                  { step: '3', text: 'Si la necesita, la API devuelve un tool_call con nombre y parámetros validados', icon: Zap },
+                  { step: '4', text: 'El sistema ejecuta la herramienta y muestra una notificación en el chat', icon: Wrench },
+                  { step: '5', text: 'El resultado se envía de vuelta al LLM que genera una respuesta natural', icon: Dices },
+                ].map(item => (
+                  <div key={item.step} className="flex items-start gap-2.5">
+                    <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+                      <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center">
+                        {item.step}
+                      </span>
+                    </div>
+                    <span className="text-xs text-muted-foreground leading-relaxed">{item.text}</span>
                   </div>
-                  <span className="text-xs text-muted-foreground leading-relaxed">{item.text}</span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
 
-            <div className="mt-3 p-2.5 bg-background rounded-md border space-y-1.5">
-              <p className="text-[10px] font-medium text-muted-foreground">Ejemplo: El usuario pregunta &quot;¿Qué clima hace en Tokyo?&quot;</p>
-              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/80 flex-wrap">
-                <Badge variant="secondary" className="text-[9px] px-1.5 py-0">API envía tools al LLM</Badge>
-                <ArrowRight className="w-3 h-3 text-muted-foreground/40" />
-                <Badge variant="secondary" className="text-[9px] px-1.5 py-0">LLM responde: tool_call(get_weather, city=&quot;Tokyo&quot;)</Badge>
-                <ArrowRight className="w-3 h-3 text-muted-foreground/40" />
-                <Badge variant="secondary" className="text-[9px] px-1.5 py-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">LLM genera: &quot;En Tokyo hace 22°C con cielo despejado&quot;</Badge>
+              <div className="mt-3 p-2.5 bg-background rounded-md border space-y-1.5">
+                <p className="text-[10px] font-medium text-muted-foreground">Ejemplo: El usuario pregunta &quot;¿Qué clima hace en Tokyo?&quot;</p>
+                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/80 flex-wrap">
+                  <Badge variant="secondary" className="text-[9px] px-1.5 py-0">API envía tools al LLM</Badge>
+                  <ArrowRight className="w-3 h-3 text-muted-foreground/40" />
+                  <Badge variant="secondary" className="text-[9px] px-1.5 py-0">LLM responde: tool_call(get_weather, city=&quot;Tokyo&quot;)</Badge>
+                  <ArrowRight className="w-3 h-3 text-muted-foreground/40" />
+                  <Badge variant="secondary" className="text-[9px] px-1.5 py-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">LLM genera: &quot;En Tokyo hace 22°C con cielo despejado&quot;</Badge>
+                </div>
+              </div>
+
+              <div className="mt-2 p-2 bg-background rounded-md border">
+                <p className="text-[10px] text-muted-foreground">
+                  <strong>Requiere:</strong> Modelos que soporten tool calling nativo (OpenAI, Anthropic, Ollama con Llama 3.1+, etc.).
+                  El formato es garantizado por la API, no por el modelo.
+                </p>
               </div>
             </div>
+          ) : (
+            /* Prompt-Based flow */
+            <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+              <h5 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
+                Cómo funciona (Modo Texto)
+              </h5>
+              <div className="space-y-2.5">
+                {[
+                  { step: '1', text: 'Las instrucciones de herramientas se inyectan en el prompt del sistema como texto' },
+                  { step: '2', text: 'Cuando el modelo necesita una herramienta, escribe un bloque ```tool_call``` con JSON' },
+                  { step: '3', text: 'El sistema detecta el bloque, ejecuta la herramienta y muestra una notificación' },
+                  { step: '4', text: 'El resultado se envía de vuelta y el modelo responde en personaje' },
+                ].map(item => (
+                  <div key={item.step} className="flex items-start gap-2.5">
+                    <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+                      <span className="w-5 h-5 rounded-full bg-violet-500/10 text-violet-500 text-[10px] font-bold flex items-center justify-center">
+                        {item.step}
+                      </span>
+                    </div>
+                    <span className="text-xs text-muted-foreground leading-relaxed">{item.text}</span>
+                  </div>
+                ))}
+              </div>
 
-            <div className="mt-2 p-2 bg-background rounded-md border">
-              <p className="text-[10px] text-muted-foreground">
-                <strong>Requiere:</strong> Modelos que soporten tool calling nativo (OpenAI, Anthropic, Ollama con Llama 3.1+, etc.).
-                El formato es garantizado por la API, no por el modelo.
-              </p>
+              <div className="mt-3 p-2.5 bg-background rounded-md border space-y-1.5">
+                <p className="text-[10px] font-medium text-muted-foreground">Ejemplo: El modelo escribe en su respuesta:</p>
+                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/80 flex-wrap">
+                  <Badge variant="secondary" className="text-[9px] px-1.5 py-0 bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">{'```tool_call```'}</Badge>
+                  <Badge variant="secondary" className="text-[9px] px-1.5 py-0">{'{ "name": "get_weather", "parameters": { "city": "Tokyo" } }'}</Badge>
+                  <Badge variant="secondary" className="text-[9px] px-1.5 py-0 bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">{'```'}</Badge>
+                </div>
+              </div>
+
+              <div className="mt-2 p-2 bg-background rounded-md border">
+                <p className="text-[10px] text-muted-foreground">
+                  <strong>Compatible con:</strong> Cualquier modelo, incluso los que no soportan tool calling nativo.
+                  La eficacia depende de la capacidad del modelo para seguir instrucciones de formato.
+                </p>
+              </div>
             </div>
-          </div>
+          )}
         </>
       )}
     </div>

@@ -5,13 +5,13 @@
     "name": "Chat with Rick",
     "messages": [
       {
-        "id": "8c745458-39e3-4584-8b48-858da70da856",
+        "id": "d2c85863-c404-4b40-b6b7-5ac58538c00f",
         "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
         "role": "assistant",
         "content": "\"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\"",
-        "timestamp": "2026-04-06T07:45:39.045Z",
+        "timestamp": "2026-04-06T08:44:39.264Z",
         "isDeleted": false,
-        "swipeId": "8bf5e25a-b5b2-443a-829e-a4ceecbc4987",
+        "swipeId": "451c26bc-3e4c-453f-bf46-0ef1c411c6c6",
         "swipeIndex": 0,
         "swipes": [
           "\"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\""
@@ -22,75 +22,10 @@
         "role": "user",
         "content": "hola",
         "isDeleted": false,
-        "swipeId": "5ce9a185-0f19-4406-a1be-76754ae84b46",
+        "swipeId": "05e0d251-7d91-4c24-a50b-3bc5d3cb0dc5",
         "swipeIndex": 0,
-        "id": "b2aedf2f-ae11-4773-9dfe-2c13a1f43c40",
-        "timestamp": "2026-04-06T07:45:42.667Z",
-        "swipes": [
-          "hola"
-        ]
-      },
-      {
-        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
-        "role": "system",
-        "content": "⚠️ Z.ai: El token X-Token proporcionado no es válido.\n\nVerifique que el token JWT en la configuración esté actualizado y no haya expirado.",
-        "isDeleted": false,
-        "swipeId": "1123d223-a00c-4ebd-b2b4-dfbadc500f74",
-        "swipeIndex": 0,
-        "id": "e5a23b54-dc9e-43d8-8d87-bb5912abde24",
-        "timestamp": "2026-04-06T07:45:53.476Z",
-        "swipes": [
-          "⚠️ Z.ai: El token X-Token proporcionado no es válido.\n\nVerifique que el token JWT en la configuración esté actualizado y no haya expirado."
-        ]
-      },
-      {
-        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
-        "role": "user",
-        "content": "Busca en internet las novedades de google home en este 2026",
-        "isDeleted": false,
-        "swipeId": "59d284dc-0edd-478d-96f2-30a3051bd48d",
-        "swipeIndex": 0,
-        "id": "a7742955-98b9-475f-adc9-613baa758529",
-        "timestamp": "2026-04-06T07:46:03.265Z",
-        "swipes": [
-          "Busca en internet las novedades de google home en este 2026"
-        ]
-      },
-      {
-        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
-        "role": "user",
-        "content": "Busca en internet las novedades de google home en este 2026",
-        "isDeleted": false,
-        "swipeId": "ce1d8e19-0902-453e-9821-caef99209f1a",
-        "swipeIndex": 0,
-        "id": "f9697841-b796-4652-befb-1a791b1f3a87",
-        "timestamp": "2026-04-06T07:47:00.401Z",
-        "swipes": [
-          "Busca en internet las novedades de google home en este 2026"
-        ]
-      },
-      {
-        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
-        "role": "system",
-        "content": "⚠️ Z.ai: El token X-Token proporcionado no es válido.\n\nVerifique que el token JWT en la configuración esté actualizado y no haya expirado.",
-        "isDeleted": false,
-        "swipeId": "bae26535-2cd5-4c10-88cb-261cdb0fd0d4",
-        "swipeIndex": 0,
-        "id": "8171bacc-e6e7-476c-a481-c910432db530",
-        "timestamp": "2026-04-06T07:47:11.636Z",
-        "swipes": [
-          "⚠️ Z.ai: El token X-Token proporcionado no es válido.\n\nVerifique que el token JWT en la configuración esté actualizado y no haya expirado."
-        ]
-      },
-      {
-        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
-        "role": "user",
-        "content": "hola",
-        "isDeleted": false,
-        "swipeId": "e4e9f7d1-7714-4ba3-93f4-b380f6825a98",
-        "swipeIndex": 0,
-        "id": "ab2d957d-8917-47c7-aee9-0fccce631d98",
-        "timestamp": "2026-04-06T08:00:21.444Z",
+        "id": "78e24f05-86bc-458e-bf7c-8619d4d3f0ab",
+        "timestamp": "2026-04-06T08:44:42.414Z",
         "swipes": [
           "hola"
         ]
@@ -100,17 +35,17 @@
         "role": "system",
         "content": "⚠️ Z.ai requiere autenticación X-Token.\n\nEl archivo de configuración no tiene un campo \"token\".\nPara resolver esto, agregue un token JWT válido al archivo /etc/.z-ai-config:\n{\"baseUrl\": \"...\", \"apiKey\": \"...\", \"token\": \"su-jwt-token-aquí\"}\n\nO configure el campo \"API Key\" del proveedor Z.ai con su token JWT.",
         "isDeleted": false,
-        "swipeId": "1aaae5a1-eff2-4001-80ff-ddddcfa6a677",
+        "swipeId": "0a7fcdb9-6c9f-400b-8519-7a9b7d2e8e91",
         "swipeIndex": 0,
-        "id": "9df62bda-b2fd-418e-8abb-57d84a9bb42a",
-        "timestamp": "2026-04-06T08:00:30.948Z",
+        "id": "8f735e44-032b-496c-a954-1dc2aae78b7a",
+        "timestamp": "2026-04-06T08:44:50.430Z",
         "swipes": [
           "⚠️ Z.ai requiere autenticación X-Token.\n\nEl archivo de configuración no tiene un campo \"token\".\nPara resolver esto, agregue un token JWT válido al archivo /etc/.z-ai-config:\n{\"baseUrl\": \"...\", \"apiKey\": \"...\", \"token\": \"su-jwt-token-aquí\"}\n\nO configure el campo \"API Key\" del proveedor Z.ai con su token JWT."
         ]
       }
     ],
     "createdAt": "2026-04-04T08:17:17.841Z",
-    "updatedAt": "2026-04-06T08:00:30.948Z",
+    "updatedAt": "2026-04-06T08:44:50.430Z",
     "sessionStats": {
       "characterStats": {
         "7e6b6d7b-905e-4199-a15a-797f2efac746": {
@@ -121,10 +56,10 @@
       },
       "solicitudes": {
         "characterSolicitudes": {},
-        "lastModified": 1775461539045
+        "lastModified": 1775465079264
       },
       "initialized": true,
-      "lastModified": 1775461539045
+      "lastModified": 1775465079264
     },
     "sessionQuests": [],
     "turnCount": 0

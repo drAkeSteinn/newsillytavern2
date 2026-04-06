@@ -431,6 +431,7 @@ export async function POST(request: NextRequest) {
       enabled: body.toolsSettings?.enabled ?? true,
       maxToolCallsPerTurn: body.toolsSettings?.maxToolCallsPerTurn ?? 2,
       characterConfigs: body.toolsSettings?.characterConfigs || [],
+      usePromptBasedFallback: body.toolsSettings?.usePromptBasedFallback ?? false,
     };
 
     // Cast sessionStats to proper type
@@ -750,12 +751,13 @@ export async function POST(request: NextRequest) {
               : getAllToolDefinitions();
             const charToolsEnabled = toolsSettings.enabled && charAvailableTools.length > 0;
             const charSupportsTools = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama'].includes(llmConfig.provider);
-            const charShouldUseTools = charToolsEnabled && charSupportsTools;
+            // If usePromptBasedFallback is true, disable native tools so prompt-based injection is used instead
+            const charShouldUseTools = charToolsEnabled && charSupportsTools && !toolsSettings.usePromptBasedFallback;
 
             // Only inject text-based tool instructions when native tool calling is NOT available.
             // Injecting text instructions alongside native tools confuses the model.
             if (charToolsEnabled && charAvailableTools.length > 0 && !charShouldUseTools) {
-              const toolPromptSection = buildPromptBasedToolsSection(charAvailableTools);
+              const toolPromptSection = buildPromptBasedToolsSection(charAvailableTools, responder.name);
               if (toolPromptSection) {
                 finalSystemPrompt += `\n\n${toolPromptSection}`;
               }

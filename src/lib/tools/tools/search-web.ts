@@ -60,44 +60,29 @@ export async function searchWebExecutor(
   try {
     let results: unknown;
 
-    // Attempt 1: Use z-ai-web-dev-sdk
+    // Try using z-ai-web-dev-sdk
     try {
       const ZAI = await import('z-ai-web-dev-sdk').then(m => m.default);
       const zai = await ZAI.create();
       results = await zai.functions.invoke('web_search', { query, num: maxResults });
       console.log(`[Tool:search_web] SDK search succeeded for "${query}"`);
     } catch (sdkError) {
-      // Attempt 2: Direct fetch with X-Token header
-      console.warn('[Tool:search_web] SDK failed, trying direct fetch with X-Token...', sdkError instanceof Error ? sdkError.message : sdkError);
+      const errMsg = sdkError instanceof Error ? sdkError.message : String(sdkError);
+      console.warn(`[Tool:search_web] SDK search failed for "${query}": ${errMsg}`);
 
-      const config = await loadZAIConfig();
-      if (!config) {
-        throw new Error('No se encontró configuración de z-ai-web-dev-sdk');
+      // If it's a 401/auth error, don't try the direct fallback - it'll fail too
+      if (errMsg.includes('401') || errMsg.includes('Unauthorized') || errMsg.includes('auth')) {
+        console.error('[Tool:search_web] Authentication error with web search API. The search service token may be expired or missing.');
+        return {
+          success: false,
+          toolName: 'search_web',
+          result: null,
+          displayMessage: `🔍 No se pudo buscar "${query}": el servicio de búsqueda web no está disponible (error de autenticación). Verifica la configuración del SDK.`,
+          error: 'SEARCH_AUTH_ERROR',
+        };
       }
 
-      const url = `${config.baseUrl}/functions/invoke`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Token': config.apiKey,
-          'X-Z-AI-From': 'Z',
-        },
-        body: JSON.stringify({
-          function_name: 'web_search',
-          arguments: { query, num: maxResults },
-        }),
-        signal: AbortSignal.timeout(15000),
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(`Direct fetch failed with status ${response.status}: ${errorBody}`);
-      }
-
-      const data = await response.json();
-      results = data.result;
-      console.log(`[Tool:search_web] Direct X-Token fetch succeeded for "${query}"`);
+      throw new Error(`SDK error: ${errMsg}`);
     }
 
     if (!Array.isArray(results) || results.length === 0) {
@@ -129,12 +114,21 @@ export async function searchWebExecutor(
     };
   } catch (error) {
     console.warn('[Tool:search_web] Search failed:', error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    let displayMsg = `No se pudo completar la búsqueda web para "${query}"`;
+    if (errMsg.includes('401') || errMsg.includes('Unauthorized') || errMsg.includes('auth')) {
+      displayMsg = `🔍 Búsqueda no disponible para "${query}": el servicio de búsqueda no está configurado correctamente (error de autenticación).`;
+    } else if (errMsg.includes('timeout') || errMsg.includes('Timeout')) {
+      displayMsg = `🔍 La búsqueda para "${query}" tardó demasiado y fue cancelada.`;
+    } else if (errMsg.includes('network') || errMsg.includes('fetch')) {
+      displayMsg = `🔍 Error de conexión al buscar "${query}". Verifica tu conexión a internet.`;
+    }
     return {
       success: false,
       toolName: 'search_web',
       result: null,
-      displayMessage: `No se pudo completar la búsqueda web para "${query}"`,
-      error: error instanceof Error ? error.message : 'SDK_UNAVAILABLE',
+      displayMessage: displayMsg,
+      error: errMsg,
     };
   }
 }

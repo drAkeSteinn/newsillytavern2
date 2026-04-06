@@ -1935,3 +1935,74 @@ Stage Summary:
 - x-session-id ya no se usa como candidato de autenticación
 - El error ahora será "Z.ai requiere autenticación X-Token" (missing) en vez de "invalid X-Token"
 - Situación final: el API requiere X-Token JWT que no está disponible en este servidor
+
+---
+## Task ID: 19 - tool-calling-ollama-prompt-fallback
+### Work Task
+Fix and improve the tool calling system for Ollama provider and group chat. Add `usePromptBasedFallback` setting, update stream routes, improve UI toggle, fix search_web error handling, and enhance prompt-based tool instructions.
+
+### Work Summary
+
+**1. Types (`src/types/index.ts`):**
+- Added `usePromptBasedFallback?: boolean` to `ToolsSettings` interface with documentation comment
+- Added `usePromptBasedFallback: false` to `DEFAULT_TOOLS_SETTINGS` default
+
+**2. Stream Route (`src/app/api/chat/stream/route.ts`):**
+- Added `usePromptBasedFallback` to `toolsSettings` extraction from request body (defaults to `false`)
+- Changed `shouldUseTools` logic: `toolsEnabled && supportsNativeTools && !toolsSettings.usePromptBasedFallback`
+  - When `usePromptBasedFallback` is true, native tool calling is disabled, so prompt-based injection kicks in
+- Updated logging: added new branch for prompt-based fallback case
+- Updated `buildPromptBasedToolsSection()` call to pass `effectiveCharacter.name`
+
+**3. Group Stream Route (`src/app/api/chat/group-stream/route.ts`):**
+- Added `usePromptBasedFallback` to `toolsSettings` extraction from request body
+- Changed `charShouldUseTools` logic: `charToolsEnabled && charSupportsTools && !toolsSettings.usePromptBasedFallback`
+- Updated `buildPromptBasedToolsSection()` call to pass `responder.name`
+
+**4. Tools Settings Panel (`src/components/tools/tools-settings-panel.tsx`):**
+- Added `FileText` icon import from lucide-react
+- Renamed master toggle label to "Herramientas habilitadas" and removed `disabled` prop (tools can work via prompt-based mode even without native support)
+- Added new "Modo texto (prompt-based)" toggle with violet styling and description explaining use cases (Ollama models without native support, broken native tool calling)
+- Added info banner when prompt-based mode is active (violet themed, explains ```tool_call``` block usage)
+- Updated provider compatibility notice: 4 contextual messages based on combination of providerSupportsTools and usePromptBasedFallback
+- Restructured layout: tools list (character selector, per-character tool toggles) now visible whenever tools are enabled, regardless of mode
+- "Máximo de herramientas por turno" slider only shown in native mode (hidden in prompt-based mode)
+- Added "Cómo funciona (Modo Texto)" section with step-by-step explanation and example, shown when prompt-based is active or provider doesn't support native tools
+- "Cómo funciona (Tool Calling Nativo)" section still shown when using native mode, with note about prompt-based alternative
+
+**5. Search Web Tool (`src/lib/tools/tools/search-web.ts`):**
+- Removed X-Token direct fetch fallback (also fails with 401, no point trying)
+- Added early return for 401/auth errors with clear user-facing message: "el servicio de búsqueda web no está disponible (error de autenticación)"
+- Improved outer catch block with specific error messages for: auth errors, timeout errors, network errors
+- Each error type gets a user-friendly Spanish display message instead of generic "No se pudo completar la búsqueda web"
+
+**6. Prompt-Based Tools Section (`src/lib/tools/tool-registry.ts`):**
+- Added optional `characterName?: string` parameter to `buildPromptBasedToolsSection()`
+- Added roleplay awareness: instructions now reference the character name ("Eres un personaje en un roleplay, como {name}")
+- Added character-specific instruction to maintain personality when using tools
+- Improved formatting: added "FORMATO DE USO:" header, clearer section structure
+- Added rule 5: "Al recibir los resultados de una herramienta, intégralos naturalmente en tu respuesta de roleplay. No menciones que usaste una herramienta ni el proceso interno."
+- Rule 3 now explicitly says "SIEMPRE respondiendo en personaje"
+- Updated callers in stream route and group-stream route to pass character name
+
+**ESLint:** Passes with 1 pre-existing error (unrelated `fullscreen-editor.tsx`)
+**Dev server:** Running normally, GET / 200
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Implementar prompt-based fallback para tools y asegurar funcionamiento en chat normal y grupo
+
+Work Log:
+- Añadido campo `usePromptBasedFallback` a ToolsSettings en types/index.ts
+- Actualizado stream/route.ts: cuando usePromptBasedFallback=true, se desactiva native tools y se inyectan instrucciones de texto en el system prompt
+- Actualizado group-stream/route.ts: misma lógica para chat de grupo
+- Mejorado buildPromptBasedToolsSection() en tool-registry.ts: ahora acepta characterName para instrucciones contextualizadas al roleplay
+- Añadido toggle "Modo texto (prompt-based)" en tools-settings-panel.tsx con info contextual por proveedor
+- Mejorado manejo de errores en search-web.ts: detecta 401 y muestra mensaje claro sin intentar fallback que también falla
+
+Stage Summary:
+- Herramientas ahora funcionan en 3 modos: nativo, prompt-based, o desactivado
+- "Modo texto" permite usar tools con CUALQUIER proveedor (incluyendo Ollama con modelos que no soportan nativo)
+- Chat normal y chat de grupo ambos soportan los 3 modos
+- El toggle en la UI muestra mensajes contextuales según el proveedor actual

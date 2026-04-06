@@ -208,6 +208,7 @@ export async function POST(request: NextRequest) {
       enabled: body.toolsSettings?.enabled ?? true,
       maxToolCallsPerTurn: body.toolsSettings?.maxToolCallsPerTurn ?? 2,
       characterConfigs: body.toolsSettings?.characterConfigs || [],
+      usePromptBasedFallback: body.toolsSettings?.usePromptBasedFallback ?? false,
     };
     
     // Debug: Log sessionStats event fields
@@ -449,7 +450,8 @@ export async function POST(request: NextRequest) {
 
     // Determine if the current provider supports native tool calling
     const supportsNativeTools = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama', 'z-ai'].includes(llmConfig.provider);
-    const shouldUseTools = toolsEnabled && supportsNativeTools;
+    // If usePromptBasedFallback is true, disable native tools so prompt-based injection is used instead
+    const shouldUseTools = toolsEnabled && supportsNativeTools && !toolsSettings.usePromptBasedFallback;
 
     // Only inject text-based tool instructions into the system prompt when the provider
     // does NOT support native tool calling. Models with native tool calling (Ollama, OpenAI,
@@ -457,7 +459,7 @@ export async function POST(request: NextRequest) {
     // CONFUSES them — they end up outputting ```tool_call``` as text instead of using
     // the native tool_calls mechanism.
     if (toolsEnabled && availableTools.length > 0 && !shouldUseTools) {
-      const toolPromptSection = buildPromptBasedToolsSection(availableTools);
+      const toolPromptSection = buildPromptBasedToolsSection(availableTools, effectiveCharacter.name);
       if (toolPromptSection) {
         finalSystemPrompt += `\n\n${toolPromptSection}`;
       }
@@ -465,8 +467,10 @@ export async function POST(request: NextRequest) {
 
     if (shouldUseTools) {
       console.log(`[Tools] Native tool calling enabled for ${effectiveCharacter.name} (${llmConfig.provider}):`, availableTools.map(t => t.name));
+    } else if (toolsEnabled && toolsSettings.usePromptBasedFallback) {
+      console.log(`[Tools] Prompt-based fallback enabled for ${effectiveCharacter.name} (${llmConfig.provider}) - using text instructions in system prompt`);
     } else if (toolsEnabled && !supportsNativeTools) {
-      console.log(`[Tools] Tools enabled but provider ${llmConfig.provider} does not support native tool calling - tools will not be used`);
+      console.log(`[Tools] Tools enabled but provider ${llmConfig.provider} does not support native tool calling - using prompt-based instructions`);
     } else if (!toolsEnabled) {
       console.log(`[Tools] Tools DISABLED. toolsSettings.enabled=${toolsSettings.enabled}, availableTools=${availableTools.length}`);
     }
