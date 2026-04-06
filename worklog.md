@@ -1841,3 +1841,23 @@ Stage Summary:
 - Migration from old `string[]` format is automatic and transparent
 - All data persists in `data/settings.json` as JSON (permanent across restarts)
 - Max 12 items, label max 20 chars, response max 200 chars
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Fix Ollama tool calling - bugs found and fixed
+
+Work Log:
+- Investigated Ollama API docs (curl from GitHub raw): confirmed tool format is correct
+- Found BUG #1: streamOllamaWithTools message mapper strips `tool_calls` and `tool_name` from messages (ollama.ts:94-97), breaking follow-up rounds
+- Found BUG #2: Client chat-panel.tsx does NOT send `toolsSettings` in the request body, relying on server defaults
+- Fixed BUG #1: Updated message mapper to preserve `tool_calls` and `tool_name` fields using Record<string, unknown>
+- Fixed BUG #2: Added `toolsSettings: settings.tools` to the client request body
+- Added comprehensive logging: shouldUseTools/toolsEnabled status, Ollama case routing, message roles, tool-related messages, HTTP errors with model/messages/tools count
+- Confirmed Ollama API format matches our implementation: done_reason is "stop" for tool calls (not "tool_calls"), route.ts checks hasToolCalls() instead of finishReason which is correct
+
+Stage Summary:
+- Critical fix: Ollama follow-up rounds now properly include tool_calls and tool_name in messages
+- Client now sends toolsSettings from the store, allowing per-character tool configuration
+- Added diagnostic logging throughout the Ollama tool calling pipeline for future debugging
+- User needs to test with Qwen 3.5:9b to verify if initial tool calls now work

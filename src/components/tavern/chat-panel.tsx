@@ -753,6 +753,7 @@ export function ChatPanel() {
               ...settings.embeddingsChat,
               customNamespaces: activeCharacter?.embeddingNamespaces,
             },  // Pass embeddings chat settings + character namespace override
+            toolsSettings: settings.tools,  // Pass tool calling configuration
           })
         });
 

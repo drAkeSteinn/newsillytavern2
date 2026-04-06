@@ -446,6 +446,8 @@ export async function POST(request: NextRequest) {
       console.log(`[Tools] Native tool calling enabled for ${effectiveCharacter.name} (${llmConfig.provider}):`, availableTools.map(t => t.name));
     } else if (toolsEnabled && !supportsNativeTools) {
       console.log(`[Tools] Tools enabled but provider ${llmConfig.provider} does not support native tool calling - tools will not be used`);
+    } else if (!toolsEnabled) {
+      console.log(`[Tools] Tools DISABLED. toolsSettings.enabled=${toolsSettings.enabled}, availableTools=${availableTools.length}`);
     }
 
     // Prepare messages with new user message (use context-windowed messages)
@@ -799,6 +801,7 @@ Y cambiar mi expresión:
               }
 
               case 'ollama': {
+                console.log(`[Stream] Ollama case: shouldUseTools=${shouldUseTools}, isToolRound=${isToolRound}, toolRound=${toolRound}`);
                 if (shouldUseTools && !isToolRound) {
                   // Use /api/chat with tools support
                   let chatMessages = buildChatMessages(
