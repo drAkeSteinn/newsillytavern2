@@ -1797,3 +1797,26 @@ This caused the model to follow the text instructions (output ```tool_call``` bl
 - `src/app/api/chat/stream/route.ts` — Conditional text-based tool prompt injection
 - `src/app/api/chat/group-stream/route.ts` — Same fix for group chat
 - `src/lib/llm/providers/ollama.ts` — Enhanced debugging logs
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Quick Replies - enviar directamente + editor en tab Atajos
+
+Work Log:
+- Investigated current state: quick replies hardcoded as ['Continue', '...', 'Yes', 'No'], no UI to configure
+- Modified `handleQuickReply` in `novel-chat-box.tsx` to directly send message via `onSendMessage()` instead of just setting input
+- Removed `.slice(0, 4)` limit so all configured replies are shown
+- Added `disabled={isGenerating}` to quick reply buttons during generation
+- Added Quick Replies editor section in Atajos tab of settings-panel.tsx with:
+  - List of current replies with hover-reveal edit (Settings2 icon) and delete (Trash2 icon) buttons
+  - Inline editing with Enter to save, Escape to cancel
+  - "Agregar" input + button to add new replies (max 12)
+  - "Restablecer valores predeterminados" button
+  - Emerald color scheme to distinguish from hotkeys section
+
+Stage Summary:
+- Quick replies now send directly as user messages on click
+- Full CRUD UI for quick replies added in Settings > Atajos tab
+- Max 12 quick replies enforced
+- State variables added: editingQuickReply, editingQuickReplyValue, newQuickReply

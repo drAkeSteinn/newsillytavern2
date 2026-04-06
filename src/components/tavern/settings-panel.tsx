@@ -470,6 +470,9 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
 
   const [newConfigOpen, setNewConfigOpen] = useState(false);
   const [recordingHotkey, setRecordingHotkey] = useState<string | null>(null);
+  const [editingQuickReply, setEditingQuickReply] = useState<number | null>(null);
+  const [editingQuickReplyValue, setEditingQuickReplyValue] = useState('');
+  const [newQuickReply, setNewQuickReply] = useState('');
   const hotkeyContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [newConfig, setNewConfig] = useState({
@@ -1604,6 +1607,160 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
                   </div>
                 </div>
                 </Collapsible>
+
+                {/* Respuestas Rápidas */}
+                <div className="border-t pt-4 mt-6 space-y-4">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-emerald-500/20 rounded-lg">
+                      <MessageSquare className="w-5 h-5 text-emerald-500" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-sm font-medium text-emerald-600">Respuestas Rápidas</h4>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Botones de acceso rápido en el chat. Al hacer clic se envían directamente como mensaje.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {settings.quickReplies.map((reply, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center gap-2 p-2 rounded-lg border group"
+                      >
+                        {editingQuickReply === index ? (
+                          <>
+                            <Input
+                              value={editingQuickReplyValue}
+                              onChange={(e) => setEditingQuickReplyValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && editingQuickReplyValue.trim()) {
+                                  const updated = [...settings.quickReplies];
+                                  updated[index] = editingQuickReplyValue.trim();
+                                  updateSettings({ quickReplies: updated });
+                                  setEditingQuickReply(null);
+                                  setEditingQuickReplyValue('');
+                                }
+                                if (e.key === 'Escape') {
+                                  setEditingQuickReply(null);
+                                  setEditingQuickReplyValue('');
+                                }
+                              }}
+                              className="h-8 text-sm flex-1"
+                              autoFocus
+                              placeholder="Texto de la respuesta..."
+                            />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                              onClick={() => {
+                                if (editingQuickReplyValue.trim()) {
+                                  const updated = [...settings.quickReplies];
+                                  updated[index] = editingQuickReplyValue.trim();
+                                  updateSettings({ quickReplies: updated });
+                                }
+                                setEditingQuickReply(null);
+                                setEditingQuickReplyValue('');
+                              }}
+                            >
+                              <Check className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                              onClick={() => {
+                                setEditingQuickReply(null);
+                                setEditingQuickReplyValue('');
+                              }}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="flex-1 text-sm truncate">{reply}</span>
+                            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                                onClick={() => {
+                                  setEditingQuickReply(index);
+                                  setEditingQuickReplyValue(reply);
+                                }}
+                              >
+                                <Settings2 className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0 text-red-400 hover:text-red-500 hover:bg-red-500/10"
+                                onClick={() => {
+                                  const updated = settings.quickReplies.filter((_, i) => i !== index);
+                                  updateSettings({ quickReplies: updated });
+                                }}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Add new quick reply */}
+                  <div className="flex gap-2">
+                    <Input
+                      value={newQuickReply}
+                      onChange={(e) => setNewQuickReply(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && newQuickReply.trim()) {
+                          updateSettings({
+                            quickReplies: [...settings.quickReplies, newQuickReply.trim()]
+                          });
+                          setNewQuickReply('');
+                        }
+                      }}
+                      className="h-8 text-sm flex-1"
+                      placeholder="Nueva respuesta rápida..."
+                      maxLength={50}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3"
+                      disabled={!newQuickReply.trim() || settings.quickReplies.length >= 12}
+                      onClick={() => {
+                        updateSettings({
+                          quickReplies: [...settings.quickReplies, newQuickReply.trim()]
+                        });
+                        setNewQuickReply('');
+                      }}
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Agregar
+                    </Button>
+                  </div>
+
+                  {settings.quickReplies.length >= 12 && (
+                    <p className="text-xs text-muted-foreground text-center">
+                      Máximo 12 respuestas rápidas permitidas.
+                    </p>
+                  )}
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => updateSettings({ quickReplies: ['Continue', '...', 'Yes', 'No'] })}
+                  >
+                    <RefreshCw className="w-3 h-3 mr-1" />
+                    Restablecer valores predeterminados
+                  </Button>
+                </div>
               </div>
             </div>
           </TabsContent>

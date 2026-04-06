@@ -682,8 +682,9 @@ export function NovelChatBox({
   }, !isGenerating);
 
   const handleQuickReply = (reply: string) => {
-    setInput(reply);
-    textareaRef.current?.focus();
+    if (isGenerating || !reply.trim()) return;
+    onSendMessage(reply.trim());
+    setInput('');
   };
 
   // Get pending user solicitudes
@@ -1529,12 +1530,13 @@ export function NovelChatBox({
               {/* Quick Replies - Compact */}
               {settings.quickReplies.length > 0 && (
                 <div className="px-2 py-1 flex gap-1 overflow-x-auto border-t bg-background/30 flex-shrink-0">
-                  {settings.quickReplies.slice(0, 4).map((reply, index) => (
+                  {settings.quickReplies.map((reply, index) => (
                     <Button
                       key={index}
                       variant="outline"
                       size="sm"
-                      className="h-6 px-2 text-xs flex-shrink-0"
+                      className="h-6 px-2 text-xs flex-shrink-0 disabled:opacity-50"
+                      disabled={isGenerating}
                       onClick={() => handleQuickReply(reply)}
                     >
                       {reply}
