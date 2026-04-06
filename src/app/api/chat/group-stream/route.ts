@@ -752,10 +752,9 @@ export async function POST(request: NextRequest) {
             const charSupportsTools = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama'].includes(llmConfig.provider);
             const charShouldUseTools = charToolsEnabled && charSupportsTools;
 
-            // ALWAYS inject tool instructions into the system prompt for prompt-based fallback.
-            // This ensures models that don't support native tool calling can still use tools
-            // by outputting tool_call JSON in their text response.
-            if (charToolsEnabled && charAvailableTools.length > 0) {
+            // Only inject text-based tool instructions when native tool calling is NOT available.
+            // Injecting text instructions alongside native tools confuses the model.
+            if (charToolsEnabled && charAvailableTools.length > 0 && !charShouldUseTools) {
               const toolPromptSection = buildPromptBasedToolsSection(charAvailableTools);
               if (toolPromptSection) {
                 finalSystemPrompt += `\n\n${toolPromptSection}`;

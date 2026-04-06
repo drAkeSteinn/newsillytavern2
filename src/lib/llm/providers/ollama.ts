@@ -117,6 +117,10 @@ export async function* streamOllamaWithTools(
   }));
 
   console.log(`[Ollama+Tools] Streaming with ${ollamaTools.length} tools via /api/chat`);
+  console.log(`[Ollama+Tools] Tool names:`, ollamaTools.map(t => t.function.name));
+  if (ollamaTools.length > 0) {
+    console.log(`[Ollama+Tools] Sample tool definition:`, JSON.stringify(ollamaTools[0], null, 2));
+  }
 
   const requestBody: Record<string, unknown> = {
     model: config.model || 'llama2',
@@ -134,6 +138,8 @@ export async function* streamOllamaWithTools(
   if (ollamaTools.length > 0) {
     requestBody.tools = ollamaTools;
   }
+
+  console.log(`[Ollama+Tools] Request body keys:`, Object.keys(requestBody));
 
   const response = await fetch(`${endpoint}/api/chat`, {
     method: 'POST',
@@ -171,7 +177,10 @@ export async function* streamOllamaWithTools(
             yield textContent;
           }
 
-          // Check if done and if there were tool calls
+          // Debug: log tool_calls if present in the message
+          if (message.tool_calls) {
+            console.log(`[Ollama+Tools] Received tool_calls in message:`, JSON.stringify(message.tool_calls));
+          }
           if (parsed.done) {
             // Ollama sends "done_reason": "tool_calls" or "stop"
             if (parsed.done_reason === 'tool_calls' || parsed.done_reason === 'tool use') {
@@ -179,6 +188,7 @@ export async function* streamOllamaWithTools(
             } else {
               accumulator.finishReason = parsed.done_reason || 'stop';
             }
+            console.log(`[Ollama+Tools] Stream chunk done. done_reason=${parsed.done_reason}, finishReason=${accumulator.finishReason}, toolCalls accumulated=${accumulator.toolCalls.length}`);
           }
         } catch {
           // Skip invalid JSON

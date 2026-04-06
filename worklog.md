@@ -1751,3 +1751,49 @@ Add loading spinner and cancel/stop button to the chat box send button. When the
 
 **ESLint:** Passes (only pre-existing error in fullscreen-editor.tsx)
 **Dev server:** GET / 200 — all changes compiled successfully
+
+---
+Task ID: 20 - fix-ollama-native-tool-calling
+### Work Task
+Fix Ollama native tool calling not working. When sending a message to Qwen 3.5:9b via TavernFlow, the model outputs ```tool_call``` as text instead of using native tool_calls. Works correctly in Ollama's own UI.
+
+### Root Cause
+**Double instruction conflict**: The code was injecting text-based tool instructions (`buildPromptBasedToolsSection`) into the system prompt AND simultaneously sending native tools in the API body. The text instructions explicitly told the model:
+
+```
+"Para usar una herramienta, incluye EXACTAMENTE este bloque en tu respuesta:
+\`\`\`tool_call
+{"name": "nombre_herramienta", "parameters": {...}}
+\`\`\`"
+```
+
+This caused the model to follow the text instructions (output ```tool_call``` blocks) instead of using the native `tool_calls` mechanism provided by the API. In Ollama's own UI, there are no such text instructions, so native tool calling works correctly.
+
+### Work Summary
+
+**Fix 1: stream/route.ts (line 438)**
+- Changed condition from `if (toolsEnabled && availableTools.length > 0)` to `if (toolsEnabled && availableTools.length > 0 && !shouldUseTools)`
+- Text-based tool instructions are now ONLY injected when native tool calling is NOT available
+- For Ollama (and other native-tool-capable providers), only the API body tools are sent
+
+**Fix 2: group-stream/route.ts (line 758)**
+- Same fix applied: `!charShouldUseTools` condition added
+- Group chat was also affected by the same double-instruction issue
+
+**Fix 3: ollama.ts — Enhanced logging**
+- Added tool names logging to see which tools are sent
+- Added sample tool definition logging (JSON)
+- Added request body keys logging
+- Added per-chunk tool_calls detection logging
+- Added done_reason + finishReason logging on stream completion
+
+### Expected Behavior After Fix:
+- Ollama with Qwen 3.5 should now receive tools via API body ONLY (no text instructions)
+- Model will use native `tool_calls` in response → properly detected by `processOllamaToolDelta`
+- Tool execution will proceed with real results → response sent back to model
+- Final natural language response delivered to user
+
+### Files Modified:
+- `src/app/api/chat/stream/route.ts` — Conditional text-based tool prompt injection
+- `src/app/api/chat/group-stream/route.ts` — Same fix for group chat
+- `src/lib/llm/providers/ollama.ts` — Enhanced debugging logs

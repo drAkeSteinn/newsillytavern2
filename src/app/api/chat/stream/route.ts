@@ -430,12 +430,12 @@ export async function POST(request: NextRequest) {
     const supportsNativeTools = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama'].includes(llmConfig.provider);
     const shouldUseTools = toolsEnabled && supportsNativeTools;
 
-    // ALWAYS inject tool instructions into the system prompt for prompt-based fallback.
-    // This ensures models that don't support native tool calling (e.g., LM Studio with
-    // Anubis/Rocinante) can still use tools by outputting tool_call JSON in their text.
-    // The content-fallback parser (mightContainToolCall + parseAllToolCallsFromText)
-    // will detect these tool calls from the response content.
-    if (toolsEnabled && availableTools.length > 0) {
+    // Only inject text-based tool instructions into the system prompt when the provider
+    // does NOT support native tool calling. Models with native tool calling (Ollama, OpenAI,
+    // Anthropic) will receive tools via the API body, and injecting text instructions
+    // CONFUSES them — they end up outputting ```tool_call``` as text instead of using
+    // the native tool_calls mechanism.
+    if (toolsEnabled && availableTools.length > 0 && !shouldUseTools) {
       const toolPromptSection = buildPromptBasedToolsSection(availableTools);
       if (toolPromptSection) {
         finalSystemPrompt += `\n\n${toolPromptSection}`;
