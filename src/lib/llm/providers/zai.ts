@@ -128,6 +128,9 @@ export async function* streamZAI(
 
     if (!response.ok) {
       const errorBody = await response.text();
+      if (response.status === 401 && errorBody.includes('X-Token')) {
+        throw new Error(`Z.ai requiere autenticación X-Token. Configure un token JWT válido en el campo "API Key" del proveedor Z.ai.`);
+      }
       throw new Error(`Z.ai API error ${response.status}: ${errorBody}`);
     }
 
@@ -220,6 +223,9 @@ export async function* streamZAIWithTools(
 
     if (!response.ok) {
       const errorBody = await response.text();
+      if (response.status === 401 && errorBody.includes('X-Token')) {
+        throw new Error(`Z.ai requiere autenticación X-Token. Configure un token JWT válido en el campo "API Key" del proveedor Z.ai.`);
+      }
       throw new Error(`Z.ai API error ${response.status}: ${errorBody}`);
     }
 

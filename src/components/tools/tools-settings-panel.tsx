@@ -148,7 +148,7 @@ export function ToolsSettingsPanel() {
   const activeConfig = llmConfigs.find(c => c.isActive);
   const providerLabel = activeConfig?.provider || 'ninguno';
   const providerSupportsTools = activeConfig
-    ? ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama'].includes(activeConfig.provider)
+    ? ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama', 'z-ai'].includes(activeConfig.provider)
     : false;
 
   // Get enabled tools for a character

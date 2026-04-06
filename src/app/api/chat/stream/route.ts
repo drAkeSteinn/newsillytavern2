@@ -153,6 +153,22 @@ async function executeToolCallsAndContinue(
 
 export async function POST(request: NextRequest) {
   try {
+    // Log incoming auth headers for debugging Z.ai gateway auth
+    const incomingXToken = request.headers.get('X-Token');
+    const incomingAuth = request.headers.get('Authorization');
+    const incomingXZaiFrom = request.headers.get('X-Z-AI-From');
+    const incomingXChatId = request.headers.get('X-Chat-Id');
+    const incomingXUserId = request.headers.get('X-User-Id');
+    // Log ALL incoming X-* headers to discover what the gateway forwards
+    const incomingXHeaders: string[] = [];
+    request.headers.forEach((_, key) => {
+      if (key.toLowerCase().startsWith('x-')) incomingXHeaders.push(key);
+    });
+    console.log(`[Stream Route] Incoming X-headers: [${incomingXHeaders.join(', ')}]`);
+    if (incomingXToken || incomingAuth || incomingXZaiFrom) {
+      console.log(`[Stream Route] Auth: X-Token=${incomingXToken ? 'yes(' + incomingXToken.length + ')' : 'no'}, Auth=${incomingAuth ? 'yes(' + incomingAuth.length + ')' : 'no'}, X-Z-AI-From=${incomingXZaiFrom || 'no'}, X-Chat-Id=${incomingXChatId || 'no'}, X-User-Id=${incomingXUserId || 'no'}`);
+    }
+
     const body = await request.json();
 
     // Validate request (automatically detects request type)
@@ -216,6 +232,25 @@ export async function POST(request: NextRequest) {
 
     if (!llmConfig) {
       return createErrorResponse('No LLM configuration provided', 400);
+    }
+
+    // If using Z.ai provider, forward any incoming auth headers from the Z.ai gateway
+    // This allows the gateway's auth to flow through to the Z.ai API
+    if (llmConfig.provider === 'z-ai') {
+      if (incomingXToken) {
+        llmConfig.apiKey = incomingXToken;
+        console.log('[Stream Route] Forwarded incoming X-Token to Z.ai provider');
+      }
+      // Store gateway headers for Z.ai to use
+      if (incomingXChatId) {
+        (llmConfig as Record<string, unknown>)._gatewayChatId = incomingXChatId;
+      }
+      if (incomingXUserId) {
+        (llmConfig as Record<string, unknown>)._gatewayUserId = incomingXUserId;
+      }
+      if (incomingXZaiFrom) {
+        (llmConfig as Record<string, unknown>)._gatewayFrom = incomingXZaiFrom;
+      }
     }
 
     // Sanitize user message

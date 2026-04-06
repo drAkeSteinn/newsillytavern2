@@ -5,47 +5,21 @@
     "name": "Chat with Rick",
     "messages": [
       {
-        "id": "3f49e99c-7660-4b83-ba19-9dc3c81eb565",
+        "id": "ecd135e3-27ec-4aa9-b819-a097acb8fafc",
         "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
         "role": "assistant",
         "content": "\"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\"",
-        "timestamp": "2026-04-06T06:37:13.612Z",
+        "timestamp": "2026-04-06T06:50:54.051Z",
         "isDeleted": false,
-        "swipeId": "5a754f96-e6be-4852-9baf-98f415176c2e",
+        "swipeId": "f4369a63-885c-4b03-85aa-332dd92edb6f",
         "swipeIndex": 0,
         "swipes": [
           "\"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\""
         ]
-      },
-      {
-        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
-        "role": "user",
-        "content": "hola",
-        "isDeleted": false,
-        "swipeId": "a404a7e6-b10c-484d-aafd-5e3726e088e1",
-        "swipeIndex": 0,
-        "id": "959e9aa2-95b4-40ac-be8f-9f425e7c3b5e",
-        "timestamp": "2026-04-06T06:37:15.868Z",
-        "swipes": [
-          "hola"
-        ]
-      },
-      {
-        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
-        "role": "system",
-        "content": "⚠️ Z.ai Error: Z.ai API error 401: {\"error\":\"missing X-Token header\"}",
-        "isDeleted": false,
-        "swipeId": "bdbca3e2-166f-4bbd-a57a-ee805d78a661",
-        "swipeIndex": 0,
-        "id": "56cde77c-d68f-4136-a469-e7dbdc5b3868",
-        "timestamp": "2026-04-06T06:37:26.382Z",
-        "swipes": [
-          "⚠️ Z.ai Error: Z.ai API error 401: {\"error\":\"missing X-Token header\"}"
-        ]
       }
     ],
     "createdAt": "2026-04-04T08:17:17.841Z",
-    "updatedAt": "2026-04-06T06:37:26.382Z",
+    "updatedAt": "2026-04-06T06:50:54.051Z",
     "sessionStats": {
       "characterStats": {
         "7e6b6d7b-905e-4199-a15a-797f2efac746": {
@@ -56,10 +30,10 @@
       },
       "solicitudes": {
         "characterSolicitudes": {},
-        "lastModified": 1775457433612
+        "lastModified": 1775458254051
       },
       "initialized": true,
-      "lastModified": 1775457433612
+      "lastModified": 1775458254051
     },
     "sessionQuests": [],
     "turnCount": 0
