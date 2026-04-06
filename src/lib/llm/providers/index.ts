@@ -2,7 +2,7 @@
 // Providers Index - Export all providers
 // ============================================
 
-export { streamZAI, callZAI } from './zai';
+export { streamZAI, streamZAIWithTools, callZAI } from './zai';
 export { streamOpenAICompatible, streamOpenAIWithTools, callOpenAICompatible } from './openai';
 export { streamAnthropic, streamAnthropicWithTools, callAnthropic } from './anthropic';
 export { streamOllama, streamOllamaWithTools, callOllama } from './ollama';

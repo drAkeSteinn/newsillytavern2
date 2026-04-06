@@ -67,6 +67,7 @@ import {
   buildPromptBasedToolsSection,
 } from '@/lib/tools';
 import {
+  streamZAIWithTools,
   streamOpenAIWithTools,
   streamOllamaWithTools,
   streamAnthropicWithTools,
@@ -427,7 +428,7 @@ export async function POST(request: NextRequest) {
     const toolsEnabled = toolsSettings.enabled && availableTools.length > 0;
 
     // Determine if the current provider supports native tool calling
-    const supportsNativeTools = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama'].includes(llmConfig.provider);
+    const supportsNativeTools = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama', 'z-ai'].includes(llmConfig.provider);
     const shouldUseTools = toolsEnabled && supportsNativeTools;
 
     // Only inject text-based tool instructions into the system prompt when the provider
@@ -547,19 +548,104 @@ Y cambiar mi expresión:
               }
 
               case 'z-ai': {
-                // Z.ai does not support native tool calling
                 let chatMessages = buildChatMessages(
                   baseSystemPrompt || finalSystemPrompt,
                   allMessages,
                   effectiveCharacter,
                   effectiveUserName,
                   effectiveCharacter.postHistoryInstructions?.trim(),
-                  undefined, false, memoryContextString
+                  undefined, true, memoryContextString
                 );
                 if (hudContextSection && hudContext) {
                   chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
                 }
-                generator = streamZAI(chatMessages, llmConfig.apiKey);
+
+                if (shouldUseTools && !isToolRound) {
+                  // First call with tools
+                  baseChatMessages = chatMessages;
+                  const accumulator = createToolCallAccumulator(availableTools);
+                  generator = streamZAIWithTools(chatMessages, availableTools, accumulator, llmConfig.apiKey);
+
+                  // BUFFER content - don't stream to client yet
+                  let roundContent = '';
+                  for await (const chunk of generator) {
+                    roundContent += chunk;
+                    accumulatedContent += chunk;
+                  }
+
+                  console.log(`[Z.ai+Tools] Round 0 buffered ${roundContent.length} chars, finishReason=${accumulator.finishReason}, nativeToolCalls=${accumulator.toolCalls.length}`);
+
+                  // Check for native tool calls
+                  if (hasToolCalls(accumulator) && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'stop')) {
+                    if (roundContent.trim()) {
+                      for (const chunk of splitIntoChunks(roundContent)) {
+                        controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                      }
+                    }
+                    const { newContent: displayMessages, shouldContinue, toolResults: nativeToolResults } = await executeToolCallsAndContinue(
+                      accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
+                      effectiveCharacter, sessionId || '', effectiveUserName, controller
+                    );
+                    if (shouldContinue) {
+                      const toolResultPairs = nativeToolResults.length > 0
+                        ? nativeToolResults
+                        : accumulator.toolCalls.map(tc => ({
+                            success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+                          }));
+                      toolContextMessages = [
+                        ...baseChatMessages,
+                        ...buildToolMessagesForOpenAI(accumulator.toolCalls, toolResultPairs),
+                      ];
+                      accumulatedContent = '';
+                      toolRound++;
+                      continue;
+                    }
+                  } else if (mightContainToolCall(roundContent)) {
+                    console.log(`[Z.ai+Tools] Content might contain text-based tool call, attempting parse...`);
+                    const textToolCalls = parseAllToolCallsFromText(roundContent);
+                    if (textToolCalls.length > 0) {
+                      console.log(`[Z.ai+Tools] Text-based tool call(s) detected: ${textToolCalls.map(tc => tc.name).join(', ')}`);
+                      const cleanContent = stripToolCallFromText(roundContent);
+                      if (cleanContent.trim()) {
+                        for (const chunk of splitIntoChunks(cleanContent)) {
+                          controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                        }
+                      }
+                      const { newContent: displayMessages, shouldContinue, toolResults } = await executeToolCallsAndContinue(
+                        textToolCalls, availableTools, toolRound, maxToolRounds,
+                        effectiveCharacter, sessionId || '', effectiveUserName, controller
+                      );
+                      if (shouldContinue) {
+                        toolContextMessages = [
+                          ...baseChatMessages,
+                          ...buildToolMessagesForOpenAI(textToolCalls, toolResults),
+                        ];
+                        accumulatedContent = '';
+                        toolRound++;
+                        continue;
+                      }
+                    }
+                  }
+
+                  // No tool calls detected - stream the buffered content
+                  console.log(`[Z.ai+Tools] No tool calls detected, streaming ${roundContent.length} chars`);
+                  for (const chunk of splitIntoChunks(roundContent)) {
+                    controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                  }
+                } else if (isToolRound && toolContextMessages.length > 0) {
+                  // Follow-up call after tool execution
+                  console.log(`[Z.ai+Tools] Tool round ${toolRound}: sending ${toolContextMessages.length} messages (incl. tool results)`);
+                  generator = streamZAI(toolContextMessages, llmConfig.apiKey);
+                  for await (const chunk of generator) {
+                    controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                  }
+                } else {
+                  // No tools enabled - normal streaming
+                  generator = streamZAI(chatMessages, llmConfig.apiKey);
+                  for await (const chunk of generator) {
+                    controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                  }
+                }
                 break;
               }
 

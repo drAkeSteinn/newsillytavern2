@@ -7,8 +7,14 @@
 // 1. process.cwd()/.z-ai-config
 // 2. ~/.z-ai-config
 // 3. /etc/.z-ai-config
+//
+// Supports native tool calling (OpenAI-compatible format).
 
 import type { ChatApiMessage, GenerateResponse } from '../types';
+import type { ToolDefinition } from '@/lib/tools/types';
+import type { ToolCallAccumulator } from '@/lib/tools/parsers/native-parser';
+import { processOpenAIDelta, finalizeToolCalls } from '@/lib/tools/parsers/native-parser';
+import { toOpenAITools } from '@/lib/tools';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
@@ -28,7 +34,7 @@ let cachedConfig: ZAIConfig | null = null;
 /**
  * Load Z.ai configuration from file
  */
-async function loadConfig(): Promise<ZAIConfig> {
+export async function loadConfig(): Promise<ZAIConfig> {
   if (cachedConfig) {
     return cachedConfig;
   }
@@ -60,7 +66,38 @@ async function loadConfig(): Promise<ZAIConfig> {
 }
 
 /**
- * Stream from Z.ai API with proper authentication
+ * Build Z.ai auth headers from config.
+ * Supports both direct config and override token from LLM settings.
+ */
+export async function buildZAIHeaders(overrideToken?: string): Promise<Record<string, string>> {
+  const config = await loadConfig();
+  const effectiveToken = overrideToken || config.token;
+  const { apiKey, chatId, userId } = config;
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${apiKey}`,
+    'X-Z-AI-From': 'Z',
+  };
+
+  if (effectiveToken) {
+    headers['X-Token'] = effectiveToken;
+    console.log('[Z.ai Provider] Using X-Token header (JWT token)');
+  }
+
+  if (chatId) {
+    headers['X-Chat-Id'] = chatId;
+  }
+
+  if (userId) {
+    headers['X-User-Id'] = userId;
+  }
+
+  return headers;
+}
+
+/**
+ * Stream from Z.ai API with proper authentication (no tools)
  * @param messages - Chat messages to send
  * @param overrideToken - Optional token from LLM config to override file config
  */
@@ -70,32 +107,8 @@ export async function* streamZAI(
 ): AsyncGenerator<string> {
   try {
     const config = await loadConfig();
-    // Use override token from LLM config if provided, otherwise use file config token
-    const effectiveToken = overrideToken || config.token;
-    const { baseUrl, apiKey, chatId, userId } = config;
-
-    const url = `${baseUrl}/chat/completions`;
-
-    // Build headers with X-Token if available
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-      'X-Z-AI-From': 'Z',
-    };
-
-    // Add X-Token header (JWT token - either from LLM config or file config)
-    if (effectiveToken) {
-      headers['X-Token'] = effectiveToken;
-      console.log('[Z.ai Provider] Using X-Token header (JWT token)');
-    }
-
-    if (chatId) {
-      headers['X-Chat-Id'] = chatId;
-    }
-
-    if (userId) {
-      headers['X-User-Id'] = userId;
-    }
+    const headers = await buildZAIHeaders(overrideToken);
+    const url = `${config.baseUrl}/chat/completions`;
 
     console.log('[Z.ai Provider] Streaming request to:', url);
     console.log('[Z.ai Provider] Headers:', Object.keys(headers).join(', '));
@@ -118,7 +131,6 @@ export async function* streamZAI(
       throw new Error(`Z.ai API error ${response.status}: ${errorBody}`);
     }
 
-    // The API returns a ReadableStream for streaming responses
     const reader = response.body?.getReader();
     if (!reader) {
       throw new Error('No response body from Z.ai');
@@ -134,12 +146,10 @@ export async function* streamZAI(
 
         buffer += decoder.decode(value, { stream: true });
 
-        // Split by double newline (SSE message separator)
         const sseMessages = buffer.split('\n\n');
         buffer = sseMessages.pop() || '';
 
         for (const message of sseMessages) {
-          // Each message is in format "data: {...}"
           if (!message.startsWith('data: ')) continue;
 
           const jsonStr = message.slice(6);
@@ -169,6 +179,105 @@ export async function* streamZAI(
 }
 
 /**
+ * Stream from Z.ai API WITH native tool calling support.
+ *
+ * Uses OpenAI-compatible tool calling format. Tool calls are accumulated
+ * in the provided ToolCallAccumulator. After the generator completes,
+ * check `accumulator.toolCalls` and `accumulator.finishReason`.
+ *
+ * @param messages - Chat messages to send
+ * @param tools - Tool definitions to provide to the model
+ * @param accumulator - Mutable accumulator for tool call state
+ * @param overrideToken - Optional JWT token from LLM config
+ */
+export async function* streamZAIWithTools(
+  messages: ChatApiMessage[],
+  tools: ToolDefinition[],
+  accumulator: ToolCallAccumulator,
+  overrideToken?: string
+): AsyncGenerator<string> {
+  try {
+    const config = await loadConfig();
+    const headers = await buildZAIHeaders(overrideToken);
+    const url = `${config.baseUrl}/chat/completions`;
+
+    const openAITools = toOpenAITools(tools);
+
+    console.log(`[Z.ai+Tools] Streaming with ${openAITools.length} tools`);
+    console.log(`[Z.ai+Tools] Headers:`, Object.keys(headers).join(', '));
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        messages: messages,
+        thinking: { type: 'disabled' },
+        stream: true,
+        tools: openAITools,
+      }),
+      signal: AbortSignal.timeout(300000), // 5 min timeout
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Z.ai API error ${response.status}: ${errorBody}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('No response body from Z.ai');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          if (!trimmedLine || !trimmedLine.startsWith('data: ')) continue;
+
+          const data = trimmedLine.slice(6);
+          if (data === '[DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(data);
+            const choice = parsed.choices?.[0];
+
+            // Check finish reason
+            if (choice?.finish_reason) {
+              accumulator.finishReason = choice.finish_reason;
+            }
+
+            // Process delta for both text and tool calls (OpenAI format)
+            const delta = choice?.delta || {};
+            const textContent = processOpenAIDelta(delta, accumulator);
+            if (textContent) {
+              yield textContent;
+            }
+          } catch {
+            // Skip invalid JSON
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+      finalizeToolCalls(accumulator);
+    }
+
+    console.log(`[Z.ai+Tools] Stream complete. finishReason=${accumulator.finishReason}, toolCalls=${accumulator.toolCalls.length}`);
+  } catch (error) {
+    console.error('[Z.ai+Tools] Stream error:', error);
+    throw new Error(`Z.ai Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
  * Call Z.ai API (non-streaming)
  * @param messages - Chat messages to send
  * @param overrideToken - Optional token from LLM config to override file config
@@ -179,31 +288,8 @@ export async function callZAI(
 ): Promise<GenerateResponse> {
   try {
     const config = await loadConfig();
-    // Use override token from LLM config if provided, otherwise use file config token
-    const effectiveToken = overrideToken || config.token;
-    const { baseUrl, apiKey, chatId, userId } = config;
-
-    const url = `${baseUrl}/chat/completions`;
-
-    // Build headers with X-Token if available
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-      'X-Z-AI-From': 'Z',
-    };
-
-    // Add X-Token header (JWT token - either from LLM config or file config)
-    if (effectiveToken) {
-      headers['X-Token'] = effectiveToken;
-    }
-
-    if (chatId) {
-      headers['X-Chat-Id'] = chatId;
-    }
-
-    if (userId) {
-      headers['X-User-Id'] = userId;
-    }
+    const headers = await buildZAIHeaders(overrideToken);
+    const url = `${config.baseUrl}/chat/completions`;
 
     console.log('[Z.ai Provider] Non-streaming request to:', url);
 

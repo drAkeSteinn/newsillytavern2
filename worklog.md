@@ -1861,3 +1861,30 @@ Stage Summary:
 - Client now sends toolsSettings from the store, allowing per-character tool configuration
 - Added diagnostic logging throughout the Ollama tool calling pipeline for future debugging
 - User needs to test with Qwen 3.5:9b to verify if initial tool calls now work
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Add Z.ai provider support for native tool calling
+
+Work Log:
+- Analyzed Z.ai API: OpenAI-compatible at http://172.25.136.193:8080/v1
+- Found that Z.ai API now requires X-Token (JWT) header for ALL endpoints (chat completions + functions)
+- The z-ai-web-dev-sdk (v0.0.16) does NOT send X-Token header — SDK only uses Authorization + X-Z-AI-From
+- Implemented `streamZAIWithTools()` in zai.ts — mirrors streamOpenAIWithTools pattern with Z.ai auth
+- Added `buildZAIHeaders()` helper to centralize auth header construction (Authorization + X-Z-AI-From + optional X-Token)
+- Added `z-ai` to `supportsNativeTools` list in stream route (was previously excluded)
+- Rewrote `z-ai` case in stream route with full tool calling support:
+  - First round: streams with tools via streamZAIWithTools, buffers content for tool call detection
+  - Supports both native tool_calls (OpenAI format) and text-based fallback
+  - Follow-up rounds: sends tool results via streamZAI
+  - No tools: falls back to normal streamZAI
+- Fixed import: `toOpenAITools` imported from `@/lib/tools` (not native-parser)
+- Exported `streamZAIWithTools` from providers/index.ts
+
+Stage Summary:
+- Z.ai tool calling is now IMPLEMENTED but BLOCKED by X-Token requirement
+- The API returns 401 "missing X-Token header" for all requests without a valid JWT token
+- Users can provide their JWT token via llmConfig.apiKey field (which gets passed as overrideToken to streamZAI)
+- Once authenticated, Z.ai will support full tool calling (search_web, get_weather, roll_dice, etc.)
+- TypeScript: No new errors introduced. Lint: Clean (only pre-existing fullscreen-editor error)
