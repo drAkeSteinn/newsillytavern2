@@ -230,26 +230,49 @@ export function processOllamaToolDelta(
 
 /**
  * Format tool calls and results for Ollama's /api/chat endpoint.
- * Ollama doesn't use the OpenAI-style tool/role messages.
- * Instead, we inject tool results into the message history.
+ * 
+ * Per Ollama docs, the follow-up must include:
+ * 1. The assistant message with tool_calls
+ * 2. A tool result message with role: "tool" and tool_name field
+ * 
+ * Example from Ollama docs:
+ * { role: "assistant", content: "", tool_calls: [{ function: { name, arguments } }] }
+ * { role: "tool", content: "result text", tool_name: "get_weather" }
  */
 export function buildToolMessagesForOllama(
   toolCalls: NativeToolCall[],
   toolResults: Array<{ success: boolean; displayMessage: string }>,
-): Array<{ role: string; content: string }> {
-  // For Ollama, we include the tool call and result as text context
-  const toolContext = toolCalls.map((tc, i) => {
-    const result = toolResults[i];
-    const status = result?.success ? 'EXITOSO' : 'FALLIDO';
-    return `[Herramienta: ${tc.name}] (Estado: ${status})\nResultado: ${result?.displayMessage || 'Error desconocido'}`;
-  }).join('\n\n');
+): Array<{ role: string; content: string; tool_calls?: unknown[]; tool_name?: string }> {
+  const messages: Array<{ role: string; content: string; tool_calls?: unknown[]; tool_name?: string }> = [];
 
-  return [{
-    role: 'user',
-    content: `[Resultado de herramientas:\n${toolContext}]\n\n${toolResults.some(r => !r.success)
-      ? 'AVISO: Una o más herramientas fallaron. Infórmale al usuario sobre el error de manera natural y sugiere alternativas si es posible.'
-      : 'Responde de forma natural al resultado de las herramientas.'}`,
-  }];
+  // 1. The assistant message with tool_calls (what the model originally sent)
+  messages.push({
+    role: 'assistant',
+    content: '',
+    tool_calls: toolCalls.map(tc => ({
+      function: {
+        name: tc.name,
+        arguments: typeof tc.arguments === 'string' ? JSON.parse(tc.arguments) : tc.arguments,
+      },
+    })),
+  });
+
+  // 2. The tool result messages (one per tool call)
+  for (let i = 0; i < toolCalls.length; i++) {
+    const tc = toolCalls[i];
+    const result = toolResults[i];
+    const resultContent = result?.success
+      ? result?.displayMessage || 'Tool executed successfully'
+      : `ERROR: ${result?.displayMessage || 'Tool execution failed'}`;
+    
+    messages.push({
+      role: 'tool',
+      content: resultContent,
+      tool_name: tc.name,
+    });
+  }
+
+  return messages;
 }
 
 // ============================================

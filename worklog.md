@@ -1665,3 +1665,58 @@ Fix tool calling flow: (1) search_web fails because z-ai-web-dev-sdk has auth is
 **ESLint:** Pre-existing error only (fullscreen-editor.tsx), no new errors introduced.
 **Dev server:** Running normally.
 
+
+---
+## Task ID: 21 - ollama-tool-calling-architecture-fix
+
+### Work Task
+Research how Ollama tool calling actually works and fix the implementation based on official Ollama API documentation.
+
+### Key Findings from Research
+
+1. **Tool calling does NOT require thinking mode** — The `think` parameter is independent and only for thinking models
+2. **Ollama sends `done_reason: "stop"` for tool calls** — NOT `"tool_calls"` as we assumed
+3. **Follow-up must use `/api/chat` with native tool messages** — NOT `/api/generate` with plain text
+4. **Tool results must use `role: "tool"` with `tool_name` field** — NOT `role: "user"` with text
+
+The correct Ollama tool calling flow per official docs:
+```
+Round 0: POST /api/chat with tools
+  → Model responds: message.tool_calls = [{function: {name, arguments}}]
+  → done_reason: "stop" (NOT "tool_calls"!)
+
+Execute tools...
+
+Round 1: POST /api/chat with:
+  - Original messages
+  - {role: "assistant", content: "", tool_calls: [{function: {name, arguments}}]}
+  - {role: "tool", content: "result text", tool_name: "get_weather"}
+  → Model responds with final text
+```
+
+### Files Modified
+
+**Bug Fix 1: Tool call detection (`src/app/api/chat/stream/route.ts`, line ~826):**
+- Before: `if (hasToolCalls(accumulator) && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'tool use'))`
+- After: `if (hasToolCalls(accumulator))` — Ollama sends `done_reason: "stop"` for both normal and tool call responses
+
+**Bug Fix 2: Follow-up uses /api/chat instead of /api/generate (`src/app/api/chat/stream/route.ts`, line ~893):**
+- Before: `generator = streamOllama(combinedPrompt, llmConfig)` — used completion endpoint with text concatenation
+- After: `generator = streamOllamaWithTools(toolContextMessages, llmConfig, [], toolFollowAccumulator)` — uses chat endpoint with proper tool messages
+
+**Bug Fix 3: Native Ollama tool message format (`src/lib/tools/parsers/native-parser.ts`):**
+- Before: `buildToolMessagesForOllama()` returned `{role: "user", content: "[Resultado de herramientas: ...]"}` — plain text
+- After: Returns proper Ollama format:
+  - `{role: "assistant", content: "", tool_calls: [{function: {name, arguments}}]}`
+  - `{role: "tool", content: "result", tool_name: "get_weather"}`
+
+**Improvement: Conditional tools in request (`src/lib/llm/providers/ollama.ts`):**
+- Only includes `tools` in request body when there are tools to send
+- Follow-up rounds (tool results) don't need tools in the request
+
+### Impact
+These 3 bugs explain why Ollama tool calling was failing:
+- Bug 1: Tool calls were detected only by luck (when content-based fallback caught JSON)
+- Bug 2: Follow-up used wrong endpoint, model couldn't understand tool context
+- Bug 3: Tool results were formatted as plain text, model didn't recognize them as tool results
+

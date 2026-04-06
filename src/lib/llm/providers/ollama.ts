@@ -118,21 +118,27 @@ export async function* streamOllamaWithTools(
 
   console.log(`[Ollama+Tools] Streaming with ${ollamaTools.length} tools via /api/chat`);
 
+  const requestBody: Record<string, unknown> = {
+    model: config.model || 'llama2',
+    messages: ollamaMessages,
+    stream: true,
+    options: {
+      temperature: config.parameters.temperature,
+      top_p: config.parameters.topP,
+      top_k: config.parameters.topK,
+      num_predict: config.parameters.maxTokens,
+    },
+  };
+
+  // Only include tools if there are any (follow-up rounds don't need tools)
+  if (ollamaTools.length > 0) {
+    requestBody.tools = ollamaTools;
+  }
+
   const response = await fetch(`${endpoint}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: config.model || 'llama2',
-      messages: ollamaMessages,
-      tools: ollamaTools,
-      stream: true,
-      options: {
-        temperature: config.parameters.temperature,
-        top_p: config.parameters.topP,
-        top_k: config.parameters.topK,
-        num_predict: config.parameters.maxTokens,
-      },
-    }),
+    body: JSON.stringify(requestBody),
     signal: AbortSignal.timeout(DEFAULT_TIMEOUT)
   });
 

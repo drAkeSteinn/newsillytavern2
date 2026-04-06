@@ -823,7 +823,9 @@ Y cambiar mi expresión:
                     accumulatedContent += chunk;
                   }
 
-                  if (hasToolCalls(accumulator) && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'tool use')) {
+                  // Ollama sends done_reason: "stop" for BOTH normal responses AND tool calls.
+                  // We detect tool calls by checking if toolCalls were accumulated, NOT by done_reason.
+                  if (hasToolCalls(accumulator)) {
                     if (roundContent.trim()) {
                       for (const chunk of splitIntoChunks(roundContent)) {
                         controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
@@ -889,11 +891,10 @@ Y cambiar mi expresión:
                   toolRound = maxToolRounds + 1;
                   continue;
                 } else if (shouldUseTools && isToolRound) {
-                  // Follow-up without tools (completion-style)
-                  const combinedPrompt = toolContextMessages.map(m => 
-                    `${(m as any).role}: ${(m as any).content}`
-                  ).join('\n') + `\n${effectiveCharacter.name}:`;
-                  generator = streamOllama(combinedPrompt, llmConfig);
+                  // Follow-up: send tool results back to Ollama using /api/chat with proper tool messages
+                  // Per Ollama docs, tool results use role: "tool" with tool_name field
+                  const toolFollowAccumulator = createToolCallAccumulator(availableTools);
+                  generator = streamOllamaWithTools(toolContextMessages as any, llmConfig, [], toolFollowAccumulator);
                 } else {
                   // No tools - use standard completion endpoint
                   const prompt = buildCompletionPrompt({
