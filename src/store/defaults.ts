@@ -49,7 +49,12 @@ export const defaultSettings: AppSettings = {
   defaultBackground: '',
   backgroundFit: 'cover',
   swipeEnabled: true,
-  quickReplies: ['Continue', '...', 'Yes', 'No'],
+  quickReplies: [
+    { label: 'Continue', response: 'Continue' },
+    { label: '...', response: '...' },
+    { label: 'Yes', response: 'Yes' },
+    { label: 'No', response: 'No' },
+  ],
   hotkeys: {
     send: 'Enter',
     newLine: 'Shift+Enter',

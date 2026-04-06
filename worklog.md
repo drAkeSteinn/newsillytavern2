@@ -1820,3 +1820,24 @@ Stage Summary:
 - Full CRUD UI for quick replies added in Settings > Atajos tab
 - Max 12 quick replies enforced
 - State variables added: editingQuickReply, editingQuickReplyValue, newQuickReply
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Quick Replies - migrar de string[] a {label, response}[] con persistencia JSON
+
+Work Log:
+- Added `QuickReplyItem` interface to `src/types/index.ts` with `label` and `response` fields
+- Updated `AppSettings.quickReplies` type from `string[]` to `QuickReplyItem[]`
+- Updated defaults in `src/store/defaults.ts` and `src/lib/persistence.ts` to new format
+- Added `migrateSettings()` function in `persistence.ts` to auto-migrate old `string[]` data to `{label, response}[]`
+- Updated `novel-chat-box.tsx`: `handleQuickReply` now receives `{label, response}` object, sends `response` as message, displays `label` on button with `max-w-[120px]` and `truncate`, shows `title` tooltip when response differs from label
+- Rewrote quick replies editor in `settings-panel.tsx` Atajos tab: each item shows label (bold) + response preview (muted), editing mode has two separate inputs (Etiqueta max 20 chars, Respuesta max 200 chars), new item form has dashed border with both fields
+- State variables updated: `newQuickReply` → `newQuickReplyLabel` + `newQuickReplyValue`, added `editingQuickReplyLabel`
+
+Stage Summary:
+- Quick replies now have label (displayed) + response (sent) separation
+- Long responses are hidden behind short labels in chatbox
+- Migration from old `string[]` format is automatic and transparent
+- All data persists in `data/settings.json` as JSON (permanent across restarts)
+- Max 12 items, label max 20 chars, response max 200 chars

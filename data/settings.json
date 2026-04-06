@@ -12,10 +12,22 @@
   "backgroundFit": "cover",
   "swipeEnabled": true,
   "quickReplies": [
-    "Continue",
-    "...",
-    "Yes",
-    "No"
+    {
+      "label": "Continue",
+      "response": "Continue"
+    },
+    {
+      "label": "...",
+      "response": "..."
+    },
+    {
+      "label": "Yes",
+      "response": "Yes"
+    },
+    {
+      "label": "No",
+      "response": "No"
+    }
   ],
   "hotkeys": {
     "send": "Enter",

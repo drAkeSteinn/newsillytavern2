@@ -681,9 +681,9 @@ export function NovelChatBox({
     }
   }, !isGenerating);
 
-  const handleQuickReply = (reply: string) => {
-    if (isGenerating || !reply.trim()) return;
-    onSendMessage(reply.trim());
+  const handleQuickReply = (item: { label: string; response: string }) => {
+    if (isGenerating || !item.response.trim()) return;
+    onSendMessage(item.response.trim());
     setInput('');
   };
 
@@ -1530,16 +1530,17 @@ export function NovelChatBox({
               {/* Quick Replies - Compact */}
               {settings.quickReplies.length > 0 && (
                 <div className="px-2 py-1 flex gap-1 overflow-x-auto border-t bg-background/30 flex-shrink-0">
-                  {settings.quickReplies.map((reply, index) => (
+                  {settings.quickReplies.map((item, index) => (
                     <Button
                       key={index}
                       variant="outline"
                       size="sm"
-                      className="h-6 px-2 text-xs flex-shrink-0 disabled:opacity-50"
+                      className="h-6 px-2 text-xs flex-shrink-0 disabled:opacity-50 max-w-[120px]"
                       disabled={isGenerating}
-                      onClick={() => handleQuickReply(reply)}
+                      onClick={() => handleQuickReply(item)}
+                      title={item.response !== item.label ? item.response : undefined}
                     >
-                      {reply}
+                      <span className="truncate">{item.label}</span>
                     </Button>
                   ))}
                 </div>

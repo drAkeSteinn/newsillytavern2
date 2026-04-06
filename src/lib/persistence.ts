@@ -146,7 +146,12 @@ export const DEFAULT_DATA = {
     defaultBackground: '',
     backgroundFit: 'cover',
     swipeEnabled: true,
-    quickReplies: ['Continue', '...', 'Yes', 'No'],
+    quickReplies: [
+    { label: 'Continue', response: 'Continue' },
+    { label: '...', response: '...' },
+    { label: 'Yes', response: 'Yes' },
+    { label: 'No', response: 'No' },
+  ],
     hotkeys: {
       send: 'Enter',
       newLine: 'Shift+Enter',
@@ -298,6 +303,24 @@ export function writeDataFile<T>(filePath: string, data: T): boolean {
   }
 }
 
+// Migrate settings from old formats to new formats
+function migrateSettings(settings: any): any {
+  if (!settings) return settings;
+  
+  // Migrate quickReplies from string[] to {label, response}[]
+  if (Array.isArray(settings.quickReplies) && settings.quickReplies.length > 0) {
+    const first = settings.quickReplies[0];
+    if (typeof first === 'string') {
+      settings.quickReplies = settings.quickReplies.map((text: string) => ({
+        label: text,
+        response: text,
+      }));
+    }
+  }
+  
+  return settings;
+}
+
 // Read all persistent data
 export function readAllPersistentData() {
   return {
@@ -306,7 +329,7 @@ export function readAllPersistentData() {
     sessions: readDataFile(DATA_FILES.sessions, DEFAULT_DATA.sessions),
     groups: readDataFile(DATA_FILES.groups, DEFAULT_DATA.groups),
     personas: readDataFile(DATA_FILES.personas, DEFAULT_DATA.personas),
-    settings: readDataFile(DATA_FILES.settings, DEFAULT_DATA.settings),
+    settings: migrateSettings(readDataFile(DATA_FILES.settings, DEFAULT_DATA.settings)),
     lorebooks: readDataFile(DATA_FILES.lorebooks, DEFAULT_DATA.lorebooks),
     // LLM & TTS
     llmConfigs: readDataFile(DATA_FILES.llmConfigs, DEFAULT_DATA.llmConfigs),
