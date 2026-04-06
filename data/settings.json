@@ -170,7 +170,7 @@
     "memoryConsolidationKeepHighImportance": 4
   },
   "tools": {
-    "enabled": false,
+    "enabled": true,
     "maxToolCallsPerTurn": 2,
     "characterConfigs": []
   }

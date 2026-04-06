@@ -154,9 +154,9 @@ async function executeToolCallsAndContinue(
 export async function POST(request: NextRequest) {
   try {
     // Capture auth headers from Z.ai gateway for token resolution
+    // Only use actual JWT tokens - session IDs are NOT valid X-Tokens
     const incomingXToken = request.headers.get('X-Token');
     const fcSecurityToken = request.headers.get('x-fc-security-token');
-    const xSessionId = request.headers.get('x-session-id');
 
     const body = await request.json();
 
@@ -228,11 +228,13 @@ export async function POST(request: NextRequest) {
     // Gateway headers are passed as runtime overrides to the provider.
     let zaiRuntimeToken: string | undefined;
     if (llmConfig.provider === 'z-ai') {
-      // Priority: X-Token header > fc-security-token > x-session-id
-      const gatewayToken = incomingXToken || fcSecurityToken || xSessionId || undefined;
+      // Only use actual auth tokens (not session IDs)
+      const gatewayToken = incomingXToken || fcSecurityToken || undefined;
       if (gatewayToken) {
         zaiRuntimeToken = gatewayToken;
-        console.log(`[Stream Route] Z.ai runtime token available (${gatewayToken.length} chars, source: ${incomingXToken ? 'X-Token' : fcSecurityToken ? 'fc-security-token' : 'x-session-id'})`);
+        console.log(`[Stream Route] Z.ai runtime token available (${gatewayToken.length} chars, source: ${incomingXToken ? 'X-Token' : 'fc-security-token'})`);
+      } else {
+        console.log(`[Stream Route] Z.ai: no gateway token available, using config file only`);
       }
     }
 

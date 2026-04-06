@@ -1916,3 +1916,22 @@ Stage Summary:
 - El propio dashboard del API en http://172.25.136.193:8080/dashboard/ también está roto (no envía X-Token)
 - Código reescrito y listo para funcionar cuando el token esté disponible
 - Para resolver: agregar campo "token" al archivo /etc/.z-ai-config con un JWT válido
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Corregir error "invalid X-Token" causado por x-session-id usado como token
+
+Work Log:
+- Identificado que el gateway Z.ai envía header "x-session-id" (41 chars)
+- El código anterior usaba x-session-id como candidato X-Token
+- x-session-id es un ID de sesión, NO un JWT válido para autenticación
+- Removido x-session-id de la lista de candidatos de token
+- Ahora solo se usan: X-Token header directo > fc-security-token
+- Mensaje de error mejorado: indica que no hay token disponible
+
+Stage Summary:
+- El error cambió de "missing X-Token" a "invalid X-Token" porque se enviaba x-session-id como token
+- x-session-id ya no se usa como candidato de autenticación
+- El error ahora será "Z.ai requiere autenticación X-Token" (missing) en vez de "invalid X-Token"
+- Situación final: el API requiere X-Token JWT que no está disponible en este servidor
