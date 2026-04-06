@@ -62,6 +62,7 @@ import {
   stripToolCallFromText,
   splitIntoChunks,
   cleanModelArtifacts,
+  buildPromptBasedToolsSection,
   type NativeToolCall,
 } from '@/lib/tools';
 import {
@@ -739,8 +740,7 @@ export async function POST(request: NextRequest) {
               finalSystemPrompt += `\n\n[${resolvedQuestSection.label}]\n${resolvedQuestSection.content}`;
             }
 
-            // ===== TOOL/ACTION SYSTEM (Native Tool Calling) =====
-            // Tools are NOT injected into the system prompt - sent via API's native tools parameter
+            // ===== TOOL/ACTION SYSTEM (Native + Prompt-Based Tool Calling) =====
             const charToolConfig = toolsSettings.characterConfigs.find(
               c => c.characterId === responder.id
             );
@@ -751,6 +751,16 @@ export async function POST(request: NextRequest) {
             const charToolsEnabled = toolsSettings.enabled && charAvailableTools.length > 0;
             const charSupportsTools = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama'].includes(llmConfig.provider);
             const charShouldUseTools = charToolsEnabled && charSupportsTools;
+
+            // ALWAYS inject tool instructions into the system prompt for prompt-based fallback.
+            // This ensures models that don't support native tool calling can still use tools
+            // by outputting tool_call JSON in their text response.
+            if (charToolsEnabled && charAvailableTools.length > 0) {
+              const toolPromptSection = buildPromptBasedToolsSection(charAvailableTools);
+              if (toolPromptSection) {
+                finalSystemPrompt += `\n\n${toolPromptSection}`;
+              }
+            }
 
             // Build chat messages with previous responses from this turn
             const previousResponses = responsesThisTurn.map(r => ({

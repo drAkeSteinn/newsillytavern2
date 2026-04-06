@@ -84,28 +84,40 @@ export function buildPromptBasedToolsSection(tools: ToolDefinition[]): string {
 
   const lines: string[] = [
     '[HERRAMIENTAS DISPONIBLES]',
-    'Tienes acceso a las siguientes herramientas. Para usar una, responde con el siguiente formato EXACTO:',
+    'Cuando necesites buscar informacion en internet, consultar el clima, tirar dados, buscar en tu memoria o crear un recordatorio, DEBES usar una herramienta. NO inventes respuestas.',
+    '',
+    'Para usar una herramienta, incluye EXACTAMENTE este bloque en tu respuesta:',
     '```tool_call',
     '{"name": "nombre_herramienta", "parameters": {"param1": "valor1"}}',
     '```',
     '',
+    'Ejemplo de uso correcto:',
+    '```tool_call',
+    '{"name": "search_web", "parameters": {"query": "noticias de hoy", "max_results": 3}}',
+    '```',
+    '',
+    'Herramientas disponibles:',
   ];
 
   for (const tool of tools) {
     const params = Object.entries(tool.parameters.properties)
       .map(([key, val]) => {
-        const req = tool.parameters.required.includes(key) ? ' (requerido)' : '';
-        const enumVals = val.enum ? ` [${val.enum.join('|')}]` : '';
-        return `  - ${key}${enumVals}: ${val.description}${req}`;
+        const req = tool.parameters.required.includes(key) ? ' (REQUERIDO)' : ' (opcional)';
+        const enumVals = val.enum ? ` [valores: ${val.enum.join(', ')}]` : '';
+        return `    - ${key}${enumVals}: ${val.description}${req}`;
       })
       .join('\n');
 
-    lines.push(`${tool.name}: ${tool.description}`);
+    lines.push(`- ${tool.name}: ${tool.description}`);
     if (params) lines.push(params);
     lines.push('');
   }
 
-  lines.push('IMPORTANTE: Solo usa una herramienta por respuesta. No uses ```tool_call si no necesitas una herramienta.');
+  lines.push('REGLAS IMPORTANTES:');
+  lines.push('1. Cuando uses una herramienta, TU respuesta debe ser SOLO el bloque ```tool_call```. No agregues texto antes o despues.');
+  lines.push('2. Si el usuario NO pide algo que requiera una herramienta (ej: una conversacion normal), responde normalmente SIN usar ```tool_call```.');
+  lines.push('3. Despues de usar una herramienta, el sistema te dara el resultado y podras responder al usuario con esa informacion.');
+  lines.push('4. NUNCA inventes datos que podrías obtener con una herramienta. Siempre usa la herramienta correspondiente.');
 
   return lines.join('\n');
 }

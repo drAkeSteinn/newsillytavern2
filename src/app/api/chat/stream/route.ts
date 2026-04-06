@@ -64,6 +64,7 @@ import {
   stripToolCallFromText,
   splitIntoChunks,
   cleanModelArtifacts,
+  buildPromptBasedToolsSection,
 } from '@/lib/tools';
 import {
   streamOpenAIWithTools,
@@ -413,10 +414,8 @@ export async function POST(request: NextRequest) {
       finalSystemPrompt += `\n\n[${questSection.label}]\n${questSection.content}`;
     }
 
-    // ===== TOOL/ACTION SYSTEM (Native Tool Calling) =====
+    // ===== TOOL/ACTION SYSTEM (Native + Prompt-Based Tool Calling) =====
     // Build available tools for this character
-    // Tools are NOT injected into the system prompt - they are sent via the API's
-    // native tools parameter. Only models that support tool calling will use them.
     const characterToolConfig = toolsSettings.characterConfigs.find(
       c => c.characterId === effectiveCharacter.id
     );
@@ -429,6 +428,18 @@ export async function POST(request: NextRequest) {
     // Determine if the current provider supports native tool calling
     const supportsNativeTools = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama'].includes(llmConfig.provider);
     const shouldUseTools = toolsEnabled && supportsNativeTools;
+
+    // ALWAYS inject tool instructions into the system prompt for prompt-based fallback.
+    // This ensures models that don't support native tool calling (e.g., LM Studio with
+    // Anubis/Rocinante) can still use tools by outputting tool_call JSON in their text.
+    // The content-fallback parser (mightContainToolCall + parseAllToolCallsFromText)
+    // will detect these tool calls from the response content.
+    if (toolsEnabled && availableTools.length > 0) {
+      const toolPromptSection = buildPromptBasedToolsSection(availableTools);
+      if (toolPromptSection) {
+        finalSystemPrompt += `\n\n${toolPromptSection}`;
+      }
+    }
 
     if (shouldUseTools) {
       console.log(`[Tools] Native tool calling enabled for ${effectiveCharacter.name} (${llmConfig.provider}):`, availableTools.map(t => t.name));

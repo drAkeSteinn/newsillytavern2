@@ -12,6 +12,7 @@ export {
   getToolsByCategory,
   toOpenAITools,
   executeTool,
+  buildPromptBasedToolsSection,
 } from './tool-registry';
 export {
   getSessionReminders,

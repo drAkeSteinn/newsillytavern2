@@ -1548,3 +1548,34 @@ Stage Summary:
 - Fixed: Multiple tool calls in single response supported
 - Fixed: JSON tool calls stripped from visible output before sending to frontend
 - The model outputs like `{"type":"function","name":"search_web","parameters":{"query":"..."}}` are now correctly intercepted
+
+---
+Task ID: 19 - tool-calling-prompt-injection-fix
+Agent: Main Agent
+Task: Fix tool calling for models that dont support native tool calling (Anubis, Rocinante via LM Studio)
+
+Work Log:
+- Analyzed the complete tool calling flow: stream/route.ts, openai.ts, native-parser.ts, prompt-parser.ts, tool-registry.ts
+- Identified root cause: `buildPromptBasedToolsSection()` existed in tool-registry.ts but was NOT exported from index.ts and NOT used in either route
+- Comment in route.ts explicitly said: "Tools are NOT injected into the system prompt"
+- Models like Anubis/Rocinante via LM Studio ignore the `tools` API parameter and have NO knowledge of available tools
+- LM Studio warning confirms: "[SamplingSwitch] Config for switch mistralToolsSamplingSwitch has no end strings defined"
+- The existing content-fallback parser (mightContainToolCall + parseAllToolCallsFromText) was already implemented but could never trigger because the model never output tool calls
+
+- Exported `buildPromptBasedToolsSection` from `src/lib/tools/index.ts`
+- Imported and injected tool instructions into `finalSystemPrompt` in `src/app/api/chat/stream/route.ts`
+- Imported and injected tool instructions into `finalSystemPrompt` in `src/app/api/chat/group-stream/route.ts`
+- Improved `buildPromptBasedToolsSection()` with clearer instructions for small models:
+  - Added example of correct usage with search_web
+  - Added "REGLAS IMPORTANTES" section (4 rules)
+  - Instructions tell model to output ONLY the tool_call block (no extra text)
+  - Instructions tell model NOT to use tool_call for normal conversation
+  - Instructions tell model NEVER to fabricate data when tools are available
+
+Stage Summary:
+- Fixed: Models now know about tools via system prompt injection
+- Fixed: buildPromptBasedToolsSection exported and used in both stream and group-stream routes
+- The existing content-fallback parser will detect ```tool_call``` blocks from the model output
+- When tool calls are detected, they are executed and results are injected for a follow-up response
+- No changes to frontend needed - SSE events (tool_call_start, tool_call_result) already implemented
+
