@@ -73,7 +73,16 @@ export function toOpenAITools(tools: ToolDefinition[]) {
     function: {
       name: t.name,
       description: t.description,
-      parameters: t.parameters,
+      parameters: {
+        type: 'object',
+        properties: Object.fromEntries(
+          Object.entries(t.parameters.properties).map(([key, val]) => {
+            const { required: _required, ...cleanProps } = val;
+            return [key, cleanProps];
+          })
+        ),
+        required: t.parameters.required,
+      },
     },
   }));
 }

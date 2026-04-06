@@ -274,6 +274,168 @@ function LMStudioModelSelector({ endpoint, currentModel, onModelChange }: LMStud
   );
 }
 
+// ============================================
+// Ollama Model Selector
+// Fetches available models from Ollama's /api/tags endpoint
+// ============================================
+
+interface OllamaModelSelectorProps {
+  endpoint: string;
+  currentModel: string;
+  onModelChange: (model: string) => void;
+}
+
+function OllamaModelSelector({ endpoint, currentModel, onModelChange }: OllamaModelSelectorProps) {
+  const [models, setModels] = useState<Array<{ id: string; name: string }>>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const fetchModels = useCallback(async () => {
+    if (!endpoint) {
+      toast({ variant: 'destructive', description: 'Configura el endpoint de Ollama primero' });
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/ollama/models?endpoint=${encodeURIComponent(endpoint)}`, {
+        signal: AbortSignal.timeout(8000),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ error: 'Error desconocido' }));
+        throw new Error(errData.error || `Servidor respondió con ${response.status}`);
+      }
+
+      const data = await response.json();
+      const modelList = (data.data || [])
+        .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
+
+      if (modelList.length === 0) {
+        setError('No se encontraron modelos');
+        toast({ description: 'No hay modelos disponibles en Ollama. Usa "ollama pull" para descargar uno.', variant: 'destructive' });
+      } else {
+        setModels(modelList);
+        toast({ description: `${modelList.length} modelo(s) encontrado(s) en Ollama` });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error de conexión';
+      setError(msg);
+      toast({ variant: 'destructive', description: `Error al obtener modelos: ${msg}` });
+    } finally {
+      setLoading(false);
+    }
+  }, [endpoint, toast]);
+
+  // Auto-fetch models when endpoint changes and we haven't loaded yet
+  const lastFetchedEndpoint = useRef<string>('');
+  useEffect(() => {
+    if (endpoint && endpoint !== lastFetchedEndpoint.current) {
+      lastFetchedEndpoint.current = endpoint;
+      fetchModels();
+    }
+  }, [endpoint, fetchModels]);
+
+  // Check if current model is in the fetched list
+  const isModelInList = models.some(m => m.id === currentModel);
+
+  return (
+    <div className="mt-1 space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        {/* Model dropdown */}
+        <Select
+          value={isModelInList ? currentModel : '__custom__'}
+          onValueChange={(value) => {
+            if (value === '__custom__') {
+              // Keep current custom value
+            } else {
+              onModelChange(value);
+            }
+          }}
+        >
+          <SelectTrigger className="h-8 text-sm flex-1">
+            <SelectValue placeholder="Seleccionar modelo..." />
+          </SelectTrigger>
+          <SelectContent className="max-h-60">
+            {models.map((model) => (
+              <SelectItem key={model.id} value={model.id}>
+                <span className="truncate block max-w-[280px]" title={model.id}>
+                  {model.name}
+                </span>
+              </SelectItem>
+            ))}
+
+            {/* Show custom option if current model isn't in the list */}
+            {!isModelInList && currentModel && (
+              <>
+                <SelectSeparator />
+                <SelectItem value="__custom__" disabled>
+                  <span className="truncate text-muted-foreground" title={currentModel}>
+                    {currentModel} (personalizado)
+                  </span>
+                </SelectItem>
+              </>
+            )}
+          </SelectContent>
+        </Select>
+
+        {/* Refresh button */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={fetchModels}
+                disabled={loading || !endpoint}
+              >
+                {loading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Refrescar modelos desde Ollama</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+
+      {/* Manual input for custom model name */}
+      <div className="flex items-center gap-2">
+        <Input
+          value={currentModel || ''}
+          onChange={(e) => onModelChange(e.target.value)}
+          placeholder="O escribe un nombre personalizado (ej: qwen3.5:9b)..."
+          className="h-7 text-xs"
+        />
+      </div>
+
+      {/* Info text when model is selected */}
+      {isModelInList && (
+        <p className="text-xs text-muted-foreground flex items-center gap-1">
+          <CheckCircle className="h-3 w-3 text-emerald-500" />
+          Modelo disponible en Ollama
+        </p>
+      )}
+
+      {/* Error message */}
+      {error && models.length === 0 && (
+        <p className="text-xs text-destructive flex items-center gap-1">
+          <AlertCircle className="h-3 w-3" />
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 const LLM_PROVIDERS: { value: LLMProvider; label: string; defaultEndpoint: string; needsEndpoint: boolean; description: string }[] = [
   { value: 'test-mock', label: '🧪 Test Mock (Prueba)', defaultEndpoint: '', needsEndpoint: false, description: 'Prueba del sistema de peticiones sin LLM real' },
   { value: 'z-ai', label: 'Z.ai Chat', defaultEndpoint: '', needsEndpoint: false, description: 'SDK integrado, sin configuración' },
@@ -1037,11 +1199,17 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
                             {/* Model field - for providers that need model selection */}
                             {config.provider !== 'z-ai' && config.provider !== 'test-mock' && (
                               <div>
-                                <Label className="text-xs">Modelo {config.provider === 'lm-studio' ? '' : '(opcional)'}</Label>
+                                <Label className="text-xs">Modelo {(config.provider === 'lm-studio' || config.provider === 'ollama') ? '' : '(opcional)'}</Label>
                                 
                                 {/* LM Studio: Model selector with refresh and dropdown */}
                                 {config.provider === 'lm-studio' ? (
                                   <LMStudioModelSelector
+                                    endpoint={config.endpoint}
+                                    currentModel={config.model || ''}
+                                    onModelChange={(model) => updateLLMConfig(config.id, { model })}
+                                  />
+                                ) : config.provider === 'ollama' ? (
+                                  <OllamaModelSelector
                                     endpoint={config.endpoint}
                                     currentModel={config.model || ''}
                                     onModelChange={(model) => updateLLMConfig(config.id, { model })}

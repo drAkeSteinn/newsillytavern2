@@ -1579,3 +1579,54 @@ Stage Summary:
 - When tool calls are detected, they are executed and results are injected for a follow-up response
 - No changes to frontend needed - SSE events (tool_call_start, tool_call_result) already implemented
 
+
+---
+## Task ID: 19 - ollama-tool-calling-fix-and-model-discovery
+
+### Work Task
+(1) Fix Ollama 400 error when sending tools: `required: boolean` in per-property definitions conflicts with Ollama's Go struct which expects `required: []string` only at schema level. (2) Add Ollama model auto-discovery dropdown similar to LM Studio's model selector.
+
+### Work Summary
+
+**Bug Fix: Ollama tool calling 400 error (`required: bool` unmarshal error):**
+
+Root cause: Each `ToolParameterDef` has a `required: boolean` field (e.g., `city: { type: 'string', required: true }`). When tools are serialized and sent to Ollama's `/api/chat`, the Go backend tries to unmarshal `required: true` as `[]string` in `ToolFunctionParameters.tools.function.parameters.properties.required`, causing a 400 error.
+
+Files modified:
+1. `src/lib/tools/tool-registry.ts` — `toOpenAITools()` now strips `required` from each property before sending to API:
+   ```typescript
+   properties: Object.fromEntries(
+     Object.entries(t.parameters.properties).map(([key, val]) => {
+       const { required: _required, ...cleanProps } = val;
+       return [key, cleanProps];
+     })
+   ),
+   required: t.parameters.required, // Only at schema level (string array)
+   ```
+
+2. `src/lib/llm/providers/ollama.ts` — `streamOllamaWithTools()` now does the same stripping (had its own inline conversion, not using `toOpenAITools()`):
+   Same pattern as above, strips `required: boolean` from each property.
+
+**Feature: Ollama model auto-discovery dropdown:**
+
+1. `src/app/api/ollama/models/route.ts` — NEW API route:
+   - GET `/api/ollama/models?endpoint=http://localhost:11434`
+   - Proxies to Ollama's `/api/tags` endpoint (avoids CORS)
+   - Returns `{ data: [{ id: "qwen3.5:9b", name: "qwen3.5:9b" }] }`
+   - Normalizes to same format as LM Studio's `/v1/models` response
+   - 5-second timeout, proper error handling
+
+2. `src/components/tavern/settings-panel.tsx` — NEW `OllamaModelSelector` component:
+   - Mirror of `LMStudioModelSelector` with Ollama-specific API calls
+   - Dropdown `<Select>` with auto-discovered models from Ollama
+   - Manual text input for custom model names
+   - Auto-fetches models when endpoint changes
+   - Refresh button to re-fetch model list
+   - Green checkmark when selected model is available
+   - Error display when Ollama is unreachable
+   - Integrated into model field rendering (line ~1211): `config.provider === 'ollama' ? <OllamaModelSelector> : ...`
+   - Model label no longer shows "(opcional)" for Ollama
+
+**ESLint:** Pre-existing error only (fullscreen-editor.tsx), no new errors introduced.
+**Dev server:** Running normally on port 3000.
+

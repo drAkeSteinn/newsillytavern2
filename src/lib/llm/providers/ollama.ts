@@ -97,12 +97,22 @@ export async function* streamOllamaWithTools(
   }));
 
   // Convert tools to Ollama format (same structure as OpenAI)
+  // IMPORTANT: Strip per-property 'required: boolean' — Ollama only accepts 'required: string[]' at schema level
   const ollamaTools = tools.map(t => ({
     type: 'function' as const,
     function: {
       name: t.name,
       description: t.description,
-      parameters: t.parameters,
+      parameters: {
+        type: 'object',
+        properties: Object.fromEntries(
+          Object.entries(t.parameters.properties).map(([key, val]) => {
+            const { required: _required, ...cleanProps } = val;
+            return [key, cleanProps];
+          })
+        ),
+        required: t.parameters.required,
+      },
     },
   }));
 
