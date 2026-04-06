@@ -40,6 +40,7 @@ export type {
 // Prompt-based parser (for models that output tool calls as text)
 export {
   parseToolCallFromText,
+  parseAllToolCallsFromText,
   mightContainToolCall,
   stripToolCallFromText,
   splitIntoChunks,

@@ -1526,3 +1526,25 @@ LM Studio does NOT need special configuration for tools. TavernFlow sends the `t
 - `src/lib/tools/index.ts` — Exported `cleanModelArtifacts`
 - `src/app/api/chat/stream/route.ts` — Better logging, clean artifacts on all paths, buffer+clean follow-up responses
 - `src/app/api/chat/group-stream/route.ts` — Same fixes for group chat, clean all 6 follow-up streaming paths
+---
+Task ID: 1-3
+Agent: Main
+Task: Fix tool calling - JSON crudo visible como texto en LM Studio models
+
+Work Log:
+- Read route.ts, openai.ts, native-parser.ts, prompt-parser.ts, executor.ts, types.ts
+- Identified root cause: regex patterns in `parseToolCallFromText` use `[^{}]*` which CANNOT match nested JSON objects like `{"parameters": {"query": "..."}}`
+- Rewrote `prompt-parser.ts` with brace-counting JSON extraction (`extractJsonObject`, `findAllToolCallJsonObjects`)
+- Added `parseAllToolCallsFromText()` function to handle MULTIPLE tool calls in single response
+- Updated `stripToolCallFromText()` to use brace-counting for proper nested JSON removal
+- Updated `index.ts` to export new function
+- Updated `stream/route.ts` (3 occurrences: OpenAI, Anthropic, Ollama) to use `parseAllToolCallsFromText` and execute multiple tools
+- Updated `group-stream/route.ts` (3 occurrences) with same fixes
+- Verified no remaining `parseToolCallFromText` references
+- Lint passes (1 pre-existing error in fullscreen-editor.tsx, unrelated)
+
+Stage Summary:
+- Fixed: Tool call JSON with nested objects now properly detected and parsed
+- Fixed: Multiple tool calls in single response supported
+- Fixed: JSON tool calls stripped from visible output before sending to frontend
+- The model outputs like `{"type":"function","name":"search_web","parameters":{"query":"..."}}` are now correctly intercepted

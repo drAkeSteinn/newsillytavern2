@@ -59,7 +59,7 @@ import {
   buildToolMessagesForAnthropic,
   createAnthropicToolState,
   anthropicStateToToolCalls,
-  parseToolCallFromText,
+  parseAllToolCallsFromText,
   mightContainToolCall,
   stripToolCallFromText,
   splitIntoChunks,
@@ -615,11 +615,11 @@ Y cambiar mi expresión:
                     // This handles models like LM Studio that don't properly use native tool calling
                     console.log(`[Tools] Content might contain text-based tool call, attempting parse...`);
                     console.log(`[Tools] Content preview: ${roundContent.slice(0, 200)}...`);
-                    const textToolCall = parseToolCallFromText(roundContent);
-                    if (textToolCall) {
-                      console.log(`[Tools] ✓ Text-based tool call detected: ${textToolCall.name}`, textToolCall.arguments);
+                    const textToolCalls = parseAllToolCallsFromText(roundContent);
+                    if (textToolCalls.length > 0) {
+                      console.log(`[Tools] ✓ Text-based tool call(s) detected: ${textToolCalls.map(tc => tc.name).join(', ')}`);
 
-                      // Stream any natural text before/after the tool call
+                      // Stream any natural text before/after the tool calls
                       const cleanContent = stripToolCallFromText(roundContent);
                       if (cleanContent.trim()) {
                         console.log(`[Tools] Natural text to stream before/after tool call: "${cleanContent.slice(0, 100)}..."`);
@@ -628,24 +628,25 @@ Y cambiar mi expresión:
                         }
                       }
 
-                      // Convert to NativeToolCall format
-                      const nativeTC: NativeToolCall = {
-                        id: `text_call_${Date.now()}`,
-                        name: textToolCall.name,
-                        arguments: textToolCall.arguments,
-                        rawArguments: JSON.stringify(textToolCall.arguments),
-                      };
+                      // Convert ALL to NativeToolCall format
+                      const nativeCalls: NativeToolCall[] = textToolCalls.map((tc, idx) => ({
+                        id: `text_call_${Date.now()}_${idx}`,
+                        name: tc.name,
+                        arguments: tc.arguments,
+                        rawArguments: JSON.stringify(tc.arguments),
+                      }));
 
                       // Execute and continue
                       const { newContent: displayMessages, shouldContinue } = await executeToolCallsAndContinue(
-                        [nativeTC], availableTools, toolRound, maxToolRounds,
+                        nativeCalls, availableTools, toolRound, maxToolRounds,
                         effectiveCharacter, sessionId || '', effectiveUserName, controller
                       );
                       if (shouldContinue) {
                         // For text-based calls, inject as user message with tool context
+                        const toolNames = textToolCalls.map(tc => tc.name).join(', ');
                         toolContextMessages = [
                           ...baseChatMessages,
-                          { role: 'user', content: `[Resultado de herramienta: ${textToolCall.name}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
+                          { role: 'user', content: `[Resultado de herramientas: ${toolNames}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
                         ] as any;
                         accumulatedContent = '';
                         toolRound++;
@@ -730,29 +731,30 @@ Y cambiar mi expresión:
                       continue;
                     }
                   } else if (mightContainToolCall(roundContent)) {
-                    const textToolCall = parseToolCallFromText(roundContent);
-                    if (textToolCall) {
-                      console.log(`[Tools] ✓ Text-based tool call detected (Anthropic): ${textToolCall.name}`);
+                    const textToolCalls = parseAllToolCallsFromText(roundContent);
+                    if (textToolCalls.length > 0) {
+                      console.log(`[Tools] ✓ Text-based tool call(s) detected (Anthropic): ${textToolCalls.map(tc => tc.name).join(', ')}`);
                       const cleanContent = stripToolCallFromText(roundContent);
                       if (cleanContent.trim()) {
                         for (const chunk of splitIntoChunks(cleanContent)) {
                           controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                         }
                       }
-                      const nativeTC: NativeToolCall = {
-                        id: `text_call_${Date.now()}`,
-                        name: textToolCall.name,
-                        arguments: textToolCall.arguments,
-                        rawArguments: JSON.stringify(textToolCall.arguments),
-                      };
+                      const nativeCalls: NativeToolCall[] = textToolCalls.map((tc, idx) => ({
+                        id: `text_call_${Date.now()}_${idx}`,
+                        name: tc.name,
+                        arguments: tc.arguments,
+                        rawArguments: JSON.stringify(tc.arguments),
+                      }));
                       const { newContent: displayMessages, shouldContinue } = await executeToolCallsAndContinue(
-                        [nativeTC], availableTools, toolRound, maxToolRounds,
+                        nativeCalls, availableTools, toolRound, maxToolRounds,
                         effectiveCharacter, sessionId || '', effectiveUserName, controller
                       );
                       if (shouldContinue) {
+                        const toolNames = textToolCalls.map(tc => tc.name).join(', ');
                         toolContextMessages = [
                           ...baseChatMessages,
-                          { role: 'user', content: `[Resultado de herramienta: ${textToolCall.name}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
+                          { role: 'user', content: `[Resultado de herramientas: ${toolNames}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
                         ] as any;
                         accumulatedContent = '';
                         toolRound++;
@@ -825,29 +827,30 @@ Y cambiar mi expresión:
                       continue;
                     }
                   } else if (mightContainToolCall(roundContent)) {
-                    const textToolCall = parseToolCallFromText(roundContent);
-                    if (textToolCall) {
-                      console.log(`[Tools] ✓ Text-based tool call detected (Ollama): ${textToolCall.name}`);
+                    const textToolCalls = parseAllToolCallsFromText(roundContent);
+                    if (textToolCalls.length > 0) {
+                      console.log(`[Tools] ✓ Text-based tool call(s) detected (Ollama): ${textToolCalls.map(tc => tc.name).join(', ')}`);
                       const cleanContent = stripToolCallFromText(roundContent);
                       if (cleanContent.trim()) {
                         for (const chunk of splitIntoChunks(cleanContent)) {
                           controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                         }
                       }
-                      const nativeTC: NativeToolCall = {
-                        id: `text_call_${Date.now()}`,
-                        name: textToolCall.name,
-                        arguments: textToolCall.arguments,
-                        rawArguments: JSON.stringify(textToolCall.arguments),
-                      };
+                      const nativeCalls: NativeToolCall[] = textToolCalls.map((tc, idx) => ({
+                        id: `text_call_${Date.now()}_${idx}`,
+                        name: tc.name,
+                        arguments: tc.arguments,
+                        rawArguments: JSON.stringify(tc.arguments),
+                      }));
                       const { newContent: displayMessages, shouldContinue } = await executeToolCallsAndContinue(
-                        [nativeTC], availableTools, toolRound, maxToolRounds,
+                        nativeCalls, availableTools, toolRound, maxToolRounds,
                         effectiveCharacter, sessionId || '', effectiveUserName, controller
                       );
                       if (shouldContinue) {
+                        const toolNames = textToolCalls.map(tc => tc.name).join(', ');
                         toolContextMessages = [
                           ...baseChatMessages,
-                          { role: 'user', content: `[Resultado de herramienta: ${textToolCall.name}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
+                          { role: 'user', content: `[Resultado de herramientas: ${toolNames}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
                         ] as any;
                         accumulatedContent = '';
                         toolRound++;

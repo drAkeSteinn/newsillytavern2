@@ -16,6 +16,8 @@
 //   {"type": "function", "name": "search_web", "parameters": {"query": "..."}}
 //
 //   {"name": "search_web", "arguments": {"query": "..."}}
+//
+// Supports nested JSON objects via brace-counting extraction.
 
 import type { ParsedToolCall } from '../types';
 
@@ -28,7 +30,7 @@ import type { ParsedToolCall } from '../types';
  * Handles common patterns from:
  * - LLaMA-based models (LM Studio, Ollama): <|reserved_special_token|>, <|startheader_id|>, etc.
  * - ChatML models: <im_start>, <im_end>, <|im_start|>, <|im_end|>
- * - GPT-style: <|endoftext|>, <|endofprompt|>
+ * - GPT-style:  <|endofprompt|>
  * - Mistral: <s>, </s>
  * - Generic: [INST], [/INST], <<SYS>>, <</SYS>>
  */
@@ -73,81 +75,157 @@ export function cleanModelArtifacts(text: string): string {
 }
 
 // ============================================
-// Tool Call Detection
+// JSON Extraction via Brace Counting
 // ============================================
 
 /**
- * Try to parse a tool call from the LLM's text output.
+ * Extract a complete JSON object starting at the given position.
+ * Uses brace counting to handle nested objects like:
+ *   {"name": "search_web", "parameters": {"query": "...", "max_results": 5}}
+ *
+ * Returns { json: string, endIndex: number } or null if extraction fails.
+ */
+function extractJsonObject(text: string, startIndex: number): { json: string; endIndex: number } | null {
+  if (startIndex >= text.length || text[startIndex] !== '{') return null;
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = startIndex; i < text.length; i++) {
+    const ch = text[i];
+
+    if (escape) {
+      escape = false;
+      continue;
+    }
+
+    if (ch === '\\' && inString) {
+      escape = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) {
+        // Found the matching closing brace
+        return { json: text.slice(startIndex, i + 1), endIndex: i + 1 };
+      }
+    }
+  }
+
+  return null; // Unmatched braces
+}
+
+/**
+ * Find all JSON objects in text that look like tool calls.
+ * Returns array of { json: string, start: number, end: number }.
+ */
+function findAllToolCallJsonObjects(text: string): Array<{ json: string; start: number; end: number }> {
+  const results: Array<{ json: string; start: number; end: number }> = [];
+
+  // Scan for opening braces
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '{') {
+      const extracted = extractJsonObject(text, i);
+      if (extracted) {
+        // Quick check: does this JSON look like a tool call?
+        // Must contain "name" and either "parameters" or "arguments"
+        const j = extracted.json;
+        if (j.includes('"name"') && (j.includes('"parameters"') || j.includes('"arguments"'))) {
+          results.push({ json: j, start: i, end: extracted.endIndex });
+          i = extracted.endIndex; // Skip past this object
+        } else {
+          // Not a tool call, skip past the closing brace
+          i = extracted.endIndex - 1;
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
+// ============================================
+// Tool Call Detection (Single)
+// ============================================
+
+/**
+ * Try to parse the FIRST tool call from the LLM's text output.
  * Returns null if no tool call is found.
  */
 export function parseToolCallFromText(text: string): ParsedToolCall | null {
-  if (!text) return null;
+  const allCalls = parseAllToolCallsFromText(text);
+  return allCalls.length > 0 ? allCalls[0] : null;
+}
+
+/**
+ * Parse ALL tool calls from the LLM's text output.
+ * Uses brace-counting extraction to handle nested JSON objects.
+ * Returns an array of ParsedToolCall (may be empty).
+ */
+export function parseAllToolCallsFromText(text: string): ParsedToolCall[] {
+  if (!text) return [];
 
   const trimmed = text.trim();
 
   // Early exit: if text is long and doesn't look like a tool call at all
-  // (tool call JSON is typically < 500 chars)
-  if (trimmed.length > 2000 && !trimmed.includes('"name"')) {
-    return null;
+  if (trimmed.length > 5000 && !trimmed.includes('"name"')) {
+    return [];
   }
 
   // Pattern 1: ```tool_call ... ``` (preferred format)
-  const fencedMatch = trimmed.match(/```tool_call\s*\n?([\s\S]*?)\n?```/);
-  if (fencedMatch) {
-    return parseToolCallJSON(fencedMatch[1].trim());
+  const fencedMatches = trimmed.match(/```tool_call\s*\n?([\s\S]*?)\n?```/g);
+  if (fencedMatches) {
+    const calls: ParsedToolCall[] = [];
+    for (const fenced of fencedMatches) {
+      const inner = fenced.replace(/```tool_call\s*\n?/, '').replace(/\n?```$/, '').trim();
+      const parsed = parseToolCallJSON(inner);
+      if (parsed) calls.push(parsed);
+    }
+    if (calls.length > 0) return calls;
   }
 
   // Pattern 2: TOOL_CALL: name | {"key": "value"} (alternative format)
-  const altMatch = trimmed.match(/TOOL_CALL:\s*(\w+)\s*\|\s*(\{[\s\S]*?\})/i);
-  if (altMatch) {
-    try {
-      const args = JSON.parse(altMatch[2]);
-      return {
-        name: altMatch[1].trim(),
-        arguments: args,
-        raw: altMatch[0],
-      };
-    } catch {
-      // Fall through to pattern 3
+  const altMatches = trimmed.match(/TOOL_CALL:\s*(\w+)\s*\|\s*(\{[\s\S]*?\})/gi);
+  if (altMatches) {
+    const calls: ParsedToolCall[] = [];
+    for (const alt of altMatches) {
+      const m = alt.match(/TOOL_CALL:\s*(\w+)\s*\|\s*(\{[\s\S]*?\})/i);
+      if (m) {
+        try {
+          const args = JSON.parse(m[2]);
+          calls.push({ name: m[1].trim(), arguments: args, raw: m[0] });
+        } catch {
+          // Skip invalid
+        }
+      }
     }
+    if (calls.length > 0) return calls;
   }
 
-  // Pattern 3: Standalone JSON tool call (LM Studio / small models format)
-  // Matches formats like:
-  //   {"type": "function", "name": "search_web", "parameters": {"query": "..."}}
-  //   {"name": "search_web", "parameters": {"query": "..."}}
-  //   {"name": "search_web", "arguments": {"query": "..."}}
-  const jsonPatterns = [
-    // At start of text/line: {"type": "function", "name": "...", "parameters": {...}}
-    /^\s*\{[^{}]*"type"\s*:\s*"function"[^{}]*"name"\s*:\s*"[^"]+"[^{}]*(?:parameters|arguments)\s*:\s*\{[^{}]*\}\s*\}/m,
-    // At start of text/line: {"name": "...", "parameters": {...}}
-    /^\s*\{[^{}]*"name"\s*:\s*"[^"]+"[^{}]*(?:parameters|arguments)\s*:\s*\{[^{}]*\}\s*\}/m,
-  ];
-
-  for (const pattern of jsonPatterns) {
-    const match = trimmed.match(pattern);
-    if (match) {
-      const parsed = parseToolCallJSON(match[0]);
-      if (parsed) return parsed;
+  // Pattern 3: Standalone JSON tool calls using brace-counting extraction
+  // This handles nested objects like:
+  //   {"type": "function", "name": "search_web", "parameters": {"query": "...", "max_results": 5}}
+  const jsonObjects = findAllToolCallJsonObjects(trimmed);
+  if (jsonObjects.length > 0) {
+    const calls: ParsedToolCall[] = [];
+    for (const { json } of jsonObjects) {
+      const parsed = parseToolCallJSON(json);
+      if (parsed) calls.push(parsed);
     }
+    if (calls.length > 0) return calls;
   }
 
-  // Pattern 4: Try extracting JSON object from any position in text
-  // This handles cases where the LLM adds text before the JSON
-  const embeddedMatch = trimmed.match(/\{[^{}]*"type"\s*:\s*"function"[^{}]*"name"\s*:\s*"[^"]+"[^{}]*(?:parameters|arguments)\s*:\s*\{[^{}]*\}\s*\}/);
-  if (embeddedMatch) {
-    const parsed = parseToolCallJSON(embeddedMatch[0]);
-    if (parsed) return parsed;
-  }
-
-  // Pattern 5: Simple JSON without "type" field, embedded in text
-  const simpleEmbeddedMatch = trimmed.match(/\{[^{}]*"name"\s*:\s*"[^"]+"[^{}]*(?:parameters|arguments)\s*:\s*\{[^{}]*\}\s*\}/);
-  if (simpleEmbeddedMatch) {
-    const parsed = parseToolCallJSON(simpleEmbeddedMatch[0]);
-    if (parsed) return parsed;
-  }
-
-  return null;
+  return [];
 }
 
 /**
@@ -161,9 +239,8 @@ export function mightContainToolCall(text: string): boolean {
   // Fast checks for likely tool call indicators
   if (trimmed.startsWith('```tool_call')) return true;
   if (trimmed.match(/TOOL_CALL:/i)) return true;
-  // Match JSON starting anywhere (not just at beginning) since models may add prefix text
+  // Match JSON containing tool call fields
   if (trimmed.includes('"name"') && (trimmed.includes('"parameters"') || trimmed.includes('"arguments"'))) {
-    // Additional check: must also have a JSON-like structure
     if (trimmed.includes('{') && (trimmed.includes('"type": "function"') || trimmed.includes('"type":"function"'))) return true;
     // Or just {"name": "...", "parameters"/"arguments": {...}}
     if (/\"name\"\s*:\s*\"[^\"]+\"/.test(trimmed)) return true;
@@ -211,9 +288,10 @@ function parseToolCallJSON(jsonStr: string): ParsedToolCall | null {
 }
 
 /**
- * Remove the tool call portion from the LLM's text,
+ * Remove ALL tool call portions from the LLM's text,
  * returning only the natural language response.
  * Also cleans model artifacts (special tokens).
+ * Uses brace-counting for proper nested JSON removal.
  */
 export function stripToolCallFromText(text: string): string {
   if (!text) return text;
@@ -226,11 +304,14 @@ export function stripToolCallFromText(text: string): string {
   // Remove TOOL_CALL: lines
   result = result.replace(/TOOL_CALL:\s*\w+\s*\|\s*\{[\s\S]*?\}/gi, '');
 
-  // Remove standalone JSON tool calls with "type": "function"
-  result = result.replace(/\{[^{}]*"type"\s*:\s*"function"[^{}]*"name"\s*:\s*"[^"]+"[^{}]*(?:parameters|arguments)\s*:\s*\{[^{}]*\}\s*\}/g, '');
-
-  // Remove standalone JSON tool calls without "type" field
-  result = result.replace(/\{[^{}]*"name"\s*:\s*"[^"]+"[^{}]*(?:parameters|arguments)\s*:\s*\{[^{}]*\}\s*\}/g, '');
+  // Remove standalone JSON tool calls using brace-counting extraction
+  // Find all JSON objects that look like tool calls and remove them
+  const jsonObjects = findAllToolCallJsonObjects(result);
+  // Sort by start position (descending) so we can remove from end to start
+  jsonObjects.sort((a, b) => b.start - a.start);
+  for (const { json, start, end } of jsonObjects) {
+    result = result.slice(0, start) + result.slice(end);
+  }
 
   // Clean model artifacts (special tokens from LLaMA, Mistral, etc.)
   result = cleanModelArtifacts(result);

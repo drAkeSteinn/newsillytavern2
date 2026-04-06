@@ -57,7 +57,7 @@ import {
   buildToolMessagesForAnthropic,
   createAnthropicToolState,
   anthropicStateToToolCalls,
-  parseToolCallFromText,
+  parseAllToolCallsFromText,
   mightContainToolCall,
   stripToolCallFromText,
   splitIntoChunks,
@@ -932,9 +932,9 @@ export async function POST(request: NextRequest) {
                       }
                     } else if (mightContainToolCall(roundContent)) {
                       // Check for text-based tool call (model outputting JSON as content)
-                      const textToolCall = parseToolCallFromText(roundContent);
-                      if (textToolCall) {
-                        console.log(`[GroupStream-Tools] ✓ Text-based tool call detected: ${textToolCall.name}`);
+                      const textToolCalls = parseAllToolCallsFromText(roundContent);
+                      if (textToolCalls.length > 0) {
+                        console.log(`[GroupStream-Tools] ✓ Text-based tool call(s) detected: ${textToolCalls.map(tc => tc.name).join(', ')}`);
 
                         const cleanContent = stripToolCallFromText(roundContent);
                         if (cleanContent.trim()) {
@@ -945,21 +945,22 @@ export async function POST(request: NextRequest) {
                           }
                         }
 
-                        const nativeTC: NativeToolCall = {
-                          id: `text_call_${Date.now()}`,
-                          name: textToolCall.name,
-                          arguments: textToolCall.arguments,
-                          rawArguments: JSON.stringify(textToolCall.arguments),
-                        };
+                        const nativeCalls: NativeToolCall[] = textToolCalls.map((tc, idx) => ({
+                          id: `text_call_${Date.now()}_${idx}`,
+                          name: tc.name,
+                          arguments: tc.arguments,
+                          rawArguments: JSON.stringify(tc.arguments),
+                        }));
 
                         const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
-                          [nativeTC], charAvailableTools, responder, sessionId || '', effectiveUserName, controller
+                          nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller
                         );
                         if (shouldContinue) {
                           fullContent = '';
+                          const toolNames = textToolCalls.map(tc => tc.name).join(', ');
                           const followUpMessages = [
                             ...openaiMessages,
-                            { role: 'user', content: `[Resultado de herramienta: ${textToolCall.name}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
+                            { role: 'user', content: `[Resultado de herramientas: ${toolNames}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
                           ] as any;
                           // Buffer follow-up to clean model artifacts before streaming
                           let textFollowUpContent = '';
@@ -1055,9 +1056,9 @@ export async function POST(request: NextRequest) {
                         }
                       }
                     } else if (mightContainToolCall(roundContent)) {
-                      const textToolCall = parseToolCallFromText(roundContent);
-                      if (textToolCall) {
-                        console.log(`[GroupStream-Tools] ✓ Text-based tool call detected (Anthropic): ${textToolCall.name}`);
+                      const textToolCalls = parseAllToolCallsFromText(roundContent);
+                      if (textToolCalls.length > 0) {
+                        console.log(`[GroupStream-Tools] ✓ Text-based tool call(s) detected (Anthropic): ${textToolCalls.map(tc => tc.name).join(', ')}`);
                         const cleanContent = stripToolCallFromText(roundContent);
                         if (cleanContent.trim()) {
                           for (const chunk of splitIntoChunks(cleanContent)) {
@@ -1066,18 +1067,19 @@ export async function POST(request: NextRequest) {
                             }));
                           }
                         }
-                        const nativeTC: NativeToolCall = {
-                          id: `text_call_${Date.now()}`, name: textToolCall.name,
-                          arguments: textToolCall.arguments, rawArguments: JSON.stringify(textToolCall.arguments),
-                        };
+                        const nativeCalls: NativeToolCall[] = textToolCalls.map((tc, idx) => ({
+                          id: `text_call_${Date.now()}_${idx}`, name: tc.name,
+                          arguments: tc.arguments, rawArguments: JSON.stringify(tc.arguments),
+                        }));
                         const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
-                          [nativeTC], charAvailableTools, responder, sessionId || '', effectiveUserName, controller
+                          nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller
                         );
                         if (shouldContinue) {
                           fullContent = '';
+                          const toolNames = textToolCalls.map(tc => tc.name).join(', ');
                           const followUpMessages = [
                             ...anthropicMessages,
-                            { role: 'user', content: `[Resultado de herramienta: ${textToolCall.name}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
+                            { role: 'user', content: `[Resultado de herramientas: ${toolNames}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
                           ] as any;
                           // Buffer follow-up to clean model artifacts before streaming
                           let anthTextFollowUpContent = '';
@@ -1172,9 +1174,9 @@ export async function POST(request: NextRequest) {
                         }
                       }
                     } else if (mightContainToolCall(roundContent)) {
-                      const textToolCall = parseToolCallFromText(roundContent);
-                      if (textToolCall) {
-                        console.log(`[GroupStream-Tools] ✓ Text-based tool call detected (Ollama): ${textToolCall.name}`);
+                      const textToolCalls = parseAllToolCallsFromText(roundContent);
+                      if (textToolCalls.length > 0) {
+                        console.log(`[GroupStream-Tools] ✓ Text-based tool call(s) detected (Ollama): ${textToolCalls.map(tc => tc.name).join(', ')}`);
                         const cleanContent = stripToolCallFromText(roundContent);
                         if (cleanContent.trim()) {
                           for (const chunk of splitIntoChunks(cleanContent)) {
@@ -1183,18 +1185,19 @@ export async function POST(request: NextRequest) {
                             }));
                           }
                         }
-                        const nativeTC: NativeToolCall = {
-                          id: `text_call_${Date.now()}`, name: textToolCall.name,
-                          arguments: textToolCall.arguments, rawArguments: JSON.stringify(textToolCall.arguments),
-                        };
+                        const nativeCalls: NativeToolCall[] = textToolCalls.map((tc, idx) => ({
+                          id: `text_call_${Date.now()}_${idx}`, name: tc.name,
+                          arguments: tc.arguments, rawArguments: JSON.stringify(tc.arguments),
+                        }));
                         const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
-                          [nativeTC], charAvailableTools, responder, sessionId || '', effectiveUserName, controller
+                          nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller
                         );
                         if (shouldContinue) {
                           fullContent = '';
+                          const toolNames = textToolCalls.map(tc => tc.name).join(', ');
                           const followUpMessages = [
                             ...ollamaMessages,
-                            { role: 'user', content: `[Resultado de herramienta: ${textToolCall.name}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
+                            { role: 'user', content: `[Resultado de herramientas: ${toolNames}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
                           ] as any;
                           const combinedPrompt = followUpMessages.map(m =>
                             `${(m as any).role}: ${(m as any).content}`
