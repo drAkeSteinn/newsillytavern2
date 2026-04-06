@@ -168,5 +168,10 @@
     "memoryConsolidationThreshold": 50,
     "memoryConsolidationKeepRecent": 10,
     "memoryConsolidationKeepHighImportance": 4
+  },
+  "tools": {
+    "enabled": false,
+    "maxToolCallsPerTurn": 2,
+    "characterConfigs": []
   }
 }

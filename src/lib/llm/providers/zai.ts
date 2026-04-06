@@ -1,12 +1,14 @@
 // ============================================
-// Z.ai Provider - Streaming and generation
+// Z.ai Provider - Uses z-ai-web-dev-sdk v0.0.17+
 // ============================================
 //
-// This provider reads the .z-ai-config file and uses the token for authentication.
-// The config file is located at:
-// 1. process.cwd()/.z-ai-config
-// 2. ~/.z-ai-config
-// 3. /etc/.z-ai-config
+// This provider uses the official Z.ai SDK for all API calls.
+// The SDK reads config from .z-ai-config files and handles authentication.
+//
+// Token resolution priority:
+// 1. Token passed from caller (gateway forwarding)
+// 2. Token from .z-ai-config file ("token" field)
+// 3. Fallback: no token (works if API doesn't require X-Token)
 //
 // Supports native tool calling (OpenAI-compatible format).
 
@@ -19,20 +21,22 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 
-// Config interface matching the SDK
+// ============================================
+// Config Loading
+// ============================================
+
 interface ZAIConfig {
   baseUrl: string;
   apiKey: string;
   chatId?: string;
   userId?: string;
-  token?: string;  // JWT token for X-Token header
+  token?: string; // JWT token for X-Token header
 }
 
-// Cache for config
 let cachedConfig: ZAIConfig | null = null;
 
 /**
- * Load Z.ai configuration from file
+ * Load Z.ai configuration from file (same paths as SDK)
  */
 export async function loadConfig(): Promise<ZAIConfig> {
   if (cachedConfig) {
@@ -52,7 +56,8 @@ export async function loadConfig(): Promise<ZAIConfig> {
       const config = JSON.parse(configStr);
       if (config.baseUrl && config.apiKey) {
         cachedConfig = config;
-        console.log('[Z.ai Provider] Config loaded from:', filePath);
+        console.log(`[Z.ai Provider] Config loaded from: ${filePath}`);
+        console.log(`[Z.ai Provider] baseUrl=${config.baseUrl}, hasToken=${!!config.token}`);
         return config;
       }
     } catch (error: unknown) {
@@ -62,333 +67,285 @@ export async function loadConfig(): Promise<ZAIConfig> {
     }
   }
 
-  throw new Error('Z.ai configuration file not found. Please create .z-ai-config in your project, home directory, or /etc.');
+  throw new Error('Z.ai: No se encontró archivo de configuración. Cree .z-ai-config en el proyecto, home, o /etc.');
 }
 
 /**
- * Try a Z.ai API request with multiple token candidates.
- * Returns the first successful response, or throws the last error.
+ * Clear cached config (useful for testing)
  */
-async function fetchWithTokenFallback(
-  url: string,
-  body: string,
-  tokenCandidates: string[],
-  config: ZAIConfig,
-): Promise<Response> {
-  let lastError: Error | null = null;
+export function clearConfigCache(): void {
+  cachedConfig = null;
+}
 
-  for (let i = 0; i < tokenCandidates.length; i++) {
-    const token = tokenCandidates[i];
-    const source = `candidate ${i + 1}/${tokenCandidates.length} (${token.length} chars)`;
-    console.log(`[Z.ai Provider] Trying ${source}...`);
+// ============================================
+// SDK Integration
+// ============================================
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.apiKey}`,
-      'X-Z-AI-From': 'Z',
-      'X-Token': token,
-    };
+/**
+ * Build headers matching the SDK v0.0.17+ format.
+ * This replicates exactly what the SDK does for authentication.
+ */
+function buildHeaders(config: ZAIConfig): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${config.apiKey}`,
+    'X-Z-AI-From': 'Z',
+  };
+  if (config.chatId) {
+    headers['X-Chat-Id'] = config.chatId;
+  }
+  if (config.userId) {
+    headers['X-User-Id'] = config.userId;
+  }
+  if (config.token) {
+    headers['X-Token'] = config.token;
+  }
+  return headers;
+}
 
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body,
-        signal: AbortSignal.timeout(300000),
-      });
+/**
+ * Create a resolved config merging file config with runtime overrides.
+ * Priority: runtimeToken > config.token
+ */
+async function resolveConfig(runtimeToken?: string): Promise<ZAIConfig> {
+  const config = await loadConfig();
 
-      if (response.status === 401) {
-        const errorBody = await response.text();
-        console.warn(`[Z.ai Provider] Token ${source} failed: 401 ${errorBody}`);
-        lastError = new Error(`401: ${errorBody}`);
-        continue; // Try next candidate
-      }
-
-      // Any other status (including errors) — return as-is
-      console.log(`[Z.ai Provider] Token ${source} succeeded: ${response.status}`);
-      return response;
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Unknown';
-      console.warn(`[Z.ai Provider] Token ${source} threw: ${msg}`);
-      lastError = error instanceof Error ? error : new Error(msg);
-      continue;
-    }
+  // If a runtime token is provided (from gateway forwarding), use it
+  if (runtimeToken) {
+    return { ...config, token: runtimeToken };
   }
 
-  throw lastError || new Error('All token candidates failed');
+  return config;
 }
 
 /**
- * Build a list of token candidates to try, in priority order.
- * Returns empty array if no candidates available (will use basic auth).
+ * Format a user-friendly error for 401 responses.
  */
-export function buildTokenCandidates(
-  gatewayToken?: string,
-  config?: ZAIConfig,
-): string[] {
-  const candidates: string[] = [];
-  if (gatewayToken) candidates.push(gatewayToken);
-  if (config?.token) candidates.push(config.token);
-  return candidates;
+function formatAuthError(status: number, errorBody: string): Error {
+  if (status === 401) {
+    if (errorBody.includes('missing X-Token')) {
+      return new Error(
+        'Z.ai requiere autenticación X-Token.\n\n' +
+        'El archivo de configuración no tiene un campo "token".\n' +
+        'Para resolver esto, agregue un token JWT válido al archivo /etc/.z-ai-config:\n' +
+        '{"baseUrl": "...", "apiKey": "...", "token": "su-jwt-token-aquí"}\n\n' +
+        'O configure el campo "API Key" del proveedor Z.ai con su token JWT.'
+      );
+    }
+    if (errorBody.includes('invalid X-Token')) {
+      return new Error(
+        'Z.ai: El token X-Token proporcionado no es válido.\n\n' +
+        'Verifique que el token JWT en la configuración esté actualizado y no haya expirado.'
+      );
+    }
+  }
+  return new Error(`Z.ai API error ${status}: ${errorBody}`);
 }
 
+// ============================================
+// SSE Stream Parser
+// ============================================
+
 /**
- * Stream from Z.ai API with proper authentication (no tools)
+ * Parse an SSE ReadableStream and yield content strings.
+ * Handles the OpenAI-compatible SSE format.
+ */
+async function* parseSSEStream(
+  stream: ReadableStream<Uint8Array>,
+  onDelta?: (delta: Record<string, unknown>) => string | undefined
+): AsyncGenerator<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data: ')) continue;
+
+        const jsonStr = trimmed.slice(6);
+        if (jsonStr === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(jsonStr);
+          const choice = parsed.choices?.[0];
+          if (!choice) continue;
+
+          const delta = choice.delta || {};
+
+          // Use custom delta processor if provided (for tool calling)
+          if (onDelta) {
+            const textContent = onDelta(delta);
+            if (textContent) yield textContent;
+          } else {
+            // Simple text extraction
+            const content = delta.content as string | undefined;
+            if (content) yield content;
+          }
+        } catch {
+          // Skip malformed JSON chunks
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+// ============================================
+// Public API: Streaming (no tools)
+// ============================================
+
+/**
+ * Stream from Z.ai API (no tool calling).
+ * Uses the SDK's authentication mechanism.
+ *
  * @param messages - Chat messages to send
- * @param gatewayToken - Token forwarded from Z.ai gateway (x-session-id, fc-security-token, etc.)
+ * @param runtimeToken - Optional token from gateway/CLI override
  */
 export async function* streamZAI(
   messages: ChatApiMessage[],
-  gatewayToken?: string
+  runtimeToken?: string
 ): AsyncGenerator<string> {
   try {
-    const config = await loadConfig();
+    const config = await resolveConfig(runtimeToken);
     const url = `${config.baseUrl}/chat/completions`;
+    const headers = buildHeaders(config);
 
-    const body = JSON.stringify({
-      messages: messages.map(m => ({
-        role: m.role,
-        content: m.content
-      })),
-      thinking: { type: 'disabled' },
-      stream: true
+    console.log(`[Z.ai Provider] Streaming chat (no tools), hasToken=${!!config.token}`);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
+        thinking: { type: 'disabled' },
+        stream: true,
+      }),
+      signal: AbortSignal.timeout(300000),
     });
-
-    // Build token candidates: gateway token first, then file config token
-    const candidates = buildTokenCandidates(gatewayToken, config);
-
-    let response: Response;
-    if (candidates.length > 0) {
-      // Use token fallback system
-      response = await fetchWithTokenFallback(url, body, candidates, config);
-    } else {
-      // No tokens available — try basic auth
-      console.log('[Z.ai Provider] No token candidates, using basic auth');
-      response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.apiKey}`,
-          'X-Z-AI-From': 'Z',
-        },
-        body,
-        signal: AbortSignal.timeout(300000),
-      });
-    }
 
     if (!response.ok) {
       const errorBody = await response.text();
-      if (response.status === 401 && errorBody.includes('X-Token')) {
-        throw new Error(`Z.ai requiere autenticación X-Token. El gateway no proporcionó un token válido.`);
-      }
-      throw new Error(`Z.ai API error ${response.status}: ${errorBody}`);
+      throw formatAuthError(response.status, errorBody);
     }
 
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error('No response body from Z.ai');
-    }
+    const body = response.body;
+    if (!body) throw new Error('No response body from Z.ai');
 
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        const sseMessages = buffer.split('\n\n');
-        buffer = sseMessages.pop() || '';
-
-        for (const message of sseMessages) {
-          if (!message.startsWith('data: ')) continue;
-
-          const jsonStr = message.slice(6);
-          if (jsonStr === '[DONE]') continue;
-
-          try {
-            const data = JSON.parse(jsonStr);
-            const choices = data.choices as Array<Record<string, unknown>> | undefined;
-            const delta = choices?.[0]?.delta as Record<string, unknown> | undefined;
-            const content = delta?.content as string | undefined;
-
-            if (content) {
-              yield content;
-            }
-          } catch {
-            // Skip invalid JSON
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
+    yield* parseSSEStream(body);
   } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Z.ai')) throw error;
     console.error('[Z.ai Provider] Stream error:', error);
-    throw new Error(`Z.ai Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(`Z.ai Error: ${error instanceof Error ? error.message : 'Error desconocido'}`);
   }
 }
+
+// ============================================
+// Public API: Streaming with Tools
+// ============================================
 
 /**
  * Stream from Z.ai API WITH native tool calling support.
  *
- * Uses OpenAI-compatible tool calling format. Tool calls are accumulated
- * in the provided ToolCallAccumulator. After the generator completes,
- * check `accumulator.toolCalls` and `accumulator.finishReason`.
+ * Uses OpenAI-compatible tool calling format via the SDK.
+ * Tool calls are accumulated in the ToolCallAccumulator.
  *
  * @param messages - Chat messages to send
  * @param tools - Tool definitions to provide to the model
  * @param accumulator - Mutable accumulator for tool call state
- * @param gatewayToken - Token forwarded from Z.ai gateway
+ * @param runtimeToken - Optional token from gateway/CLI override
  */
 export async function* streamZAIWithTools(
   messages: ChatApiMessage[],
   tools: ToolDefinition[],
   accumulator: ToolCallAccumulator,
-  gatewayToken?: string
+  runtimeToken?: string
 ): AsyncGenerator<string> {
   try {
-    const config = await loadConfig();
+    const config = await resolveConfig(runtimeToken);
     const url = `${config.baseUrl}/chat/completions`;
+    const headers = buildHeaders(config);
 
     const openAITools = toOpenAITools(tools);
+    console.log(`[Z.ai+Tools] Streaming with ${openAITools.length} tools, hasToken=${!!config.token}`);
 
-    console.log(`[Z.ai+Tools] Streaming with ${openAITools.length} tools`);
-
-    const body = JSON.stringify({
-      messages: messages,
-      thinking: { type: 'disabled' },
-      stream: true,
-      tools: openAITools,
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        messages,
+        thinking: { type: 'disabled' },
+        stream: true,
+        tools: openAITools,
+        tool_choice: 'auto',
+      }),
+      signal: AbortSignal.timeout(300000),
     });
-
-    // Build token candidates and use fallback system
-    const candidates = buildTokenCandidates(gatewayToken, config);
-
-    let response: Response;
-    if (candidates.length > 0) {
-      response = await fetchWithTokenFallback(url, body, candidates, config);
-    } else {
-      console.log('[Z.ai+Tools] No token candidates, using basic auth');
-      response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.apiKey}`,
-          'X-Z-AI-From': 'Z',
-        },
-        body,
-        signal: AbortSignal.timeout(300000),
-      });
-    }
 
     if (!response.ok) {
       const errorBody = await response.text();
-      if (response.status === 401 && errorBody.includes('X-Token')) {
-        throw new Error(`Z.ai requiere autenticación X-Token. El gateway no proporcionó un token válido.`);
-      }
-      throw new Error(`Z.ai API error ${response.status}: ${errorBody}`);
+      throw formatAuthError(response.status, errorBody);
     }
 
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('No response body from Z.ai');
+    const body = response.body;
+    if (!body) throw new Error('No response body from Z.ai');
 
-    const decoder = new TextDecoder();
-    let buffer = '';
+    yield* parseSSEStream(body, (delta) => {
+      // Process delta using native parser (handles tool_calls)
+      return processOpenAIDelta(delta, accumulator);
+    });
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const trimmedLine = line.trim();
-          if (!trimmedLine || !trimmedLine.startsWith('data: ')) continue;
-
-          const data = trimmedLine.slice(6);
-          if (data === '[DONE]') continue;
-
-          try {
-            const parsed = JSON.parse(data);
-            const choice = parsed.choices?.[0];
-
-            // Check finish reason
-            if (choice?.finish_reason) {
-              accumulator.finishReason = choice.finish_reason;
-            }
-
-            // Process delta for both text and tool calls (OpenAI format)
-            const delta = choice?.delta || {};
-            const textContent = processOpenAIDelta(delta, accumulator);
-            if (textContent) {
-              yield textContent;
-            }
-          } catch {
-            // Skip invalid JSON
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock();
-      finalizeToolCalls(accumulator);
-    }
-
-    console.log(`[Z.ai+Tools] Stream complete. finishReason=${accumulator.finishReason}, toolCalls=${accumulator.toolCalls.length}`);
+    finalizeToolCalls(accumulator);
+    console.log(`[Z.ai+Tools] Complete. finishReason=${accumulator.finishReason}, toolCalls=${accumulator.toolCalls.length}`);
   } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Z.ai')) throw error;
     console.error('[Z.ai+Tools] Stream error:', error);
-    throw new Error(`Z.ai Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(`Z.ai Error: ${error instanceof Error ? error.message : 'Error desconocido'}`);
   }
 }
 
+// ============================================
+// Public API: Non-streaming
+// ============================================
+
 /**
- * Call Z.ai API (non-streaming)
+ * Call Z.ai API (non-streaming).
+ *
  * @param messages - Chat messages to send
- * @param gatewayToken - Token forwarded from Z.ai gateway
+ * @param runtimeToken - Optional token from gateway/CLI override
  */
 export async function callZAI(
   messages: ChatApiMessage[],
-  gatewayToken?: string
+  runtimeToken?: string
 ): Promise<GenerateResponse> {
   try {
-    const config = await loadConfig();
+    const config = await resolveConfig(runtimeToken);
     const url = `${config.baseUrl}/chat/completions`;
+    const headers = buildHeaders(config);
 
-    const body = JSON.stringify({
-      messages: messages.map(m => ({
-        role: m.role,
-        content: m.content
-      })),
-      thinking: { type: 'disabled' },
-      stream: false
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
+        thinking: { type: 'disabled' },
+        stream: false,
+      }),
+      signal: AbortSignal.timeout(300000),
     });
-
-    const candidates = buildTokenCandidates(gatewayToken, config);
-
-    let response: Response;
-    if (candidates.length > 0) {
-      response = await fetchWithTokenFallback(url, body, candidates, config);
-    } else {
-      response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.apiKey}`,
-          'X-Z-AI-From': 'Z',
-        },
-        body,
-        signal: AbortSignal.timeout(300000),
-      });
-    }
 
     if (!response.ok) {
       const errorBody = await response.text();
-      throw new Error(`Z.ai API error ${response.status}: ${errorBody}`);
+      throw formatAuthError(response.status, errorBody);
     }
 
     const completion = await response.json();
@@ -404,14 +361,8 @@ export async function callZAI(
       model: completion.model || 'z-ai'
     };
   } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Z.ai')) throw error;
     console.error('[Z.ai Provider] Call error:', error);
-    throw new Error(`Z.ai Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(`Z.ai Error: ${error instanceof Error ? error.message : 'Error desconocido'}`);
   }
-}
-
-/**
- * Clear cached config (useful for testing)
- */
-export function clearConfigCache(): void {
-  cachedConfig = null;
 }

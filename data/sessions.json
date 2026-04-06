@@ -5,13 +5,13 @@
     "name": "Chat with Rick",
     "messages": [
       {
-        "id": "ecd135e3-27ec-4aa9-b819-a097acb8fafc",
+        "id": "fa4e8b00-4a8a-4c17-b17c-344298d73a66",
         "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
         "role": "assistant",
         "content": "\"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\"",
-        "timestamp": "2026-04-06T06:50:54.051Z",
+        "timestamp": "2026-04-06T07:03:57.906Z",
         "isDeleted": false,
-        "swipeId": "f4369a63-885c-4b03-85aa-332dd92edb6f",
+        "swipeId": "eff7fd56-5004-443f-b7d0-27dcdc2dbb08",
         "swipeIndex": 0,
         "swipes": [
           "\"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\""
@@ -22,10 +22,10 @@
         "role": "user",
         "content": "Busca en internet las novedades de google home en este 2026",
         "isDeleted": false,
-        "swipeId": "46cb8c64-c2a9-48ba-b70b-a75f9c998b2a",
+        "swipeId": "21db713a-94c7-44e5-8a50-1d832a96c1ed",
         "swipeIndex": 0,
-        "id": "8369e91a-b65e-4fba-80f6-d9c9282b68d9",
-        "timestamp": "2026-04-06T06:58:22.729Z",
+        "id": "efb3277d-0e67-4c16-9e81-333f5467c8b1",
+        "timestamp": "2026-04-06T07:04:00.930Z",
         "swipes": [
           "Busca en internet las novedades de google home en este 2026"
         ]
@@ -33,19 +33,45 @@
       {
         "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
         "role": "system",
-        "content": "⚠️ Z.ai Error: Z.ai requiere autenticación X-Token. Configure un token JWT válido en el campo \"API Key\" del proveedor Z.ai.",
+        "content": "⚠️ Z.ai Error: 401: {\"error\":\"invalid X-Token\"}",
         "isDeleted": false,
-        "swipeId": "123598da-3d48-4914-bebb-aa90820cb516",
+        "swipeId": "2c0d1549-e3a5-4f08-86c7-a28213386c2e",
         "swipeIndex": 0,
-        "id": "81bcbd05-b09a-4a3b-85a6-cd85d89d1ab4",
-        "timestamp": "2026-04-06T06:58:34.149Z",
+        "id": "d06f8956-4f77-4f5c-9220-45dfc9bb7c8d",
+        "timestamp": "2026-04-06T07:04:10.271Z",
         "swipes": [
-          "⚠️ Z.ai Error: Z.ai requiere autenticación X-Token. Configure un token JWT válido en el campo \"API Key\" del proveedor Z.ai."
+          "⚠️ Z.ai Error: 401: {\"error\":\"invalid X-Token\"}"
+        ]
+      },
+      {
+        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
+        "role": "user",
+        "content": "Busca en internet las novedades de google home en este 2026",
+        "isDeleted": false,
+        "swipeId": "38b6802e-ad99-4b89-a926-3405346c7b64",
+        "swipeIndex": 0,
+        "id": "57be8fe5-0519-41c2-9781-994393b5e6ea",
+        "timestamp": "2026-04-06T07:04:28.526Z",
+        "swipes": [
+          "Busca en internet las novedades de google home en este 2026"
+        ]
+      },
+      {
+        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
+        "role": "system",
+        "content": "⚠️ Z.ai Error: 401: {\"error\":\"invalid X-Token\"}",
+        "isDeleted": false,
+        "swipeId": "cd88f43a-d8f5-4588-bde4-2383f931acbe",
+        "swipeIndex": 0,
+        "id": "18ea7e6c-2c28-4eee-9a84-7e1a1299de07",
+        "timestamp": "2026-04-06T07:04:36.576Z",
+        "swipes": [
+          "⚠️ Z.ai Error: 401: {\"error\":\"invalid X-Token\"}"
         ]
       }
     ],
     "createdAt": "2026-04-04T08:17:17.841Z",
-    "updatedAt": "2026-04-06T06:58:34.149Z",
+    "updatedAt": "2026-04-06T07:04:36.576Z",
     "sessionStats": {
       "characterStats": {
         "7e6b6d7b-905e-4199-a15a-797f2efac746": {
@@ -56,10 +82,10 @@
       },
       "solicitudes": {
         "characterSolicitudes": {},
-        "lastModified": 1775458254051
+        "lastModified": 1775459037906
       },
       "initialized": true,
-      "lastModified": 1775458254051
+      "lastModified": 1775459037906
     },
     "sessionQuests": [],
     "turnCount": 0

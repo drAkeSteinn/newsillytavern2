@@ -1888,3 +1888,31 @@ Stage Summary:
 - Users can provide their JWT token via llmConfig.apiKey field (which gets passed as overrideToken to streamZAI)
 - Once authenticated, Z.ai will support full tool calling (search_web, get_weather, roll_dice, etc.)
 - TypeScript: No new errors introduced. Lint: Clean (only pre-existing fullscreen-editor error)
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Investigar y resolver error 401 de Z.ai API (X-Token requerido)
+
+Work Log:
+- Investigado SDK z-ai-web-dev-sdk v0.0.16 y v0.0.17
+- Descubierto que v0.0.17 agregó soporte para campo "token" en config (X-Token header)
+- Actualizado SDK de v0.0.16 a v0.0.17 con bun
+- Probado SDK directamente: falla con 401 "missing X-Token header"
+- Verificado que el dashboard del API tampoco envía X-Token (también está roto)
+- No hay token JWT disponible en el entorno (env vars, config files, etc.)
+- Reescrito completamente el proveedor Z.ai (src/lib/llm/providers/zai.ts):
+  - Usa formato de headers idéntico al SDK v0.0.17
+  - Resuelve token desde: runtime override > config file "token" field
+  - Parser SSE unificado y reutilizable
+  - Mensajes de error claros en español
+- Actualizado route.ts para pasar token como parámetro separado (zaiRuntimeToken)
+- Limpiado logging excesivo de headers en el route
+
+Stage Summary:
+- El API de Z.ai agregó recientemente requerimiento de X-Token (JWT)
+- SDK v0.0.17 soporta el campo "token" en config, pero /etc/.z-ai-config no lo tiene
+- No hay forma de obtener el token JWT en este entorno (ni del gateway, ni de env vars)
+- El propio dashboard del API en http://172.25.136.193:8080/dashboard/ también está roto (no envía X-Token)
+- Código reescrito y listo para funcionar cuando el token esté disponible
+- Para resolver: agregar campo "token" al archivo /etc/.z-ai-config con un JWT válido

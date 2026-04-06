@@ -153,26 +153,10 @@ async function executeToolCallsAndContinue(
 
 export async function POST(request: NextRequest) {
   try {
-    // Log incoming auth headers for debugging Z.ai gateway auth
+    // Capture auth headers from Z.ai gateway for token resolution
     const incomingXToken = request.headers.get('X-Token');
-    const incomingAuth = request.headers.get('Authorization');
-    const incomingXZaiFrom = request.headers.get('X-Z-AI-From');
-    const incomingXChatId = request.headers.get('X-Chat-Id');
-    const incomingXUserId = request.headers.get('X-User-Id');
-    // Capture Function Compute auth headers from Alibaba Cloud / Z.ai gateway
-    const fcAccessKeyId = request.headers.get('x-fc-access-key-id');
-    const fcAccessKeySecret = request.headers.get('x-fc-access-key-secret');
     const fcSecurityToken = request.headers.get('x-fc-security-token');
     const xSessionId = request.headers.get('x-session-id');
-    // Log ALL incoming X-* headers to discover what the gateway forwards
-    const incomingXHeaders: string[] = [];
-    request.headers.forEach((_, key) => {
-      if (key.toLowerCase().startsWith('x-')) incomingXHeaders.push(key);
-    });
-    console.log(`[Stream Route] Incoming X-headers: [${incomingXHeaders.join(', ')}]`);
-    if (incomingXToken || incomingAuth || incomingXZaiFrom || fcSecurityToken) {
-      console.log(`[Stream Route] Auth: X-Token=${incomingXToken ? 'yes(' + incomingXToken.length + ')' : 'no'}, Auth=${incomingAuth ? 'yes(' + incomingAuth.length + ')' : 'no'}, X-Z-AI-From=${incomingXZaiFrom || 'no'}, X-Chat-Id=${incomingXChatId || 'no'}, X-User-Id=${incomingXUserId || 'no'}, fc-security-token=${fcSecurityToken ? 'yes(' + fcSecurityToken.length + ')' : 'no'}, x-session-id=${xSessionId || 'no'}`);
-    }
 
     const body = await request.json();
 
@@ -239,17 +223,16 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('No LLM configuration provided', 400);
     }
 
-    // If using Z.ai provider, collect gateway-forwarded auth headers as token candidates
-    // The Z.ai platform gateway may forward various auth tokens in different header formats
+    // If using Z.ai provider, collect gateway-forwarded auth headers
+    // The SDK v0.0.17+ reads config from /etc/.z-ai-config and uses the "token" field for X-Token.
+    // Gateway headers are passed as runtime overrides to the provider.
+    let zaiRuntimeToken: string | undefined;
     if (llmConfig.provider === 'z-ai') {
-      // Collect all potential tokens from gateway, priority order:
-      // 1. X-Token (explicit gateway token)
-      // 2. x-fc-security-token (Alibaba Cloud Function Compute STS token)
-      // 3. x-session-id (Z.ai session identifier, may be JWT)
-      const gatewayToken = incomingXToken || fcSecurityToken || xSessionId || null;
+      // Priority: X-Token header > fc-security-token > x-session-id
+      const gatewayToken = incomingXToken || fcSecurityToken || xSessionId || undefined;
       if (gatewayToken) {
-        llmConfig.apiKey = gatewayToken;
-        console.log(`[Stream Route] Z.ai gateway token available (${gatewayToken.length} chars, source: ${incomingXToken ? 'X-Token' : fcSecurityToken ? 'fc-security-token' : 'x-session-id'})`);
+        zaiRuntimeToken = gatewayToken;
+        console.log(`[Stream Route] Z.ai runtime token available (${gatewayToken.length} chars, source: ${incomingXToken ? 'X-Token' : fcSecurityToken ? 'fc-security-token' : 'x-session-id'})`);
       }
     }
 
@@ -599,7 +582,7 @@ Y cambiar mi expresión:
                   // First call with tools
                   baseChatMessages = chatMessages;
                   const accumulator = createToolCallAccumulator(availableTools);
-                  generator = streamZAIWithTools(chatMessages, availableTools, accumulator, llmConfig.apiKey);
+                  generator = streamZAIWithTools(chatMessages, availableTools, accumulator, zaiRuntimeToken);
 
                   // BUFFER content - don't stream to client yet
                   let roundContent = '';
@@ -670,13 +653,13 @@ Y cambiar mi expresión:
                 } else if (isToolRound && toolContextMessages.length > 0) {
                   // Follow-up call after tool execution
                   console.log(`[Z.ai+Tools] Tool round ${toolRound}: sending ${toolContextMessages.length} messages (incl. tool results)`);
-                  generator = streamZAI(toolContextMessages, llmConfig.apiKey);
+                  generator = streamZAI(toolContextMessages, zaiRuntimeToken);
                   for await (const chunk of generator) {
                     controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                   }
                 } else {
                   // No tools enabled - normal streaming
-                  generator = streamZAI(chatMessages, llmConfig.apiKey);
+                  generator = streamZAI(chatMessages, zaiRuntimeToken);
                   for await (const chunk of generator) {
                     controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                   }
