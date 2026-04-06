@@ -16,10 +16,36 @@
         "swipes": [
           "\"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\""
         ]
+      },
+      {
+        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
+        "role": "user",
+        "content": "Busca en internet las novedades de google home en este 2026",
+        "isDeleted": false,
+        "swipeId": "46cb8c64-c2a9-48ba-b70b-a75f9c998b2a",
+        "swipeIndex": 0,
+        "id": "8369e91a-b65e-4fba-80f6-d9c9282b68d9",
+        "timestamp": "2026-04-06T06:58:22.729Z",
+        "swipes": [
+          "Busca en internet las novedades de google home en este 2026"
+        ]
+      },
+      {
+        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
+        "role": "system",
+        "content": "⚠️ Z.ai Error: Z.ai requiere autenticación X-Token. Configure un token JWT válido en el campo \"API Key\" del proveedor Z.ai.",
+        "isDeleted": false,
+        "swipeId": "123598da-3d48-4914-bebb-aa90820cb516",
+        "swipeIndex": 0,
+        "id": "81bcbd05-b09a-4a3b-85a6-cd85d89d1ab4",
+        "timestamp": "2026-04-06T06:58:34.149Z",
+        "swipes": [
+          "⚠️ Z.ai Error: Z.ai requiere autenticación X-Token. Configure un token JWT válido en el campo \"API Key\" del proveedor Z.ai."
+        ]
       }
     ],
     "createdAt": "2026-04-04T08:17:17.841Z",
-    "updatedAt": "2026-04-06T06:50:54.051Z",
+    "updatedAt": "2026-04-06T06:58:34.149Z",
     "sessionStats": {
       "characterStats": {
         "7e6b6d7b-905e-4199-a15a-797f2efac746": {

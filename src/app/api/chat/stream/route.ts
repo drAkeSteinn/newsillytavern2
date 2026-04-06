@@ -159,14 +159,19 @@ export async function POST(request: NextRequest) {
     const incomingXZaiFrom = request.headers.get('X-Z-AI-From');
     const incomingXChatId = request.headers.get('X-Chat-Id');
     const incomingXUserId = request.headers.get('X-User-Id');
+    // Capture Function Compute auth headers from Alibaba Cloud / Z.ai gateway
+    const fcAccessKeyId = request.headers.get('x-fc-access-key-id');
+    const fcAccessKeySecret = request.headers.get('x-fc-access-key-secret');
+    const fcSecurityToken = request.headers.get('x-fc-security-token');
+    const xSessionId = request.headers.get('x-session-id');
     // Log ALL incoming X-* headers to discover what the gateway forwards
     const incomingXHeaders: string[] = [];
     request.headers.forEach((_, key) => {
       if (key.toLowerCase().startsWith('x-')) incomingXHeaders.push(key);
     });
     console.log(`[Stream Route] Incoming X-headers: [${incomingXHeaders.join(', ')}]`);
-    if (incomingXToken || incomingAuth || incomingXZaiFrom) {
-      console.log(`[Stream Route] Auth: X-Token=${incomingXToken ? 'yes(' + incomingXToken.length + ')' : 'no'}, Auth=${incomingAuth ? 'yes(' + incomingAuth.length + ')' : 'no'}, X-Z-AI-From=${incomingXZaiFrom || 'no'}, X-Chat-Id=${incomingXChatId || 'no'}, X-User-Id=${incomingXUserId || 'no'}`);
+    if (incomingXToken || incomingAuth || incomingXZaiFrom || fcSecurityToken) {
+      console.log(`[Stream Route] Auth: X-Token=${incomingXToken ? 'yes(' + incomingXToken.length + ')' : 'no'}, Auth=${incomingAuth ? 'yes(' + incomingAuth.length + ')' : 'no'}, X-Z-AI-From=${incomingXZaiFrom || 'no'}, X-Chat-Id=${incomingXChatId || 'no'}, X-User-Id=${incomingXUserId || 'no'}, fc-security-token=${fcSecurityToken ? 'yes(' + fcSecurityToken.length + ')' : 'no'}, x-session-id=${xSessionId || 'no'}`);
     }
 
     const body = await request.json();
@@ -234,22 +239,17 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('No LLM configuration provided', 400);
     }
 
-    // If using Z.ai provider, forward any incoming auth headers from the Z.ai gateway
-    // This allows the gateway's auth to flow through to the Z.ai API
+    // If using Z.ai provider, collect gateway-forwarded auth headers as token candidates
+    // The Z.ai platform gateway may forward various auth tokens in different header formats
     if (llmConfig.provider === 'z-ai') {
-      if (incomingXToken) {
-        llmConfig.apiKey = incomingXToken;
-        console.log('[Stream Route] Forwarded incoming X-Token to Z.ai provider');
-      }
-      // Store gateway headers for Z.ai to use
-      if (incomingXChatId) {
-        (llmConfig as Record<string, unknown>)._gatewayChatId = incomingXChatId;
-      }
-      if (incomingXUserId) {
-        (llmConfig as Record<string, unknown>)._gatewayUserId = incomingXUserId;
-      }
-      if (incomingXZaiFrom) {
-        (llmConfig as Record<string, unknown>)._gatewayFrom = incomingXZaiFrom;
+      // Collect all potential tokens from gateway, priority order:
+      // 1. X-Token (explicit gateway token)
+      // 2. x-fc-security-token (Alibaba Cloud Function Compute STS token)
+      // 3. x-session-id (Z.ai session identifier, may be JWT)
+      const gatewayToken = incomingXToken || fcSecurityToken || xSessionId || null;
+      if (gatewayToken) {
+        llmConfig.apiKey = gatewayToken;
+        console.log(`[Stream Route] Z.ai gateway token available (${gatewayToken.length} chars, source: ${incomingXToken ? 'X-Token' : fcSecurityToken ? 'fc-security-token' : 'x-session-id'})`);
       }
     }
 

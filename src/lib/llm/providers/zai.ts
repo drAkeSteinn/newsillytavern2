@@ -66,70 +66,120 @@ export async function loadConfig(): Promise<ZAIConfig> {
 }
 
 /**
- * Build Z.ai auth headers from config.
- * Supports both direct config and override token from LLM settings.
+ * Try a Z.ai API request with multiple token candidates.
+ * Returns the first successful response, or throws the last error.
  */
-export async function buildZAIHeaders(overrideToken?: string): Promise<Record<string, string>> {
-  const config = await loadConfig();
-  const effectiveToken = overrideToken || config.token;
-  const { apiKey, chatId, userId } = config;
+async function fetchWithTokenFallback(
+  url: string,
+  body: string,
+  tokenCandidates: string[],
+  config: ZAIConfig,
+): Promise<Response> {
+  let lastError: Error | null = null;
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${apiKey}`,
-    'X-Z-AI-From': 'Z',
-  };
+  for (let i = 0; i < tokenCandidates.length; i++) {
+    const token = tokenCandidates[i];
+    const source = `candidate ${i + 1}/${tokenCandidates.length} (${token.length} chars)`;
+    console.log(`[Z.ai Provider] Trying ${source}...`);
 
-  if (effectiveToken) {
-    headers['X-Token'] = effectiveToken;
-    console.log('[Z.ai Provider] Using X-Token header (JWT token)');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${config.apiKey}`,
+      'X-Z-AI-From': 'Z',
+      'X-Token': token,
+    };
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body,
+        signal: AbortSignal.timeout(300000),
+      });
+
+      if (response.status === 401) {
+        const errorBody = await response.text();
+        console.warn(`[Z.ai Provider] Token ${source} failed: 401 ${errorBody}`);
+        lastError = new Error(`401: ${errorBody}`);
+        continue; // Try next candidate
+      }
+
+      // Any other status (including errors) — return as-is
+      console.log(`[Z.ai Provider] Token ${source} succeeded: ${response.status}`);
+      return response;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown';
+      console.warn(`[Z.ai Provider] Token ${source} threw: ${msg}`);
+      lastError = error instanceof Error ? error : new Error(msg);
+      continue;
+    }
   }
 
-  if (chatId) {
-    headers['X-Chat-Id'] = chatId;
-  }
+  throw lastError || new Error('All token candidates failed');
+}
 
-  if (userId) {
-    headers['X-User-Id'] = userId;
-  }
-
-  return headers;
+/**
+ * Build a list of token candidates to try, in priority order.
+ * Returns empty array if no candidates available (will use basic auth).
+ */
+export function buildTokenCandidates(
+  gatewayToken?: string,
+  config?: ZAIConfig,
+): string[] {
+  const candidates: string[] = [];
+  if (gatewayToken) candidates.push(gatewayToken);
+  if (config?.token) candidates.push(config.token);
+  return candidates;
 }
 
 /**
  * Stream from Z.ai API with proper authentication (no tools)
  * @param messages - Chat messages to send
- * @param overrideToken - Optional token from LLM config to override file config
+ * @param gatewayToken - Token forwarded from Z.ai gateway (x-session-id, fc-security-token, etc.)
  */
 export async function* streamZAI(
   messages: ChatApiMessage[],
-  overrideToken?: string
+  gatewayToken?: string
 ): AsyncGenerator<string> {
   try {
     const config = await loadConfig();
-    const headers = await buildZAIHeaders(overrideToken);
     const url = `${config.baseUrl}/chat/completions`;
 
-    console.log('[Z.ai Provider] Streaming request to:', url);
-    console.log('[Z.ai Provider] Headers:', Object.keys(headers).join(', '));
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        messages: messages.map(m => ({
-          role: m.role,
-          content: m.content
-        })),
-        thinking: { type: 'disabled' },
-        stream: true
-      })
+    const body = JSON.stringify({
+      messages: messages.map(m => ({
+        role: m.role,
+        content: m.content
+      })),
+      thinking: { type: 'disabled' },
+      stream: true
     });
+
+    // Build token candidates: gateway token first, then file config token
+    const candidates = buildTokenCandidates(gatewayToken, config);
+
+    let response: Response;
+    if (candidates.length > 0) {
+      // Use token fallback system
+      response = await fetchWithTokenFallback(url, body, candidates, config);
+    } else {
+      // No tokens available — try basic auth
+      console.log('[Z.ai Provider] No token candidates, using basic auth');
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.apiKey}`,
+          'X-Z-AI-From': 'Z',
+        },
+        body,
+        signal: AbortSignal.timeout(300000),
+      });
+    }
 
     if (!response.ok) {
       const errorBody = await response.text();
       if (response.status === 401 && errorBody.includes('X-Token')) {
-        throw new Error(`Z.ai requiere autenticación X-Token. Configure un token JWT válido en el campo "API Key" del proveedor Z.ai.`);
+        throw new Error(`Z.ai requiere autenticación X-Token. El gateway no proporcionó un token válido.`);
       }
       throw new Error(`Z.ai API error ${response.status}: ${errorBody}`);
     }
@@ -191,40 +241,53 @@ export async function* streamZAI(
  * @param messages - Chat messages to send
  * @param tools - Tool definitions to provide to the model
  * @param accumulator - Mutable accumulator for tool call state
- * @param overrideToken - Optional JWT token from LLM config
+ * @param gatewayToken - Token forwarded from Z.ai gateway
  */
 export async function* streamZAIWithTools(
   messages: ChatApiMessage[],
   tools: ToolDefinition[],
   accumulator: ToolCallAccumulator,
-  overrideToken?: string
+  gatewayToken?: string
 ): AsyncGenerator<string> {
   try {
     const config = await loadConfig();
-    const headers = await buildZAIHeaders(overrideToken);
     const url = `${config.baseUrl}/chat/completions`;
 
     const openAITools = toOpenAITools(tools);
 
     console.log(`[Z.ai+Tools] Streaming with ${openAITools.length} tools`);
-    console.log(`[Z.ai+Tools] Headers:`, Object.keys(headers).join(', '));
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        messages: messages,
-        thinking: { type: 'disabled' },
-        stream: true,
-        tools: openAITools,
-      }),
-      signal: AbortSignal.timeout(300000), // 5 min timeout
+    const body = JSON.stringify({
+      messages: messages,
+      thinking: { type: 'disabled' },
+      stream: true,
+      tools: openAITools,
     });
+
+    // Build token candidates and use fallback system
+    const candidates = buildTokenCandidates(gatewayToken, config);
+
+    let response: Response;
+    if (candidates.length > 0) {
+      response = await fetchWithTokenFallback(url, body, candidates, config);
+    } else {
+      console.log('[Z.ai+Tools] No token candidates, using basic auth');
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.apiKey}`,
+          'X-Z-AI-From': 'Z',
+        },
+        body,
+        signal: AbortSignal.timeout(300000),
+      });
+    }
 
     if (!response.ok) {
       const errorBody = await response.text();
       if (response.status === 401 && errorBody.includes('X-Token')) {
-        throw new Error(`Z.ai requiere autenticación X-Token. Configure un token JWT válido en el campo "API Key" del proveedor Z.ai.`);
+        throw new Error(`Z.ai requiere autenticación X-Token. El gateway no proporcionó un token válido.`);
       }
       throw new Error(`Z.ai API error ${response.status}: ${errorBody}`);
     }
@@ -286,31 +349,42 @@ export async function* streamZAIWithTools(
 /**
  * Call Z.ai API (non-streaming)
  * @param messages - Chat messages to send
- * @param overrideToken - Optional token from LLM config to override file config
+ * @param gatewayToken - Token forwarded from Z.ai gateway
  */
 export async function callZAI(
   messages: ChatApiMessage[],
-  overrideToken?: string
+  gatewayToken?: string
 ): Promise<GenerateResponse> {
   try {
     const config = await loadConfig();
-    const headers = await buildZAIHeaders(overrideToken);
     const url = `${config.baseUrl}/chat/completions`;
 
-    console.log('[Z.ai Provider] Non-streaming request to:', url);
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        messages: messages.map(m => ({
-          role: m.role,
-          content: m.content
-        })),
-        thinking: { type: 'disabled' },
-        stream: false
-      })
+    const body = JSON.stringify({
+      messages: messages.map(m => ({
+        role: m.role,
+        content: m.content
+      })),
+      thinking: { type: 'disabled' },
+      stream: false
     });
+
+    const candidates = buildTokenCandidates(gatewayToken, config);
+
+    let response: Response;
+    if (candidates.length > 0) {
+      response = await fetchWithTokenFallback(url, body, candidates, config);
+    } else {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.apiKey}`,
+          'X-Z-AI-From': 'Z',
+        },
+        body,
+        signal: AbortSignal.timeout(300000),
+      });
+    }
 
     if (!response.ok) {
       const errorBody = await response.text();

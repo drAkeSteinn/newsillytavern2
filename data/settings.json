@@ -13,8 +13,8 @@
   "swipeEnabled": true,
   "quickReplies": [
     {
-      "label": "Continue",
-      "response": "Continue"
+      "label": "Consulta",
+      "response": "Busca en internet las novedades de google home en este 2026"
     },
     {
       "label": "...",
