@@ -650,6 +650,7 @@ export type LLMProvider =
   | 'vllm'
   | 'lm-studio'
   | 'z-ai'
+  | 'grok'
   | 'custom'
   | 'test-mock';  // Test provider for peticiones/solicitudes testing
 

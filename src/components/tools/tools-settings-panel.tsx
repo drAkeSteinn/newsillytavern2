@@ -35,6 +35,8 @@ import {
   ArrowRight,
   Terminal,
   FileText,
+  ScrollText,
+  Handshake,
 } from 'lucide-react';
 import { useTavernStore } from '@/store/tavern-store';
 import type { ToolDefinition, ToolsSettings } from '@/types';
@@ -95,6 +97,69 @@ const BUILT_IN_TOOLS: ToolDefinition[] = [
     parameters: { type: 'object', properties: { content: { type: 'string', description: 'Qué recordar', required: true } }, required: ['content'] },
     permissionMode: 'auto',
   },
+  {
+    id: 'manage_quest',
+    name: 'manage_quest',
+    label: 'Gestionar Misión',
+    icon: 'ScrollText',
+    description: 'Gestiona misiones y objetivos del personaje. Usa get_quests, progress_objective o complete_objective según la situación narrativa.',
+    category: 'in_character',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['get_quests', 'progress_objective', 'complete_objective'], description: 'La acción a realizar', required: true },
+        quest_id: { type: 'string', description: 'ID de la misión (templateId).', required: false },
+        objective_id: { type: 'string', description: 'ID del objetivo (objective templateId).', required: false },
+        amount: { type: 'number', description: 'Cantidad a progressar (solo para progress_objective). Default: 1.', required: false },
+        reason: { type: 'string', description: 'Razón narrativa del cambio.', required: false },
+      },
+      required: ['action'],
+    },
+    permissionMode: 'auto',
+  },
+  {
+    id: 'manage_solicitud',
+    name: 'manage_solicitud',
+    label: 'Gestionar Solicitud',
+    icon: 'Handshake',
+    description: 'Gestiona peticiones y solicitudes entre personajes. Usa get_peticiones, get_solicitudes, activate_peticion o complete_solicitud cuando la situación lo requiera.',
+    category: 'in_character',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['get_peticiones', 'get_solicitudes', 'activate_peticion', 'complete_solicitud'], description: 'La acción a realizar', required: true },
+        peticion_key: { type: 'string', description: 'Key de la petición a activar.', required: false },
+        solicitud_key: { type: 'string', description: 'Key de la solicitud a completar.', required: false },
+        target_character_name: { type: 'string', description: 'Nombre del personaje objetivo.', required: false },
+        reason: { type: 'string', description: 'Razón narrativa.', required: false },
+      },
+      required: ['action'],
+    },
+    permissionMode: 'auto',
+  },
+  {
+    id: 'manage_memory',
+    name: 'manage_memory',
+    label: 'Gestionar Memoria',
+    icon: 'Brain',
+    description: 'Gestiona la memoria del personaje: eventos, relaciones y notas. Usa save_memory, update_relationship o update_notes cuando algo relevante ocurra.',
+    category: 'cognitive',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['get_memories', 'get_relationships', 'save_memory', 'update_relationship', 'update_notes'], description: 'La acción a realizar', required: true },
+        memory_type: { type: 'string', enum: ['fact', 'relationship', 'event', 'emotion', 'location', 'item', 'state_change'], description: 'Tipo de memoria (solo para save_memory).', required: false },
+        content: { type: 'string', description: 'Contenido de la memoria o nota.', required: false },
+        importance: { type: 'number', description: 'Importancia de 0 a 1 (solo para save_memory). Default: 0.5.', required: false },
+        target_name: { type: 'string', description: 'Nombre del personaje o usuario (solo para update_relationship).', required: false },
+        relationship_label: { type: 'string', description: 'Etiqueta de relación (solo para update_relationship).', required: false },
+        sentiment_delta: { type: 'number', description: 'Cambio de sentimiento -100 a 100 (solo para update_relationship).', required: false },
+        reason: { type: 'string', description: 'Razón narrativa.', required: false },
+      },
+      required: ['action'],
+    },
+    permissionMode: 'auto',
+  },
 ];
 
 const TOOL_ICONS: Record<string, any> = {
@@ -104,6 +169,8 @@ const TOOL_ICONS: Record<string, any> = {
   Globe,
   Bell,
   Wrench,
+  ScrollText,
+  Handshake,
 };
 
 const CATEGORY_LABELS: Record<string, string> = {

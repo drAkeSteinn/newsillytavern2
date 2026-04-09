@@ -446,6 +446,7 @@ const LLM_PROVIDERS: { value: LLMProvider; label: string; defaultEndpoint: strin
   { value: 'lm-studio', label: 'LM Studio', defaultEndpoint: 'http://localhost:1234/v1', needsEndpoint: true, description: 'Servidor LM Studio local (OpenAI-compatible)' },
   { value: 'openai', label: 'OpenAI', defaultEndpoint: 'https://api.openai.com/v1', needsEndpoint: true, description: 'API de OpenAI' },
   { value: 'anthropic', label: 'Anthropic', defaultEndpoint: 'https://api.anthropic.com/v1', needsEndpoint: true, description: 'API de Anthropic' },
+  { value: 'grok', label: 'Grok (xAI)', defaultEndpoint: 'https://api.x.ai/v1', needsEndpoint: false, description: 'API de xAI (Grok). Solo requiere API Key.' },
   { value: 'custom', label: 'Personalizado', defaultEndpoint: '', needsEndpoint: true, description: 'Endpoint personalizado OpenAI-compatible' }
 ];
 

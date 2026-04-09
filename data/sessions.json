@@ -5,47 +5,21 @@
     "name": "Chat with Rick",
     "messages": [
       {
-        "id": "d2c85863-c404-4b40-b6b7-5ac58538c00f",
+        "id": "9a19b56e-c8d9-4d28-8b21-9863c6f3f664",
         "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
         "role": "assistant",
         "content": "\"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\"",
-        "timestamp": "2026-04-06T08:44:39.264Z",
+        "timestamp": "2026-04-09T03:55:19.172Z",
         "isDeleted": false,
-        "swipeId": "451c26bc-3e4c-453f-bf46-0ef1c411c6c6",
+        "swipeId": "48ffa222-d12b-410b-9537-0690d619cb88",
         "swipeIndex": 0,
         "swipes": [
           "\"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\""
         ]
-      },
-      {
-        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
-        "role": "user",
-        "content": "hola",
-        "isDeleted": false,
-        "swipeId": "05e0d251-7d91-4c24-a50b-3bc5d3cb0dc5",
-        "swipeIndex": 0,
-        "id": "78e24f05-86bc-458e-bf7c-8619d4d3f0ab",
-        "timestamp": "2026-04-06T08:44:42.414Z",
-        "swipes": [
-          "hola"
-        ]
-      },
-      {
-        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
-        "role": "system",
-        "content": "⚠️ Z.ai requiere autenticación X-Token.\n\nEl archivo de configuración no tiene un campo \"token\".\nPara resolver esto, agregue un token JWT válido al archivo /etc/.z-ai-config:\n{\"baseUrl\": \"...\", \"apiKey\": \"...\", \"token\": \"su-jwt-token-aquí\"}\n\nO configure el campo \"API Key\" del proveedor Z.ai con su token JWT.",
-        "isDeleted": false,
-        "swipeId": "0a7fcdb9-6c9f-400b-8519-7a9b7d2e8e91",
-        "swipeIndex": 0,
-        "id": "8f735e44-032b-496c-a954-1dc2aae78b7a",
-        "timestamp": "2026-04-06T08:44:50.430Z",
-        "swipes": [
-          "⚠️ Z.ai requiere autenticación X-Token.\n\nEl archivo de configuración no tiene un campo \"token\".\nPara resolver esto, agregue un token JWT válido al archivo /etc/.z-ai-config:\n{\"baseUrl\": \"...\", \"apiKey\": \"...\", \"token\": \"su-jwt-token-aquí\"}\n\nO configure el campo \"API Key\" del proveedor Z.ai con su token JWT."
-        ]
       }
     ],
     "createdAt": "2026-04-04T08:17:17.841Z",
-    "updatedAt": "2026-04-06T08:44:50.430Z",
+    "updatedAt": "2026-04-09T03:55:19.172Z",
     "sessionStats": {
       "characterStats": {
         "7e6b6d7b-905e-4199-a15a-797f2efac746": {
@@ -56,10 +30,10 @@
       },
       "solicitudes": {
         "characterSolicitudes": {},
-        "lastModified": 1775465079264
+        "lastModified": 1775706919172
       },
       "initialized": true,
-      "lastModified": 1775465079264
+      "lastModified": 1775706919172
     },
     "sessionQuests": [],
     "turnCount": 0
