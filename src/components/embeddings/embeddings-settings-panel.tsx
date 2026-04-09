@@ -31,6 +31,7 @@ import {
   List,
   Pencil,
   RotateCcw,
+  Sparkles,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -199,6 +200,8 @@ const DEFAULT_EMBEDDINGS_CHAT = {
   memoryExtractionContextDepth: 2,
   searchContextDepth: 1,
   groupDynamicsExtraction: false,
+  memoryReinforcementEnabled: false,
+  memoryReinforcementThreshold: 0.7,
 };
 
 // ============================================
@@ -564,6 +567,63 @@ function EmbeddingsChatIntegrationContent() {
               </div>
             )}
 
+            {/* Memory Reinforcement */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label className="text-sm flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  Refuerzo de Memorias
+                </Label>
+                <p className="text-[10px] text-muted-foreground">
+                  Incrementa importancia cuando el LLM menciona memorias existentes
+                </p>
+              </div>
+              <Switch
+                checked={!!embeddingsChat.memoryReinforcementEnabled}
+                onCheckedChange={(enabled) => {
+                  updateSettings({
+                    embeddingsChat: { ...embeddingsChat, memoryReinforcementEnabled: enabled },
+                  });
+                }}
+              />
+            </div>
+
+            {embeddingsChat.memoryReinforcementEnabled && (
+              <div className="space-y-3 pl-1 border-l-2 border-amber-300/30">
+                <div className="space-y-2">
+                  <Label className="text-xs">Umbral de similitud: {Math.round((embeddingsChat.memoryReinforcementThreshold || 0.7) * 100)}%</Label>
+                  <Slider
+                    value={[embeddingsChat.memoryReinforcementThreshold || 0.7]}
+                    min={0.3}
+                    max={0.95}
+                    step={0.05}
+                    onValueChange={([v]) => {
+                      updateSettings({
+                        embeddingsChat: { ...embeddingsChat, memoryReinforcementThreshold: v },
+                      });
+                    }}
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Cuánta similitud para considerar que una memoria fue mencionada. Más bajo = más memorias refuerzo, pero puede haber falsos positivos.
+                  </p>
+                </div>
+                <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-amber-600 dark:text-amber-400">Refuerzo por Repetición</p>
+                      <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
+                        <li>Cuando el LLM menciona o parafrasea una memoria existente</li>
+                        <li>La importancia de esa memoria aumenta automáticamente</li>
+                        <li>Las memorias más reforzadas se preservan mejor en la consolidación</li>
+                        <li>Ayuda a que el sistema priorice memorias que el personaje "recuerda"</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="bg-violet-500/5 border border-violet-500/20 rounded-lg p-3">
               <div className="flex items-start gap-2">
                 <Brain className="w-4 h-4 text-violet-500 mt-0.5 shrink-0" />
@@ -812,6 +872,8 @@ export function EmbeddingsSettingsPanel() {
   const [checkingLanceDB, setCheckingLanceDB] = useState(false);
   const [refreshingModels, setRefreshingModels] = useState(false);
   const [searchNamespace, setSearchNamespace] = useState<string>('all');
+  const [searchSourceType, setSearchSourceType] = useState<string>('all');
+  const [browseSourceType, setBrowseSourceType] = useState<string>('all');
   const [searching, setSearching] = useState(false);
   const [selectedNamespace, setSelectedNamespace] = useState<string | null>(null);
 
@@ -1121,22 +1183,34 @@ export function EmbeddingsSettingsPanel() {
     if (!searchQuery.trim()) return;
     setSearching(true);
     try {
+      const body: Record<string, unknown> = {
+        query: searchQuery,
+        model: config.model,
+        namespace: searchNamespace === 'all' ? undefined : searchNamespace,
+        limit: config.maxResults,
+        threshold: config.similarityThreshold,
+      };
+      
+      // Add source_type filter if not 'all'
+      if (searchSourceType !== 'all') {
+        body.source_type = searchSourceType;
+      }
+      
       const res = await fetch('/api/embeddings/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: searchQuery,
-          model: config.model,
-          namespace: searchNamespace === 'all' ? undefined : searchNamespace,
-          limit: config.maxResults,
-          threshold: config.similarityThreshold,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (data.success) {
-        setSearchResults(data.data.results);
+        // Apply client-side source_type filter if namespace is 'all' (API might not support it)
+        let results = data.data.results || [];
+        if (searchSourceType !== 'all') {
+          results = results.filter((r: SearchResult) => r.source_type === searchSourceType);
+        }
+        setSearchResults(results);
         setSearchMeta(data.data.meta || null);
-        if (data.data.results.length === 0) {
+        if (results.length === 0) {
           toast({ title: 'Sin resultados', description: 'No se encontraron embeddings similares sobre el umbral.' });
         }
       } else {
@@ -1700,14 +1774,29 @@ export function EmbeddingsSettingsPanel() {
               className="flex-1 h-9 text-sm"
             />
             <Select value={searchNamespace} onValueChange={setSearchNamespace}>
-              <SelectTrigger className="w-36 h-9 text-xs">
+              <SelectTrigger className="w-32 h-9 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos los Namespaces</SelectItem>
+                <SelectItem value="all">Todos los NS</SelectItem>
                 {namespaces.map(ns => (
                   <SelectItem key={ns.namespace} value={ns.namespace}>{ns.namespace}</SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+            <Select value={searchSourceType} onValueChange={setSearchSourceType}>
+              <SelectTrigger className="w-32 h-9 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los Tipos</SelectItem>
+                <SelectItem value="memory">🧠 Memoria</SelectItem>
+                <SelectItem value="character">👤 Personaje</SelectItem>
+                <SelectItem value="world">🌍 Mundo</SelectItem>
+                <SelectItem value="lorebook">📖 Lorebook</SelectItem>
+                <SelectItem value="session">💬 Sesión</SelectItem>
+                <SelectItem value="file">📄 Archivo</SelectItem>
+                <SelectItem value="custom">✏️ Personalizado</SelectItem>
               </SelectContent>
             </Select>
             <Button onClick={handleSearch} disabled={searching || !searchQuery.trim()} size="sm">
@@ -2104,8 +2193,8 @@ export function EmbeddingsSettingsPanel() {
 
         {/* Tab 6: Examinar (Browse Embeddings) */}
         <TabsContent value="embeddings" className="space-y-3 mt-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-muted-foreground">
                 {selectedNamespace ? `${embeddings.length} en "${selectedNamespace}"` : `${stats?.totalEmbeddings || 0} total`}
               </span>
@@ -2114,6 +2203,21 @@ export function EmbeddingsSettingsPanel() {
                   Mostrar todo
                 </Button>
               )}
+              <Select value={browseSourceType} onValueChange={setBrowseSourceType}>
+                <SelectTrigger className="w-32 h-7 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los Tipos</SelectItem>
+                  <SelectItem value="memory">🧠 Memoria</SelectItem>
+                  <SelectItem value="character">👤 Personaje</SelectItem>
+                  <SelectItem value="world">🌍 Mundo</SelectItem>
+                  <SelectItem value="lorebook">📖 Lorebook</SelectItem>
+                  <SelectItem value="session">💬 Sesión</SelectItem>
+                  <SelectItem value="file">📄 Archivo</SelectItem>
+                  <SelectItem value="custom">✏️ Personalizado</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex gap-1.5">
               <Button size="sm" variant="outline" className="h-7 text-xs" onClick={refreshEmbeddingsTab} disabled={refreshingEmbeddings}>
@@ -2139,38 +2243,79 @@ export function EmbeddingsSettingsPanel() {
             </div>
           ) : (
             <div className="max-h-[400px] overflow-y-auto space-y-1.5 pr-1">
-              {embeddings.map(emb => (
-                <div key={emb.id} className="p-3 rounded-lg border border-border/40 hover:bg-muted/50 transition-colors">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm line-clamp-2">{emb.content}</p>
-                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                        <Badge variant="outline" className="text-[10px]">
-                          <Tag className="w-2.5 h-2.5 mr-0.5" />
-                          {emb.namespace}
-                        </Badge>
-                        {emb.source_type && (
-                          <Badge variant="secondary" className="text-[10px]">
-                            <Globe className="w-2.5 h-2.5 mr-0.5" />
-                            {emb.source_type}
-                          </Badge>
-                        )}
-                        <span className="text-[10px] text-muted-foreground">
-                          {new Date(emb.created_at).toLocaleDateString()}
-                        </span>
+              {embeddings
+                .filter(emb => browseSourceType === 'all' || emb.source_type === browseSourceType)
+                .map(emb => {
+                  const typeIcon = {
+                    memory: '🧠',
+                    character: '👤',
+                    world: '🌍',
+                    lorebook: '📖',
+                    session: '💬',
+                    file: '📄',
+                    custom: '✏️',
+                  }[emb.source_type || 'custom'] || '📝';
+                  
+                  const typeColor = {
+                    memory: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
+                    character: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+                    world: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+                    lorebook: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+                    session: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
+                    file: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-300',
+                    custom: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
+                  }[emb.source_type || 'custom'];
+                  
+                  return (
+                    <div key={emb.id} className="p-3 rounded-lg border border-border/40 hover:bg-muted/50 transition-colors">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm line-clamp-2">{emb.content}</p>
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            <Badge variant="outline" className="text-[10px]">
+                              <Tag className="w-2.5 h-2.5 mr-0.5" />
+                              {emb.namespace}
+                            </Badge>
+                            {emb.source_type && (
+                              <Badge className={cn('text-[10px]', typeColor)}>
+                                {typeIcon} {emb.source_type}
+                              </Badge>
+                            )}
+                            {emb.metadata?.memory_type && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                {emb.metadata.memory_type}
+                              </Badge>
+                            )}
+                            <span className="text-[10px] text-muted-foreground">
+                              {new Date(emb.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground hover:text-destructive shrink-0"
+                          onClick={() => handleDeleteEmbedding(emb.id)}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
                       </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-muted-foreground hover:text-destructive shrink-0"
-                      onClick={() => handleDeleteEmbedding(emb.id)}
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
-                  </div>
+                  );
+                })}
+              {embeddings.filter(emb => browseSourceType === 'all' || emb.source_type === browseSourceType).length === 0 && (
+                <div className="text-center py-6 text-muted-foreground">
+                  <p className="text-sm">No hay embeddings del tipo seleccionado.</p>
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    className="mt-2 text-xs" 
+                    onClick={() => setBrowseSourceType('all')}
+                  >
+                    Mostrar todos los tipos
+                  </Button>
                 </div>
-              ))}
+              )}
             </div>
           )}
 

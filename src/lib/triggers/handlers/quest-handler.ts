@@ -593,20 +593,20 @@ export function buildQuestPromptSection(
 
     // Build the quest block in new readable format
     // Format:
-    // • Mission Name
+    // - Nombre: Mission Name
     //   Descripción: Quest description
     //   Objetivos pendientes:
-    //     - Objective description
-    //       Se completa con: completionDescription
-    let questBlock = `• ${questTemplate.name}
+    //     1- Objective description
+    //       Se completa cuando: completionDescription
+    let questBlock = `- Nombre: ${questTemplate.name}
   Descripción: ${questTemplate.description}`;
 
     // Add pending objectives section
     if (pendingObjectives.length > 0) {
-      const objectiveLines = pendingObjectives.map(obj => {
-        let line = `    - ${obj.description}${obj.progress || ''}`;
+      const objectiveLines = pendingObjectives.map((obj, idx) => {
+        let line = `    ${idx + 1}- ${obj.description}${obj.progress || ''}`;
         if (obj.completionDescription) {
-          line += `\n      Se completa con: ${obj.completionDescription}`;
+          line += `\n      Se completa cuando: ${obj.completionDescription}`;
         }
         return line;
       }).join('\n');
@@ -617,10 +617,10 @@ ${objectiveLines}`;
 
     // Add optional objectives section
     if (optionalObjectives.length > 0) {
-      const objectiveLines = optionalObjectives.map(obj => {
-        let line = `    - ${obj.description}${obj.progress || ''}`;
+      const objectiveLines = optionalObjectives.map((obj, idx) => {
+        let line = `    ${idx + 1}- ${obj.description}${obj.progress || ''}`;
         if (obj.completionDescription) {
-          line += `\n      Se completa con: ${obj.completionDescription}`;
+          line += `\n      Se completa cuando: ${obj.completionDescription}`;
         }
         return line;
       }).join('\n');

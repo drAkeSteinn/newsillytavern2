@@ -10,6 +10,7 @@ import type {
   QuestRewardAttribute,
   QuestRewardTrigger,
   QuestRewardObjective,
+  QuestRewardSolicitud,
   QuestRewardCondition,
   AttributeAction,
   TriggerCategory,
@@ -102,6 +103,30 @@ export function createObjectiveReward(
     objective: {
       objectiveKey,
       questId,
+    },
+    condition: options?.condition,
+  };
+}
+
+/**
+ * Crea una recompensa de solicitud (completa una solicitud del personaje)
+ */
+export function createSolicitudReward(
+  solicitudKey: string,
+  solicitudId?: string,
+  options?: {
+    id?: string;
+    solicitudName?: string;
+    condition?: QuestRewardCondition;
+  }
+): QuestReward {
+  return {
+    id: options?.id || generateId(),
+    type: 'solicitud',
+    solicitud: {
+      solicitudKey,
+      solicitudId,
+      solicitudName: options?.solicitudName,
     },
     condition: options?.condition,
   };
@@ -366,6 +391,12 @@ export function describeReward(reward: QuestReward): string {
     const obj = reward.objective;
     if (!obj) return 'Objetivo inválido';
     return `🎯 Objetivo: ${obj.objectiveKey}${obj.questId ? ` (${obj.questId})` : ''}`;
+  }
+
+  if (reward.type === 'solicitud') {
+    const sol = reward.solicitud;
+    if (!sol) return 'Solicitud inválida';
+    return `📋 Solicitud: ${sol.solicitudName || sol.solicitudKey}`;
   }
 
   return 'Recompensa desconocida';

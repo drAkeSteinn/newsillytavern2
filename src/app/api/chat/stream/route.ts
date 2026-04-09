@@ -47,6 +47,7 @@ import {
 } from '@/lib/context-manager';
 import { buildQuestPromptSection } from '@/lib/triggers/handlers/quest-handler';
 import { retrieveEmbeddingsContext, formatEmbeddingsForSSE } from '@/lib/embeddings/chat-context';
+import { processResponseAndReinforceMemories, isReinforcementEnabled } from '@/lib/embeddings/memory-reinforcement';
 import type { EmbeddingsChatSettings, ToolsSettings } from '@/types';
 import {
   getAllToolDefinitions,
@@ -1273,6 +1274,41 @@ Y cambiar mi expresión:
 
             // Break the tool loop - no more rounds needed
             break;
+          }
+
+          // ========================================
+          // Memory Reinforcement
+          // Check if LLM referenced any existing memories and boost their importance
+          // ========================================
+          if (accumulatedContent.length > 50 && embeddingsResult?.searchedNamespaces?.length > 0) {
+            const reinforcementEnabled = isReinforcementEnabled(embeddingsChat);
+            if (reinforcementEnabled) {
+              // Get namespaces to check for memory reinforcement
+              const reinforcementNamespaces = embeddingsResult.searchedNamespaces.filter(
+                ns => ns.startsWith('memory-')
+              );
+              
+              if (reinforcementNamespaces.length > 0) {
+                // Fire and forget - don't block the response
+                setTimeout(async () => {
+                  try {
+                    const threshold = embeddingsChat.memoryReinforcementThreshold || 0.7;
+                    const result = await processResponseAndReinforceMemories(
+                      accumulatedContent,
+                      reinforcementNamespaces,
+                      true,
+                      threshold
+                    );
+                    
+                    if (result.reinforced > 0) {
+                      console.log(`[MemoryReinforcement] Reinforced ${result.reinforced} memories`);
+                    }
+                  } catch (err) {
+                    console.warn('[MemoryReinforcement] Failed:', err);
+                  }
+                }, 0);
+              }
+            }
           }
 
           // Check if memory extraction should trigger BEFORE closing stream

@@ -691,6 +691,10 @@ export function describeReward(reward: QuestReward): string {
     const targetLabel = targetLabels[trig.targetMode] || '';
     return `${icon} ${trig.key}${targetLabel}`;
   }
+
+  if (normalized.type === 'solicitud' && normalized.solicitud) {
+    return `📋 ${normalized.solicitud.solicitudName || normalized.solicitud.solicitudKey}`;
+  }
   
   // Fallback for unknown format
   return `${normalized.type}: ${normalized.key || '?'}`;

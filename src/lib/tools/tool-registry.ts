@@ -163,6 +163,15 @@ export function buildPromptBasedToolsSection(
   lines.push('7. USA manage_quest para reportar cuando completes un objetivo o avances en una misión.');
   lines.push('8. USA manage_memory para guardar eventos importantes del roleplay.');
 
+  lines.push('');
+  lines.push('GUÍA DE TIPOS DE MEMORIA:');
+  lines.push('- hecho: Información factual estática (nombre, posesión, característica, habilidad)');
+  lines.push('- evento: Algo que sucedió o va a suceder (batalla, reunión, ceremonia)');
+  lines.push('- relacion: Vínculo entre personajes (confianza, enemistad, alianza)');
+  lines.push('- preferencia: Gustos, disgustos, hábitos del personaje');
+  lines.push('- secreto: Información oculta o sensible que el personaje guarda');
+  lines.push('- otro: No encaja en las categorías anteriores');
+
   return lines.join('\n');
 }
 

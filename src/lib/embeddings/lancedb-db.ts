@@ -568,8 +568,21 @@ export class LanceDBWrapper {
   }
 
   static async deleteNamespace(namespace: string): Promise<boolean> {
-    const table = await getNamespacesTable();
-    await table.delete(`namespace = '${namespace}'`);
+    try {
+      const deletedEmbeddings = await LanceDBWrapper.deleteAllByNamespace(namespace);
+      console.log(`[LanceDB] Deleted ${deletedEmbeddings} embeddings from namespace "${namespace}"`);
+    } catch (err) {
+      console.warn(`[LanceDB] Failed to delete embeddings for namespace "${namespace}":`, err);
+    }
+    
+    try {
+      const table = await getNamespacesTable();
+      await table.delete(`namespace = '${namespace}'`);
+      console.log(`[LanceDB] Deleted namespace record: "${namespace}"`);
+    } catch (err) {
+      console.warn(`[LanceDB] Failed to delete namespace record "${namespace}":`, err);
+    }
+    
     try { await db!.dropTable(namespace); } catch { /* table may not exist */ }
     return true;
   }

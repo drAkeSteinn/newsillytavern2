@@ -2145,7 +2145,7 @@ export interface QuestObjectiveTemplate {
 // Los triggers se ejecutan a través del UnifiedTriggerExecutor,
 // que simula que el TokenDetector encontró la key.
 
-export type QuestRewardType = 'attribute' | 'trigger' | 'objective';
+export type QuestRewardType = 'attribute' | 'trigger' | 'objective' | 'solicitud';
 
 // Target mode para grupos
 export type TriggerTargetMode = 'self' | 'all' | 'target';
@@ -2193,6 +2193,13 @@ export interface QuestRewardObjective {
   questId?: string;          // ID de la misión (opcional, para validar)
 }
 
+// Configuración de solicitud para recompensa (completa una solicitud del personaje)
+export interface QuestRewardSolicitud {
+  solicitudKey: string;       // Key de la solicitud a completar: "proporcionar_madera"
+  solicitudId?: string;       // ID de la solicitud (opcional, para validar)
+  solicitudName?: string;     // Nombre de la solicitud para mostrar
+}
+
 // Opción para dropdown de selección de objetivos en UI
 export interface ObjectiveDropdownOption {
   questId: string;
@@ -2203,10 +2210,18 @@ export interface ObjectiveDropdownOption {
   label: string;  // Display label: "Misión → Objetivo"
 }
 
+// Opción para dropdown de selección de solicitudes en UI
+export interface SolicitudDropdownOption {
+  solicitudId: string;
+  solicitudKey: string;
+  solicitudName: string;
+  label: string;  // Display label: "Solicitud"
+}
+
 export interface QuestReward {
   id: string;
 
-  // Tipo de recompensa: attribute, trigger u objective
+  // Tipo de recompensa: attribute, trigger, objective o solicitud
   type: QuestRewardType;
 
   // Para type: 'attribute' - modificación de atributos
@@ -2217,6 +2232,9 @@ export interface QuestReward {
 
   // Para type: 'objective' - completa un objetivo de misión
   objective?: QuestRewardObjective;
+
+  // Para type: 'solicitud' - completa una solicitud del personaje
+  solicitud?: QuestRewardSolicitud;
 
   // Condiciones opcionales para ejecutar el reward
   condition?: QuestRewardCondition;

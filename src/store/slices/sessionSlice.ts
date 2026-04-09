@@ -171,7 +171,7 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
   activeSessionId: null,
 
   // Session Actions
-  createSession: (characterId, groupId) => {
+  createSession: async (characterId, groupId) => {
     const id = uuidv4();
     const character = get().getCharacterById(characterId);
     const activePersona = get().getActivePersona?.();
@@ -189,6 +189,8 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     
     // Initialize session quests
     let sessionQuests: SessionQuestInstance[] = [];
+    let memberIds: string[] = [];
+    let memberNames: string[] = [];
     
     if (groupId) {
       // Group chat: initialize stats for all group members
@@ -198,6 +200,10 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
           .map((m: any) => get().getCharacterById(m.characterId))
           .filter((c: any) => c !== undefined);
         sessionStats = initializeSessionStatsForCharacters(groupCharacters);
+        
+        // Collect member IDs and names for namespace creation
+        memberIds = groupCharacters.map((c: any) => c.id);
+        memberNames = groupCharacters.map((c: any) => c.name);
         
         // Group chat: ONLY use group's quest templates (not individual character quests)
         if (group.questTemplateIds && group.questTemplateIds.length > 0) {
@@ -248,6 +254,26 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
       activeGroupId: groupId || null
     }));
 
+    // Create memory namespaces for this session (async, don't wait)
+    try {
+      await fetch('/api/embeddings/ensure-namespace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          characterId,
+          characterName: character?.name || '',
+          groupId,
+          groupName: groupId ? get().getGroupById?.(groupId)?.name : undefined,
+          memberIds,
+          memberNames,
+          sessionId: id,
+        }),
+      });
+      console.log(`[Session] Created memory namespaces for session ${id}`);
+    } catch (err) {
+      console.warn('[Session] Failed to create memory namespaces:', err);
+    }
+
     return id;
   },
 
@@ -257,18 +283,81 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     )
   })),
 
-  deleteSession: (id) => set((state: any) => ({
-    sessions: state.sessions.filter((s: ChatSession) => s.id !== id),
-    activeSessionId: state.activeSessionId === id ? null : state.activeSessionId
-  })),
+  deleteSession: async (id) => {
+    // Get session info before deleting
+    const session = get().getSessionById(id);
+    const characterId = session?.characterId;
+    const groupId = session?.groupId;
 
-  setActiveSession: (id) => {
+    // Delete from state
+    set((state: any) => ({
+      sessions: state.sessions.filter((s: ChatSession) => s.id !== id),
+      activeSessionId: state.activeSessionId === id ? null : state.activeSessionId
+    }));
+
+    // Delete memory namespaces and their embeddings (async, don't wait)
+    if (session) {
+      try {
+        await fetch('/api/embeddings/delete-session-namespaces', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            characterId,
+            groupId,
+            sessionId: id,
+          }),
+        });
+        console.log(`[Session] Deleted memory namespaces for session ${id}`);
+      } catch (err) {
+        console.warn('[Session] Failed to delete memory namespaces:', err);
+      }
+    }
+  },
+
+  setActiveSession: async (id) => {
     const session = get().getSessionById(id);
     set({
       activeSessionId: id,
       activeCharacterId: session?.characterId || null,
       activeGroupId: session?.groupId || null
     });
+
+    // Ensure memory namespaces exist for this session (async, don't wait)
+    if (session) {
+      try {
+        let memberIds: string[] = [];
+        let memberNames: string[] = [];
+        
+        if (session.groupId) {
+          // Group chat: get all group members
+          const group = get().getGroupById?.(session.groupId);
+          if (group?.members) {
+            const groupCharacters = group.members
+              .map((m: any) => get().getCharacterById(m.characterId))
+              .filter((c: any) => c !== undefined);
+            memberIds = groupCharacters.map((c: any) => c.id);
+            memberNames = groupCharacters.map((c: any) => c.name);
+          }
+        }
+        
+        await fetch('/api/embeddings/ensure-namespace', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            characterId: session.characterId,
+            characterName: session.characterId ? get().getCharacterById?.(session.characterId)?.name : '',
+            groupId: session.groupId,
+            groupName: session.groupId ? get().getGroupById?.(session.groupId)?.name : undefined,
+            memberIds,
+            memberNames,
+            sessionId: id,
+          }),
+        });
+        console.log(`[Session] Ensured memory namespaces for session ${id}`);
+      } catch (err) {
+        console.warn('[Session] Failed to ensure memory namespaces:', err);
+      }
+    }
   },
 
   resetSessionStats: (sessionId) => {

@@ -8,6 +8,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { EmojiPicker } from './emoji-picker';
 import { StreamingText } from './streaming-text';
 import { useHotkeys, formatHotkey } from '@/hooks/use-hotkeys';
@@ -49,12 +51,28 @@ import {
   VolumeX,
   Brain,
   Trash2,
+  Plus,
 } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import type { ChatLayoutSettings, CharacterCard, CharacterGroup, Persona, ChatboxAppearanceSettings } from '@/types';
 import { DEFAULT_CHATBOX_APPEARANCE, THEME_COLOR_PRESETS } from '@/types';
@@ -214,6 +232,14 @@ export function NovelChatBox({
     created_at: string;
   }>>([]);
   const [memoriesLoaded, setMemoriesLoaded] = useState(false);
+  
+  // Add memory dialog state
+  const [addMemoryOpen, setAddMemoryOpen] = useState(false);
+  const [addMemoryContent, setAddMemoryContent] = useState('');
+  const [addMemoryType, setAddMemoryType] = useState<string>('hecho');
+  const [addMemoryImportance, setAddMemoryImportance] = useState<number>(3);
+  const [addMemoryCharacterId, setAddMemoryCharacterId] = useState<string>('');
+  const [addingMemory, setAddingMemory] = useState(false);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -785,7 +811,7 @@ export function NovelChatBox({
   const themeColors = getThemeColors();
 
   // ============================================
-  // MEMORIES TAB - Load & Delete memories
+  // MEMORIES TAB - Load, Add & Delete memories
   // ============================================
   const loadMemories = useCallback(async () => {
     if (memoriesLoaded) return;
@@ -794,17 +820,33 @@ export function NovelChatBox({
       const sessionSuffix = sessionId ? `-${sessionId}` : '';
       let namespacesToFetch: string[] = [];
       if (isGroupMode && activeGroup) {
-        // Group mode: fetch session-scoped group namespace + each member's character namespace
+        // Group mode: fetch session-scoped MEMORY namespaces + each member's character namespace
+        // NEW FORMAT: memory-group-{id}-{session}, memory-character-{id}-{session}
         const memberIds = activeGroup.members?.map(m => m.characterId) || activeGroup.characterIds || [];
-        // Prioritize session-scoped namespaces (primary), also fallback to generic (for manually created lore)
-        const sessionNS = sessionSuffix ? [`group-${activeGroup.id}${sessionSuffix}`, ...memberIds.map(id => `character-${id}${sessionSuffix}`)] : [];
-        const genericNS = [`group-${activeGroup.id}`, ...memberIds.map(id => `character-${id}`)];
+        // Primary: session-scoped memory namespaces (auto-extracted + manual)
+        const sessionNS = sessionSuffix 
+          ? [
+              `memory-group-${activeGroup.id}${sessionSuffix}`,
+              `memory-character-${activeGroup.id}${sessionSuffix}`,
+              ...memberIds.map(id => `memory-character-${id}${sessionSuffix}`)
+            ]
+          : [];
+        // Fallback: generic memory namespaces (manually created without session)
+        const genericNS = [
+          `memory-group-${activeGroup.id}`,
+          `memory-character-${activeGroup.id}`,
+          ...memberIds.map(id => `memory-character-${id}`)
+        ];
         namespacesToFetch = [...sessionNS, ...genericNS];
       } else if (activeCharacter) {
-        // Single mode: fetch session-scoped character namespace
-        // Also include generic namespace for backward compat and manually created lore
-        namespacesToFetch = [`character-${activeCharacter.id}${sessionSuffix}`];
-        if (sessionSuffix) namespacesToFetch.push(`character-${activeCharacter.id}`);
+        // Single mode: fetch session-scoped character MEMORY namespace
+        // NEW FORMAT: memory-character-{id}-{session}
+        namespacesToFetch = [`memory-character-${activeCharacter.id}${sessionSuffix}`];
+        if (sessionSuffix) {
+          namespacesToFetch.push(`memory-character-${activeCharacter.id}`);
+        }
+        // Also include generic namespace for backward compat
+        namespacesToFetch.push(`character-${activeCharacter.id}`);
       }
 
       if (namespacesToFetch.length === 0) {
@@ -847,6 +889,80 @@ export function NovelChatBox({
       setMemoriesLoading(false);
     }
   }, [isGroupMode, activeGroup, activeCharacter, memoriesLoaded, sessionId]);
+
+  // Add memory function
+  const addMemory = useCallback(async () => {
+    if (!addMemoryContent.trim()) return;
+    setAddingMemory(true);
+    
+    try {
+      // Determine which character to add memory for
+      let targetCharacterId = activeCharacter?.id || '';
+      let targetCharacterName = activeCharacter?.name || '';
+      
+      if (isGroupMode) {
+        // In group mode, use the selected character from dropdown
+        // or default to activeCharacter if not specified
+        if (addMemoryCharacterId) {
+          const selectedChar = characters.find(c => c.id === addMemoryCharacterId);
+          if (selectedChar) {
+            targetCharacterId = selectedChar.id;
+            targetCharacterName = selectedChar.name;
+          }
+        } else if (activeCharacter) {
+          targetCharacterId = activeCharacter.id;
+          targetCharacterName = activeCharacter.name;
+        }
+      }
+      
+      if (!targetCharacterId) {
+        console.error('[NovelChatBox] No character selected for memory');
+        setAddingMemory(false);
+        return;
+      }
+
+      // Build namespace: memory-character-{id}-{session}
+      const namespace = `memory-character-${targetCharacterId}${sessionId ? `-${sessionId}` : ''}`;
+      
+      const response = await fetch('/api/embeddings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: addMemoryContent.trim(),
+          namespace,
+          source_type: 'memory',
+          source_id: sessionId || 'unknown',
+          metadata: {
+            memory_type: addMemoryType,
+            importance: addMemoryImportance,
+            manually_created: true,
+            character_id: targetCharacterId,
+            session_id: sessionId,
+            created_at: new Date().toISOString(),
+          },
+        }),
+      });
+      
+      if (response.ok) {
+        // Reset form
+        setAddMemoryContent('');
+        setAddMemoryType('hecho');
+        setAddMemoryImportance(3);
+        setAddMemoryCharacterId('');
+        setAddMemoryOpen(false);
+        
+        // Refresh memories list
+        setMemoriesLoaded(false);
+        loadMemories();
+      } else {
+        console.error('[NovelChatBox] Failed to add memory:', response.status);
+      }
+    } catch (error) {
+      console.error('[NovelChatBox] Error adding memory:', error);
+    } finally {
+      setAddingMemory(false);
+    }
+  }, [addMemoryContent, addMemoryType, addMemoryImportance, addMemoryCharacterId, activeCharacter, isGroupMode, sessionId, characters, loadMemories]);
 
   const deleteMemory = useCallback(async (memoryId: string) => {
     try {
@@ -2280,7 +2396,23 @@ export function NovelChatBox({
                       {memories.length}
                     </Badge>
                   )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1"
+                    onClick={() => setAddMemoryOpen(true)}
+                  >
+                    <Plus className="w-3 h-3" />
+                    Agregar
+                  </Button>
                 </div>
+
+                {/* Group mode: Character selector for adding memory */}
+                {isGroupMode && (
+                  <div className="text-[10px] text-muted-foreground bg-violet-500/10 rounded-lg p-2">
+                    En chats de grupo, usa el botón "Agregar" para añadir memorias a cada personaje.
+                  </div>
+                )}
 
                 {/* Loading */}
                 {memoriesLoading && (
@@ -2355,10 +2487,10 @@ export function NovelChatBox({
                 {!memoriesLoading && memories.length > 0 && (
                   <div className="pt-2 border-t mt-2 space-y-2">
                     <p className="text-[10px] text-muted-foreground text-center">
-                      🧠 Namespace: <code className="text-violet-400">{isGroupMode && activeGroup ? `group-${activeGroup.id}${sessionId ? `-${sessionId.slice(0, 8)}` : ''}` : activeCharacter ? `character-${activeCharacter.id}${sessionId ? `-${sessionId.slice(0, 8)}` : ''}` : '—'}</code>
+                      🧠 Namespace: <code className="text-violet-400">{isGroupMode && activeGroup ? `memory-group-${activeGroup.id}${sessionId ? `-${sessionId.slice(0, 8)}` : ''}` : activeCharacter ? `memory-character-${activeCharacter.id}${sessionId ? `-${sessionId.slice(0, 8)}` : ''}` : '—'}</code>
                     </p>
                     <p className="text-[10px] text-muted-foreground text-center">
-                      💡 Para gestionar más memorias, ve a Configuración → Embeddings → Examinar
+                      💡 Usa "Agregar" para guardar memorias manualmente o Configuración → Embeddings → Examinar
                     </p>
                   </div>
                 )}
@@ -2379,6 +2511,118 @@ export function NovelChatBox({
               </div>
             </ScrollArea>
           )}
+
+          {/* Add Memory Dialog */}
+          <Dialog open={addMemoryOpen} onOpenChange={setAddMemoryOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Brain className="w-4 h-4 text-violet-500" />
+                  Agregar Memoria
+                </DialogTitle>
+                <DialogDescription>
+                  {isGroupMode 
+                    ? 'Guarda una memoria para un personaje específico del grupo.'
+                    : `Guarda una memoria para ${activeCharacter?.name || 'el personaje'}.`
+                  }
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                {/* Character selector for group mode */}
+                {isGroupMode && (
+                  <div className="space-y-2">
+                    <Label className="text-xs">Personaje</Label>
+                    <Select value={addMemoryCharacterId} onValueChange={setAddMemoryCharacterId}>
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder="Selecciona un personaje..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(activeGroup?.members?.map(m => m.characterId) || activeGroup?.characterIds || [])
+                          .map(charId => characters.find(c => c.id === charId))
+                          .filter(Boolean)
+                          .map(char => (
+                            <SelectItem key={char!.id} value={char!.id}>
+                              {char!.name}
+                            </SelectItem>
+                          ))
+                        }
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {/* Memory content */}
+                <div className="space-y-2">
+                  <Label className="text-xs">Contenido de la memoria</Label>
+                  <Textarea
+                    value={addMemoryContent}
+                    onChange={(e) => setAddMemoryContent(e.target.value)}
+                    placeholder="Escribe la memoria que quieres guardar..."
+                    rows={4}
+                    className="text-sm resize-none"
+                  />
+                </div>
+
+                {/* Memory type */}
+                <div className="space-y-2">
+                  <Label className="text-xs">Tipo de memoria</Label>
+                  <Select value={addMemoryType} onValueChange={setAddMemoryType}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="hecho">🧠 Hecho</SelectItem>
+                      <SelectItem value="evento">📅 Evento</SelectItem>
+                      <SelectItem value="relacion">💜 Relación</SelectItem>
+                      <SelectItem value="preferencia">⭐ Preferencia</SelectItem>
+                      <SelectItem value="secreto">🔒 Secreto</SelectItem>
+                      <SelectItem value="otro">📝 Otro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Importance */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Importancia: {addMemoryImportance}/5</Label>
+                  </div>
+                  <Slider
+                    value={[addMemoryImportance]}
+                    min={1}
+                    max={5}
+                    step={1}
+                    onValueChange={([v]) => setAddMemoryImportance(v)}
+                    className="py-1"
+                  />
+                  <div className="flex justify-between text-[10px] text-muted-foreground">
+                    <span>Baja</span>
+                    <span>Alta</span>
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAddMemoryOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={addMemory} 
+                  disabled={addingMemory || !addMemoryContent.trim() || (isGroupMode && !addMemoryCharacterId && !activeCharacter)}
+                >
+                  {addingMemory ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <Brain className="w-4 h-4 mr-1" />
+                      Guardar Memoria
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Resize Handles */}
           <div

@@ -1,0 +1,55 @@
+{
+  "id": "examen",
+  "name": "Examen Mental",
+  "description": "Realizar un analisis exhaustivo del usuario",
+  "priority": "main",
+  "icon": "📜",
+  "isRepeatable": false,
+  "isHidden": false,
+  "prerequisites": [],
+  "activation": {
+    "key": "mision:imposible2",
+    "keys": [],
+    "caseSensitive": false,
+    "method": "keyword"
+  },
+  "objectives": [
+    {
+      "id": "obj-mnretjms",
+      "description": "Examen Psycologico",
+      "type": "custom",
+      "completion": {
+        "key": "test1",
+        "keys": [],
+        "caseSensitive": false
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "completionDescription": "Se inicia un examen Psycologico al usuario",
+      "characterFilter": {
+        "enabled": false,
+        "mode": "include",
+        "characterIds": []
+      },
+      "rewards": [
+        {
+          "id": "obj-reward-mnreur7i",
+          "type": "attribute",
+          "attribute": {
+            "key": "resistencia",
+            "value": 20,
+            "action": "add"
+          }
+        }
+      ]
+    }
+  ],
+  "completion": {
+    "key": "mision:completa",
+    "keys": [],
+    "caseSensitive": false
+  },
+  "rewards": [],
+  "createdAt": "2026-04-09T11:46:03.752Z",
+  "updatedAt": "2026-04-09T22:05:26.552Z"
+}

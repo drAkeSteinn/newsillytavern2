@@ -71,6 +71,7 @@ import { DEFAULT_STATS_BLOCK_HEADERS, DEFAULT_STATS_CONFIG } from '@/types';
 import {
   createTriggerReward,
   createObjectiveReward,
+  createSolicitudReward,
   describeReward,
   normalizeReward,
 } from '@/lib/quest/quest-reward-utils';
@@ -1404,11 +1405,12 @@ interface SkillEditorProps {
   index: number;
   availableAttributes: AttributeDefinition[];
   availableObjectives?: ObjectiveDropdownOption[];
+  availableSolicitudes?: SolicitudDropdownOption[];
   onChange: (index: number, updates: Partial<SkillDefinition>) => void;
   onDelete: (index: number) => void;
 }
 
-function SkillEditor({ skill, index, availableAttributes, availableObjectives = [], onChange, onDelete }: SkillEditorProps) {
+function SkillEditor({ skill, index, availableAttributes, availableObjectives = [], availableSolicitudes = [], onChange, onDelete }: SkillEditorProps) {
   const [expanded, setExpanded] = useState(false);
   
   return (
@@ -1770,6 +1772,17 @@ function SkillEditor({ skill, index, availableAttributes, availableObjectives = 
                 >
                   <Plus className="w-3 h-3 mr-1" /> Objetivo
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 text-xs border-violet-500/30 hover:bg-violet-500/10"
+                  onClick={() => {
+                    const newReward = createSolicitudReward('', undefined, { id: `skill-reward-${Date.now().toString(36)}` });
+                    onChange(index, { activationRewards: [...(skill.activationRewards || []), newReward] });
+                  }}
+                >
+                  <Plus className="w-3 h-3 mr-1" /> Solicitud
+                </Button>
               </div>
             </div>
             <div className="space-y-1">
@@ -1777,12 +1790,13 @@ function SkillEditor({ skill, index, availableAttributes, availableObjectives = 
                 const normalized = normalizeReward(reward);
                 const isTrig = normalized.type === 'trigger';
                 const isObj = normalized.type === 'objective';
+                const isSol = normalized.type === 'solicitud';
 
                 return (
-                  <div key={reward.id} className={`p-2 rounded border space-y-2 ${isObj ? 'bg-amber-500/5 border-amber-500/10' : 'bg-green-500/5 border-green-500/10'}`}>
+                  <div key={reward.id} className={`p-2 rounded border space-y-2 ${isObj ? 'bg-amber-500/5 border-amber-500/10' : isSol ? 'bg-violet-500/5 border-violet-500/10' : 'bg-green-500/5 border-green-500/10'}`}>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className={`text-[10px] ${isObj ? 'text-amber-400 border-amber-500/30' : 'text-green-400 border-green-500/30'}`}>
-                        {isObj ? '🎯 Objetivo' : '⚡ Trigger'}
+                      <Badge variant="outline" className={`text-[10px] ${isObj ? 'text-amber-400 border-amber-500/30' : isSol ? 'text-violet-400 border-violet-500/30' : 'text-green-400 border-green-500/30'}`}>
+                        {isObj ? '🎯 Objetivo' : isSol ? '📋 Solicitud' : '⚡ Trigger'}
                       </Badge>
                       <Badge variant="outline" className="text-[10px]">
                         {describeReward(normalized)}
@@ -1973,6 +1987,62 @@ function SkillEditor({ skill, index, availableAttributes, availableObjectives = 
                             />
                             <Badge variant="outline" className="text-[10px] text-amber-500 border-amber-500/30">
                               Sin quests asignadas
+                            </Badge>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Solicitud Reward Editor */}
+                    {isSol && normalized.solicitud && (
+                      <div>
+                        <Label className="text-[10px] text-muted-foreground mb-1 block">Solicitud que completa *</Label>
+                        {availableSolicitudes.length > 0 ? (
+                          <Select
+                            value={normalized.solicitud.solicitudKey}
+                            onValueChange={(v) => {
+                              const selectedSol = availableSolicitudes.find(s => s.solicitudKey === v);
+                              const updatedRewards = [...(skill.activationRewards || [])];
+                              updatedRewards[rewardIdx] = {
+                                ...reward,
+                                solicitud: {
+                                  ...normalized.solicitud!,
+                                  solicitudKey: v,
+                                  solicitudId: selectedSol?.solicitudId,
+                                  solicitudName: selectedSol?.solicitudName,
+                                }
+                              };
+                              onChange(index, { activationRewards: updatedRewards });
+                            }}
+                          >
+                            <SelectTrigger className="bg-background h-6 text-xs">
+                              <SelectValue placeholder="Seleccionar solicitud..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableSolicitudes.map((sol) => (
+                                <SelectItem key={sol.solicitudKey} value={sol.solicitudKey}>
+                                  {sol.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <div className="flex gap-2">
+                            <Input
+                              value={normalized.solicitud.solicitudKey}
+                              onChange={(e) => {
+                                const updatedRewards = [...(skill.activationRewards || [])];
+                                updatedRewards[rewardIdx] = {
+                                  ...reward,
+                                  solicitud: { ...normalized.solicitud!, solicitudKey: e.target.value }
+                                };
+                                onChange(index, { activationRewards: updatedRewards });
+                              }}
+                              placeholder="Key de la solicitud (ej: consulta_respondida)"
+                              className="bg-background h-6 text-xs font-mono flex-1"
+                            />
+                            <Badge variant="outline" className="text-[10px] text-violet-500 border-violet-500/30">
+                              Sin solicitudes disponibles
                             </Badge>
                           </div>
                         )}
@@ -2627,6 +2697,29 @@ function getAvailableObjectives(questTemplates: QuestTemplate[] = [], questTempl
 }
 
 // ============================================
+// Helper: Generate available solicitudes from character definitions
+// ============================================
+
+function getAvailableSolicitudes(
+  allCharacters: { id: string; name: string; solicitudDefinitions: SolicitudDefinition[] }[] = []
+): SolicitudDropdownOption[] {
+  const options: SolicitudDropdownOption[] = [];
+  
+  for (const char of allCharacters) {
+    for (const sol of char.solicitudDefinitions || []) {
+      options.push({
+        solicitudId: sol.id,
+        solicitudKey: sol.solicitudKey,
+        solicitudName: sol.name,
+        label: `${char.name} → ${sol.name}`,
+      });
+    }
+  }
+  
+  return options;
+}
+
+// ============================================
 // Main Stats Editor Component
 // ============================================
 
@@ -2638,6 +2731,7 @@ export function StatsEditor({ statsConfig, onChange, allCharacters = [], questTe
   };
   
   const availableObjectives = getAvailableObjectives(questTemplates, questTemplateIds);
+  const availableSolicitudes = getAvailableSolicitudes(allCharacters);
   
   // Attributes
   const addAttribute = () => {
@@ -2911,6 +3005,7 @@ export function StatsEditor({ statsConfig, onChange, allCharacters = [], questTe
                       index={index}
                       availableAttributes={config.attributes}
                       availableObjectives={availableObjectives}
+                      availableSolicitudes={availableSolicitudes}
                       onChange={updateSkill}
                       onDelete={deleteSkill}
                     />

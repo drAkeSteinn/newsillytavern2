@@ -289,12 +289,17 @@ async function getNamespaceTypesMap(results: SearchResult[]): Promise<Record<str
 /**
  * Determine which namespaces to search based on the configured strategy.
  *
- * Memory namespaces now include sessionId:
- *   - character-{characterId}-{sessionId}
- *   - group-{groupId}-{sessionId}
+ * Memory namespaces now use prefix 'memory-':
+ *   - memory-character-{characterId}-{sessionId}
+ *   - memory-group-{groupId}-{sessionId}
  *
- * So we search BOTH the session-specific AND the generic namespace to cover
- * memories from the current session and any manually created embeddings.
+ * Lore namespaces (without 'memory-' prefix):
+ *   - character-{characterId}
+ *   - group-{groupId}
+ *   - default, world, world-building
+ *
+ * So we search BOTH the memory namespaces (for extracted memories) AND the
+ * lore namespaces (for manually created content).
  */
 function getNamespacesForStrategy(
   strategy: EmbeddingsChatSettings['namespaceStrategy'],
@@ -308,10 +313,10 @@ function getNamespacesForStrategy(
 
     case 'character': {
       const ns: string[] = [];
-      // Session-specific memory namespaces (primary — memories from this session)
-      if (characterId && sessionId) ns.push(`character-${characterId}-${sessionId}`);
-      if (groupId && sessionId) ns.push(`group-${groupId}-${sessionId}`);
-      // Also search the generic character/group namespace for manually created lore
+      // Session-specific MEMORY namespaces (memories extracted from chat)
+      if (characterId && sessionId) ns.push(`memory-character-${characterId}-${sessionId}`);
+      if (groupId && sessionId) ns.push(`memory-group-${groupId}-${sessionId}`);
+      // LORE namespaces (manually created content - files, world, etc.)
       if (characterId) ns.push(`character-${characterId}`);
       if (groupId) ns.push(`group-${groupId}`);
       // Always include common lore/world namespaces
@@ -321,11 +326,10 @@ function getNamespacesForStrategy(
 
     case 'session': {
       const ns: string[] = [];
-      // Session-specific namespaces (primary)
-      if (characterId && sessionId) ns.push(`character-${characterId}-${sessionId}`);
-      if (groupId && sessionId) ns.push(`group-${groupId}-${sessionId}`);
-      if (sessionId) ns.push(`session-${sessionId}`);
-      // Also search generic namespaces for manually created content
+      // Session-specific MEMORY namespaces (primary)
+      if (characterId && sessionId) ns.push(`memory-character-${characterId}-${sessionId}`);
+      if (groupId && sessionId) ns.push(`memory-group-${groupId}-${sessionId}`);
+      // LORE namespaces
       if (characterId) ns.push(`character-${characterId}`);
       if (groupId) ns.push(`group-${groupId}`);
       ns.push('default', 'world');
