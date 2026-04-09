@@ -17,6 +17,7 @@ import {
   callAnthropic,
   callOllama,
   callTextGenerationWebUI,
+  callGrok,
   GenerateResponse,
   buildLorebookSectionForPrompt,
   buildHUDContextSection,
@@ -225,6 +226,24 @@ export async function POST(request: NextRequest) {
           embeddingsContext: memoryContextString  // Memory embeddings before chat history
         });
         response = await callOllama(prompt, llmConfig);
+        break;
+      }
+
+      case 'grok': {
+        let chatMessages = buildChatMessages(
+          finalSystemPrompt,
+          allMessages,
+          processedCharacter,
+          effectiveUserName,
+          processedCharacter.postHistoryInstructions,
+          undefined,
+          true,
+          memoryContextString
+        );
+        if (hudContextSection && hudContext) {
+          chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
+        }
+        response = await callGrok(chatMessages, llmConfig);
         break;
       }
 

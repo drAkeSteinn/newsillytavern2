@@ -713,3 +713,323 @@ export type {
   RewardBatchResult,
   RewardStoreActions,
 };
+
+// ============================================
+// Direct Objective Activation (for Tools)
+// ============================================
+
+export interface DirectObjectiveActivationResult {
+  success: boolean;
+  objectiveCompleted: boolean;
+  objectiveKey: string;
+  questId?: string;
+  questCompleted: boolean;
+  objectiveRewardsExecuted: boolean;
+  questRewardsExecuted: boolean;
+  messages: string[];
+  errors: string[];
+}
+
+/**
+ * Interface for accessing quest data from store
+ */
+export interface QuestStoreAccessor {
+  getSessionQuests: (sessionId: string) => Array<{
+    templateId: string;
+    status: string;
+    objectives: Array<{
+      templateId: string;
+      currentCount: number;
+      isCompleted: boolean;
+    }>;
+  }>;
+  getTemplates: () => QuestTemplate[];
+  completeObjective: (
+    sessionId: string,
+    questTemplateId: string,
+    objectiveId: string,
+    characterId?: string
+  ) => void;
+  addQuestNotification?: (notification: {
+    questId: string;
+    questTitle: string;
+    type: string;
+    message: string;
+  }) => void;
+}
+
+/**
+ * Activate an objective directly from a tool call.
+ * This executes the complete quest system flow:
+ * 1. Finds the objective by its completion key
+ * 2. Marks it as completed
+ * 3. Executes objective rewards (if any)
+ * 4. If all objectives complete, marks quest complete
+ * 5. Executes quest rewards (if any)
+ * 
+ * @param objectiveKey - The completion key of the objective (e.g., "psycompletado")
+ * @param storeAccessor - Access to store functions
+ * @param context - Execution context
+ * @param storeActions - Store actions for executing rewards
+ * @param rewardActions - Actions for executing rewards
+ * @returns Result of the activation
+ */
+export function activateObjectiveDirectly(
+  objectiveKey: string,
+  storeAccessor: QuestStoreAccessor,
+  context: {
+    sessionId: string;
+    characterId: string;
+    character?: CharacterCard | null;
+    allCharacters?: CharacterCard[];
+    sessionStats?: SessionStats;
+    timestamp: number;
+    soundCollections?: Array<{ name: string; path: string; files: string[] }>;
+    soundTriggers?: Array<{ id: string; name: string; keywords: string[]; collection: string; active: boolean; playMode?: string }>;
+    soundSequenceTriggers?: Array<{ id: string; name: string; active: boolean; activationKey?: string; sequence: string[]; volume?: number }>;
+    backgroundPacks?: Array<{ id: string; name: string; active: boolean; priority: number; items: Array<{ backgroundUrl: string; backgroundName: string; triggerKeys: string[]; enabled: boolean; overlays?: unknown[] }>; defaultOverlays?: unknown[]; defaultBackground?: string }>;
+    soundSettings?: { enabled: boolean; globalVolume: number };
+    backgroundSettings?: { transitionDuration: number; defaultTransitionType: string };
+  },
+  storeActions: RewardStoreActions,
+  rewardActions: {
+    updateCharacterStat: (
+      sessionId: string,
+      characterId: string,
+      attributeKey: string,
+      value: number | string,
+      reason?: 'llm_detection' | 'manual' | 'trigger' | 'initialization'
+    ) => void;
+    applyTriggerForCharacter: (characterId: string, hit: SpriteTriggerHit) => void;
+    scheduleReturnToIdleForCharacter?: (
+      characterId: string,
+      triggerSpriteUrl: string,
+      returnToMode: 'idle' | 'talk' | 'thinking' | 'clear',
+      returnSpriteUrl: string,
+      returnSpriteLabel: string | null,
+      returnToIdleMs: number
+    ) => void;
+    playSound?: (collection: string, filename: string, volume?: number) => void;
+    setBackground?: (url: string) => void;
+    setActiveOverlays?: (overlays: Array<{ url: string; position: string; opacity: number }>) => void;
+  }
+): DirectObjectiveActivationResult {
+  const messages: string[] = [];
+  const errors: string[] = [];
+  
+  try {
+    const { sessionId, characterId, character, allCharacters, sessionStats, timestamp } = context;
+    
+    // 1. Get active quests
+    const sessionQuests = storeAccessor.getSessionQuests(sessionId);
+    const activeQuests = sessionQuests.filter(q => 
+      q.status === 'active' || q.status === 'available'
+    );
+    
+    if (activeQuests.length === 0) {
+      errors.push('No hay misiones activas');
+      return {
+        success: false,
+        objectiveCompleted: false,
+        objectiveKey,
+        questCompleted: false,
+        objectiveRewardsExecuted: false,
+        questRewardsExecuted: false,
+        messages,
+        errors,
+      };
+    }
+    
+    // 2. Get templates
+    const templates = storeAccessor.getTemplates();
+    
+    // 3. Find the objective by its completion key
+    let foundObjective: {
+      quest: typeof activeQuests[0];
+      objective: QuestTemplate['objectives'][0];
+      template: QuestTemplate;
+    } | null = null;
+    
+    const normalizedKey = objectiveKey.toLowerCase().trim();
+    
+    for (const quest of activeQuests) {
+      const template = templates.find(t => t.id === quest.templateId);
+      if (!template) continue;
+      
+      for (const objective of template.objectives || []) {
+        // Check completion keys
+        const completionKeys = [
+          objective.completion?.key,
+          ...(objective.completion?.keys || [])
+        ].filter(Boolean);
+        
+        for (const key of completionKeys) {
+          if (
+            key?.toLowerCase().trim() === normalizedKey ||
+            key === `obj-${normalizedKey}` ||
+            key?.toLowerCase().includes(normalizedKey)
+          ) {
+            foundObjective = { quest, objective, template };
+            break;
+          }
+        }
+        
+        if (foundObjective) break;
+      }
+      if (foundObjective) break;
+    }
+    
+    if (!foundObjective) {
+      errors.push(`No se encontró objetivo con key: ${objectiveKey}`);
+      return {
+        success: false,
+        objectiveCompleted: false,
+        objectiveKey,
+        questCompleted: false,
+        objectiveRewardsExecuted: false,
+        questRewardsExecuted: false,
+        messages,
+        errors,
+      };
+    }
+    
+    const { quest, objective, template } = foundObjective;
+    
+    // 4. Check if already completed
+    const sessionObj = quest.objectives.find(o => o.templateId === objective.id);
+    if (sessionObj?.isCompleted) {
+      messages.push(`Objetivo "${objective.description}" ya estaba completado`);
+      return {
+        success: true,
+        objectiveCompleted: true,
+        objectiveKey,
+        questId: template.id,
+        questCompleted: quest.status === 'completed',
+        objectiveRewardsExecuted: false,
+        questRewardsExecuted: false,
+        messages,
+        errors,
+      };
+    }
+    
+    // 5. Complete the objective
+    console.log(`[activateObjectiveDirectly] Completing objective "${objective.description}" (${objective.id}) in quest "${template.name}"`);
+    storeAccessor.completeObjective(sessionId, template.id, objective.id, characterId);
+    messages.push(`✅ Objetivo completado: "${objective.description}"`);
+    
+    // 6. Execute objective rewards if any
+    let objectiveRewardsExecuted = false;
+    if (objective.rewards && objective.rewards.length > 0) {
+      console.log(`[activateObjectiveDirectly] Executing ${objective.rewards.length} objective rewards`);
+      
+      const rewardContext: RewardExecutionContext = {
+        sessionId,
+        characterId,
+        character,
+        allCharacters,
+        sessionStats,
+        timestamp,
+        soundCollections: context.soundCollections,
+        soundTriggers: context.soundTriggers,
+        soundSequenceTriggers: context.soundSequenceTriggers,
+        backgroundPacks: context.backgroundPacks,
+        soundSettings: context.soundSettings,
+        backgroundSettings: context.backgroundSettings,
+      };
+      
+      const rewardResult = executeObjectiveRewards(objective.rewards, rewardContext, storeActions);
+      
+      if (rewardResult.successCount > 0) {
+        messages.push(`🎁 Recompensas de objetivo ejecutadas: ${rewardResult.successCount}`);
+        objectiveRewardsExecuted = true;
+      }
+      
+      if (rewardResult.failureCount > 0) {
+        errors.push(`Errores en recompensas de objetivo: ${rewardResult.failureCount}`);
+      }
+    }
+    
+    // 7. Check if all objectives are complete
+    const updatedQuests = storeAccessor.getSessionQuests(sessionId);
+    const updatedQuest = updatedQuests.find(q => q.templateId === template.id);
+    const remainingObjectives = updatedQuest?.objectives.filter(o => !o.isCompleted) || [];
+    const questCompleted = remainingObjectives.length === 0;
+    
+    // 8. If quest completed, execute quest rewards
+    let questRewardsExecuted = false;
+    if (questCompleted && template.rewards && template.rewards.length > 0) {
+      console.log(`[activateObjectiveDirectly] Quest "${template.name}" completed! Executing ${template.rewards.length} rewards`);
+      
+      const questRewardContext: RewardExecutionContext = {
+        sessionId,
+        characterId,
+        character,
+        allCharacters,
+        sessionStats,
+        timestamp,
+        soundCollections: context.soundCollections,
+        soundTriggers: context.soundTriggers,
+        soundSequenceTriggers: context.soundSequenceTriggers,
+        backgroundPacks: context.backgroundPacks,
+        soundSettings: context.soundSettings,
+        backgroundSettings: context.backgroundSettings,
+      };
+      
+      const questRewardResult = executeQuestCompletionRewards(template, questRewardContext, storeActions);
+      
+      if (questRewardResult.successCount > 0) {
+        messages.push(`🏆 ¡Misión "${template.name}" completada!`);
+        messages.push(`🎁 Recompensas de misión: ${questRewardResult.successCount}`);
+        questRewardsExecuted = true;
+      }
+      
+      if (questRewardResult.failureCount > 0) {
+        errors.push(`Errores en recompensas de misión: ${questRewardResult.failureCount}`);
+      }
+    } else if (questCompleted) {
+      messages.push(`🏆 ¡Misión "${template.name}" completada!`);
+    }
+    
+    // 9. Add notification
+    if (storeAccessor.addQuestNotification) {
+      storeAccessor.addQuestNotification({
+        questId: template.id,
+        questTitle: template.name,
+        type: questCompleted ? 'quest_complete' : 'objective_complete',
+        message: questCompleted 
+          ? `¡Misión "${template.name}" completada!` 
+          : `Objetivo "${objective.description}" completado`,
+      });
+    }
+    
+    console.log(`[activateObjectiveDirectly] Success! objective=${objective.description}, questCompleted=${questCompleted}`);
+    
+    return {
+      success: true,
+      objectiveCompleted: true,
+      objectiveKey,
+      questId: template.id,
+      questCompleted,
+      objectiveRewardsExecuted,
+      questRewardsExecuted,
+      messages,
+      errors,
+    };
+    
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(`[activateObjectiveDirectly] Error:`, error);
+    errors.push(`Error: ${errorMsg}`);
+    
+    return {
+      success: false,
+      objectiveCompleted: false,
+      objectiveKey,
+      questCompleted: false,
+      objectiveRewardsExecuted: false,
+      questRewardsExecuted: false,
+      messages,
+      errors,
+    };
+  }
+}

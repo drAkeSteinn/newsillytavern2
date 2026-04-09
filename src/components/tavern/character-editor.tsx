@@ -93,6 +93,7 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
   const characters = useTavernStore((s) => s.characters);
   const personas = useTavernStore((s) => s.personas);
   const activePersonaId = useTavernStore((s) => s.activePersonaId);
+  const questTemplates = useTavernStore((s) => s.questTemplates);
 
   // Active tab state
   const [activeTab, setActiveTab] = useState('info');
@@ -709,6 +710,8 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
       statsConfig={character.statsConfig}
       onChange={(statsConfig) => setCharacter(prev => ({ ...prev, statsConfig }))}
       allCharacters={allCharacters}
+      questTemplates={questTemplates}
+      questTemplateIds={character.questTemplateIds}
     />
   );
 

@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://docs.sillytavern.app/usage/core-concepts/worldinfo",
+    "name": "World Info | docs.ST.app",
+    "snippet": "World Info (also known as Lorebooks or Memory Books) is a powerful tool available in ST to insert prompts dynamically into your chat to help guide the AI.\nIt functions like a dynamic dictionary that only inserts relevant information from World Info entries when keywords associated with the entries are present in the message text.",
+    "host_name": "docs.sillytavern.app",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.reddit.com/r/SillyTavernAI/comments/1omkqro/how_much_world_info_is_too_much",
+    "name": "How much world info is too much? : r/SillyTavernAI",
+    "snippet": "The idea is that whenever something from your world is mentioned, the ai will be given the info on the lore book entry. Anything that must ...",
+    "host_name": "www.reddit.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/issues/4508",
+    "name": "[FEATURE_REQUEST] More world info Positions #4508",
+    "snippet": "09-Sept-2025 — I use a lot of lorebooks coupled with my chat completion preset. I found myself in need of more insertion positions in the prompt list like WI ...",
+    "host_name": "github.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/lmg-anon/mikupad/issues/41",
+    "name": "Confused on lorebook/world info (and RAG?) · Issue #41",
+    "snippet": "02-Mar-2024 — Importing lore books from SillyTavern to Mikupad may be possible in the future, but it is not currently an option. Therefore, yes, it would be necessary to ...",
+    "host_name": "github.com",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.youtube.com/watch?v=mlf1PrMxh74",
+    "name": "Mastering Lorebooks in SillyTavern",
+    "snippet": "We go over everything you need to know to start using lorebooks in SillyTavern . How to make them, edit them, link them and all the settings ...",
+    "host_name": "www.youtube.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/usage/core-concepts/data-bank",
+    "name": "Data Bank (RAG) | docs.ST.app",
+    "snippet": "Injection Position - sets where to insert the prompt injection . The same rules as for Author's Note and World Info apply. #Shared settings. Query messages ...",
+    "host_name": "docs.sillytavern.app",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/issues/723",
+    "name": "[Feature Request] Allow pictures for world info entries #723",
+    "snippet": "16-Jul-2023 — While using SillyTavern I'm creating a lot of characters, locations, etc. that I'm keeping track of in the lorebook . I'm also using Stable ...",
+    "host_name": "github.com",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://news.ycombinator.com/item?id=44828884",
+    "name": "OpenAI's new open-source model is basically Phi-5",
+    "snippet": "Small models are indeed pretty useless for asking facts from. But big models can't be relied on either. They still hallucinate a lot. So I tend to combine it ...",
+    "host_name": "news.ycombinator.com",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/discussions/3466",
+    "name": "Dynamic World Building via Ai-driven persistent state and",
+    "snippet": "01-Mar-2025 — Changing the Lorebook , along with dynamic injections and character information updated with new information , could greatly aid in consistency.",
+    "host_name": "github.com",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://deepwiki.com/SillyTavern/SillyTavern/6.1-world-info-system",
+    "name": "World Info System | SillyTavern/SillyTavern | DeepWiki",
+    "snippet": "The World Info System provides dynamic context injection by scanning chat history and character data for keywords, then inserting matching entries into the prompt.",
+    "host_name": "deepwiki.com",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

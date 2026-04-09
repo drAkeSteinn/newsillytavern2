@@ -101,7 +101,22 @@ export function buildPromptBasedToolsSection(
 
   const lines: string[] = [
     '[HERRAMIENTAS DISPONIBLES]',
-    `Eres un personaje en un roleplay${charRef}. Cuando necesites buscar información en internet, consultar el clima, tirar dados, buscar en tu memoria o crear un recordatorio, DEBES usar una herramienta. NO inventes respuestas ni datos que no conozcas.`,
+    `Eres un personaje en un roleplay${charRef}. Las herramientas te permiten realizar acciones en el mundo del roleplay:`,
+    '- Buscar información en internet o en tu memoria',
+    '- Tirar dados para resolver acciones',
+    '- Modificar stats del personaje (vida, experiencia, etc.)',
+    '- Gestionar misiones y objetivos',
+    '- Crear recordatorios',
+    '- Actualizar relaciones con otros personajes',
+    '',
+    'INSTRUCCIONES IMPORTANTES:',
+    '- USA HERRAMIENTAS para cualquier acción que tenga consecuencias en el mundo del roleplay',
+    '- USA HERRAMIENTAS cuando necesites información que no conoces (clima, datos, etc.)',
+    '- NUNCA inventes respuestas: usa las herramientas disponibles',
+    '- USA HERRAMIENTAS DE STATS cuando ganes/perdas experiencia, salud, etc.',
+    '- USA HERRAMIENTAS DE QUESTS para reportar progreso en misiones',
+    '- USA HERRAMIENTAS DE MEMORIA para guardar eventos importantes',
+    '',
     charNameMsg,
     '',
     'FORMATO DE USO:',
@@ -110,9 +125,15 @@ export function buildPromptBasedToolsSection(
     '{"name": "nombre_herramienta", "parameters": {"param1": "valor1"}}',
     '```',
     '',
-    'Ejemplo de uso correcto:',
+    'Ejemplos de uso:',
     '```tool_call',
-    '{"name": "search_web", "parameters": {"query": "noticias de hoy", "max_results": 3}}',
+    '{"name": "roll_dice", "parameters": {"dice": "1d20", "label": "Ataque"}}',
+    '```',
+    '```tool_call',
+    '{"name": "modify_stat", "parameters": {"stat_name": "experiencia", "new_value": 150, "reason": "Derroté al dragón"}}',
+    '```',
+    '```tool_call',
+    '{"name": "manage_quest", "parameters": {"action": "report_progress", "quest_name": "rescate", "objective_name": "encontrar_prisionero", "narrative_description": "Encontré al prisionero en la celda"}}',
     '```',
     '',
     'HERRAMIENTAS DISPONIBLES:',
@@ -138,6 +159,9 @@ export function buildPromptBasedToolsSection(
   lines.push('3. Después de usar una herramienta, el sistema te dará el resultado y podrás responder al usuario con esa información — SIEMPRE respondiendo en personaje.');
   lines.push('4. NUNCA inventes datos que podrías obtener con una herramienta. Siempre usa la herramienta correspondiente.');
   lines.push('5. Al recibir los resultados de una herramienta, intégralos naturalmente en tu respuesta de roleplay. No menciones que usaste una herramienta ni el proceso interno.');
+  lines.push('6. USA modify_stat para cualquier cambio de stats: experiencia ganada, daño recibido, curación, etc.');
+  lines.push('7. USA manage_quest para reportar cuando completes un objetivo o avances en una misión.');
+  lines.push('8. USA manage_memory para guardar eventos importantes del roleplay.');
 
   return lines.join('\n');
 }
@@ -193,6 +217,11 @@ import { searchMemoryTool, searchMemoryExecutor } from './tools/search-memory';
 import { getWeatherTool, getWeatherExecutor } from './tools/get-weather';
 import { searchWebTool, searchWebExecutor } from './tools/search-web';
 import { setReminderTool, setReminderExecutor } from './tools/set-reminder';
+import { modifyStatTool, modifyStatExecutor } from './tools/modify-stat';
+import { checkStatTool, checkStatExecutor } from './tools/check-stat';
+import { manageQuestTool, manageQuestExecutor } from './tools/manage-quest';
+import { manageSolicitudTool, manageSolicitudExecutor } from './tools/manage-solicitud';
+import { manageMemoryTool, manageMemoryExecutor } from './tools/manage-memory';
 
 // Register built-in tools
 registerTool(rollDiceTool, rollDiceExecutor);
@@ -200,5 +229,10 @@ registerTool(searchMemoryTool, searchMemoryExecutor);
 registerTool(getWeatherTool, getWeatherExecutor);
 registerTool(searchWebTool, searchWebExecutor);
 registerTool(setReminderTool, setReminderExecutor);
+registerTool(modifyStatTool, modifyStatExecutor);
+registerTool(checkStatTool, checkStatExecutor);
+registerTool(manageQuestTool, manageQuestExecutor);
+registerTool(manageSolicitudTool, manageSolicitudExecutor);
+registerTool(manageMemoryTool, manageMemoryExecutor);
 
 console.log(`[Tools] Registered ${toolRegistry.size} built-in tools: ${Array.from(toolRegistry.keys()).join(', ')}`);

@@ -591,41 +591,41 @@ export function buildQuestPromptSection(
     // If all visible objectives are completed, don't show the quest for this character
     if (pendingObjectives.length === 0 && optionalObjectives.length === 0) return '';
 
-    // Build the quest block in new YAML-like format
-    // Show mission name instead of key for better readability
-    let questBlock = `- Misión: ${questTemplate.name}
-  descripcion: ${questTemplate.description}`;
+    // Build the quest block in new readable format
+    // Format:
+    // • Mission Name
+    //   Descripción: Quest description
+    //   Objetivos pendientes:
+    //     - Objective description
+    //       Se completa con: completionDescription
+    let questBlock = `• ${questTemplate.name}
+  Descripción: ${questTemplate.description}`;
 
     // Add pending objectives section
-    // Format: YAML-like list with key, descripcion, se_completa_cuando
     if (pendingObjectives.length > 0) {
       const objectiveLines = pendingObjectives.map(obj => {
-        let line = `    - key: ${obj.key}
-      descripcion: ${obj.description}${obj.progress || ''}`;
+        let line = `    - ${obj.description}${obj.progress || ''}`;
         if (obj.completionDescription) {
-          line += `
-      se_completa_cuando: ${obj.completionDescription}`;
+          line += `\n      Se completa con: ${obj.completionDescription}`;
         }
         return line;
       }).join('\n');
       questBlock += `
-  objetivos_principales_pendientes:
+  Objetivos pendientes:
 ${objectiveLines}`;
     }
 
     // Add optional objectives section
     if (optionalObjectives.length > 0) {
       const objectiveLines = optionalObjectives.map(obj => {
-        let line = `    - key: ${obj.key}
-      descripcion: ${obj.description}${obj.progress || ''}`;
+        let line = `    - ${obj.description}${obj.progress || ''}`;
         if (obj.completionDescription) {
-          line += `
-      se_completa_cuando: ${obj.completionDescription}`;
+          line += `\n      Se completa con: ${obj.completionDescription}`;
         }
         return line;
       }).join('\n');
       questBlock += `
-  objetivos_opcionales_pendientes:
+  Objetivos opcionales:
 ${objectiveLines}`;
     }
 

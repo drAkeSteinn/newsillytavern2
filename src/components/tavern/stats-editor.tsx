@@ -64,6 +64,8 @@ import type {
   TriggerCategory,
   TriggerTargetMode,
   ActionType,
+  ObjectiveDropdownOption,
+  QuestTemplate,
 } from '@/types';
 import { DEFAULT_STATS_BLOCK_HEADERS, DEFAULT_STATS_CONFIG } from '@/types';
 import {
@@ -77,6 +79,8 @@ interface StatsEditorProps {
   statsConfig: CharacterStatsConfig | undefined;
   onChange: (statsConfig: CharacterStatsConfig) => void;
   allCharacters?: { id: string; name: string; solicitudDefinitions: SolicitudDefinition[] }[];
+  questTemplates?: QuestTemplate[];
+  questTemplateIds?: string[];  // IDs de plantillas asignadas al personaje
 }
 
 // ============================================
@@ -1399,11 +1403,12 @@ interface SkillEditorProps {
   skill: SkillDefinition;
   index: number;
   availableAttributes: AttributeDefinition[];
+  availableObjectives?: ObjectiveDropdownOption[];
   onChange: (index: number, updates: Partial<SkillDefinition>) => void;
   onDelete: (index: number) => void;
 }
 
-function SkillEditor({ skill, index, availableAttributes, onChange, onDelete }: SkillEditorProps) {
+function SkillEditor({ skill, index, availableAttributes, availableObjectives = [], onChange, onDelete }: SkillEditorProps) {
   const [expanded, setExpanded] = useState(false);
   
   return (
@@ -1921,39 +1926,56 @@ function SkillEditor({ skill, index, availableAttributes, onChange, onDelete }: 
 
                     {/* Objective Reward Editor */}
                     {isObj && normalized.objective && (
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <Label className="text-[10px] text-muted-foreground mb-1 block">Key del Objetivo *</Label>
-                          <Input
+                      <div>
+                        <Label className="text-[10px] text-muted-foreground mb-1 block">Objetivo que completa *</Label>
+                        {availableObjectives.length > 0 ? (
+                          <Select
                             value={normalized.objective.objectiveKey}
-                            onChange={(e) => {
+                            onValueChange={(v) => {
+                              const selectedObj = availableObjectives.find(o => o.objectiveKey === v);
                               const updatedRewards = [...(skill.activationRewards || [])];
                               updatedRewards[rewardIdx] = {
                                 ...reward,
-                                objective: { ...normalized.objective!, objectiveKey: e.target.value }
+                                objective: { 
+                                  ...normalized.objective!, 
+                                  objectiveKey: v,
+                                  questId: selectedObj?.questId 
+                                }
                               };
                               onChange(index, { activationRewards: updatedRewards });
                             }}
-                            placeholder="troncos_abedul"
-                            className="bg-background h-6 text-xs font-mono"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-[10px] text-muted-foreground mb-1 block">ID Misión (opcional)</Label>
-                          <Input
-                            value={normalized.objective.questId || ''}
-                            onChange={(e) => {
-                              const updatedRewards = [...(skill.activationRewards || [])];
-                              updatedRewards[rewardIdx] = {
-                                ...reward,
-                                objective: { ...normalized.objective!, questId: e.target.value || undefined }
-                              };
-                              onChange(index, { activationRewards: updatedRewards });
-                            }}
-                            placeholder="mision_rescate"
-                            className="bg-background h-6 text-xs font-mono"
-                          />
-                        </div>
+                          >
+                            <SelectTrigger className="bg-background h-6 text-xs">
+                              <SelectValue placeholder="Seleccionar objetivo..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableObjectives.map((obj) => (
+                                <SelectItem key={obj.objectiveKey} value={obj.objectiveKey}>
+                                  {obj.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={normalized.objective.objectiveKey}
+                              onChange={(e) => {
+                                const updatedRewards = [...(skill.activationRewards || [])];
+                                updatedRewards[rewardIdx] = {
+                                  ...reward,
+                                  objective: { ...normalized.objective!, objectiveKey: e.target.value }
+                                };
+                                onChange(index, { activationRewards: updatedRewards });
+                              }}
+                              placeholder="Key del objetivo (ej: psycompletado)"
+                              className="bg-background h-6 text-xs font-mono flex-1"
+                            />
+                            <Badge variant="outline" className="text-[10px] text-amber-500 border-amber-500/30">
+                              Sin quests asignadas
+                            </Badge>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2575,15 +2597,47 @@ function InvitationEditor({ invitation, index, availableAttributes, allCharacter
 }
 
 // ============================================
+// Helper: Generate available objectives from quest templates
+// ============================================
+
+function getAvailableObjectives(questTemplates: QuestTemplate[] = [], questTemplateIds?: string[]): ObjectiveDropdownOption[] {
+  const options: ObjectiveDropdownOption[] = [];
+  
+  // Si no hay filtro de IDs, mostrar todas las plantillas
+  const filteredTemplates = questTemplateIds && questTemplateIds.length > 0
+    ? questTemplates.filter(t => questTemplateIds.includes(t.id))
+    : questTemplates;
+  
+  for (const template of filteredTemplates) {
+    for (const objective of template.objectives || []) {
+      if (objective.completion?.key) {
+        options.push({
+          questId: template.id,
+          questName: template.name,
+          objectiveId: objective.id,
+          objectiveKey: objective.completion.key,
+          objectiveName: objective.description,
+          label: `${template.name} → ${objective.description}`,
+        });
+      }
+    }
+  }
+  
+  return options;
+}
+
+// ============================================
 // Main Stats Editor Component
 // ============================================
 
-export function StatsEditor({ statsConfig, onChange, allCharacters = [] }: StatsEditorProps) {
+export function StatsEditor({ statsConfig, onChange, allCharacters = [], questTemplates = [], questTemplateIds }: StatsEditorProps) {
   const config: CharacterStatsConfig = statsConfig || DEFAULT_STATS_CONFIG;
   
   const updateConfig = (updates: Partial<CharacterStatsConfig>) => {
     onChange({ ...config, ...updates });
   };
+  
+  const availableObjectives = getAvailableObjectives(questTemplates, questTemplateIds);
   
   // Attributes
   const addAttribute = () => {
@@ -2856,6 +2910,7 @@ export function StatsEditor({ statsConfig, onChange, allCharacters = [] }: Stats
                       skill={skill}
                       index={index}
                       availableAttributes={config.attributes}
+                      availableObjectives={availableObjectives}
                       onChange={updateSkill}
                       onDelete={deleteSkill}
                     />
@@ -2929,6 +2984,7 @@ export function StatsEditor({ statsConfig, onChange, allCharacters = [] }: Stats
                       skill={intention as unknown as SkillDefinition}
                       index={index}
                       availableAttributes={config.attributes}
+                      availableObjectives={availableObjectives}
                       onChange={(i, updates) => updateIntention(i, updates as unknown as Partial<IntentionDefinition>)}
                       onDelete={deleteIntention}
                     />

@@ -7,6 +7,8 @@
 // (roll dice, search memory, get weather, etc.)
 // during chat responses.
 
+import type { SessionQuestInstance, QuestTemplate } from '@/types';
+
 // ============================================
 // Tool Definition
 // ============================================
@@ -56,6 +58,9 @@ export interface ToolContext {
   sessionId: string;
   groupId?: string;
   userName: string;
+  /** Quest data for quest-related tools */
+  sessionQuests?: SessionQuestInstance[];
+  questTemplates?: QuestTemplate[];
 }
 
 /** Result from tool execution */
@@ -66,6 +71,15 @@ export interface ToolExecutionResult {
   displayMessage: string;
   duration?: number;
   error?: string;
+  /** Special result for quest-related tools */
+  questActivation?: {
+    /** Type of quest activation */
+    type: 'activate_quest' | 'complete_objective' | 'progress_objective';
+    /** The key/target for the activation (quest name, objective key, etc.) */
+    key: string;
+    /** Additional metadata */
+    metadata?: Record<string, unknown>;
+  };
 }
 
 /** Parsed tool call from LLM output */

@@ -8,7 +8,8 @@ import {
   callOpenAICompatible,
   callAnthropic,
   callOllama,
-  callTextGenerationWebUI
+  callTextGenerationWebUI,
+  callGrok
 } from './providers';
 import { buildCompletionPrompt } from './prompt-builder';
 
@@ -75,6 +76,15 @@ export async function generateResponse(
       return callOllama(prompt, config);
     }
 
+    case 'grok': {
+      // Grok is OpenAI-compatible, uses chat completions
+      const openaiMessages = chatMessages.map((m, i) => ({
+        role: m.role === 'assistant' && i === 0 ? 'system' : m.role,
+        content: m.content
+      })) as ChatApiMessage[];
+      return callGrok(openaiMessages, config);
+    }
+
     case 'text-generation-webui':
     case 'koboldcpp':
     default: {
@@ -119,5 +129,6 @@ export {
   callOpenAICompatible,
   callAnthropic,
   callOllama,
-  callTextGenerationWebUI
+  callTextGenerationWebUI,
+  callGrok
 };

@@ -24,6 +24,7 @@ import type {
   ResolvedStats,
   SolicitudInstance,
   CharacterCard,
+  QuestTemplate,
 } from '@/types';
 import {
   evaluateRequirements,
@@ -45,6 +46,8 @@ export interface StatsResolutionContext {
   // For resolving {{user}} and {{char}} in descriptions
   userName?: string;
   characterName?: string;
+  // For resolving objective names in skill rewards
+  questTemplates?: QuestTemplate[];
 }
 
 export interface ResolvedAttribute {
@@ -204,19 +207,49 @@ function resolveTemplateKeys(
 }
 
 /**
+ * Find objective name by completion key
+ */
+function findObjectiveNameByKey(
+  objectiveKey: string,
+  questTemplates: { objectives?: { completion?: { key?: string; keys?: string[] }; description?: string }[] }[]
+): string | null {
+  const normalizedKey = objectiveKey.toLowerCase().trim();
+  
+  for (const template of questTemplates) {
+    for (const objective of template.objectives || []) {
+      const keys = [
+        objective.completion?.key,
+        ...(objective.completion?.keys || [])
+      ].filter(Boolean);
+      
+      for (const key of keys) {
+        if (key?.toLowerCase().trim() === normalizedKey) {
+          return objective.description || null;
+        }
+      }
+    }
+  }
+  
+  return null;
+}
+
+/**
  * Build skills/actions block for injection
  *
- * NEW YAML-LIKE FORMAT:
- * [ACCIONES DISPONIBLES]
- * - key: afilar_hacha
- *   tipo: preparacion
- *   descripcion: Afila el hacha con furia para mejorar el siguiente corte.
- *   completa_objetivo: NONE/key del objetivo
+ * NEW READABLE FORMAT:
+ * [ACCIONES DEL PERSONAJE]
+ * El personaje puede realizar las siguientes acciones:
+ *
+ * • Examen psicológico
+ *   Tipo: ejecución
+ *   Descripción: Sabes aplicar examen psicológico...
+ *   Resultado esperado: Completará "Analizar al usuario"
  */
 export function buildSkillsBlock(
   skills: SkillDefinition[],
   attributeValues: Record<string, number | string>,
-  header: string
+  header: string,
+  questTemplates: { objectives?: { completion?: { key?: string; keys?: string[] }; description?: string }[] }[] = []
 ): string {
   const availableSkills = filterSkillsByRequirements(skills, attributeValues);
 
@@ -224,7 +257,16 @@ export function buildSkillsBlock(
     return '';
   }
 
+  const introText = header.includes('ACCIONES') 
+    ? 'El personaje puede realizar las siguientes acciones cuando la situación lo requiera. '
+      + 'Cuando una acción tenga "Resultado esperado", USA LA TOOL "manage_quest" con la objective_key '
+      + 'correspondiente para marcar el objetivo como completado:\n'
+    : '';
+
   const lines: string[] = [header];
+  if (introText) {
+    lines.push(introText);
+  }
 
   availableSkills.forEach((skill) => {
     // Check for custom inject format first
@@ -233,25 +275,26 @@ export function buildSkillsBlock(
         .replace('{name}', skill.name)
         .replace('{description}', skill.description)
         .replace('{key}', skill.activationKey || skill.key || '');
-      lines.push(formatted);
+      lines.push(`• ${formatted}`);
     } else {
-      // New YAML-like format
-      const activationKey = skill.activationKey || (skill.activationKeys && skill.activationKeys[0]) || skill.key;
-      lines.push(`- key: ${activationKey || 'sin_key'}`);
+      // New readable format
+      lines.push(`• ${skill.name}`);
 
       // Type (preparacion/ejecucion)
       if (skill.type) {
-        lines.push(`  tipo: ${skill.type}`);
+        const tipoLabel = skill.type === 'preparacion' ? 'preparación' : 'ejecución';
+        lines.push(`  Tipo: ${tipoLabel}`);
       }
 
-      lines.push(`  descripcion: ${skill.description}`);
+      lines.push(`  Descripción: ${skill.description}`);
 
-      // completa_objetivo: check if there's an objective reward
+      // Resultado esperado: find objective name by key
       const objectiveReward = (skill.activationRewards || []).find(r => r.type === 'objective' && r.objective?.objectiveKey);
       if (objectiveReward && objectiveReward.objective) {
-        lines.push(`  completa_objetivo: ${objectiveReward.objective.objectiveKey}`);
-      } else {
-        lines.push(`  completa_objetivo: NONE`);
+        const objectiveName = findObjectiveNameByKey(objectiveReward.objective.objectiveKey, questTemplates);
+        if (objectiveName) {
+          lines.push(`  Resultado esperado: Completará "${objectiveName}"`);
+        }
       }
     }
   });
@@ -567,7 +610,8 @@ export function resolveStats(
   const skillsBlock = buildSkillsBlock(
     statsConfig.skills,
     attributeValues,
-    statsConfig.blockHeaders.skills
+    statsConfig.blockHeaders.skills,
+    context.questTemplates || []
   );
   
   const intentionsBlock = buildIntentionsBlock(

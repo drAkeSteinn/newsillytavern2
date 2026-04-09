@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://docs.sillytavern.app/usage/core-concepts/worldinfo",
+    "name": "World Info | docs.ST.app - SillyTavern Documentation",
+    "snippet": "World Info (also known as Lorebooks or Memory Books) is a powerful tool available in ST to insert prompts dynamically into your chat to help guide the AI.",
+    "host_name": "docs.sillytavern.app",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.reddit.com/r/SillyTavernAI/comments/1gsxb6i/lorebooks_world_info_being_added_dynamically_into",
+    "name": "Lorebooks (world info) being added dynamically into prompts - Reddit",
+    "snippet": "My understanding of how lorebooks work in ST is that every time the AI sends a message, it will scan an X number of messages back, then look for the triggers. Rookie here, hoping you can give me pointers regarding lorebooks. - Reddit Understanding Lorebooks as \"Character Memory\" : r/SillyTavernAI More results from www.reddit.com",
+    "host_name": "www.reddit.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/discussions/3466",
+    "name": "Dynamic World Building via Ai-driven persistent state and function calling",
+    "snippet": "We can save character information in the character instead of using world-lorebook hacks. This could be useful for \"spin-off\" chats, which ...",
+    "host_name": "github.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.layla-network.ai/post/layla-supports-sillytavern-lorebooks",
+    "name": "Layla supports SillyTavern Lorebooks",
+    "snippet": "SillyTavern Lorebooks are background information (or \"world information\") you can attach to your chats. They have a specific format, which you can export from ...",
+    "host_name": "www.layla-network.ai",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.scribd.com/document/948126287/World-Info-Encyclopedia",
+    "name": "World Info Encyclopedia | PDF | Computing - Scribd",
+    "snippet": "SillyTavern will prompt the user to import the embedded lorebook once the character is imported. Be sure to do that. Nowadays, I keep my character persona ...",
+    "host_name": "www.scribd.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.arsturn.com/blog/sillytavernai-lorebooks-with-gemini-2-5-a-complete-guide",
+    "name": "SillyTavernAI Lorebooks Guide with Gemini 2.5 - Arsturn",
+    "snippet": "What even IS a Lorebook? The official SillyTavern documentation calls it \"World Info,\" & that's a pretty good description. Think of it as a ...",
+    "host_name": "www.arsturn.com",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.novelai.net/en/text/lorebook",
+    "name": "Lorebook - | NovelAI Documentation",
+    "snippet": "The Lorebook is the perfect place to flesh out your characters, locations, objects, factions and any other narrative elements in your story. You can think of ...",
+    "host_name": "docs.novelai.net",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/usage/core-concepts/data-bank",
+    "name": "Data Bank (RAG) | docs.ST.app - SillyTavern Documentation",
+    "snippet": "Include in World Info Scanning - check if you want the injected content to activate lore book entries. Vectorize All - forcibly ingests the embeddings for ...",
+    "host_name": "docs.sillytavern.app",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.youtube.com/watch?v=mlf1PrMxh74",
+    "name": "Mastering Lorebooks in SillyTavern - YouTube",
+    "snippet": "We go over everything you need to know to start using lorebooks in SillyTavern. How to make them, edit them, link them and all the settings ...",
+    "host_name": "www.youtube.com",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/issues/3569",
+    "name": "[feature_request] add batch edit for world info and lorebook  - GitHub",
+    "snippet": "There should be an option to edit multiple world entries at once that will allow us to adjust all their settings simultaneously.",
+    "host_name": "github.com",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

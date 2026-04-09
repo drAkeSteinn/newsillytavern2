@@ -735,6 +735,75 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
           }
         }
         
+        // Helper function to complete quest objectives by their detection key
+        // objectiveDetectionKey is the completion.key (e.g., "psycompletado") from QuestRewardObjective
+        const completeQuestObjectiveByKey = (
+          sessionId: string,
+          questTemplateId: string, // Can be empty to search all active quests
+          objectiveDetectionKey: string,
+          characterId?: string
+        ): boolean => {
+          try {
+            const sessionQuests = store.getSessionQuests?.(sessionId) || [];
+            const activeQuests = sessionQuests.filter((q: any) => q.status === 'active' || q.status === 'available');
+            
+            // Get templates from questTemplateSlice to access objective completion keys
+            // Access via store state (questTemplates is directly on the store)
+            const templates = (store as any).questTemplates || [];
+            
+            for (const quest of activeQuests) {
+              // If questTemplateId is specified, skip non-matching quests
+              if (questTemplateId && quest.templateId !== questTemplateId) continue;
+              
+              // Find the template for this quest
+              const template = templates.find((t: any) => t.id === quest.templateId);
+              if (!template) continue;
+              
+              // Search for the objective by its completion.key
+              for (const objective of template.objectives || []) {
+                const completionKeys = [objective.completion?.key, ...(objective.completion?.keys || [])].filter(Boolean);
+                
+                for (const completionKey of completionKeys) {
+                  if (completionKey === objectiveDetectionKey || 
+                      completionKey?.toLowerCase() === objectiveDetectionKey.toLowerCase() ||
+                      completionKey === `obj-${objectiveDetectionKey}`) {
+                    console.log(`[TriggerSystem] Found objective "${objective.description}" (key: ${completionKey}) in quest ${quest.templateId}`);
+                    store.completeObjective?.(sessionId, quest.templateId, objective.id, characterId);
+                    return true;
+                  }
+                }
+              }
+            }
+            
+            // Try case-insensitive partial match
+            const lowerKey = objectiveDetectionKey.toLowerCase();
+            for (const quest of activeQuests) {
+              if (questTemplateId && quest.templateId !== questTemplateId) continue;
+              
+              const template = templates.find((t: any) => t.id === quest.templateId);
+              if (!template) continue;
+              
+              for (const objective of template.objectives || []) {
+                const completionKeys = [objective.completion?.key, ...(objective.completion?.keys || [])].filter(Boolean);
+                
+                for (const completionKey of completionKeys) {
+                  if (completionKey?.toLowerCase().includes(lowerKey) || lowerKey.includes(completionKey?.toLowerCase())) {
+                    console.log(`[TriggerSystem] Found objective (partial match) "${objective.description}" (key: ${completionKey}) in quest ${quest.templateId}`);
+                    store.completeObjective?.(sessionId, quest.templateId, objective.id, characterId);
+                    return true;
+                  }
+                }
+              }
+            }
+            
+            console.log(`[TriggerSystem] Objective not found: ${objectiveDetectionKey}`);
+            return false;
+          } catch (err) {
+            console.error('[TriggerSystem] Error completing objective:', err);
+            return false;
+          }
+        };
+        
         // 3. Skill Handler (for skill activations)
         if (config.statsEnabled !== false && character?.statsConfig?.enabled) {
           if (skillHandler.canHandle(detectedKey, skillHandlerContext)) {
@@ -743,13 +812,13 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
               console.log(`[TriggerSystem] Skill key matched: ${detectedKey.key}`);
               const executeResult = skillHandler.execute(result.trigger, skillHandlerContext);
               
-              // Execute activation rewards (sounds, sprites, etc.)
+              // Execute activation rewards (sounds, sprites, objective completions, etc.)
               const rewards = result.trigger.data?.activationRewards || [];
               if (rewards.length > 0) {
                 console.log(`[TriggerSystem] Executing ${rewards.length} skill activation rewards`);
                 for (const reward of rewards) {
                   try {
-                    executeTriggerRewardFromQuest(reward, {
+                    executeReward(reward, {
                       sessionId,
                       characterId: character.id,
                       character,
@@ -775,7 +844,10 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
                       playSound: store.playSound?.bind(store),
                       setBackground: store.setBackground?.bind(store),
                       setActiveOverlays: store.setActiveOverlays?.bind(store),
+                      completeObjective: store.completeObjective?.bind(store),
+                      completeQuestObjective: completeQuestObjectiveByKey,
                     });
+                    console.log(`[TriggerSystem] Reward executed: ${reward.type} - ${reward.key || reward.id}`);
                   } catch (err) {
                     console.error('[TriggerSystem] Failed to execute skill activation reward:', err);
                   }
@@ -814,6 +886,7 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
                         playSound: store.playSound?.bind(store),
                         setBackground: store.setBackground?.bind(store),
                         setActiveOverlays: store.setActiveOverlays?.bind(store),
+                        completeQuestObjective: completeQuestObjectiveByKey,
                       });
                       console.log(`[TriggerSystem] Executed threshold effect for ${threshold.attributeName}`);
                     } catch (err) {

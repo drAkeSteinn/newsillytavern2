@@ -2193,6 +2193,16 @@ export interface QuestRewardObjective {
   questId?: string;          // ID de la misión (opcional, para validar)
 }
 
+// Opción para dropdown de selección de objetivos en UI
+export interface ObjectiveDropdownOption {
+  questId: string;
+  questName: string;
+  objectiveId: string;
+  objectiveKey: string;
+  objectiveName: string;
+  label: string;  // Display label: "Misión → Objetivo"
+}
+
 export interface QuestReward {
   id: string;
 

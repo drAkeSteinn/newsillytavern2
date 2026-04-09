@@ -37,6 +37,8 @@ import {
   FileText,
   ScrollText,
   Handshake,
+  Pencil,
+  BarChart3,
 } from 'lucide-react';
 import { useTavernStore } from '@/store/tavern-store';
 import type { ToolDefinition, ToolsSettings } from '@/types';
@@ -98,20 +100,54 @@ const BUILT_IN_TOOLS: ToolDefinition[] = [
     permissionMode: 'auto',
   },
   {
-    id: 'manage_quest',
-    name: 'manage_quest',
-    label: 'Gestionar Misión',
-    icon: 'ScrollText',
-    description: 'Gestiona misiones y objetivos del personaje. Usa get_quests, progress_objective o complete_objective según la situación narrativa.',
+    id: 'modify_stat',
+    name: 'modify_stat',
+    label: 'Modificar Stat',
+    icon: 'Pencil',
+    description: 'Modifica el valor de un stat del personaje (vida, exp, nivel, etc.) según eventos del roleplay.',
     category: 'in_character',
     parameters: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['get_quests', 'progress_objective', 'complete_objective'], description: 'La acción a realizar', required: true },
-        quest_id: { type: 'string', description: 'ID de la misión (templateId).', required: false },
-        objective_id: { type: 'string', description: 'ID del objetivo (objective templateId).', required: false },
-        amount: { type: 'number', description: 'Cantidad a progressar (solo para progress_objective). Default: 1.', required: false },
-        reason: { type: 'string', description: 'Razón narrativa del cambio.', required: false },
+        stat_name: { type: 'string', description: 'Nombre del stat a modificar (ej: vida, exp, nivel)', required: true },
+        new_value: { type: 'number', description: 'Nuevo valor del stat', required: true },
+        reason: { type: 'string', description: 'Razón narrativa del cambio', required: false },
+      },
+      required: ['stat_name', 'new_value'],
+    },
+    permissionMode: 'auto',
+  },
+  {
+    id: 'check_stat',
+    name: 'check_stat',
+    label: 'Consultar Stat',
+    icon: 'BarChart3',
+    description: 'Consulta el valor actual de un stat del personaje.',
+    category: 'in_character',
+    parameters: {
+      type: 'object',
+      properties: {
+        stat_name: { type: 'string', description: 'Nombre del stat a consultar (ej: vida, nivel, exp)', required: true },
+      },
+      required: ['stat_name'],
+    },
+    permissionMode: 'auto',
+  },
+  {
+    id: 'manage_quest',
+    name: 'manage_quest',
+    label: 'Gestionar Misión',
+    icon: 'ScrollText',
+    description: 'Gestiona misiones y objetivos. Úsala para ver misiones, reportar progreso o completar objetivos.',
+    category: 'in_character',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['get_quests', 'report_progress', 'complete_objective', 'activate_quest'], description: 'Acción: get_quests, report_progress, complete_objective, activate_quest', required: true },
+        quest_name: { type: 'string', description: 'Nombre de la misión', required: false },
+        objective_name: { type: 'string', description: 'Nombre del objetivo', required: false },
+        progress_amount: { type: 'number', description: 'Cantidad de progreso (default: 1)', required: false },
+        narrative_description: { type: 'string', description: 'Descripción narrativa de lo que pasó', required: false },
       },
       required: ['action'],
     },
@@ -122,16 +158,16 @@ const BUILT_IN_TOOLS: ToolDefinition[] = [
     name: 'manage_solicitud',
     label: 'Gestionar Solicitud',
     icon: 'Handshake',
-    description: 'Gestiona peticiones y solicitudes entre personajes. Usa get_peticiones, get_solicitudes, activate_peticion o complete_solicitud cuando la situación lo requiera.',
+    description: 'Gestiona peticiones entre personajes. Úsala para hacer peticiones o completarlas.',
     category: 'in_character',
     parameters: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['get_peticiones', 'get_solicitudes', 'activate_peticion', 'complete_solicitud'], description: 'La acción a realizar', required: true },
-        peticion_key: { type: 'string', description: 'Key de la petición a activar.', required: false },
-        solicitud_key: { type: 'string', description: 'Key de la solicitud a completar.', required: false },
-        target_character_name: { type: 'string', description: 'Nombre del personaje objetivo.', required: false },
-        reason: { type: 'string', description: 'Razón narrativa.', required: false },
+        action: { type: 'string', enum: ['get_solicitudes', 'make_request', 'complete_request'], description: 'Acción: get_solicitudes, make_request, complete_request', required: true },
+        request_type: { type: 'string', description: 'Tipo de petición (ej: madera, información)', required: false },
+        target_character: { type: 'string', description: 'Personaje objetivo de la petición', required: false },
+        completion_key: { type: 'string', description: 'Key de completación', required: false },
+        narrative: { type: 'string', description: 'Descripción narrativa', required: false },
       },
       required: ['action'],
     },
@@ -142,19 +178,18 @@ const BUILT_IN_TOOLS: ToolDefinition[] = [
     name: 'manage_memory',
     label: 'Gestionar Memoria',
     icon: 'Brain',
-    description: 'Gestiona la memoria del personaje: eventos, relaciones y notas. Usa save_memory, update_relationship o update_notes cuando algo relevante ocurra.',
+    description: 'Gestiona la memoria del personaje: guarda eventos, actualiza relaciones, consulta memorias.',
     category: 'cognitive',
     parameters: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['get_memories', 'get_relationships', 'save_memory', 'update_relationship', 'update_notes'], description: 'La acción a realizar', required: true },
-        memory_type: { type: 'string', enum: ['fact', 'relationship', 'event', 'emotion', 'location', 'item', 'state_change'], description: 'Tipo de memoria (solo para save_memory).', required: false },
-        content: { type: 'string', description: 'Contenido de la memoria o nota.', required: false },
-        importance: { type: 'number', description: 'Importancia de 0 a 1 (solo para save_memory). Default: 0.5.', required: false },
-        target_name: { type: 'string', description: 'Nombre del personaje o usuario (solo para update_relationship).', required: false },
-        relationship_label: { type: 'string', description: 'Etiqueta de relación (solo para update_relationship).', required: false },
-        sentiment_delta: { type: 'number', description: 'Cambio de sentimiento -100 a 100 (solo para update_relationship).', required: false },
-        reason: { type: 'string', description: 'Razón narrativa.', required: false },
+        action: { type: 'string', enum: ['save_memory', 'update_relationship', 'get_memories', 'save_note'], description: 'Acción: save_memory, update_relationship, get_memories, save_note', required: true },
+        memory_type: { type: 'string', enum: ['event', 'relationship', 'fact', 'emotion', 'location', 'item'], description: 'Tipo de memoria', required: false },
+        content: { type: 'string', description: 'Contenido de la memoria', required: false },
+        subject: { type: 'string', description: 'Personaje, lugar u objeto relacionado', required: false },
+        sentiment: { type: 'number', description: 'Cambio de sentimiento (-100 a +100) para relaciones', required: false },
+        importance: { type: 'number', description: 'Importancia de 0.0 a 1.0', required: false },
+        narrative: { type: 'string', description: 'Descripción narrativa', required: false },
       },
       required: ['action'],
     },
@@ -171,6 +206,8 @@ const TOOL_ICONS: Record<string, any> = {
   Wrench,
   ScrollText,
   Handshake,
+  Pencil,
+  BarChart3,
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -187,7 +224,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   system: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
 };
 
-const NATIVE_TOOL_PROVIDERS = ['OpenAI', 'Anthropic', 'Ollama', 'vLLM', 'LM Studio', 'Custom'];
+const NATIVE_TOOL_PROVIDERS = ['OpenAI', 'Anthropic', 'Ollama', 'vLLM', 'LM Studio', 'Custom', 'Grok', 'Text Generation WebUI', 'KoboldCPP'];
 
 // ============================================
 // Component
@@ -216,7 +253,7 @@ export function ToolsSettingsPanel() {
   const activeConfig = llmConfigs.find(c => c.isActive);
   const providerLabel = activeConfig?.provider || 'ninguno';
   const providerSupportsTools = activeConfig
-    ? ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama', 'z-ai'].includes(activeConfig.provider)
+    ? ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama', 'z-ai', 'grok'].includes(activeConfig.provider)
     : false;
 
   // Get enabled tools for a character

@@ -436,10 +436,214 @@ function OllamaModelSelector({ endpoint, currentModel, onModelChange }: OllamaMo
   );
 }
 
+// ============================================
+// Grok Model Selector
+// Fetches available models from xAI API
+// ============================================
+
+const GROK_POPULAR_MODELS = [
+  { id: 'grok-4.20-reasoning', label: 'Grok 4.20 (Reasoning)', desc: 'Última versión con razonamiento avanzado' },
+  { id: 'grok-4.20-non-reasoning', label: 'Grok 4.20 (Fast)', desc: 'Última versión sin razonamiento' },
+  { id: 'grok-4-1-fast-reasoning', label: 'Grok 4.1 Fast (Reasoning)', desc: 'Rápido con razonamiento' },
+  { id: 'grok-4-1-fast-non-reasoning', label: 'Grok 4.1 Fast', desc: 'Rápido sin razonamiento' },
+  { id: 'grok-4.1', label: 'Grok 4.1', desc: 'Flagship - Mejor calidad' },
+  { id: 'grok-4.1-mini', label: 'Grok 4.1 Mini', desc: 'Económico y rápido' },
+  { id: 'grok-3', label: 'Grok 3', desc: 'Generación anterior' },
+  { id: 'grok-3-mini', label: 'Grok 3 Mini', desc: 'Generación anterior - Rápido' },
+  { id: 'grok-code-fast-1', label: 'Grok Code Fast', desc: 'Especializado en código' },
+  { id: 'grok-4-0709', label: 'Grok 4.0', desc: 'Versión estable' },
+  { id: 'grok-2-image-1212', label: 'Grok 2 Image', desc: 'Generación de imágenes' },
+  { id: 'grok-2-vision-1212', label: 'Grok 2 Vision', desc: 'Visión y texto' },
+];
+
+interface GrokModelSelectorProps {
+  apiKey: string;
+  currentModel: string;
+  onModelChange: (model: string) => void;
+}
+
+function GrokModelSelector({ apiKey, currentModel, onModelChange }: GrokModelSelectorProps) {
+  const [models, setModels] = useState<Array<{ id: string; name: string }>>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showAllModels, setShowAllModels] = useState(false);
+  const { toast } = useToast();
+
+  const fetchModels = useCallback(async () => {
+    if (!apiKey) {
+      setError('Ingresa tu API Key de xAI primero');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/grok/models?apiKey=${encodeURIComponent(apiKey)}`, {
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ error: 'Error desconocido' }));
+        throw new Error(errData.error || `Servidor respondió con ${response.status}`);
+      }
+
+      const data = await response.json();
+      const modelList = (data.data || [])
+        .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
+
+      if (modelList.length === 0) {
+        setError('No se encontraron modelos');
+        toast({ description: 'No hay modelos disponibles en xAI', variant: 'destructive' });
+      } else {
+        setModels(modelList);
+        toast({ description: `${modelList.length} modelo(s) encontrado(s) en Grok` });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error de conexión';
+      setError(msg);
+      toast({ variant: 'destructive', description: `Error al obtener modelos: ${msg}` });
+    } finally {
+      setLoading(false);
+    }
+  }, [apiKey, toast]);
+
+  useEffect(() => {
+    if (apiKey) {
+      fetchModels();
+    }
+  }, [apiKey, fetchModels]);
+
+  const isModelInList = models.some(m => m.id === currentModel);
+  
+  const getModelLabel = (id: string): string => {
+    const popular = GROK_POPULAR_MODELS.find(m => m.id === id);
+    return popular?.label || id;
+  };
+
+  return (
+    <div className="mt-1 space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        <Select
+          value={isModelInList ? currentModel : currentModel || '__select__'}
+          onValueChange={(value) => {
+            if (value === '__select__' || value === '__custom__') {
+              // Keep current value
+            } else {
+              onModelChange(value);
+            }
+          }}
+        >
+          <SelectTrigger className="h-8 text-sm flex-1">
+            <SelectValue placeholder="Seleccionar modelo..." />
+          </SelectTrigger>
+          <SelectContent className="max-h-80">
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+              Modelos Populares
+            </div>
+            {GROK_POPULAR_MODELS.map((model) => (
+              <SelectItem key={model.id} value={model.id}>
+                <div className="flex flex-col">
+                  <span className="font-medium">{model.label}</span>
+                  <span className="text-[10px] text-muted-foreground">{model.desc}</span>
+                </div>
+              </SelectItem>
+            ))}
+            
+            {models.length > 0 && (
+              <>
+                <SelectSeparator />
+                <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground flex items-center justify-between">
+                  <span>Todos los modelos ({models.length})</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 text-[10px] px-1"
+                    onClick={() => setShowAllModels(!showAllModels)}
+                  >
+                    {showAllModels ? 'Ocultar' : 'Ver'}
+                  </Button>
+                </div>
+                {showAllModels && models.map((model) => (
+                  <SelectItem key={model.id} value={model.id}>
+                    <div className="flex flex-col">
+                      <span className="font-medium">{getModelLabel(model.id)}</span>
+                      <span className="text-[10px] text-muted-foreground">{model.id}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </>
+            )}
+
+            {!isModelInList && currentModel && !GROK_POPULAR_MODELS.find(m => m.id === currentModel) && (
+              <>
+                <SelectSeparator />
+                <SelectItem value="__custom__" disabled>
+                  <span className="text-muted-foreground">
+                    {currentModel} (personalizado)
+                  </span>
+                </SelectItem>
+              </>
+            )}
+          </SelectContent>
+        </Select>
+
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={fetchModels}
+                disabled={loading || !apiKey}
+              >
+                {loading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Refrescar modelos desde Grok</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Input
+          value={currentModel || ''}
+          onChange={(e) => onModelChange(e.target.value)}
+          placeholder="grok-4.1, grok-4.20-reasoning, etc."
+          className="h-7 text-xs"
+        />
+      </div>
+
+      {currentModel && (
+        <div className="flex items-center gap-1">
+          <CheckCircle className="h-3 w-3 text-emerald-500" />
+          <p className="text-xs text-muted-foreground">
+            {GROK_POPULAR_MODELS.find(m => m.id === currentModel)?.desc || 'Modelo personalizado'}
+          </p>
+        </div>
+      )}
+
+      {error && (
+        <p className="text-xs text-destructive flex items-center gap-1">
+          <AlertCircle className="h-3 w-3" />
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 const LLM_PROVIDERS: { value: LLMProvider; label: string; defaultEndpoint: string; needsEndpoint: boolean; description: string }[] = [
   { value: 'test-mock', label: '🧪 Test Mock (Prueba)', defaultEndpoint: '', needsEndpoint: false, description: 'Prueba del sistema de peticiones sin LLM real' },
   { value: 'z-ai', label: 'Z.ai Chat', defaultEndpoint: '', needsEndpoint: false, description: 'SDK integrado, sin configuración' },
-  { value: 'text-generation-webui', label: 'Text Generation WebUI', defaultEndpoint: 'http://localhost:5000', needsEndpoint: true, description: 'API en puerto 5000 (iniciar con --api)' },
+  { value: 'text-generation-webui', label: 'Text Generation WebUI', defaultEndpoint: 'http://localhost:5000', needsEndpoint: true, description: 'API en puerto 5000 (iniciar con --api). Soporta tool calling con modelos compatibles (Qwen, Mistral, Llama 4).' },
   { value: 'ollama', label: 'Ollama', defaultEndpoint: 'http://localhost:11434', needsEndpoint: true, description: 'Servidor Ollama local' },
   { value: 'koboldcpp', label: 'KoboldCPP', defaultEndpoint: 'http://localhost:5001', needsEndpoint: true, description: 'Servidor KoboldCPP' },
   { value: 'vllm', label: 'vLLM', defaultEndpoint: 'http://localhost:8000', needsEndpoint: true, description: 'Servidor vLLM' },
@@ -1205,7 +1409,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
                             {/* Model field - for providers that need model selection */}
                             {config.provider !== 'z-ai' && config.provider !== 'test-mock' && (
                               <div>
-                                <Label className="text-xs">Modelo {(config.provider === 'lm-studio' || config.provider === 'ollama') ? '' : '(opcional)'}</Label>
+                                <Label className="text-xs">Modelo {(config.provider === 'lm-studio' || config.provider === 'ollama' || config.provider === 'grok') ? '' : '(opcional)'}</Label>
                                 
                                 {/* LM Studio: Model selector with refresh and dropdown */}
                                 {config.provider === 'lm-studio' ? (
@@ -1220,13 +1424,19 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
                                     currentModel={config.model || ''}
                                     onModelChange={(model) => updateLLMConfig(config.id, { model })}
                                   />
+                                ) : config.provider === 'grok' ? (
+                                  <GrokModelSelector
+                                    apiKey={config.apiKey || ''}
+                                    currentModel={config.model || ''}
+                                    onModelChange={(model) => updateLLMConfig(config.id, { model })}
+                                  />
                                 ) : (
                                   <Input
                                     value={config.model || ''}
                                     onChange={(e) => 
                                       updateLLMConfig(config.id, { model: e.target.value })
                                     }
-                                    placeholder={config.provider === 'openai' ? 'gpt-4o-mini' : config.provider === 'anthropic' ? 'claude-sonnet-4-20250514' : ''}
+                                    placeholder={config.provider === 'openai' ? 'gpt-4o-mini' : config.provider === 'anthropic' ? 'claude-sonnet-4-20250514' : config.provider === 'grok' ? 'grok-3, grok-2' : ''}
                                     className="mt-1 h-8 text-sm"
                                   />
                                 )}
@@ -1236,16 +1446,48 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
                             {/* API Key field - for providers that need it */}
                             {config.provider !== 'z-ai' && (
                               <div>
-                                <Label className="text-xs">API Key {config.provider === 'openai' || config.provider === 'anthropic' ? '(requerido)' : '(opcional)'}</Label>
-                                <Input
-                                  type="password"
-                                  value={config.apiKey || ''}
-                                  onChange={(e) => 
-                                    updateLLMConfig(config.id, { apiKey: e.target.value })
-                                  }
-                                  placeholder="sk-..."
-                                  className="mt-1 h-8 text-sm"
-                                />
+                                <Label className="text-xs">API Key {config.provider === 'openai' || config.provider === 'anthropic' || config.provider === 'grok' ? '(requerido)' : '(opcional)'}</Label>
+                                <div className="flex gap-2 mt-1">
+                                  <Input
+                                    type="password"
+                                    value={config.apiKey || ''}
+                                    onChange={(e) => 
+                                      updateLLMConfig(config.id, { apiKey: e.target.value })
+                                    }
+                                    placeholder={config.provider === 'grok' ? 'xai-...' : 'sk-...'}
+                                    className="h-8 text-sm flex-1"
+                                  />
+                                  {config.provider === 'grok' && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 text-xs gap-1"
+                                      onClick={async () => {
+                                        if (!config.apiKey) {
+                                          toast({ variant: 'destructive', description: 'Ingresa tu API Key de xAI primero' });
+                                          return;
+                                        }
+                                        try {
+                                          const response = await fetch(`/api/grok/models?apiKey=${encodeURIComponent(config.apiKey!)}`, {
+                                            signal: AbortSignal.timeout(10000),
+                                          });
+                                          if (response.ok) {
+                                            const data = await response.json();
+                                            toast({ description: `Conexión exitosa. ${data.data?.length || 0} modelos disponibles.` });
+                                          } else {
+                                            const err = await response.json().catch(() => ({ error: 'Error desconocido' }));
+                                            toast({ variant: 'destructive', description: `Error: ${err.error || response.statusText}` });
+                                          }
+                                        } catch (err) {
+                                          toast({ variant: 'destructive', description: `Error de conexión: ${err instanceof Error ? err.message : 'Desconocido'}` });
+                                        }
+                                      }}
+                                    >
+                                      <Zap className="h-3 w-3" />
+                                      Probar
+                                    </Button>
+                                  )}
+                                </div>
                               </div>
                             )}
                             

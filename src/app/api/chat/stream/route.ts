@@ -27,6 +27,7 @@ import {
   streamAnthropic,
   streamOllama,
   streamTextGenerationWebUI,
+  streamGrok,
   buildLorebookSectionForPrompt,
   buildHUDContextSection,
   injectHUDContextIntoMessages,
@@ -71,13 +72,20 @@ import {
   streamOpenAIWithTools,
   streamOllamaWithTools,
   streamAnthropicWithTools,
+  streamGrokWithTools,
+  streamTextGenerationWebUIWithTools,
 } from '@/lib/llm/providers';
 import type { NativeToolCall } from '@/lib/tools';
-import type { CharacterCard } from '@/types';
 
 // ============================================
 // Tool Execution Helper
 // ============================================
+
+interface QuestActivation {
+  type: 'activate_quest' | 'complete_objective' | 'progress_objective';
+  key: string;
+  metadata?: Record<string, unknown>;
+}
 
 /**
  * Execute detected tool calls, send SSE events, and return results.
@@ -92,12 +100,15 @@ async function executeToolCallsAndContinue(
   sessionId: string,
   userName: string,
   controller: { enqueue: (chunk: string) => void },
-): Promise<{ newContent: string; shouldContinue: boolean; toolResults: Array<{ success: boolean; displayMessage: string }> }> {
+  sessionQuests?: SessionQuestInstance[],
+  questTemplates?: QuestTemplate[],
+): Promise<{ newContent: string; shouldContinue: boolean; toolResults: Array<{ success: boolean; displayMessage: string }>; questActivations: QuestActivation[] }> {
   if (toolCalls.length === 0 || currentRound >= maxRounds) {
-    return { newContent: '', shouldContinue: false, toolResults: [] };
+    return { newContent: '', shouldContinue: false, toolResults: [], questActivations: [] };
   }
 
   const toolResults: Array<{ success: boolean; displayMessage: string }> = [];
+  const questActivations: QuestActivation[] = [];
   let allDisplayMessages = '';
 
   for (const tc of toolCalls) {
@@ -123,6 +134,8 @@ async function executeToolCallsAndContinue(
         characterName: character.name,
         sessionId,
         userName,
+        sessionQuests,
+        questTemplates,
       },
     );
 
@@ -134,6 +147,22 @@ async function executeToolCallsAndContinue(
       displayMessage: toolResult.displayMessage,
       duration: toolResult.duration || 0,
     }));
+
+    // Check for quest activation and send SSE event
+    if (toolResult.questActivation) {
+      const activation = toolResult.questActivation;
+      console.log(`[Tools] Quest activation from ${tc.name}:`, activation);
+      
+      controller.enqueue(createSSEJSON({
+        type: 'quest_activation',
+        toolName: tc.name,
+        activationType: activation.type,
+        key: activation.key,
+        metadata: activation.metadata,
+      }));
+      
+      questActivations.push(activation);
+    }
 
     console.log(`[Tools] Tool ${tc.name}: success=${toolResult.success} duration=${toolResult.duration}ms`, toolResult.displayMessage);
 
@@ -148,6 +177,7 @@ async function executeToolCallsAndContinue(
     newContent: allDisplayMessages,
     shouldContinue: true, // Always continue to get the LLM's natural response
     toolResults,
+    questActivations,
   };
 }
 
@@ -315,7 +345,8 @@ export async function POST(request: NextRequest) {
       sessionStats,
       allCharacters, // Pass all characters for peticiones/solicitudes resolution
       soundTriggers, // Pass soundTriggers for {{sonidos}} resolution
-      soundSettings  // Pass sound settings for {{sonidos}} template
+      soundSettings,  // Pass sound settings for {{sonidos}} template
+      questTemplates  // Pass quest templates for objective names in actions
     );
 
     // Build key resolution context for HUD context and quest sections
@@ -326,6 +357,7 @@ export async function POST(request: NextRequest) {
       allCharacters,
       userName: effectiveUserName,
       characterName: effectiveCharacter.name,
+      questTemplates,
     });
     const keyContext = buildKeyResolutionContext(
       effectiveCharacter,
@@ -449,7 +481,7 @@ export async function POST(request: NextRequest) {
     const toolsEnabled = toolsSettings.enabled && availableTools.length > 0;
 
     // Determine if the current provider supports native tool calling
-    const supportsNativeTools = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama', 'z-ai'].includes(llmConfig.provider);
+    const supportsNativeTools = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama', 'z-ai', 'grok', 'text-generation-webui', 'koboldcpp'].includes(llmConfig.provider);
     // If usePromptBasedFallback is true, disable native tools so prompt-based injection is used instead
     const shouldUseTools = toolsEnabled && supportsNativeTools && !toolsSettings.usePromptBasedFallback;
 
@@ -637,7 +669,8 @@ Y cambiar mi expresión:
                       }
                       const { newContent: displayMessages, shouldContinue, toolResults } = await executeToolCallsAndContinue(
                         textToolCalls, availableTools, toolRound, maxToolRounds,
-                        effectiveCharacter, sessionId || '', effectiveUserName, controller
+                        effectiveCharacter, sessionId || '', effectiveUserName, controller,
+                        sessionQuests, questTemplates
                       );
                       if (shouldContinue) {
                         toolContextMessages = [
@@ -720,7 +753,8 @@ Y cambiar mi expresión:
                     // Native tool calls detected! Execute them and loop
                     const { newContent: displayMessages, shouldContinue, toolResults: nativeToolResults } = await executeToolCallsAndContinue(
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
-                      effectiveCharacter, sessionId || '', effectiveUserName, controller
+                      effectiveCharacter, sessionId || '', effectiveUserName, controller,
+                      sessionQuests, questTemplates
                     );
                     if (shouldContinue) {
                       const toolResultPairs = nativeToolResults.length > 0
@@ -765,7 +799,8 @@ Y cambiar mi expresión:
                       // Execute and continue
                       const { newContent: displayMessages, shouldContinue } = await executeToolCallsAndContinue(
                         nativeCalls, availableTools, toolRound, maxToolRounds,
-                        effectiveCharacter, sessionId || '', effectiveUserName, controller
+                        effectiveCharacter, sessionId || '', effectiveUserName, controller,
+                        sessionQuests, questTemplates
                       );
                       if (shouldContinue) {
                         // For text-based calls, inject as user message with tool context
@@ -841,7 +876,8 @@ Y cambiar mi expresión:
                     }
                     const { newContent: displayMessages, shouldContinue, toolResults: anthropicToolResults } = await executeToolCallsAndContinue(
                       toolCalls, availableTools, toolRound, maxToolRounds,
-                      effectiveCharacter, sessionId || '', effectiveUserName, controller
+                      effectiveCharacter, sessionId || '', effectiveUserName, controller,
+                      sessionQuests, questTemplates
                     );
                     if (shouldContinue) {
                       const toolResultPairs = anthropicToolResults.length > 0
@@ -876,7 +912,8 @@ Y cambiar mi expresión:
                       }));
                       const { newContent: displayMessages, shouldContinue } = await executeToolCallsAndContinue(
                         nativeCalls, availableTools, toolRound, maxToolRounds,
-                        effectiveCharacter, sessionId || '', effectiveUserName, controller
+                        effectiveCharacter, sessionId || '', effectiveUserName, controller,
+                        sessionQuests, questTemplates
                       );
                       if (shouldContinue) {
                         const toolNames = textToolCalls.map(tc => tc.name).join(', ');
@@ -946,7 +983,8 @@ Y cambiar mi expresión:
                     }
                     const { newContent: displayMessages, shouldContinue, toolResults: ollamaToolResults } = await executeToolCallsAndContinue(
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
-                      effectiveCharacter, sessionId || '', effectiveUserName, controller
+                      effectiveCharacter, sessionId || '', effectiveUserName, controller,
+                      sessionQuests, questTemplates
                     );
                     if (shouldContinue) {
                       const toolResultPairs = ollamaToolResults.length > 0
@@ -977,7 +1015,8 @@ Y cambiar mi expresión:
                       }));
                       const { newContent: displayMessages, shouldContinue } = await executeToolCallsAndContinue(
                         nativeCalls, availableTools, toolRound, maxToolRounds,
-                        effectiveCharacter, sessionId || '', effectiveUserName, controller
+                        effectiveCharacter, sessionId || '', effectiveUserName, controller,
+                        sessionQuests, questTemplates
                       );
                       if (shouldContinue) {
                         const toolNames = textToolCalls.map(tc => tc.name).join(', ');
@@ -1023,8 +1062,177 @@ Y cambiar mi expresión:
                 break;
               }
 
+              case 'grok': {
+                console.log(`[Stream] Grok case: shouldUseTools=${shouldUseTools}, isToolRound=${isToolRound}, toolRound=${toolRound}`);
+                let chatMessages = buildChatMessages(
+                  baseSystemPrompt || finalSystemPrompt,
+                  allMessages,
+                  effectiveCharacter,
+                  effectiveUserName,
+                  effectiveCharacter.postHistoryInstructions?.trim(),
+                  undefined, true, memoryContextString
+                );
+                if (hudContextSection && hudContext) {
+                  chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
+                }
+
+                if (shouldUseTools && !isToolRound) {
+                  baseChatMessages = chatMessages;
+                  const accumulator = createToolCallAccumulator(availableTools);
+                  generator = streamGrokWithTools(chatMessages, llmConfig, availableTools, accumulator);
+
+                  let roundContent = '';
+                  for await (const chunk of generator) {
+                    roundContent += chunk;
+                    accumulatedContent += chunk;
+                  }
+
+                  console.log(`[Grok+Tools] Round 0 buffered ${roundContent.length} chars, finishReason=${accumulator.finishReason}, nativeToolCalls=${accumulator.toolCalls.length}`);
+
+                  if (hasToolCalls(accumulator) && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'stop')) {
+                    if (roundContent.trim()) {
+                      for (const chunk of splitIntoChunks(roundContent)) {
+                        controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                      }
+                    }
+                    const { newContent: displayMessages, shouldContinue, toolResults: nativeToolResults } = await executeToolCallsAndContinue(
+                      accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
+                      effectiveCharacter, sessionId || '', effectiveUserName, controller,
+                      sessionQuests, questTemplates
+                    );
+                    if (shouldContinue) {
+                      const toolResultPairs = nativeToolResults.length > 0
+                        ? nativeToolResults
+                        : accumulator.toolCalls.map(tc => ({
+                            success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+                          }));
+                      toolContextMessages = [
+                        ...baseChatMessages,
+                        ...buildToolMessagesForOpenAI(accumulator.toolCalls, toolResultPairs),
+                      ];
+                      accumulatedContent = '';
+                      toolRound++;
+                      continue;
+                    }
+                  } else if (mightContainToolCall(roundContent)) {
+                    const textToolCalls = parseAllToolCallsFromText(roundContent);
+                    if (textToolCalls.length > 0) {
+                      console.log(`[Grok+Tools] Text-based tool call(s) detected: ${textToolCalls.map(tc => tc.name).join(', ')}`);
+                      const cleanContent = stripToolCallFromText(roundContent);
+                      if (cleanContent.trim()) {
+                        for (const chunk of splitIntoChunks(cleanContent)) {
+                          controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                        }
+                      }
+                      const { newContent: displayMessages, shouldContinue, toolResults } = await executeToolCallsAndContinue(
+                        textToolCalls, availableTools, toolRound, maxToolRounds,
+                        effectiveCharacter, sessionId || '', effectiveUserName, controller,
+                        sessionQuests, questTemplates
+                      );
+                      if (shouldContinue) {
+                        toolContextMessages = [
+                          ...baseChatMessages,
+                          ...buildToolMessagesForOpenAI(textToolCalls, toolResults),
+                        ];
+                        accumulatedContent = '';
+                        toolRound++;
+                        continue;
+                      }
+                    }
+                  }
+
+                  console.log(`[Grok+Tools] No tool calls detected, streaming ${roundContent.length} chars`);
+                  for (const chunk of splitIntoChunks(roundContent)) {
+                    controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                  }
+                  toolRound = maxToolRounds + 1;
+                  continue;
+                } else if (shouldUseTools && isToolRound) {
+                  generator = streamGrokWithTools(toolContextMessages as any, llmConfig, [], createToolCallAccumulator(availableTools));
+                } else {
+                  generator = streamGrok(chatMessages, llmConfig);
+                }
+                break;
+              }
+
               case 'text-generation-webui':
-              case 'koboldcpp':
+              case 'koboldcpp': {
+                if (charShouldUseTools) {
+                  console.log(`[Stream] TextGenerationWebUI case: shouldUseTools=${charShouldUseTools}`);
+                  let chatMessages = buildChatMessages(
+                    baseSystemPrompt || finalSystemPrompt,
+                    allMessages,
+                    effectiveCharacter,
+                    effectiveUserName,
+                    effectiveCharacter.postHistoryInstructions?.trim(),
+                    undefined, true, memoryContextString
+                  );
+                  if (hudContextSection && hudContext) {
+                    chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
+                  }
+
+                  const accumulator = createToolCallAccumulator(availableTools);
+                  generator = streamTextGenerationWebUIWithTools(chatMessages, llmConfig, availableTools, accumulator);
+
+                  let roundContent = '';
+                  for await (const chunk of generator) {
+                    roundContent += chunk;
+                    accumulatedContent += chunk;
+                  }
+
+                  console.log(`[TextGenWebUI+Tools] Round buffered ${roundContent.length} chars, finishReason=${accumulator.finishReason}, toolCalls=${accumulator.toolCalls.length}`);
+
+                  if (hasToolCalls(accumulator) && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'stop')) {
+                    if (roundContent.trim()) {
+                      for (const chunk of splitIntoChunks(roundContent)) {
+                        controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                      }
+                    }
+                    const { newContent: displayMessages, shouldContinue, toolResults: nativeToolResults } = await executeToolCallsAndContinue(
+                      accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
+                      effectiveCharacter, sessionId || '', effectiveUserName, controller,
+                      sessionQuests, questTemplates
+                    );
+                    if (shouldContinue) {
+                      const toolResultPairs = accumulator.toolCalls.map(tc => ({
+                        success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+                      }));
+                      const toolContextMessages = [
+                        ...chatMessages,
+                        ...buildToolMessagesForOpenAI(accumulator.toolCalls, toolResultPairs),
+                      ];
+                      accumulatedContent = '';
+                      toolRound++;
+                      toolContext.push(...toolContextMessages.map(m => ({
+                        role: m.role,
+                        content: m.content || '',
+                        toolCallId: (m as any).toolCallId,
+                        name: (m as any).name,
+                      })));
+                      continue;
+                    }
+                  }
+
+                  console.log(`[TextGenWebUI+Tools] No tool calls detected, streaming ${roundContent.length} chars`);
+                  for (const chunk of splitIntoChunks(roundContent)) {
+                    controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                  }
+                  toolRound = maxToolRounds + 1;
+                  continue;
+                } else {
+                  const prompt = buildCompletionPrompt({
+                    systemPrompt: baseSystemPrompt || finalSystemPrompt,
+                    messages: allMessages,
+                    character: effectiveCharacter,
+                    userName: effectiveUserName,
+                    postHistoryInstructions: effectiveCharacter.postHistoryInstructions?.trim(),
+                    embeddingsContext: memoryContextString
+                  });
+                  generator = streamTextGenerationWebUI(prompt, llmConfig);
+                }
+                break;
+              }
+
               default: {
                 const prompt = buildCompletionPrompt({
                   systemPrompt: baseSystemPrompt || finalSystemPrompt,

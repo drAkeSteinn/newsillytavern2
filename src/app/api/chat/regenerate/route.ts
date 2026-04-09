@@ -22,6 +22,7 @@ import {
   streamAnthropic,
   streamOllama,
   streamTextGenerationWebUI,
+  streamGrok,
   buildLorebookSectionForPrompt,
   buildHUDContextSection,
   injectHUDContextIntoMessages,
@@ -328,6 +329,24 @@ export async function POST(request: NextRequest) {
                 embeddingsContext: memoryContextString  // Memory embeddings before chat history
               });
               generator = streamOllama(prompt, llmConfig);
+              break;
+            }
+
+            case 'grok': {
+              let chatMessages = buildChatMessages(
+                finalSystemPrompt,
+                contextWindow.messages,
+                processedCharacter,
+                effectiveUserName,
+                processedCharacter.postHistoryInstructions,
+                undefined,
+                true,
+                memoryContextString
+              );
+              if (hudContextSection && hudContext) {
+                chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
+              }
+              generator = streamGrok(chatMessages, llmConfig);
               break;
             }
 

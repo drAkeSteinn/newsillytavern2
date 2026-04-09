@@ -355,7 +355,8 @@ export function buildSystemPrompt(
   sessionStats?: SessionStats,
   allCharacters?: CharacterCard[],
   soundTriggers?: SoundTrigger[],
-  soundSettings?: AppSettings['sound']
+  soundSettings?: AppSettings['sound'],
+  questTemplates?: QuestTemplate[]
 ): { prompt: string; sections: PromptSection[] } {
   const sections: PromptSection[] = [];
 
@@ -367,6 +368,7 @@ export function buildSystemPrompt(
     allCharacters,
     userName,
     characterName: character.name,
+    questTemplates,
   });
 
   // Build unified key resolution context
@@ -750,7 +752,8 @@ export function buildGroupSystemPrompt(
   lorebookSection?: PromptSection | null,
   sessionStats?: SessionStats,
   postHistoryInstructions?: string,
-  allCharacters?: CharacterCard[]
+  allCharacters?: CharacterCard[],
+  questTemplates?: QuestTemplate[]
 ): { prompt: string; sections: PromptSection[] } {
   const sections: PromptSection[] = [];
 
@@ -762,6 +765,7 @@ export function buildGroupSystemPrompt(
     allCharacters,
     userName,
     characterName: character.name,
+    questTemplates,
   });
 
   // Build unified key resolution context
@@ -1027,7 +1031,8 @@ export function processCharacter(
   userName: string,
   persona?: Persona,
   sessionStats?: SessionStats,
-  allCharacters?: CharacterCard[]
+  allCharacters?: CharacterCard[],
+  questTemplates?: QuestTemplate[]
 ): CharacterCard {
   // Resolve stats for this character
   const resolvedStats = resolveStats({
@@ -1037,6 +1042,7 @@ export function processCharacter(
     allCharacters,
     userName,
     characterName: character.name,
+    questTemplates,
   });
 
   // Build key resolution context

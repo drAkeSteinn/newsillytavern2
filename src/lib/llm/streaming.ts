@@ -8,7 +8,8 @@ import {
   streamOpenAICompatible, 
   streamAnthropic, 
   streamOllama, 
-  streamTextGenerationWebUI 
+  streamTextGenerationWebUI,
+  streamGrok
 } from './providers';
 import { buildCompletionPrompt } from './prompt-builder';
 
@@ -64,6 +65,16 @@ export async function* getStreamGenerator(
       // Ollama uses completion-style prompts
       const prompt = buildOllamaPrompt(chatMessages, characterName);
       yield* streamOllama(prompt, config);
+      break;
+    }
+
+    case 'grok': {
+      // Grok is OpenAI-compatible, uses chat completions
+      const openaiMessages = chatMessages.map((m, i) => ({
+        role: m.role === 'assistant' && i === 0 ? 'system' : m.role,
+        content: m.content
+      })) as ChatApiMessage[];
+      yield* streamGrok(openaiMessages, config);
       break;
     }
 
@@ -147,5 +158,6 @@ export {
   streamOpenAICompatible,
   streamAnthropic,
   streamOllama,
-  streamTextGenerationWebUI
+  streamTextGenerationWebUI,
+  streamGrok
 };
