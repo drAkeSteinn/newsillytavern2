@@ -1953,6 +1953,7 @@ function SkillEditor({ skill, index, availableAttributes, availableObjectives = 
                                 objective: { 
                                   ...normalized.objective!, 
                                   objectiveKey: v,
+                                  objectiveId: selectedObj?.objectiveId,
                                   questId: selectedObj?.questId 
                                 }
                               };

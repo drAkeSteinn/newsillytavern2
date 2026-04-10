@@ -43,6 +43,8 @@ export interface ToolCallNotificationProps {
   result?: ToolCallResult;
   /** Current phase */
   phase: ToolCallPhase;
+  /** Unique call ID for this specific tool execution */
+  callId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,19 +193,20 @@ export function ToolCallNotification({
   params,
   result,
   phase,
+  callId: callIdProp,
 }: ToolCallNotificationProps) {
   // -----------------------------------------------------------------------
   // Auto-dismiss logic (no synchronous setState in effects)
   // -----------------------------------------------------------------------
   // We track the *id* of the dismissed notification rather than a boolean.
-  // When a new tool call starts (different toolName or re-executing), the
-  // derived callId changes and the old dismissedId no longer matches,
-  // so the notification becomes visible again automatically.
+  // When a new tool call starts (different callId), the old dismissedId
+  // no longer matches, so the notification becomes visible again automatically.
   //
   // setDismissedId is ONLY called from inside setTimeout callbacks, which
   // the linter treats as external system responses (not synchronous).
 
-  const callId = `${toolName || 'tool'}::${phase}`;
+  // Use provided callId or generate from toolName+phase+active for uniqueness
+  const callId = callIdProp || `${toolName || 'tool'}::${phase}::${active ? 'active' : 'inactive'}`;
   const shouldShow = active && phase !== 'idle';
 
   const [dismissedId, setDismissedId] = useState<string | null>(null);

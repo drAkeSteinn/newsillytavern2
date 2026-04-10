@@ -59,7 +59,7 @@ export interface RewardExecutionContext {
 
 export interface RewardExecutionResult {
   rewardId: string;
-  type: 'attribute' | 'trigger' | 'objective';
+  type: 'attribute' | 'trigger' | 'objective' | 'solicitud';
   success: boolean;
   key: string;
   value?: string | number;
@@ -105,6 +105,13 @@ export interface RewardStoreActions {
     objectiveKey: string,
     characterId?: string
   ) => boolean;
+
+  // Solicitud completion (for solicitud rewards)
+  completeSolicitud?: (
+    sessionId: string,
+    characterId: string,
+    solicitudKey: string
+  ) => { key: string; status: string } | null;
 
   // Trigger actions (delegated to unified-trigger-executor)
   applyTriggerForCharacter: (
@@ -413,7 +420,7 @@ export function executeTriggerRewardFromQuest(
  * Execute an objective reward from an Action
  *
  * This completes a quest objective when an action is activated.
- * The objectiveKey should match the completion key of an objective in an active quest.
+ * The completeQuestObjective function searches by objectiveKey (completion.key) internally.
  */
 export function executeObjectiveRewardFromAction(
   reward: QuestReward,
@@ -423,9 +430,17 @@ export function executeObjectiveRewardFromAction(
   const { sessionId, characterId } = context;
 
   try {
-    // Normalize to get objective config
     const normalized = normalizeReward(reward);
     const obj = normalized.objective;
+
+    console.log(`[executeObjectiveRewardFromAction] Attempting to complete objective:`, {
+      rewardId: reward.id,
+      objectiveKey: obj?.objectiveKey,
+      objectiveId: obj?.objectiveId,
+      questId: obj?.questId,
+      sessionId,
+      characterId,
+    });
 
     if (!obj || !obj.objectiveKey) {
       return {
@@ -437,7 +452,6 @@ export function executeObjectiveRewardFromAction(
       };
     }
 
-    // Check if the store action is available
     if (!storeActions.completeQuestObjective) {
       return {
         rewardId: reward.id,
@@ -448,13 +462,15 @@ export function executeObjectiveRewardFromAction(
       };
     }
 
-    // Execute the objective completion
+    // The completeQuestObjective function searches by objectiveKey (completion.key) internally
+    console.log(`[executeObjectiveRewardFromAction] Calling completeQuestObjective with objectiveKey: "${obj.objectiveKey}"`);
     const completed = storeActions.completeQuestObjective(
       sessionId,
       obj.questId || '',  // May be empty - will search all active quests
       obj.objectiveKey,
       characterId
     );
+    console.log(`[executeObjectiveRewardFromAction] completeQuestObjective result: ${completed}`);
 
     if (completed) {
       return {
@@ -479,6 +495,81 @@ export function executeObjectiveRewardFromAction(
     return {
       rewardId: reward.id,
       type: 'objective',
+      key: reward.key || 'unknown',
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+// ============================================
+// Solicitud Reward Execution (Action → Character Solicitud)
+// ============================================
+
+/**
+ * Execute a solicitud reward from an Action
+ *
+ * This completes a character solicitud when an action is activated.
+ * The solicitudKey should match the key of a pending solicitud.
+ */
+export function executeSolicitudRewardFromAction(
+  reward: QuestReward,
+  context: RewardExecutionContext,
+  storeActions: RewardStoreActions
+): RewardExecutionResult {
+  const { sessionId, characterId } = context;
+
+  try {
+    const normalized = normalizeReward(reward);
+    const sol = normalized.solicitud;
+
+    if (!sol || !sol.solicitudKey) {
+      return {
+        rewardId: reward.id,
+        type: 'solicitud',
+        key: reward.key || 'unknown',
+        success: false,
+        error: 'Invalid solicitud reward structure - missing solicitudKey',
+      };
+    }
+
+    if (!storeActions.completeSolicitud) {
+      return {
+        rewardId: reward.id,
+        type: 'solicitud',
+        key: sol.solicitudKey,
+        success: false,
+        error: 'Solicitud completion not available in this context',
+      };
+    }
+
+    const completed = storeActions.completeSolicitud(
+      sessionId,
+      characterId,
+      sol.solicitudKey
+    );
+
+    if (completed) {
+      return {
+        rewardId: reward.id,
+        type: 'solicitud',
+        key: sol.solicitudKey,
+        success: true,
+        message: `Solicitud completada: ${sol.solicitudName || sol.solicitudKey}`,
+      };
+    } else {
+      return {
+        rewardId: reward.id,
+        type: 'solicitud',
+        key: sol.solicitudKey,
+        success: false,
+        message: `No se encontró una solicitud pendiente con la key: ${sol.solicitudKey}`,
+      };
+    }
+  } catch (error) {
+    return {
+      rewardId: reward.id,
+      type: 'solicitud',
       key: reward.key || 'unknown',
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -537,6 +628,9 @@ export function executeReward(
 
     case 'objective':
       return executeObjectiveRewardFromAction(normalized, context, storeActions);
+
+    case 'solicitud':
+      return executeSolicitudRewardFromAction(normalized, context, storeActions);
 
     default:
       return {

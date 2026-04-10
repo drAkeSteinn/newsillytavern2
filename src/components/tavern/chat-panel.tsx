@@ -42,6 +42,7 @@ export function ChatPanel() {
     params?: Record<string, unknown>;
     result?: { success: boolean; displayMessage: string; duration: number };
     phase: ToolCallPhase;
+    callId?: string;
   }>({ active: false, phase: 'idle' });
 
   // Use proper selectors to subscribe to store changes
@@ -563,6 +564,7 @@ export function ChatPanel() {
                     toolIcon: parsed.toolIcon,
                     params: parsed.params,
                     phase: 'executing',
+                    callId: parsed.callId,
                   });
                 } else if (parsed.type === 'tool_call_result') {
                   // Tool execution completed
@@ -572,6 +574,7 @@ export function ChatPanel() {
                     active: true,
                     result: { success: parsed.success, displayMessage: parsed.displayMessage, duration: parsed.duration || 0 },
                     phase: 'done',
+                    callId: parsed.callId,
                   }));
                   setTimeout(() => setToolCallInfo(prev => ({ ...prev, active: false, phase: 'idle' })), 5000);
                 } else if (parsed.type === 'tool_call_error') {
@@ -582,8 +585,23 @@ export function ChatPanel() {
                     active: true,
                     result: { success: false, displayMessage: parsed.error, duration: 0 },
                     phase: 'error',
+                    callId: parsed.callId,
                   }));
                   setTimeout(() => setToolCallInfo(prev => ({ ...prev, active: false, phase: 'idle' })), 5000);
+                } else if (parsed.type === 'quest_activation') {
+                  // Quest objective was completed by a tool - trigger effects
+                  console.log('[ChatPanel] Quest activation from tool:', parsed.toolName, parsed.activationType, parsed.key);
+                  // The quest activation info is sent for logging/UI purposes
+                  // The actual reward execution (sprites, sounds, attributes) happens server-side in the tool
+                  // Add notification for quest progress
+                  if (parsed.metadata?.questName || parsed.metadata?.objectiveName) {
+                    toast.success(
+                      parsed.metadata?.questCompleted 
+                        ? `¡Misión completada: ${parsed.metadata.questName}`
+                        : `Objetivo completado: ${parsed.metadata.objectiveName}`,
+                      { description: parsed.metadata?.messages?.join(', ') }
+                    );
+                  }
                 } else if (parsed.type === 'character_start') {
                   currentCharacterContent = '';
                   const char = groupCharacters.find(c => c.id === parsed.characterId);
@@ -817,6 +835,7 @@ export function ChatPanel() {
                     toolIcon: parsed.toolIcon,
                     params: parsed.params,
                     phase: 'executing',
+                    callId: parsed.callId,
                   });
                 } else if (parsed.type === 'tool_call_result') {
                   // Tool execution completed
@@ -826,6 +845,7 @@ export function ChatPanel() {
                     active: true,
                     result: { success: parsed.success, displayMessage: parsed.displayMessage, duration: parsed.duration || 0 },
                     phase: 'done',
+                    callId: parsed.callId,
                   }));
                   setTimeout(() => setToolCallInfo(prev => ({ ...prev, active: false, phase: 'idle' })), 5000);
                 } else if (parsed.type === 'tool_call_error') {
@@ -836,6 +856,7 @@ export function ChatPanel() {
                     active: true,
                     result: { success: false, displayMessage: parsed.error, duration: 0 },
                     phase: 'error',
+                    callId: parsed.callId,
                   }));
                   setTimeout(() => setToolCallInfo(prev => ({ ...prev, active: false, phase: 'idle' })), 5000);
                 } else if (parsed.type === 'token' && parsed.content) {
@@ -897,7 +918,8 @@ export function ChatPanel() {
                       swipeId: generateId(),
                       swipeIndex: 0,
                       metadata: {
-                        promptData: promptSections
+                        promptData: promptSections,
+                        toolsUsed: parsed.toolsUsed || []
                       }
                     });
                   }
@@ -1465,6 +1487,7 @@ export function ChatPanel() {
         params={toolCallInfo.params}
         result={toolCallInfo.result}
         phase={toolCallInfo.phase}
+        callId={toolCallInfo.callId}
       />
     </div>
   );

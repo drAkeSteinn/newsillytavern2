@@ -1,12 +1,13 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import type { ChatMessage as ChatMessageType, PromptSection, ChatboxAppearanceSettings } from '@/types';
+import type { ChatMessage as ChatMessageType, PromptSection, ChatboxAppearanceSettings, ToolUsedInfo } from '@/types';
 import { DEFAULT_CHATBOX_APPEARANCE } from '@/types';
-import { Copy, Check, Trash2, RefreshCw, ChevronLeft, ChevronRight, Volume2, Eye, Edit2, Play, X, Check as CheckIcon, Ghost } from 'lucide-react';
+import { Copy, Check, Trash2, RefreshCw, ChevronLeft, ChevronRight, Volume2, Eye, Edit2, Play, X, Check as CheckIcon, Ghost, Wrench, Zap, Dices, Globe, CloudSun, Bell } from 'lucide-react';
 import { useState, memo, Fragment, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import { formatDistanceToNow } from 'date-fns';
 import { TextFormatter } from './text-formatter';
 import { PromptViewerDialog } from './prompt-viewer-dialog';
@@ -125,6 +126,25 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
 
   // Always allow viewing prompt for assistant messages
   const hasPromptData = message.metadata?.promptData && message.metadata.promptData.length > 0;
+
+  // Tools used for this message
+  const toolsUsed = message.metadata?.toolsUsed || [];
+
+  // Helper to get icon for tool
+  const getToolIcon = (iconName?: string) => {
+    switch (iconName) {
+      case 'Dices': return Dices;
+      case 'Brain': return Zap;
+      case 'Globe': return Globe;
+      case 'CloudSun': return CloudSun;
+      case 'Bell': return Bell;
+      case 'Search': return Globe;
+      case 'WebSearch': return Globe;
+      case 'Weather': return CloudSun;
+      case 'Timer': return Bell;
+      default: return Wrench;
+    }
+  };
 
   if (message.isDeleted) return null;
 
@@ -299,7 +319,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
         )}
         style={{ animationDuration: `${safeAppearance.animationDurationMs}ms` }}
         >
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             {isNarrator && <Ghost className="w-3.5 h-3.5 text-violet-400" />}
             <span className={cn(
               'font-medium text-sm',
@@ -314,6 +334,28 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               <span className="text-xs text-muted-foreground/70">
                 • {message.metadata.tokens} tokens
               </span>
+            )}
+            {/* Tool badges */}
+            {toolsUsed.length > 0 && (
+              <div className="flex items-center gap-1 flex-wrap">
+                {toolsUsed.map((tool, idx) => {
+                  const ToolIcon = getToolIcon(tool.icon);
+                  return (
+                    <Badge 
+                      key={`${tool.name}-${idx}`}
+                      variant="outline"
+                      className={cn(
+                        'text-[10px] py-0 h-4 px-1 gap-0.5',
+                        tool.success === false ? 'border-red-500/30 text-red-400/70' : 'border-green-500/30 text-green-400/70'
+                      )}
+                      title={tool.label}
+                    >
+                      <ToolIcon className="w-2.5 h-2.5" />
+                      <span className="truncate max-w-[60px]">{tool.label}</span>
+                    </Badge>
+                  );
+                })}
+              </div>
             )}
           </div>
           
@@ -468,7 +510,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
       >
         {/* Name and Timestamp - Above the bubble */}
         <div className={cn(
-          'flex items-center gap-2 mb-1',
+          'flex items-center gap-2 mb-1 flex-wrap',
           isUser ? 'flex-row-reverse' : 'flex-row'
         )}>
           {isNarrator && !isUser && <Ghost className="w-3.5 h-3.5 text-violet-400" />}
@@ -497,6 +539,31 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
             <span className="text-xs text-muted-foreground/70">
               • {message.metadata.tokens} tokens
             </span>
+          )}
+          {/* Tool badges - show on right side for user, left for characters */}
+          {toolsUsed.length > 0 && !isCompact && (
+            <div className={cn(
+              'flex items-center gap-1 flex-wrap',
+              isUser && 'flex-row-reverse'
+            )}>
+              {toolsUsed.map((tool, idx) => {
+                const ToolIcon = getToolIcon(tool.icon);
+                return (
+                  <Badge 
+                    key={`${tool.name}-${idx}`}
+                    variant="outline"
+                    className={cn(
+                      'text-[10px] py-0 h-4 px-1 gap-0.5',
+                      tool.success === false ? 'border-red-500/30 text-red-400/70' : 'border-green-500/30 text-green-400/70'
+                    )}
+                    title={tool.label}
+                  >
+                    <ToolIcon className="w-2.5 h-2.5" />
+                    <span className="truncate max-w-[60px]">{tool.label}</span>
+                  </Badge>
+                );
+              })}
+            </div>
           )}
         </div>
 

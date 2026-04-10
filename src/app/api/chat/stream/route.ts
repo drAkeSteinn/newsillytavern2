@@ -103,17 +103,20 @@ async function executeToolCallsAndContinue(
   controller: { enqueue: (chunk: string) => void },
   sessionQuests?: SessionQuestInstance[],
   questTemplates?: QuestTemplate[],
-): Promise<{ newContent: string; shouldContinue: boolean; toolResults: Array<{ success: boolean; displayMessage: string }>; questActivations: QuestActivation[] }> {
+): Promise<{ newContent: string; shouldContinue: boolean; toolResults: Array<{ success: boolean; displayMessage: string }>; questActivations: QuestActivation[]; toolsUsed: Array<{ name: string; label: string; icon: string; success: boolean }> }> {
   if (toolCalls.length === 0 || currentRound >= maxRounds) {
-    return { newContent: '', shouldContinue: false, toolResults: [], questActivations: [] };
+    return { newContent: '', shouldContinue: false, toolResults: [], questActivations: [], toolsUsed: [] };
   }
 
   const toolResults: Array<{ success: boolean; displayMessage: string }> = [];
   const questActivations: QuestActivation[] = [];
+  const toolsUsed: Array<{ name: string; label: string; icon: string; success: boolean }> = [];
   let allDisplayMessages = '';
 
-  for (const tc of toolCalls) {
+  for (let i = 0; i < toolCalls.length; i++) {
+    const tc = toolCalls[i];
     const toolDef = availableTools.find(t => t.name === tc.name);
+    const callId = `${Date.now()}_${i}`;
 
     // Send tool_call_start event
     controller.enqueue(createSSEJSON({
@@ -122,6 +125,7 @@ async function executeToolCallsAndContinue(
       toolLabel: toolDef?.label || tc.name,
       toolIcon: toolDef?.icon || 'Wrench',
       params: tc.arguments,
+      callId,
     }));
 
     console.log(`[Tools] Executing tool call: ${tc.name}`, tc.arguments);
@@ -147,6 +151,7 @@ async function executeToolCallsAndContinue(
       success: toolResult.success,
       displayMessage: toolResult.displayMessage,
       duration: toolResult.duration || 0,
+      callId,
     }));
 
     // Check for quest activation and send SSE event
@@ -168,6 +173,12 @@ async function executeToolCallsAndContinue(
     console.log(`[Tools] Tool ${tc.name}: success=${toolResult.success} duration=${toolResult.duration}ms`, toolResult.displayMessage);
 
     toolResults.push({ success: toolResult.success, displayMessage: toolResult.displayMessage });
+    toolsUsed.push({
+      name: tc.name,
+      label: toolDef?.label || tc.name,
+      icon: toolDef?.icon || 'Wrench',
+      success: toolResult.success,
+    });
     if (toolResult.displayMessage) {
       allDisplayMessages += (allDisplayMessages ? '\n' : '') + toolResult.displayMessage;
     }
@@ -179,6 +190,7 @@ async function executeToolCallsAndContinue(
     shouldContinue: true, // Always continue to get the LLM's natural response
     toolResults,
     questActivations,
+    toolsUsed,
   };
 }
 
@@ -549,6 +561,8 @@ export async function POST(request: NextRequest) {
           const maxToolRounds = toolsSettings.maxToolCallsPerTurn || 2;
           let toolRound = 0;
           let toolContextMessages: Array<Record<string, unknown>> = []; // for tool result messages
+          let allToolsUsed: Array<{ name: string; label: string; icon: string; success: boolean }> = [];
+          let allQuestActivations: import('@/types').QuestActivation[] = [];
 
           // Build the initial chat messages once (shared across tool rounds for OpenAI/Anthropic)
           let baseChatMessages: import('@/lib/llm/types').ChatApiMessage[] | null = null;
@@ -639,15 +653,18 @@ Y cambiar mi expresión:
                         controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                       }
                     }
-                    const { newContent: displayMessages, shouldContinue, toolResults: nativeToolResults } = await executeToolCallsAndContinue(
+                    const toolResult = await executeToolCallsAndContinue(
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
-                      effectiveCharacter, sessionId || '', effectiveUserName, controller
+                      effectiveCharacter, sessionId || '', effectiveUserName, controller,
+                      sessionQuests, questTemplates
                     );
-                    if (shouldContinue) {
-                      const toolResultPairs = nativeToolResults.length > 0
-                        ? nativeToolResults
+                    allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
+                    allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
+                    if (toolResult.shouldContinue) {
+                      const toolResultPairs = toolResult.toolResults.length > 0
+                        ? toolResult.toolResults
                         : accumulator.toolCalls.map(tc => ({
-                            success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+                            success: true, displayMessage: toolResult.newContent || `[${tc.name} ejecutada]`
                           }));
                       toolContextMessages = [
                         ...baseChatMessages,
@@ -668,15 +685,17 @@ Y cambiar mi expresión:
                           controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                         }
                       }
-                      const { newContent: displayMessages, shouldContinue, toolResults } = await executeToolCallsAndContinue(
+                      const toolResult = await executeToolCallsAndContinue(
                         textToolCalls, availableTools, toolRound, maxToolRounds,
                         effectiveCharacter, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates
                       );
-                      if (shouldContinue) {
+                      allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
+                      allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
+                      if (toolResult.shouldContinue) {
                         toolContextMessages = [
                           ...baseChatMessages,
-                          ...buildToolMessagesForOpenAI(textToolCalls, toolResults),
+                          ...buildToolMessagesForOpenAI(textToolCalls, toolResult.toolResults),
                         ];
                         accumulatedContent = '';
                         toolRound++;
@@ -752,16 +771,18 @@ Y cambiar mi expresión:
                       }
                     }
                     // Native tool calls detected! Execute them and loop
-                    const { newContent: displayMessages, shouldContinue, toolResults: nativeToolResults } = await executeToolCallsAndContinue(
+                    const toolResult = await executeToolCallsAndContinue(
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
                       sessionQuests, questTemplates
                     );
-                    if (shouldContinue) {
-                      const toolResultPairs = nativeToolResults.length > 0
-                        ? nativeToolResults
+                    allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
+                    allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
+                    if (toolResult.shouldContinue) {
+                      const toolResultPairs = toolResult.toolResults.length > 0
+                        ? toolResult.toolResults
                         : accumulator.toolCalls.map(tc => ({
-                            success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+                            success: true, displayMessage: toolResult.newContent || `[${tc.name} ejecutada]`
                           }));
                       toolContextMessages = [
                         ...baseChatMessages,
@@ -798,17 +819,19 @@ Y cambiar mi expresión:
                       }));
 
                       // Execute and continue
-                      const { newContent: displayMessages, shouldContinue } = await executeToolCallsAndContinue(
+                      const toolResult = await executeToolCallsAndContinue(
                         nativeCalls, availableTools, toolRound, maxToolRounds,
                         effectiveCharacter, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates
                       );
-                      if (shouldContinue) {
+                      allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
+                      allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
+                      if (toolResult.shouldContinue) {
                         // For text-based calls, inject as user message with tool context
                         const toolNames = textToolCalls.map(tc => tc.name).join(', ');
                         toolContextMessages = [
                           ...baseChatMessages,
-                          { role: 'user', content: `[Resultado de herramientas: ${toolNames}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
+                          { role: 'user', content: `[Resultado de herramientas: ${toolNames}]\n${toolResult.newContent}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
                         ] as any;
                         accumulatedContent = '';
                         toolRound++;
@@ -875,16 +898,18 @@ Y cambiar mi expresión:
                         controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                       }
                     }
-                    const { newContent: displayMessages, shouldContinue, toolResults: anthropicToolResults } = await executeToolCallsAndContinue(
+                    const toolResult = await executeToolCallsAndContinue(
                       toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
                       sessionQuests, questTemplates
                     );
-                    if (shouldContinue) {
-                      const toolResultPairs = anthropicToolResults.length > 0
-                        ? anthropicToolResults
+                    allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
+                    allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
+                    if (toolResult.shouldContinue) {
+                      const toolResultPairs = toolResult.toolResults.length > 0
+                        ? toolResult.toolResults
                         : toolCalls.map(tc => ({
-                            success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+                            success: true, displayMessage: toolResult.newContent || `[${tc.name} ejecutada]`
                           }));
                       const toolMessages = buildToolMessagesForAnthropic(toolCalls, toolResultPairs);
                       accumulatedContent = '';
@@ -895,7 +920,7 @@ Y cambiar mi expresión:
                       toolRound++;
                       continue;
                     }
-                  } else if (mightContainToolCall(roundContent)) {
+                    } else if (mightContainToolCall(roundContent)) {
                     const textToolCalls = parseAllToolCallsFromText(roundContent);
                     if (textToolCalls.length > 0) {
                       console.log(`[Tools] ✓ Text-based tool call(s) detected (Anthropic): ${textToolCalls.map(tc => tc.name).join(', ')}`);
@@ -911,16 +936,18 @@ Y cambiar mi expresión:
                         arguments: tc.arguments,
                         rawArguments: JSON.stringify(tc.arguments),
                       }));
-                      const { newContent: displayMessages, shouldContinue } = await executeToolCallsAndContinue(
+                      const toolResult = await executeToolCallsAndContinue(
                         nativeCalls, availableTools, toolRound, maxToolRounds,
                         effectiveCharacter, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates
                       );
-                      if (shouldContinue) {
+                      allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
+                      allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
+                      if (toolResult.shouldContinue) {
                         const toolNames = textToolCalls.map(tc => tc.name).join(', ');
                         toolContextMessages = [
                           ...baseChatMessages,
-                          { role: 'user', content: `[Resultado de herramientas: ${toolNames}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
+                          { role: 'user', content: `[Resultado de herramientas: ${toolNames}]\n${toolResult.newContent}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
                         ] as any;
                         accumulatedContent = '';
                         toolRound++;
@@ -982,16 +1009,18 @@ Y cambiar mi expresión:
                         controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                       }
                     }
-                    const { newContent: displayMessages, shouldContinue, toolResults: ollamaToolResults } = await executeToolCallsAndContinue(
+                    const toolResult = await executeToolCallsAndContinue(
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
                       sessionQuests, questTemplates
                     );
-                    if (shouldContinue) {
-                      const toolResultPairs = ollamaToolResults.length > 0
-                        ? ollamaToolResults
+                    allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
+                    allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
+                    if (toolResult.shouldContinue) {
+                      const toolResultPairs = toolResult.toolResults.length > 0
+                        ? toolResult.toolResults
                         : accumulator.toolCalls.map(tc => ({
-                            success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+                            success: true, displayMessage: toolResult.newContent || `[${tc.name} ejecutada]`
                           }));
                       const toolResultMessages = buildToolMessagesForOllama(accumulator.toolCalls, toolResultPairs);
                       toolContextMessages = [...baseChatMessages, ...toolResultMessages] as any;
@@ -1014,16 +1043,18 @@ Y cambiar mi expresión:
                         arguments: tc.arguments,
                         rawArguments: JSON.stringify(tc.arguments),
                       }));
-                      const { newContent: displayMessages, shouldContinue } = await executeToolCallsAndContinue(
+                      const toolResult = await executeToolCallsAndContinue(
                         nativeCalls, availableTools, toolRound, maxToolRounds,
                         effectiveCharacter, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates
                       );
-                      if (shouldContinue) {
+                      allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
+                      allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
+                      if (toolResult.shouldContinue) {
                         const toolNames = textToolCalls.map(tc => tc.name).join(', ');
                         toolContextMessages = [
                           ...baseChatMessages,
-                          { role: 'user', content: `[Resultado de herramientas: ${toolNames}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
+                          { role: 'user', content: `[Resultado de herramientas: ${toolNames}]\n${toolResult.newContent}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
                         ] as any;
                         accumulatedContent = '';
                         toolRound++;
@@ -1096,16 +1127,18 @@ Y cambiar mi expresión:
                         controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                       }
                     }
-                    const { newContent: displayMessages, shouldContinue, toolResults: nativeToolResults } = await executeToolCallsAndContinue(
+                    const toolResult = await executeToolCallsAndContinue(
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
                       sessionQuests, questTemplates
                     );
-                    if (shouldContinue) {
-                      const toolResultPairs = nativeToolResults.length > 0
-                        ? nativeToolResults
+                    allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
+                    allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
+                    if (toolResult.shouldContinue) {
+                      const toolResultPairs = toolResult.toolResults.length > 0
+                        ? toolResult.toolResults
                         : accumulator.toolCalls.map(tc => ({
-                            success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+                            success: true, displayMessage: toolResult.newContent || `[${tc.name} ejecutada]`
                           }));
                       toolContextMessages = [
                         ...baseChatMessages,
@@ -1121,19 +1154,21 @@ Y cambiar mi expresión:
                       console.log(`[Grok+Tools] Text-based tool call(s) detected: ${textToolCalls.map(tc => tc.name).join(', ')}`);
                       const cleanContent = stripToolCallFromText(roundContent);
                       if (cleanContent.trim()) {
-                        for (const chunk of splitIntoChunks(cleanContent)) {
+                        for (const chunk of splitIntoChunks(cleanedContent)) {
                           controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                         }
                       }
-                      const { newContent: displayMessages, shouldContinue, toolResults } = await executeToolCallsAndContinue(
+                      const textToolResult = await executeToolCallsAndContinue(
                         textToolCalls, availableTools, toolRound, maxToolRounds,
                         effectiveCharacter, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates
                       );
-                      if (shouldContinue) {
+                      allToolsUsed = [...allToolsUsed, ...textToolResult.toolsUsed];
+                      allQuestActivations = [...allQuestActivations, ...textToolResult.questActivations];
+                      if (textToolResult.shouldContinue) {
                         toolContextMessages = [
                           ...baseChatMessages,
-                          ...buildToolMessagesForOpenAI(textToolCalls, toolResults),
+                          ...buildToolMessagesForOpenAI(textToolCalls, textToolResult.toolResults),
                         ];
                         accumulatedContent = '';
                         toolRound++;
@@ -1189,14 +1224,16 @@ Y cambiar mi expresión:
                         controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                       }
                     }
-                    const { newContent: displayMessages, shouldContinue, toolResults: nativeToolResults } = await executeToolCallsAndContinue(
+                    const toolResult = await executeToolCallsAndContinue(
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
                       sessionQuests, questTemplates
                     );
-                    if (shouldContinue) {
+                    allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
+                    allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
+                    if (toolResult.shouldContinue) {
                       const toolResultPairs = accumulator.toolCalls.map(tc => ({
-                        success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+                        success: true, displayMessage: toolResult.newContent || `[${tc.name} ejecutada]`
                       }));
                       const toolContextMessages = [
                         ...chatMessages,
@@ -1336,8 +1373,12 @@ Y cambiar mi expresión:
             }));
           }
 
-          // Send done signal
-          controller.enqueue(createSSEJSON({ type: 'done' }));
+          // Send done signal with toolsUsed and questActivations info
+          controller.enqueue(createSSEJSON({ 
+            type: 'done',
+            toolsUsed: allToolsUsed,
+            questActivations: allQuestActivations 
+          }));
           controller.close();
 
           // Async: Extract memory from response (fire-and-forget, don't block)

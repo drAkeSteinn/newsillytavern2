@@ -428,6 +428,9 @@ export function normalizeReward(reward: QuestReward): QuestReward {
   if (reward.type === 'objective' && reward.objective) {
     return reward;
   }
+  if (reward.type === 'solicitud' && reward.solicitud) {
+    return reward;
+  }
 
   // Si tiene campos legacy, crear la estructura nueva
   if (reward.type === 'attribute') {

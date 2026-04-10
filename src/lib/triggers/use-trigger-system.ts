@@ -744,12 +744,21 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
           characterId?: string
         ): boolean => {
           try {
+            console.log(`[completeQuestObjectiveByKey] Searching for objective with key: "${objectiveDetectionKey}"`);
             const sessionQuests = store.getSessionQuests?.(sessionId) || [];
+            console.log(`[completeQuestObjectiveByKey] Session quests found: ${sessionQuests.length}`);
+            
             const activeQuests = sessionQuests.filter((q: any) => q.status === 'active' || q.status === 'available');
+            console.log(`[completeQuestObjectiveByKey] Active quests: ${activeQuests.length}`);
             
             // Get templates from questTemplateSlice to access objective completion keys
             // Access via store state (questTemplates is directly on the store)
             const templates = (store as any).questTemplates || [];
+            console.log(`[completeQuestObjectiveByKey] Templates loaded: ${templates.length}`);
+            
+            if (templates.length === 0) {
+              console.log(`[completeQuestObjectiveByKey] WARNING: No templates loaded in store!`);
+            }
             
             for (const quest of activeQuests) {
               // If questTemplateId is specified, skip non-matching quests
@@ -763,11 +772,13 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
               for (const objective of template.objectives || []) {
                 const completionKeys = [objective.completion?.key, ...(objective.completion?.keys || [])].filter(Boolean);
                 
+                console.log(`[completeQuestObjectiveByKey] Checking objective "${objective.description}" (id: ${objective.id}) with keys:`, completionKeys);
+                
                 for (const completionKey of completionKeys) {
                   if (completionKey === objectiveDetectionKey || 
                       completionKey?.toLowerCase() === objectiveDetectionKey.toLowerCase() ||
                       completionKey === `obj-${objectiveDetectionKey}`) {
-                    console.log(`[TriggerSystem] Found objective "${objective.description}" (key: ${completionKey}) in quest ${quest.templateId}`);
+                    console.log(`[completeQuestObjectiveByKey] MATCH! Objective "${objective.description}" (key: ${completionKey}) in quest ${quest.templateId}`);
                     store.completeObjective?.(sessionId, quest.templateId, objective.id, characterId);
                     return true;
                   }
@@ -777,6 +788,7 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
             
             // Try case-insensitive partial match
             const lowerKey = objectiveDetectionKey.toLowerCase();
+            console.log(`[completeQuestObjectiveByKey] Trying partial match with lowerKey: "${lowerKey}"`);
             for (const quest of activeQuests) {
               if (questTemplateId && quest.templateId !== questTemplateId) continue;
               
@@ -788,7 +800,7 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
                 
                 for (const completionKey of completionKeys) {
                   if (completionKey?.toLowerCase().includes(lowerKey) || lowerKey.includes(completionKey?.toLowerCase())) {
-                    console.log(`[TriggerSystem] Found objective (partial match) "${objective.description}" (key: ${completionKey}) in quest ${quest.templateId}`);
+                    console.log(`[completeQuestObjectiveByKey] PARTIAL MATCH! Objective "${objective.description}" (key: ${completionKey}) in quest ${quest.templateId}`);
                     store.completeObjective?.(sessionId, quest.templateId, objective.id, characterId);
                     return true;
                   }
@@ -846,6 +858,7 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
                       setActiveOverlays: store.setActiveOverlays?.bind(store),
                       completeObjective: store.completeObjective?.bind(store),
                       completeQuestObjective: completeQuestObjectiveByKey,
+                      completeSolicitud: store.completeSolicitud?.bind(store),
                     });
                     console.log(`[TriggerSystem] Reward executed: ${reward.type} - ${reward.key || reward.id}`);
                   } catch (err) {
@@ -887,6 +900,7 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
                         setBackground: store.setBackground?.bind(store),
                         setActiveOverlays: store.setActiveOverlays?.bind(store),
                         completeQuestObjective: completeQuestObjectiveByKey,
+                        completeSolicitud: store.completeSolicitud?.bind(store),
                       });
                       console.log(`[TriggerSystem] Executed threshold effect for ${threshold.attributeName}`);
                     } catch (err) {

@@ -341,16 +341,19 @@ async function executeGroupToolCalls(
   controller: { enqueue: (chunk: string) => void },
   sessionQuests?: SessionQuestInstance[],
   questTemplates?: QuestTemplate[],
-): Promise<{ results: string; shouldContinue: boolean; questActivations: QuestActivation[] }> {
+): Promise<{ results: string; shouldContinue: boolean; questActivations: QuestActivation[]; toolsUsed: Array<{ name: string; label: string; icon: string; success: boolean }> }> {
   if (toolCalls.length === 0) {
-    return { results: '', shouldContinue: false, questActivations: [] };
+    return { results: '', shouldContinue: false, questActivations: [], toolsUsed: [] };
   }
 
   let allDisplayMessages = '';
   const questActivations: QuestActivation[] = [];
+  const toolsUsed: Array<{ name: string; label: string; icon: string; success: boolean }> = [];
 
-  for (const tc of toolCalls) {
+  for (let i = 0; i < toolCalls.length; i++) {
+    const tc = toolCalls[i];
     const toolDef = availableTools.find(t => t.name === tc.name);
+    const callId = `${Date.now()}_${i}`;
 
     // Send tool_call_start event
     controller.enqueue(createSSEJSON({
@@ -359,6 +362,7 @@ async function executeGroupToolCalls(
       toolLabel: toolDef?.label || tc.name,
       toolIcon: toolDef?.icon || 'Wrench',
       params: tc.arguments,
+      callId,
     }));
 
     console.log(`[GroupStream-Tools] Executing: ${tc.name}`, tc.arguments);
@@ -400,16 +404,24 @@ async function executeGroupToolCalls(
       success: toolResult.success,
       displayMessage: toolResult.displayMessage,
       duration: toolResult.duration || 0,
+      callId,
     }));
 
     console.log(`[GroupStream-Tools] ${tc.name}: success=${toolResult.success}`);
+
+    toolsUsed.push({
+      name: tc.name,
+      label: toolDef?.label || tc.name,
+      icon: toolDef?.icon || 'Wrench',
+      success: toolResult.success,
+    });
 
     if (toolResult.displayMessage) {
       allDisplayMessages += (allDisplayMessages ? '\n' : '') + toolResult.displayMessage;
     }
   }
 
-  return { results: allDisplayMessages, shouldContinue: true, questActivations };
+  return { results: allDisplayMessages, shouldContinue: true, questActivations, toolsUsed };
 }
 
 // ============================================
@@ -602,6 +614,7 @@ export async function POST(request: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         const responsesThisTurn: Array<{ characterId: string; characterName: string; content: string }> = [];
+        let allQuestActivations: QuestActivation[] = [];
 
         try {
           // Generate responses sequentially
@@ -932,11 +945,12 @@ export async function POST(request: NextRequest) {
                           }));
                         }
                       }
-                      const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
+                      const { results: displayMessages, shouldContinue, questActivations, toolsUsed } = await executeGroupToolCalls(
                         zaiAccumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
                         sessionQuests, questTemplates
                       );
+                      allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (shouldContinue) {
                         const toolResultPairs = zaiAccumulator.toolCalls.map(tc => ({
                           success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
@@ -1002,11 +1016,12 @@ export async function POST(request: NextRequest) {
                           }));
                         }
                       }
-                      const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
+                      const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
                         sessionQuests, questTemplates
                       );
+                      allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (shouldContinue) {
                         const toolResultPairs = accumulator.toolCalls.map(tc => ({
                           success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
@@ -1130,11 +1145,12 @@ export async function POST(request: NextRequest) {
                           }));
                         }
                       }
-                      const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
-                        toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
+                        const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
+                          nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates
-                      );
-                      if (shouldContinue) {
+                        );
+                        allQuestActivations = [...allQuestActivations, ...questActivations];
+                        if (shouldContinue) {
                         const toolResultPairs = toolCalls.map(tc => ({
                           success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
                         }));
@@ -1171,10 +1187,11 @@ export async function POST(request: NextRequest) {
                           id: `text_call_${Date.now()}_${idx}`, name: tc.name,
                           arguments: tc.arguments, rawArguments: JSON.stringify(tc.arguments),
                         }));
-                        const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
+                        const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                           nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates
                         );
+                        allQuestActivations = [...allQuestActivations, ...questActivations];
                         if (shouldContinue) {
                           fullContent = '';
                           const toolNames = textToolCalls.map(tc => tc.name).join(', ');
@@ -1247,10 +1264,11 @@ export async function POST(request: NextRequest) {
                           }));
                         }
                       }
-                      const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
+                      const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates
                       );
+                      allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (shouldContinue) {
                         const toolResultPairs = accumulator.toolCalls.map(tc => ({
                           success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
@@ -1291,10 +1309,11 @@ export async function POST(request: NextRequest) {
                           id: `text_call_${Date.now()}_${idx}`, name: tc.name,
                           arguments: tc.arguments, rawArguments: JSON.stringify(tc.arguments),
                         }));
-                        const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
+                        const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                           nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates
                         );
+                        allQuestActivations = [...allQuestActivations, ...questActivations];
                         if (shouldContinue) {
                           fullContent = '';
                           const toolNames = textToolCalls.map(tc => tc.name).join(', ');
@@ -1377,10 +1396,11 @@ export async function POST(request: NextRequest) {
                           }));
                         }
                       }
-                      const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
+                      const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates
                       );
+                      allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (shouldContinue) {
                         const toolResultPairs = accumulator.toolCalls.map(tc => ({
                           success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
@@ -1413,7 +1433,7 @@ export async function POST(request: NextRequest) {
                             }));
                           }
                         }
-                        const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
+                        const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                           textToolCalls.map((tc, idx) => ({
                             id: `text_call_${Date.now()}_${idx}`,
                             name: tc.name,
@@ -1422,6 +1442,7 @@ export async function POST(request: NextRequest) {
                           })), charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates
                         );
+                        allQuestActivations = [...allQuestActivations, ...questActivations];
                         if (shouldContinue) {
                           fullContent = '';
                           const toolNames = textToolCalls.map(tc => tc.name).join(', ');
@@ -1490,10 +1511,11 @@ export async function POST(request: NextRequest) {
                           }));
                         }
                       }
-                      const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
+                      const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates
                       );
+                      allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (shouldContinue) {
                         const toolResultPairs = accumulator.toolCalls.map(tc => ({
                           success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
@@ -1625,10 +1647,11 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // Send final done event with all responses
+          // Send final done event with all responses and quest activations
           controller.enqueue(createSSEJSON({
             type: 'done',
-            responses: responsesThisTurn
+            responses: responsesThisTurn,
+            questActivations: allQuestActivations
           }));
           controller.close();
 

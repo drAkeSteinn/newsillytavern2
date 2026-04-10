@@ -510,6 +510,14 @@ export interface MessageMetadata {
   model?: string;
   finishReason?: string;
   promptData?: PromptSection[];  // Store the prompt sent to LLM
+  toolsUsed?: ToolUsedInfo[];    // Tools used to generate this message
+}
+
+export interface ToolUsedInfo {
+  name: string;
+  label: string;
+  icon?: string;
+  success?: boolean;
 }
 
 // Prompt section for displaying in prompt viewer
@@ -2190,6 +2198,7 @@ export interface QuestRewardTrigger {
 // Configuración de objetivo para recompensa (completa un objetivo de misión)
 export interface QuestRewardObjective {
   objectiveKey: string;       // Key del objetivo a completar: "troncos_abedul"
+  objectiveId?: string;       // ID del objetivo (para búsqueda directa)
   questId?: string;          // ID de la misión (opcional, para validar)
 }
 
