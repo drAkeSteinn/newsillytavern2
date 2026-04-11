@@ -2698,23 +2698,30 @@ function getAvailableObjectives(questTemplates: QuestTemplate[] = [], questTempl
 }
 
 // ============================================
-// Helper: Generate available solicitudes from character definitions
+// Helper: Generate available solicitudes from character's own definitions
 // ============================================
+// Only shows the character's OWN solicitudDefinitions, because:
+// - Action rewards of type 'solicitud' complete solicitudes made TO this character
+// - When another character makes a petition, it creates a SolicitudInstance
+//   with a solicitudKey matching one of this character's SolicitudDefinitions
+// - The action can only complete solicitudes that match this character's definitions
 
 function getAvailableSolicitudes(
-  allCharacters: { id: string; name: string; solicitudDefinitions: SolicitudDefinition[] }[] = []
+  statsConfig?: CharacterStatsConfig
 ): SolicitudDropdownOption[] {
   const options: SolicitudDropdownOption[] = [];
   
-  for (const char of allCharacters) {
-    for (const sol of char.solicitudDefinitions || []) {
-      options.push({
-        solicitudId: sol.id,
-        solicitudKey: sol.solicitudKey,
-        solicitudName: sol.name,
-        label: `${char.name} → ${sol.name}`,
-      });
-    }
+  if (!statsConfig?.solicitudDefinitions?.length) {
+    return options;
+  }
+  
+  for (const sol of statsConfig.solicitudDefinitions) {
+    options.push({
+      solicitudId: sol.id,
+      solicitudKey: sol.solicitudKey,
+      solicitudName: sol.name,
+      label: sol.name,
+    });
   }
   
   return options;
@@ -2732,7 +2739,7 @@ export function StatsEditor({ statsConfig, onChange, allCharacters = [], questTe
   };
   
   const availableObjectives = getAvailableObjectives(questTemplates, questTemplateIds);
-  const availableSolicitudes = getAvailableSolicitudes(allCharacters);
+  const availableSolicitudes = getAvailableSolicitudes(config);
   
   // Attributes
   const addAttribute = () => {

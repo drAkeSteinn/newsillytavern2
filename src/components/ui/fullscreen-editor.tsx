@@ -52,15 +52,17 @@ export function FullscreenEditor({
   headerActions,
   actions,
   className,
-}: FullscreenPropsProps) {
+}: FullscreenEditorProps) {
+  const [prevOpen, setPrevOpen] = useState(false);
   const [activeTab, setActiveTab] = useState(initialTab || tabs[0]?.value || '');
 
-  // Sync active tab when initialTab prop changes or panel opens
-  useEffect(() => {
+  // Reset active tab when panel opens (setState during render — React-recommended pattern)
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open && initialTab) {
       setActiveTab(initialTab);
     }
-  }, [initialTab, open]);
+  }
 
   // Close panel on Escape
   useEffect(() => {

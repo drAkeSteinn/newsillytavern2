@@ -39,6 +39,7 @@ import {
   Handshake,
   Pencil,
   BarChart3,
+  Sword,
 } from 'lucide-react';
 import { useTavernStore } from '@/store/tavern-store';
 import type { ToolDefinition, ToolsSettings } from '@/types';
@@ -195,6 +196,23 @@ const BUILT_IN_TOOLS: ToolDefinition[] = [
     },
     permissionMode: 'auto',
   },
+  {
+    id: 'manage_action',
+    name: 'manage_action',
+    label: 'Usar Acción',
+    icon: 'Sword',
+    description: 'Activa una acción o habilidad del personaje (ej: ataque, hechizo). Solo usa acciones listadas como disponibles.',
+    category: 'in_character',
+    parameters: {
+      type: 'object',
+      properties: {
+        action_key: { type: 'string', description: 'Key o nombre de la acción a ejecutar', required: true },
+        narrative: { type: 'string', description: 'Descripción narrativa de la acción', required: false },
+      },
+      required: ['action_key'],
+    },
+    permissionMode: 'auto',
+  },
 ];
 
 const TOOL_ICONS: Record<string, any> = {
@@ -208,6 +226,7 @@ const TOOL_ICONS: Record<string, any> = {
   Handshake,
   Pencil,
   BarChart3,
+  Sword,
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -287,6 +306,30 @@ export function ToolsSettingsPanel() {
     const config = localSettings.characterConfigs.find(c => c.characterId === characterId);
     if (!config) return true; // Default: all enabled
     return enabled.includes(toolId);
+  };
+
+  // Get globally disabled tools
+  const getGlobalDisabledTools = (): string[] => {
+    return localSettings.disabledTools || [];
+  };
+
+  // Toggle a tool globally (disabledTools)
+  const toggleGlobalTool = (toolId: string) => {
+    const disabled = getGlobalDisabledTools();
+    const newDisabled = disabled.includes(toolId)
+      ? disabled.filter(id => id !== toolId)
+      : [...disabled, toolId];
+    saveSettings({ ...localSettings, disabledTools: newDisabled });
+  };
+
+  // Check if a tool is globally disabled
+  const isGloballyDisabled = (toolId: string): boolean => {
+    return (localSettings.disabledTools || []).includes(toolId);
+  };
+
+  // Enable/disable all tools globally
+  const toggleAllGlobalTools = (enable: boolean) => {
+    saveSettings({ ...localSettings, disabledTools: enable ? [] : BUILT_IN_TOOLS.map(t => t.id) });
   };
 
   // Enable/disable all tools for a character
@@ -504,27 +547,42 @@ export function ToolsSettingsPanel() {
                   size="sm"
                   className="text-xs h-7"
                   onClick={() => {
-                    const allEnabled = isToolEnabled(displayedCharacterId, BUILT_IN_TOOLS[0]?.id);
+                    const allEnabled = BUILT_IN_TOOLS.every(t => isToolEnabled(displayedCharacterId, t.id));
                     toggleAllToolsForCharacter(displayedCharacterId, !allEnabled);
                   }}
                 >
-                  {isToolEnabled(displayedCharacterId, BUILT_IN_TOOLS[0]?.id) ? 'Desactivar todas' : 'Activar todas'}
+                  {BUILT_IN_TOOLS.every(t => isToolEnabled(displayedCharacterId, t.id)) ? 'Desactivar todas' : 'Activar todas'}
+                </Button>
+              )}
+              {!displayedCharacterId && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs h-7"
+                  onClick={() => {
+                    const anyDisabled = BUILT_IN_TOOLS.some(t => isGloballyDisabled(t.id));
+                    toggleAllGlobalTools(!anyDisabled);
+                  }}
+                >
+                  {BUILT_IN_TOOLS.some(t => isGloballyDisabled(t.id)) ? 'Activar todas' : 'Desactivar todas'}
                 </Button>
               )}
             </div>
 
-            <ScrollArea className="max-h-96">
-              <div className="space-y-2 pr-2">
+            <ScrollArea className="max-h-[420px]">
+              <div className="space-y-2 pr-3">
                 {BUILT_IN_TOOLS.map(tool => {
                   const Icon = TOOL_ICONS[tool.icon] || Wrench;
                   const enabled = displayedCharacterId
                     ? isToolEnabled(displayedCharacterId, tool.id)
-                    : true;
+                    : !isGloballyDisabled(tool.id);
+
+                  const params = Object.keys(tool.parameters.properties);
 
                   return (
                     <div
                       key={tool.id}
-                      className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${
+                      className={`flex items-center gap-3 p-3 rounded-lg border transition-all duration-150 ${
                         enabled
                           ? 'border-border bg-background'
                           : 'border-border/50 bg-muted/30 opacity-60'
@@ -534,48 +592,33 @@ export function ToolsSettingsPanel() {
                         <Icon className="w-4 h-4" />
                       </div>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">{tool.label}</span>
+                      <div className="flex-1 min-w-0 overflow-hidden">
+                        <div className="flex items-center gap-2 min-h-5">
+                          <span className="text-sm font-medium truncate">{tool.label}</span>
                           <Badge
                             variant="secondary"
-                            className="text-[10px] px-1.5 py-0"
+                            className="text-[10px] px-1.5 py-0 shrink-0"
                           >
                             {CATEGORY_LABELS[tool.category]}
                           </Badge>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
                           {tool.description}
                         </p>
-                        <p className="text-[10px] text-muted-foreground/60 mt-1 font-mono">
-                          {tool.name}({Object.keys(tool.parameters.properties).join(', ')})
+                        <p className="text-[10px] text-muted-foreground/60 mt-1 font-mono truncate">
+                          {tool.name}({params.join(', ')})
                         </p>
                       </div>
 
-                      {displayedCharacterId && (
-                        <Switch
-                          checked={enabled}
-                          onCheckedChange={() =>
-                            toggleToolForCharacter(displayedCharacterId, tool.id)
-                          }
-                          className="shrink-0 mt-1"
-                        />
-                      )}
-                      {!displayedCharacterId && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Info className="w-4 h-4 text-muted-foreground shrink-0 mt-1 cursor-help" />
-                            </TooltipTrigger>
-                            <TooltipContent side="left" className="max-w-xs">
-                              <p>Selecciona un personaje para configurar herramientas individuales.</p>
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                Por defecto, todas las herramientas están habilitadas.
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
+                      <Switch
+                        checked={enabled}
+                        onCheckedChange={() =>
+                          displayedCharacterId
+                            ? toggleToolForCharacter(displayedCharacterId, tool.id)
+                            : toggleGlobalTool(tool.id)
+                        }
+                        className="shrink-0"
+                      />
                     </div>
                   );
                 })}

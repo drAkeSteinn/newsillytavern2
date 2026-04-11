@@ -7,7 +7,7 @@
 // (roll dice, search memory, get weather, etc.)
 // during chat responses.
 
-import type { SessionQuestInstance, QuestTemplate } from '@/types';
+import type { SessionQuestInstance, QuestTemplate, CharacterStatsConfig, SessionStats, ActivationCost, QuestReward, SkillDefinition, CharacterCard, SolicitudInstance } from '@/types';
 
 // ============================================
 // Tool Definition
@@ -61,6 +61,11 @@ export interface ToolContext {
   /** Quest data for quest-related tools */
   sessionQuests?: SessionQuestInstance[];
   questTemplates?: QuestTemplate[];
+  /** Stats data for action/skill-related tools */
+  statsConfig?: CharacterStatsConfig;
+  sessionStats?: SessionStats;
+  /** All characters for resolving invitations/solicitudes across characters */
+  allCharacters?: CharacterCard[];
 }
 
 /** Result from tool execution */
@@ -79,6 +84,27 @@ export interface ToolExecutionResult {
     key: string;
     /** Additional metadata */
     metadata?: Record<string, unknown>;
+  };
+  /** Special result for action/skill activation tools */
+  actionActivation?: {
+    skillId: string;
+    skillName: string;
+    skillDescription?: string;
+    activationCosts: ActivationCost[];
+    activationRewards: QuestReward[];
+    characterId: string;
+  };
+  /** Special result for solicitud activation/completion tools */
+  solicitudActivation?: {
+    type: 'create_solicitud' | 'complete_solicitud';
+    solicitudKey: string;
+    targetCharacterId?: string;
+    targetCharacterName?: string;
+    fromCharacterId: string;
+    fromCharacterName: string;
+    description?: string;
+    completionDescription?: string;
+    peticionKey?: string;
   };
 }
 

@@ -8,7 +8,7 @@
 // - All sections are processed consistently
 
 import { NextRequest } from 'next/server';
-import type { ChatMessage, CharacterCard, CharacterGroup, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestSettings, QuestTemplate, SessionQuestInstance, SessionSummary, SolicitudInstance } from '@/types';
+import type { ChatMessage, CharacterCard, CharacterGroup, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestSettings, QuestTemplate, SessionQuestInstance, SessionSummary, SolicitudInstance, CharacterStatsConfig } from '@/types';
 import { DEFAULT_QUEST_SETTINGS } from '@/types';
 import {
   createSSEJSON,
@@ -341,6 +341,9 @@ async function executeGroupToolCalls(
   controller: { enqueue: (chunk: string) => void },
   sessionQuests?: SessionQuestInstance[],
   questTemplates?: QuestTemplate[],
+  statsConfig?: CharacterStatsConfig,
+  sessionStats?: SessionStats,
+  allCharacters?: CharacterCard[],
 ): Promise<{ results: string; shouldContinue: boolean; questActivations: QuestActivation[]; toolsUsed: Array<{ name: string; label: string; icon: string; success: boolean }> }> {
   if (toolCalls.length === 0) {
     return { results: '', shouldContinue: false, questActivations: [], toolsUsed: [] };
@@ -378,6 +381,9 @@ async function executeGroupToolCalls(
         userName,
         sessionQuests,
         questTemplates,
+        statsConfig: character.statsConfig,
+        sessionStats,
+        allCharacters,
       },
     );
 
@@ -395,6 +401,43 @@ async function executeGroupToolCalls(
       }));
       
       questActivations.push(activation);
+    }
+
+    // Check for action/skill activation and send SSE event
+    if (toolResult.actionActivation) {
+      const action = toolResult.actionActivation;
+      console.log(`[GroupStream-Tools] Action activation from ${tc.name}:`, action.skillName);
+      
+      controller.enqueue(createSSEJSON({
+        type: 'action_activation',
+        toolName: tc.name,
+        skillId: action.skillId,
+        skillName: action.skillName,
+        skillDescription: action.skillDescription,
+        activationCosts: action.activationCosts,
+        activationRewards: action.activationRewards,
+        characterId: action.characterId,
+      }));
+    }
+
+    // Check for solicitud activation/completion and send SSE event
+    if (toolResult.solicitudActivation) {
+      const sol = toolResult.solicitudActivation;
+      console.log(`[GroupStream-Tools] Solicitud activation from ${tc.name}:`, sol.type, sol.solicitudKey);
+      
+      controller.enqueue(createSSEJSON({
+        type: 'solicitud_activation',
+        toolName: tc.name,
+        activationType: sol.type,
+        solicitudKey: sol.solicitudKey,
+        targetCharacterId: sol.targetCharacterId,
+        targetCharacterName: sol.targetCharacterName,
+        fromCharacterId: sol.fromCharacterId,
+        fromCharacterName: sol.fromCharacterName,
+        description: sol.description,
+        completionDescription: sol.completionDescription,
+        peticionKey: sol.peticionKey,
+      }));
     }
 
     // Send tool_call_result event
@@ -475,6 +518,7 @@ export async function POST(request: NextRequest) {
       maxToolCallsPerTurn: body.toolsSettings?.maxToolCallsPerTurn ?? 2,
       characterConfigs: body.toolsSettings?.characterConfigs || [],
       usePromptBasedFallback: body.toolsSettings?.usePromptBasedFallback ?? false,
+      disabledTools: body.toolsSettings?.disabledTools || [],
     };
 
     // Cast sessionStats to proper type
@@ -792,9 +836,14 @@ export async function POST(request: NextRequest) {
               c => c.characterId === responder.id
             );
             const charEnabledToolIds = charToolConfig?.enabledTools || [];
-            const charAvailableTools = charEnabledToolIds.length > 0
+            let charAvailableTools = charEnabledToolIds.length > 0
               ? getToolDefinitionsByIds(charEnabledToolIds)
               : getAllToolDefinitions();
+            // Filter out globally disabled tools
+            const charGlobalDisabled = toolsSettings.disabledTools || [];
+            if (charGlobalDisabled.length > 0) {
+              charAvailableTools = charAvailableTools.filter(t => !charGlobalDisabled.includes(t.id));
+            }
             const charToolsEnabled = toolsSettings.enabled && charAvailableTools.length > 0;
             const charSupportsTools = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama', 'grok', 'text-generation-webui', 'koboldcpp'].includes(llmConfig.provider);
             // If usePromptBasedFallback is true, disable native tools so prompt-based injection is used instead
@@ -948,7 +997,7 @@ export async function POST(request: NextRequest) {
                       const { results: displayMessages, shouldContinue, questActivations, toolsUsed } = await executeGroupToolCalls(
                         zaiAccumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        sessionQuests, questTemplates
+                        responder.statsConfig, sessionStats, allCharacters
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (shouldContinue) {
@@ -1019,7 +1068,7 @@ export async function POST(request: NextRequest) {
                       const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        sessionQuests, questTemplates
+                        responder.statsConfig, sessionStats, allCharacters
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (shouldContinue) {
@@ -1067,8 +1116,9 @@ export async function POST(request: NextRequest) {
 
                         const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
                           nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
-                        sessionQuests, questTemplates
-                        );
+                        sessionQuests, questTemplates,
+                        responder.statsConfig, sessionStats, allCharacters
+                      );
                         if (shouldContinue) {
                           fullContent = '';
                           const toolNames = textToolCalls.map(tc => tc.name).join(', ');
@@ -1147,8 +1197,9 @@ export async function POST(request: NextRequest) {
                       }
                         const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                           nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
-                        sessionQuests, questTemplates
-                        );
+                        sessionQuests, questTemplates,
+                        responder.statsConfig, sessionStats, allCharacters
+                      );
                         allQuestActivations = [...allQuestActivations, ...questActivations];
                         if (shouldContinue) {
                         const toolResultPairs = toolCalls.map(tc => ({
@@ -1189,8 +1240,9 @@ export async function POST(request: NextRequest) {
                         }));
                         const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                           nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
-                        sessionQuests, questTemplates
-                        );
+                        sessionQuests, questTemplates,
+                        responder.statsConfig, sessionStats, allCharacters
+                      );
                         allQuestActivations = [...allQuestActivations, ...questActivations];
                         if (shouldContinue) {
                           fullContent = '';
@@ -1266,7 +1318,8 @@ export async function POST(request: NextRequest) {
                       }
                       const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
-                        sessionQuests, questTemplates
+                        sessionQuests, questTemplates,
+                        responder.statsConfig, sessionStats, allCharacters
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (shouldContinue) {
@@ -1311,8 +1364,9 @@ export async function POST(request: NextRequest) {
                         }));
                         const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                           nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
-                        sessionQuests, questTemplates
-                        );
+                        sessionQuests, questTemplates,
+                        responder.statsConfig, sessionStats, allCharacters
+                      );
                         allQuestActivations = [...allQuestActivations, ...questActivations];
                         if (shouldContinue) {
                           fullContent = '';
@@ -1398,7 +1452,8 @@ export async function POST(request: NextRequest) {
                       }
                       const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
-                        sessionQuests, questTemplates
+                        sessionQuests, questTemplates,
+                        responder.statsConfig, sessionStats, allCharacters
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (shouldContinue) {
@@ -1440,8 +1495,9 @@ export async function POST(request: NextRequest) {
                             arguments: tc.arguments,
                             rawArguments: JSON.stringify(tc.arguments)
                           })), charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
-                        sessionQuests, questTemplates
-                        );
+                        sessionQuests, questTemplates,
+                        responder.statsConfig, sessionStats, allCharacters
+                      );
                         allQuestActivations = [...allQuestActivations, ...questActivations];
                         if (shouldContinue) {
                           fullContent = '';
@@ -1513,7 +1569,8 @@ export async function POST(request: NextRequest) {
                       }
                       const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
-                        sessionQuests, questTemplates
+                        sessionQuests, questTemplates,
+                        responder.statsConfig, sessionStats, allCharacters
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (shouldContinue) {

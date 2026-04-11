@@ -98,7 +98,26 @@ export interface RewardStoreActions {
     reason?: 'llm_detection' | 'manual' | 'trigger' | 'initialization'
   ) => void;
 
-  // Quest objective completion (for objective rewards)
+  // Progress quest objective — same path quest-detector uses for key-based completion
+  progressQuestObjective?: (
+    sessionId: string,
+    questTemplateId: string,
+    objectiveId: string,
+    amount?: number,
+    characterId?: string
+  ) => void;
+
+  // Get session quest data for validation (checks session.sessionQuests)
+  getSessionQuests?: (sessionId: string) => Array<{
+    templateId: string;
+    status: string;
+    objectives: Array<{
+      templateId: string;
+      isCompleted: boolean;
+    }>;
+  }>;
+
+  // Quest objective completion by key search (fallback for objective rewards)
   completeQuestObjective?: (
     sessionId: string,
     questId: string,
@@ -420,7 +439,10 @@ export function executeTriggerRewardFromQuest(
  * Execute an objective reward from an Action
  *
  * This completes a quest objective when an action is activated.
- * The completeQuestObjective function searches by objectiveKey (completion.key) internally.
+ * Strategy:
+ * 1. If objectiveId + questId are available → call progressQuestObjective
+ *    (SAME function the quest-detector uses when an objective key is detected in text)
+ * 2. Fallback → search by objectiveKey via completeQuestObjective
  */
 export function executeObjectiveRewardFromAction(
   reward: QuestReward,
@@ -452,7 +474,49 @@ export function executeObjectiveRewardFromAction(
       };
     }
 
-    if (!storeActions.completeQuestObjective) {
+    // ========================================
+    // Validate: quest must be active and objective must be incomplete
+    // ========================================
+    if (storeActions.getSessionQuests && (obj.questId || obj.objectiveId)) {
+      const sessionQuests = storeActions.getSessionQuests(sessionId);
+      const quest = sessionQuests.find(q => q.templateId === obj.questId);
+
+      if (!quest) {
+        console.log(`[executeObjectiveRewardFromAction] Quest "${obj.questId}" not found in session ${sessionId}. Skipping.`);
+        return {
+          rewardId: reward.id,
+          type: 'objective',
+          key: obj.objectiveKey,
+          success: false,
+          message: `Misión "${obj.questId}" no encontrada en la sesión actual`,
+        };
+      }
+
+      if (quest.status !== 'active') {
+        console.log(`[executeObjectiveRewardFromAction] Quest "${obj.questId}" is "${quest.status}", not active. Skipping.`);
+        return {
+          rewardId: reward.id,
+          type: 'objective',
+          key: obj.objectiveKey,
+          success: false,
+          message: `Misión "${obj.questId}" no está activa (estado: ${quest.status})`,
+        };
+      }
+
+      const objective = quest.objectives.find(o => o.templateId === obj.objectiveId);
+      if (objective?.isCompleted) {
+        console.log(`[executeObjectiveRewardFromAction] Objective "${obj.objectiveId}" is already completed. Skipping.`);
+        return {
+          rewardId: reward.id,
+          type: 'objective',
+          key: obj.objectiveKey,
+          success: false,
+          message: `Objetivo "${obj.objectiveKey}" ya estaba completado`,
+        };
+      }
+    }
+
+    if (!storeActions.completeQuestObjective && !storeActions.progressQuestObjective) {
       return {
         rewardId: reward.id,
         type: 'objective',
@@ -462,8 +526,30 @@ export function executeObjectiveRewardFromAction(
       };
     }
 
-    // The completeQuestObjective function searches by objectiveKey (completion.key) internally
-    console.log(`[executeObjectiveRewardFromAction] Calling completeQuestObjective with objectiveKey: "${obj.objectiveKey}"`);
+    // Strategy 1: Use progressQuestObjective (same path as quest-detector when key is detected in text)
+    // This is the same path the quest-detector uses for key-based objective completion
+    if (obj.objectiveId && obj.questId && storeActions.progressQuestObjective) {
+      console.log(`[executeObjectiveRewardFromAction] Using progressQuestObjective: store.progressQuestObjective(${sessionId}, ${obj.questId}, ${obj.objectiveId}, 999, ${characterId})`);
+      try {
+        // Use a large amount (999) to ensure the objective is completed in one go
+        storeActions.progressQuestObjective(sessionId, obj.questId, obj.objectiveId, 999, characterId);
+        console.log(`[executeObjectiveRewardFromAction] progressQuestObjective executed successfully`);
+        return {
+          rewardId: reward.id,
+          type: 'objective',
+          key: obj.objectiveKey,
+          success: true,
+          message: `Objetivo completado: ${obj.objectiveKey}`,
+          objectiveKey: obj.objectiveKey,
+          questId: obj.questId,
+        };
+      } catch (directErr) {
+        console.warn(`[executeObjectiveRewardFromAction] progressQuestObjective failed, falling back to key search:`, directErr);
+      }
+    }
+
+    // Strategy 2: Fallback — search by objectiveKey via completeQuestObjective
+    console.log(`[executeObjectiveRewardFromAction] Using KEY SEARCH path with objectiveKey: "${obj.objectiveKey}"`);
     const completed = storeActions.completeQuestObjective(
       sessionId,
       obj.questId || '',  // May be empty - will search all active quests
@@ -593,14 +679,18 @@ export function executeReward(
   storeActions: RewardStoreActions
 ): RewardExecutionResult {
   // Check condition first
-  if (!evaluateRewardCondition(reward.condition, context.sessionStats, context.characterId)) {
-    return {
-      rewardId: reward.id,
-      type: reward.type,
-      key: reward.key || '',
-      success: false,
-      message: 'Condition not met',
-    };
+  if (reward.condition) {
+    const conditionMet = evaluateRewardCondition(reward.condition, context.sessionStats, context.characterId);
+    if (!conditionMet) {
+      console.log(`[executeReward] Reward "${reward.id}" (type: ${reward.type}) condition NOT met:`, reward.condition);
+      return {
+        rewardId: reward.id,
+        type: reward.type,
+        key: reward.key || '',
+        success: false,
+        message: 'Condition not met',
+      };
+    }
   }
   
   // Normalize reward to handle legacy formats
@@ -609,6 +699,7 @@ export function executeReward(
   // Validate
   const validation = validateReward(normalized);
   if (!validation.valid) {
+    console.warn(`[executeReward] Reward "${reward.id}" (type: ${normalized.type}) validation FAILED:`, validation.errors);
     return {
       rewardId: reward.id,
       type: normalized.type,
@@ -842,10 +933,12 @@ export interface QuestStoreAccessor {
     }>;
   }>;
   getTemplates: () => QuestTemplate[];
-  completeObjective: (
+  // Use progressQuestObjective (same path quest-detector uses for key-based completion)
+  progressQuestObjective: (
     sessionId: string,
     questTemplateId: string,
     objectiveId: string,
+    amount?: number,
     characterId?: string
   ) => void;
   addQuestNotification?: (notification: {
@@ -1010,94 +1103,19 @@ export function activateObjectiveDirectly(
       };
     }
     
-    // 5. Complete the objective
+    // 5. Complete the objective using progressQuestObjective (same path quest-detector uses)
     console.log(`[activateObjectiveDirectly] Completing objective "${objective.description}" (${objective.id}) in quest "${template.name}"`);
-    storeAccessor.completeObjective(sessionId, template.id, objective.id, characterId);
+    storeAccessor.progressQuestObjective(sessionId, template.id, objective.id, 999, characterId);
     messages.push(`✅ Objetivo completado: "${objective.description}"`);
     
-    // 6. Execute objective rewards if any
-    let objectiveRewardsExecuted = false;
-    if (objective.rewards && objective.rewards.length > 0) {
-      console.log(`[activateObjectiveDirectly] Executing ${objective.rewards.length} objective rewards`);
-      
-      const rewardContext: RewardExecutionContext = {
-        sessionId,
-        characterId,
-        character,
-        allCharacters,
-        sessionStats,
-        timestamp,
-        soundCollections: context.soundCollections,
-        soundTriggers: context.soundTriggers,
-        soundSequenceTriggers: context.soundSequenceTriggers,
-        backgroundPacks: context.backgroundPacks,
-        soundSettings: context.soundSettings,
-        backgroundSettings: context.backgroundSettings,
-      };
-      
-      const rewardResult = executeObjectiveRewards(objective.rewards, rewardContext, storeActions);
-      
-      if (rewardResult.successCount > 0) {
-        messages.push(`🎁 Recompensas de objetivo ejecutadas: ${rewardResult.successCount}`);
-        objectiveRewardsExecuted = true;
-      }
-      
-      if (rewardResult.failureCount > 0) {
-        errors.push(`Errores en recompensas de objetivo: ${rewardResult.failureCount}`);
-      }
-    }
-    
-    // 7. Check if all objectives are complete
+    // 6. Check if quest was auto-completed
     const updatedQuests = storeAccessor.getSessionQuests(sessionId);
     const updatedQuest = updatedQuests.find(q => q.templateId === template.id);
-    const remainingObjectives = updatedQuest?.objectives.filter(o => !o.isCompleted) || [];
-    const questCompleted = remainingObjectives.length === 0;
+    const questCompleted = updatedQuest?.status === 'completed' ?? false;
     
-    // 8. If quest completed, execute quest rewards
-    let questRewardsExecuted = false;
-    if (questCompleted && template.rewards && template.rewards.length > 0) {
-      console.log(`[activateObjectiveDirectly] Quest "${template.name}" completed! Executing ${template.rewards.length} rewards`);
-      
-      const questRewardContext: RewardExecutionContext = {
-        sessionId,
-        characterId,
-        character,
-        allCharacters,
-        sessionStats,
-        timestamp,
-        soundCollections: context.soundCollections,
-        soundTriggers: context.soundTriggers,
-        soundSequenceTriggers: context.soundSequenceTriggers,
-        backgroundPacks: context.backgroundPacks,
-        soundSettings: context.soundSettings,
-        backgroundSettings: context.backgroundSettings,
-      };
-      
-      const questRewardResult = executeQuestCompletionRewards(template, questRewardContext, storeActions);
-      
-      if (questRewardResult.successCount > 0) {
-        messages.push(`🏆 ¡Misión "${template.name}" completada!`);
-        messages.push(`🎁 Recompensas de misión: ${questRewardResult.successCount}`);
-        questRewardsExecuted = true;
-      }
-      
-      if (questRewardResult.failureCount > 0) {
-        errors.push(`Errores en recompensas de misión: ${questRewardResult.failureCount}`);
-      }
-    } else if (questCompleted) {
+    if (questCompleted) {
       messages.push(`🏆 ¡Misión "${template.name}" completada!`);
-    }
-    
-    // 9. Add notification
-    if (storeAccessor.addQuestNotification) {
-      storeAccessor.addQuestNotification({
-        questId: template.id,
-        questTitle: template.name,
-        type: questCompleted ? 'quest_complete' : 'objective_complete',
-        message: questCompleted 
-          ? `¡Misión "${template.name}" completada!` 
-          : `Objetivo "${objective.description}" completado`,
-      });
+      // Quest rewards, chain activation, and notifications are all handled by the store
     }
     
     console.log(`[activateObjectiveDirectly] Success! objective=${objective.description}, questCompleted=${questCompleted}`);
@@ -1108,8 +1126,8 @@ export function activateObjectiveDirectly(
       objectiveKey,
       questId: template.id,
       questCompleted,
-      objectiveRewardsExecuted,
-      questRewardsExecuted,
+      objectiveRewardsExecuted: true, // Store handles rewards
+      questRewardsExecuted: questCompleted, // Store handles rewards if completed
       messages,
       errors,
     };

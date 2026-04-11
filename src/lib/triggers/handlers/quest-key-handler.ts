@@ -388,7 +388,7 @@ export class QuestKeyHandler implements KeyHandler {
         break;
         
       case 'complete':
-        completeQuest?.(sessionId, data.questId);
+        completeQuest?.(sessionId, data.questId, characterId);
         break;
         
       case 'fail':

@@ -18,6 +18,7 @@ import { Sparkles } from 'lucide-react';
 import type { CharacterCard, SummaryData, ChatMessage } from '@/types';
 import { EmbeddingsContextContainer } from '@/components/embeddings/embeddings-context-indicator';
 import { ToolCallNotification, type ToolCallPhase } from '@/components/tools/tool-call-notification';
+import { toast } from 'sonner';
 import { t } from '@/lib/i18n';
 import { chatLogger } from '@/lib/logger';
 import { generateId } from '@/lib/utils';
@@ -69,6 +70,14 @@ export function ChatPanel() {
   // Quests for prompt injection
   const questTemplates = useTavernStore((state) => state.questTemplates);
   const questSettings = useTavernStore((state) => state.questSettings);
+  const loadQuestTemplates = useTavernStore((state) => state.loadTemplates);
+  
+  // Ensure quest templates are loaded (needed for action reward → objective completion)
+  useEffect(() => {
+    if (questTemplates.length === 0) {
+      loadQuestTemplates();
+    }
+  }, []); // Run once on mount
   
   // Sound triggers for {{sonidos}} key resolution
   const soundTriggers = useTavernStore((state) => state.soundTriggers);
@@ -589,18 +598,67 @@ export function ChatPanel() {
                   }));
                   setTimeout(() => setToolCallInfo(prev => ({ ...prev, active: false, phase: 'idle' })), 5000);
                 } else if (parsed.type === 'quest_activation') {
-                  // Quest objective was completed by a tool - trigger effects
+                  // Quest objective was completed by a tool - execute on client side
                   console.log('[ChatPanel] Quest activation from tool:', parsed.toolName, parsed.activationType, parsed.key);
-                  // The quest activation info is sent for logging/UI purposes
-                  // The actual reward execution (sprites, sounds, attributes) happens server-side in the tool
-                  // Add notification for quest progress
-                  if (parsed.metadata?.questName || parsed.metadata?.objectiveName) {
-                    toast.success(
-                      parsed.metadata?.questCompleted 
-                        ? `¡Misión completada: ${parsed.metadata.questName}`
-                        : `Objetivo completado: ${parsed.metadata.objectiveName}`,
-                      { description: parsed.metadata?.messages?.join(', ') }
+                  // Execute the objective completion on the CLIENT where the store has real data.
+                  // store.completeObjective handles everything:
+                  //   - Marks objective as completed
+                  //   - Executes objective rewards (attribute, trigger, objective chain)
+                  //   - Auto-completes quest if all required objectives done
+                  //   - Executes quest rewards on auto-completion
+                  //   - Activates quest chain if defined
+                  //   - Adds notifications
+                  if (parsed.activationType === 'complete_objective' && parsed.metadata && !parsed.metadata.alreadyCompleted) {
+                    const store = useTavernStore.getState();
+                    store.completeObjective?.(
+                      activeSessionId,
+                      parsed.metadata.questTemplateId,
+                      parsed.metadata.objectiveId,
+                      parsed.metadata.characterId,
                     );
+                  }
+                  // Show immediate toast feedback (store notifications handle quest completion separately)
+                  if (!parsed.metadata?.alreadyCompleted && parsed.metadata?.objectiveName) {
+                    toast.success(`Objetivo completado: ${parsed.metadata.objectiveName}`);
+                  }
+                } else if (parsed.type === 'action_activation') {
+                  // Action/skill activated by tool - execute on client side
+                  console.log('[ChatPanel] Action activation from tool:', parsed.toolName, parsed.skillName);
+                  const store = useTavernStore.getState();
+                  store.activateSkillByTool?.(
+                    activeSessionId,
+                    parsed.characterId,
+                    parsed.skillName,
+                    parsed.skillDescription || '',
+                    parsed.activationCosts || [],
+                    parsed.activationRewards || [],
+                  );
+                  toast.success(`⚔️ Acción: ${parsed.skillName}`);
+                } else if (parsed.type === 'solicitud_activation') {
+                  // Solicitud activated/completed by tool - execute on client side
+                  console.log('[ChatPanel] Solicitud activation from tool:', parsed.toolName, parsed.activationType, parsed.solicitudKey);
+                  const store = useTavernStore.getState();
+                  if (parsed.activationType === 'create_solicitud' && parsed.targetCharacterId) {
+                    store.createSolicitud?.(
+                      activeSessionId,
+                      parsed.targetCharacterId,
+                      {
+                        key: parsed.solicitudKey,
+                        peticionKey: parsed.peticionKey,
+                        fromCharacterId: parsed.fromCharacterId,
+                        fromCharacterName: parsed.fromCharacterName,
+                        description: parsed.description || '',
+                        completionDescription: parsed.completionDescription,
+                      }
+                    );
+                    toast.success(`📬 Petición: ${parsed.peticionKey || parsed.solicitudKey} → ${parsed.targetCharacterName || ''}`);
+                  } else if (parsed.activationType === 'complete_solicitud') {
+                    store.completeSolicitud?.(
+                      activeSessionId,
+                      parsed.fromCharacterId,
+                      parsed.solicitudKey
+                    );
+                    toast.success(`✅ Solicitud completada: ${parsed.solicitudKey}`);
                   }
                 } else if (parsed.type === 'character_start') {
                   currentCharacterContent = '';
@@ -859,6 +917,69 @@ export function ChatPanel() {
                     callId: parsed.callId,
                   }));
                   setTimeout(() => setToolCallInfo(prev => ({ ...prev, active: false, phase: 'idle' })), 5000);
+                } else if (parsed.type === 'quest_activation') {
+                  // Quest objective was completed by a tool - execute on client side
+                  console.log('[ChatPanel] Quest activation from tool:', parsed.toolName, parsed.activationType, parsed.key);
+                  // Execute the objective completion on the CLIENT where the store has real data.
+                  // store.completeObjective handles everything:
+                  //   - Marks objective as completed
+                  //   - Executes objective rewards (attribute, trigger, objective chain)
+                  //   - Auto-completes quest if all required objectives done
+                  //   - Executes quest rewards on auto-completion
+                  //   - Activates quest chain if defined
+                  //   - Adds notifications
+                  if (parsed.activationType === 'complete_objective' && parsed.metadata && !parsed.metadata.alreadyCompleted) {
+                    const store = useTavernStore.getState();
+                    store.completeObjective?.(
+                      activeSessionId,
+                      parsed.metadata.questTemplateId,
+                      parsed.metadata.objectiveId,
+                      parsed.metadata.characterId,
+                    );
+                  }
+                  // Show immediate toast feedback (store notifications handle quest completion separately)
+                  if (!parsed.metadata?.alreadyCompleted && parsed.metadata?.objectiveName) {
+                    toast.success(`Objetivo completado: ${parsed.metadata.objectiveName}`);
+                  }
+                } else if (parsed.type === 'action_activation') {
+                  // Action/skill activated by tool - execute on client side
+                  console.log('[ChatPanel] Action activation from tool:', parsed.toolName, parsed.skillName);
+                  const store = useTavernStore.getState();
+                  store.activateSkillByTool?.(
+                    activeSessionId,
+                    parsed.characterId,
+                    parsed.skillName,
+                    parsed.skillDescription || '',
+                    parsed.activationCosts || [],
+                    parsed.activationRewards || [],
+                  );
+                  toast.success(`⚔️ Acción: ${parsed.skillName}`);
+                } else if (parsed.type === 'solicitud_activation') {
+                  // Solicitud activated/completed by tool - execute on client side
+                  console.log('[ChatPanel] Solicitud activation from tool:', parsed.toolName, parsed.activationType, parsed.solicitudKey);
+                  const store = useTavernStore.getState();
+                  if (parsed.activationType === 'create_solicitud' && parsed.targetCharacterId) {
+                    store.createSolicitud?.(
+                      activeSessionId,
+                      parsed.targetCharacterId,
+                      {
+                        key: parsed.solicitudKey,
+                        peticionKey: parsed.peticionKey,
+                        fromCharacterId: parsed.fromCharacterId,
+                        fromCharacterName: parsed.fromCharacterName,
+                        description: parsed.description || '',
+                        completionDescription: parsed.completionDescription,
+                      }
+                    );
+                    toast.success(`📬 Petición: ${parsed.peticionKey || parsed.solicitudKey} → ${parsed.targetCharacterName || ''}`);
+                  } else if (parsed.activationType === 'complete_solicitud') {
+                    store.completeSolicitud?.(
+                      activeSessionId,
+                      parsed.fromCharacterId,
+                      parsed.solicitudKey
+                    );
+                    toast.success(`✅ Solicitud completada: ${parsed.solicitudKey}`);
+                  }
                 } else if (parsed.type === 'token' && parsed.content) {
                   accumulatedContent += parsed.content;
                   setStreamingContent(accumulatedContent);

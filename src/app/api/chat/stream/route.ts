@@ -8,7 +8,7 @@
 // - All sections are processed consistently
 
 import { NextRequest } from 'next/server';
-import type { ChatMessage, CharacterCard, LLMConfig, Persona, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestSettings, QuestTemplate, SessionQuestInstance, SessionSummary, SoundTrigger, AppSettings } from '@/types';
+import type { ChatMessage, CharacterCard, LLMConfig, Persona, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestSettings, QuestTemplate, SessionQuestInstance, SessionSummary, SoundTrigger, AppSettings, CharacterStatsConfig } from '@/types';
 import { DEFAULT_QUEST_SETTINGS } from '@/types';
 import {
   DEFAULT_CHARACTER,
@@ -103,6 +103,9 @@ async function executeToolCallsAndContinue(
   controller: { enqueue: (chunk: string) => void },
   sessionQuests?: SessionQuestInstance[],
   questTemplates?: QuestTemplate[],
+  statsConfig?: CharacterStatsConfig,
+  sessionStats?: SessionStats,
+  allCharacters?: CharacterCard[],
 ): Promise<{ newContent: string; shouldContinue: boolean; toolResults: Array<{ success: boolean; displayMessage: string }>; questActivations: QuestActivation[]; toolsUsed: Array<{ name: string; label: string; icon: string; success: boolean }> }> {
   if (toolCalls.length === 0 || currentRound >= maxRounds) {
     return { newContent: '', shouldContinue: false, toolResults: [], questActivations: [], toolsUsed: [] };
@@ -141,6 +144,9 @@ async function executeToolCallsAndContinue(
         userName,
         sessionQuests,
         questTemplates,
+        statsConfig: character.statsConfig,
+        sessionStats,
+        allCharacters,
       },
     );
 
@@ -168,6 +174,43 @@ async function executeToolCallsAndContinue(
       }));
       
       questActivations.push(activation);
+    }
+
+    // Check for action/skill activation and send SSE event
+    if (toolResult.actionActivation) {
+      const action = toolResult.actionActivation;
+      console.log(`[Tools] Action activation from ${tc.name}:`, action.skillName);
+      
+      controller.enqueue(createSSEJSON({
+        type: 'action_activation',
+        toolName: tc.name,
+        skillId: action.skillId,
+        skillName: action.skillName,
+        skillDescription: action.skillDescription,
+        activationCosts: action.activationCosts,
+        activationRewards: action.activationRewards,
+        characterId: action.characterId,
+      }));
+    }
+
+    // Check for solicitud activation/completion and send SSE event
+    if (toolResult.solicitudActivation) {
+      const sol = toolResult.solicitudActivation;
+      console.log(`[Tools] Solicitud activation from ${tc.name}:`, sol.type, sol.solicitudKey);
+      
+      controller.enqueue(createSSEJSON({
+        type: 'solicitud_activation',
+        toolName: tc.name,
+        activationType: sol.type,
+        solicitudKey: sol.solicitudKey,
+        targetCharacterId: sol.targetCharacterId,
+        targetCharacterName: sol.targetCharacterName,
+        fromCharacterId: sol.fromCharacterId,
+        fromCharacterName: sol.fromCharacterName,
+        description: sol.description,
+        completionDescription: sol.completionDescription,
+        peticionKey: sol.peticionKey,
+      }));
     }
 
     console.log(`[Tools] Tool ${tc.name}: success=${toolResult.success} duration=${toolResult.duration}ms`, toolResult.displayMessage);
@@ -252,6 +295,7 @@ export async function POST(request: NextRequest) {
       maxToolCallsPerTurn: body.toolsSettings?.maxToolCallsPerTurn ?? 2,
       characterConfigs: body.toolsSettings?.characterConfigs || [],
       usePromptBasedFallback: body.toolsSettings?.usePromptBasedFallback ?? false,
+      disabledTools: body.toolsSettings?.disabledTools || [],
     };
     
     // Debug: Log sessionStats event fields
@@ -488,9 +532,16 @@ export async function POST(request: NextRequest) {
       c => c.characterId === effectiveCharacter.id
     );
     const enabledToolIds = characterToolConfig?.enabledTools || [];
-    const availableTools = enabledToolIds.length > 0
+    let availableTools = enabledToolIds.length > 0
       ? getToolDefinitionsByIds(enabledToolIds)
       : getAllToolDefinitions(); // All tools enabled if no specific config
+    
+    // Filter out globally disabled tools
+    const globalDisabled = toolsSettings.disabledTools || [];
+    if (globalDisabled.length > 0) {
+      availableTools = availableTools.filter(t => !globalDisabled.includes(t.id));
+    }
+    
     const toolsEnabled = toolsSettings.enabled && availableTools.length > 0;
 
     // Determine if the current provider supports native tool calling
@@ -656,7 +707,8 @@ Y cambiar mi expresión:
                     const toolResult = await executeToolCallsAndContinue(
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
-                      sessionQuests, questTemplates
+                      sessionQuests, questTemplates,
+                      effectiveCharacter.statsConfig, sessionStats, allCharacters
                     );
                     allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                     allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -688,7 +740,8 @@ Y cambiar mi expresión:
                       const toolResult = await executeToolCallsAndContinue(
                         textToolCalls, availableTools, toolRound, maxToolRounds,
                         effectiveCharacter, sessionId || '', effectiveUserName, controller,
-                        sessionQuests, questTemplates
+                        sessionQuests, questTemplates,
+                        effectiveCharacter.statsConfig, sessionStats, allCharacters
                       );
                       allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                       allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -774,7 +827,8 @@ Y cambiar mi expresión:
                     const toolResult = await executeToolCallsAndContinue(
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
-                      sessionQuests, questTemplates
+                      sessionQuests, questTemplates,
+                      effectiveCharacter.statsConfig, sessionStats, allCharacters
                     );
                     allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                     allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -822,7 +876,8 @@ Y cambiar mi expresión:
                       const toolResult = await executeToolCallsAndContinue(
                         nativeCalls, availableTools, toolRound, maxToolRounds,
                         effectiveCharacter, sessionId || '', effectiveUserName, controller,
-                        sessionQuests, questTemplates
+                        sessionQuests, questTemplates,
+                        effectiveCharacter.statsConfig, sessionStats, allCharacters
                       );
                       allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                       allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -901,7 +956,8 @@ Y cambiar mi expresión:
                     const toolResult = await executeToolCallsAndContinue(
                       toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
-                      sessionQuests, questTemplates
+                      sessionQuests, questTemplates,
+                      effectiveCharacter.statsConfig, sessionStats, allCharacters
                     );
                     allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                     allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -939,7 +995,8 @@ Y cambiar mi expresión:
                       const toolResult = await executeToolCallsAndContinue(
                         nativeCalls, availableTools, toolRound, maxToolRounds,
                         effectiveCharacter, sessionId || '', effectiveUserName, controller,
-                        sessionQuests, questTemplates
+                        sessionQuests, questTemplates,
+                        effectiveCharacter.statsConfig, sessionStats, allCharacters
                       );
                       allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                       allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -1012,7 +1069,8 @@ Y cambiar mi expresión:
                     const toolResult = await executeToolCallsAndContinue(
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
-                      sessionQuests, questTemplates
+                      sessionQuests, questTemplates,
+                      effectiveCharacter.statsConfig, sessionStats, allCharacters
                     );
                     allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                     allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -1046,7 +1104,8 @@ Y cambiar mi expresión:
                       const toolResult = await executeToolCallsAndContinue(
                         nativeCalls, availableTools, toolRound, maxToolRounds,
                         effectiveCharacter, sessionId || '', effectiveUserName, controller,
-                        sessionQuests, questTemplates
+                        sessionQuests, questTemplates,
+                        effectiveCharacter.statsConfig, sessionStats, allCharacters
                       );
                       allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                       allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -1130,7 +1189,8 @@ Y cambiar mi expresión:
                     const toolResult = await executeToolCallsAndContinue(
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
-                      sessionQuests, questTemplates
+                      sessionQuests, questTemplates,
+                      effectiveCharacter.statsConfig, sessionStats, allCharacters
                     );
                     allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                     allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -1161,7 +1221,8 @@ Y cambiar mi expresión:
                       const textToolResult = await executeToolCallsAndContinue(
                         textToolCalls, availableTools, toolRound, maxToolRounds,
                         effectiveCharacter, sessionId || '', effectiveUserName, controller,
-                        sessionQuests, questTemplates
+                        sessionQuests, questTemplates,
+                        effectiveCharacter.statsConfig, sessionStats, allCharacters
                       );
                       allToolsUsed = [...allToolsUsed, ...textToolResult.toolsUsed];
                       allQuestActivations = [...allQuestActivations, ...textToolResult.questActivations];
@@ -1227,7 +1288,8 @@ Y cambiar mi expresión:
                     const toolResult = await executeToolCallsAndContinue(
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
-                      sessionQuests, questTemplates
+                      sessionQuests, questTemplates,
+                      effectiveCharacter.statsConfig, sessionStats, allCharacters
                     );
                     allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                     allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];

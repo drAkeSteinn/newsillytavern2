@@ -231,6 +231,7 @@ import { checkStatTool, checkStatExecutor } from './tools/check-stat';
 import { manageQuestTool, manageQuestExecutor } from './tools/manage-quest';
 import { manageSolicitudTool, manageSolicitudExecutor } from './tools/manage-solicitud';
 import { manageMemoryTool, manageMemoryExecutor } from './tools/manage-memory';
+import { manageActionTool, manageActionExecutor } from './tools/manage-action';
 
 // Register built-in tools
 registerTool(rollDiceTool, rollDiceExecutor);
@@ -243,5 +244,6 @@ registerTool(checkStatTool, checkStatExecutor);
 registerTool(manageQuestTool, manageQuestExecutor);
 registerTool(manageSolicitudTool, manageSolicitudExecutor);
 registerTool(manageMemoryTool, manageMemoryExecutor);
+registerTool(manageActionTool, manageActionExecutor);
 
 console.log(`[Tools] Registered ${toolRegistry.size} built-in tools: ${Array.from(toolRegistry.keys()).join(', ')}`);

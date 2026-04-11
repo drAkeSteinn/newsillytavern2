@@ -3,8 +3,12 @@
 // ============================================
 // Category: in_character
 // Manages peticiones/solicitudes between characters
+//
+// Architecture: Stateless server-side validation → returns metadata via SSE → client executes
+// Similar to manage-quest and manage-action tools
 
 import type { ToolDefinition, ToolContext, ToolExecutionResult } from '../types';
+import type { InvitationDefinition, SolicitudDefinition, SolicitudInstance } from '@/types';
 
 export const manageSolicitudTool: ToolDefinition = {
   id: 'manage_solicitud',
@@ -13,42 +17,23 @@ export const manageSolicitudTool: ToolDefinition = {
   icon: 'Handshake',
   description:
     'Gestiona peticiones y solicitudes entre personajes. ' +
-    'Úsala cuando quieras hacer una petición a otro personaje ' +
-    'o completar una solicitud que te han hecho.',
+    'Usa "get_info" para ver las solicitudes pendientes y peticiones disponibles.',
   category: 'in_character',
   parameters: {
     type: 'object',
     properties: {
       action: {
         type: 'string',
-        description: 'Acción: get_solicitudes (ver pendientes), make_request (hacer petición), complete_request (completar solicitud)',
-        enum: ['get_solicitudes', 'make_request', 'complete_request'],
-        required: true,
+        description: 'Acción a realizar',
+        enum: ['get_info', 'make_request', 'complete_request'],
       },
-      request_type: {
+      solicitud_key: {
         type: 'string',
-        description: 'Tipo de petición (ej: madera, información, ayuda)',
-        required: false,
+        description: 'Key de la solicitud a completar (debe coincidir con una solicitud pendiente)',
       },
-      target_character: {
+      peticion_key: {
         type: 'string',
-        description: 'Nombre del personaje objetivo de la petición',
-        required: false,
-      },
-      request_key: {
-        type: 'string',
-        description: 'Key única para esta petición (ej: pedir_madera)',
-        required: false,
-      },
-      completion_key: {
-        type: 'string',
-        description: 'Key de completación para la solicitud (ej: entrego_madera)',
-        required: false,
-      },
-      narrative: {
-        type: 'string',
-        description: 'Descripción narrativa de la petición o respuesta',
-        required: false,
+        description: 'Key de la petición a realizar (debe coincidir con una petición disponible)',
       },
     },
     required: ['action'],
@@ -56,104 +41,256 @@ export const manageSolicitudTool: ToolDefinition = {
   permissionMode: 'auto',
 };
 
+/**
+ * Get resolved peticiones for a character (server-side version)
+ * Maps invitations to their target's solicitud definitions
+ */
+function getResolvedPeticiones(
+  statsConfig: ToolContext['statsConfig'],
+  allCharacters: ToolContext['allCharacters'],
+  sessionStats: ToolContext['sessionStats'],
+): Array<{
+  invitation: InvitationDefinition;
+  solicitud: SolicitudDefinition;
+  targetCharacterId: string;
+  targetCharacterName: string;
+}> {
+  if (!statsConfig?.enabled || !statsConfig.invitations || !allCharacters) {
+    return [];
+  }
+
+  const resolved: Array<{
+    invitation: InvitationDefinition;
+    solicitud: SolicitudDefinition;
+    targetCharacterId: string;
+    targetCharacterName: string;
+  }> = [];
+
+  for (const invitation of statsConfig.invitations) {
+    if (!invitation.objetivo?.characterId || !invitation.objetivo?.solicitudId) {
+      continue;
+    }
+
+    // Find target character
+    const targetCharacter = allCharacters.find(c => c.id === invitation.objetivo!.characterId);
+    if (!targetCharacter) continue;
+
+    // Find the solicitud definition on the target
+    const solicitud = targetCharacter.statsConfig?.solicitudDefinitions?.find(
+      s => s.id === invitation.objetivo!.solicitudId
+    );
+    if (!solicitud) continue;
+
+    resolved.push({
+      invitation,
+      solicitud,
+      targetCharacterId: targetCharacter.id,
+      targetCharacterName: targetCharacter.name,
+    });
+  }
+
+  return resolved;
+}
+
+/**
+ * Get pending solicitudes for a character
+ */
+function getPendingSolicitudes(
+  sessionStats: ToolContext['sessionStats'],
+  characterId: string,
+): SolicitudInstance[] {
+  if (!sessionStats?.solicitudes?.characterSolicitudes?.[characterId]) {
+    return [];
+  }
+
+  return sessionStats.solicitudes.characterSolicitudes[characterId]
+    .filter(s => s.status === 'pending');
+}
+
 export async function manageSolicitudExecutor(
   params: Record<string, unknown>,
   context: ToolContext,
 ): Promise<ToolExecutionResult> {
   const action = String(params.action || '');
-  const requestType = params.request_type ? String(params.request_type) : '';
-  const targetCharacter = params.target_character ? String(params.target_character) : '';
-  const requestKey = params.request_key ? String(params.request_key).toLowerCase().replace(/\s+/g, '_') : '';
-  const completionKey = params.completion_key ? String(params.completion_key).toLowerCase().replace(/\s+/g, '_') : '';
-  const narrative = params.narrative ? String(params.narrative) : '';
+  const solicitudKey = params.solicitud_key ? String(params.solicitud_key) : '';
+  const peticionKey = params.peticion_key ? String(params.peticion_key) : '';
+
+  const { characterId, characterName, sessionId, statsConfig, sessionStats, allCharacters } = context;
 
   try {
     switch (action) {
-      case 'get_solicitudes': {
-        const lines = [
-          '🤝 **Sistema de Solicitudes:**',
-          '',
-          'Las solicitudes pendientes se muestran en el prompt como {{solicitudes}}.',
-          'Usa keys para activar/completar solicitudes.',
-          '',
-          '**Keys de detección:**',
-          '- Hacer petición: Escribe [pedir:tipo] en tu respuesta',
-          '- Completar solicitud: Escribe [entregar:tipo] en tu respuesta',
-        ];
+      case 'get_info': {
+        // Build info about available peticiones and pending solicitudes
+        const pendingSolicitudes = getPendingSolicitudes(sessionStats, characterId);
+        const resolvedPeticiones = getResolvedPeticiones(statsConfig, allCharacters, sessionStats);
+
+        const lines: string[] = ['**Sistema de Solicitudes**', ''];
+
+        if (resolvedPeticiones.length > 0) {
+          lines.push('**Peticiones disponibles** (puedes hacer estas solicitudes a otros):');
+          for (const { solicitud, targetCharacterName } of resolvedPeticiones) {
+            lines.push(`- key: "${solicitud.peticionKey}" → ${targetCharacterName}: ${solicitud.peticionDescription}`);
+          }
+          lines.push('');
+        }
+
+        if (pendingSolicitudes.length > 0) {
+          lines.push('**Solicitudes pendientes** (te han hecho estas solicitudes):');
+          for (const sol of pendingSolicitudes) {
+            lines.push(`- key: "${sol.key}" de ${sol.fromCharacterName}: ${sol.description}`);
+          }
+          lines.push('');
+        }
+
+        if (resolvedPeticiones.length === 0 && pendingSolicitudes.length === 0) {
+          lines.push('No hay peticiones disponibles ni solicitudes pendientes.');
+        } else {
+          lines.push('Usa "make_request" con una peticion_key para hacer una petición.');
+          lines.push('Usa "complete_request" con una solicitud_key para completar una solicitud.');
+        }
 
         return {
           success: true,
           toolName: 'manage_solicitud',
-          result: { action: 'get_solicitudes', sessionId: context.sessionId },
+          result: { action: 'get_info', sessionId },
           displayMessage: lines.join('\n'),
         };
       }
 
       case 'make_request': {
-        if (!requestType || !targetCharacter) {
+        if (!peticionKey) {
           return {
             success: false,
             toolName: 'manage_solicitud',
             result: null,
-            displayMessage: 'Para hacer una petición, especifica request_type y target_character.',
-            error: 'Missing required parameters: request_type, target_character',
+            displayMessage: 'Debes especificar "peticion_key". Usa "get_info" para ver las peticiones disponibles.',
+            error: 'Missing required parameter: peticion_key',
           };
         }
 
-        const key = requestKey || `pedir_${requestType.toLowerCase().replace(/\s+/g, '_')}`;
-        const makeRequestKey = `pedir:${requestType.toLowerCase()}`;
-        
-        const lines = [
-          '📬 **Petición Creada:**',
-          `Tipo: ${requestType}`,
-          `Para: ${targetCharacter}`,
-        ];
+        // Find the matching peticion
+        const resolvedPeticiones = getResolvedPeticiones(statsConfig, allCharacters, sessionStats);
+        const match = resolvedPeticiones.find(p =>
+          p.solicitud.peticionKey.toLowerCase() === peticionKey.toLowerCase() ||
+          p.solicitud.peticionActivationKeys?.some(k => k.toLowerCase() === peticionKey.toLowerCase())
+        );
 
-        if (narrative) {
-          lines.push(`Narrativa: ${narrative}`);
+        if (!match) {
+          const availableKeys = resolvedPeticiones.map(p => p.solicitud.peticionKey);
+          return {
+            success: false,
+            toolName: 'manage_solicitud',
+            result: null,
+            displayMessage: `No se encontró una petición con key "${peticionKey}". Peticiones disponibles: ${availableKeys.length > 0 ? availableKeys.join(', ') : 'ninguna'}. Usa "get_info" para ver las opciones.`,
+            error: `Invalid peticion_key: ${peticionKey}`,
+          };
         }
 
-        lines.push('');
-        lines.push(`**Incluye en tu respuesta:** [${makeRequestKey}]`);
-        lines.push(`El sistema creará una solicitud para ${targetCharacter}.`);
+        // Check for duplicate pending solicitudes
+        const existingSolicitudes = sessionStats?.solicitudes?.characterSolicitudes?.[match.targetCharacterId] || [];
+        const hasDuplicate = existingSolicitudes.some(
+          s => s.status === 'pending' &&
+               s.fromCharacterId === characterId &&
+               (s.peticionKey?.toLowerCase() === match.solicitud.peticionKey.toLowerCase() ||
+                s.key.toLowerCase() === match.solicitud.solicitudKey.toLowerCase())
+        );
+
+        if (hasDuplicate) {
+          return {
+            success: false,
+            toolName: 'manage_solicitud',
+            result: null,
+            displayMessage: `Ya existe una solicitud pendiente de "${match.solicitud.peticionKey}" para ${match.targetCharacterName}.`,
+            error: `Duplicate solicitud: ${match.solicitud.peticionKey}`,
+          };
+        }
+
+        const lines = [
+          `📬 **Petición realizada**`,
+          `Peticion: ${match.solicitud.peticionKey}`,
+          `Para: ${match.targetCharacterName}`,
+          `Descripción: ${match.solicitud.peticionDescription}`,
+        ];
 
         return {
           success: true,
           toolName: 'manage_solicitud',
           result: {
             action: 'make_request',
-            requestType,
-            targetCharacter,
-            detectionKey: makeRequestKey,
+            peticionKey: match.solicitud.peticionKey,
+            targetCharacterId: match.targetCharacterId,
+            targetCharacterName: match.targetCharacterName,
           },
           displayMessage: lines.join('\n'),
+          solicitudActivation: {
+            type: 'create_solicitud',
+            solicitudKey: match.solicitud.solicitudKey,
+            peticionKey: match.solicitud.peticionKey,
+            targetCharacterId: match.targetCharacterId,
+            targetCharacterName: match.targetCharacterName,
+            fromCharacterId: characterId,
+            fromCharacterName: characterName,
+            description: match.solicitud.solicitudDescription,
+            completionDescription: match.solicitud.completionDescription,
+          },
         };
       }
 
       case 'complete_request': {
-        const completeKey = completionKey || `entregar:${requestType.toLowerCase()}`;
-        
-        const lines = [
-          '✅ **Solicitud Completada:**',
-        ];
-
-        if (narrative) {
-          lines.push(`Acción: ${narrative}`);
+        if (!solicitudKey) {
+          return {
+            success: false,
+            toolName: 'manage_solicitud',
+            result: null,
+            displayMessage: 'Debes especificar "solicitud_key". Usa "get_info" para ver las solicitudes pendientes.',
+            error: 'Missing required parameter: solicitud_key',
+          };
         }
 
-        lines.push('');
-        lines.push(`**Incluye en tu respuesta:** [${completeKey}]`);
-        lines.push('El sistema marcará la solicitud como completada.');
+        // Find the matching pending solicitud
+        const pendingSolicitudes = getPendingSolicitudes(sessionStats, characterId);
+        const match = pendingSolicitudes.find(s =>
+          s.key.toLowerCase() === solicitudKey.toLowerCase() ||
+          s.solicitudActivationKeys?.some(k => k.toLowerCase() === solicitudKey.toLowerCase())
+        );
+
+        if (!match) {
+          const availableKeys = pendingSolicitudes.map(s => s.key);
+          return {
+            success: false,
+            toolName: 'manage_solicitud',
+            result: null,
+            displayMessage: `No se encontró una solicitud pendiente con key "${solicitudKey}". Solicitudes pendientes: ${availableKeys.length > 0 ? availableKeys.join(', ') : 'ninguna'}. Usa "get_info" para ver las opciones.`,
+            error: `Invalid solicitud_key: ${solicitudKey}`,
+          };
+        }
+
+        const lines = [
+          `✅ **Solicitud completada**`,
+          `Solicitud: ${match.key}`,
+          `De: ${match.fromCharacterName}`,
+          `Descripción: ${match.description}`,
+        ];
 
         return {
           success: true,
           toolName: 'manage_solicitud',
           result: {
             action: 'complete_request',
-            completionKey: completeKey,
-            requestType,
+            solicitudKey: match.key,
+            fromCharacterName: match.fromCharacterName,
           },
           displayMessage: lines.join('\n'),
+          solicitudActivation: {
+            type: 'complete_solicitud',
+            solicitudKey: match.key,
+            targetCharacterId: undefined,
+            targetCharacterName: match.fromCharacterName,
+            fromCharacterId: match.fromCharacterId,
+            fromCharacterName: match.fromCharacterName,
+            description: match.description,
+            completionDescription: match.completionDescription,
+          },
         };
       }
 
@@ -162,7 +299,7 @@ export async function manageSolicitudExecutor(
           success: false,
           toolName: 'manage_solicitud',
           result: null,
-          displayMessage: `Acción desconocida: ${action}. Acciones: get_solicitudes, make_request, complete_request`,
+          displayMessage: `Acción desconocida: "${action}". Usa "get_info", "make_request" o "complete_request".`,
           error: `Unknown action: ${action}`,
         };
     }

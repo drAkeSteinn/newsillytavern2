@@ -159,11 +159,7 @@ import {
   type QuestTriggerContext,
 } from './handlers/quest-handler';
 import {
-  executeQuestCompletionRewards,
-  executeObjectiveRewards,
-  executeTriggerRewardFromQuest,
   executeReward,
-  type RewardStoreActions,
 } from '@/lib/quest/quest-reward-executor';
 import {
   createItemHandlerState,
@@ -737,6 +733,7 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
         
         // Helper function to complete quest objectives by their detection key
         // objectiveDetectionKey is the completion.key (e.g., "psycompletado") from QuestRewardObjective
+        // Reads from session.sessionQuests directly for reliability
         const completeQuestObjectiveByKey = (
           sessionId: string,
           questTemplateId: string, // Can be empty to search all active quests
@@ -745,71 +742,95 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
         ): boolean => {
           try {
             console.log(`[completeQuestObjectiveByKey] Searching for objective with key: "${objectiveDetectionKey}"`);
-            const sessionQuests = store.getSessionQuests?.(sessionId) || [];
-            console.log(`[completeQuestObjectiveByKey] Session quests found: ${sessionQuests.length}`);
+            // Read from session.sessionQuests directly (most reliable source)
+            const targetSession = store.sessions?.find((s: any) => s.id === sessionId);
+            const sessionQuests = targetSession?.sessionQuests || [];
+            console.log(`[completeQuestObjectiveByKey] Session quests found: ${sessionQuests.length} (source: session.sessionQuests)`);
             
             const activeQuests = sessionQuests.filter((q: any) => q.status === 'active' || q.status === 'available');
-            console.log(`[completeQuestObjectiveByKey] Active quests: ${activeQuests.length}`);
+            console.log(`[completeQuestObjectiveByKey] Active/available quests: ${activeQuests.length}`);
             
-            // Get templates from questTemplateSlice to access objective completion keys
-            // Access via store state (questTemplates is directly on the store)
-            const templates = (store as any).questTemplates || [];
+            const templates = store.questTemplates || [];
             console.log(`[completeQuestObjectiveByKey] Templates loaded: ${templates.length}`);
             
             if (templates.length === 0) {
               console.log(`[completeQuestObjectiveByKey] WARNING: No templates loaded in store!`);
             }
             
+            // Search for matching objective (exact match first)
+            let matchedObjective: any = null;
+            let matchedQuest: any = null;
+            let matchedTemplate: any = null;
+            
             for (const quest of activeQuests) {
-              // If questTemplateId is specified, skip non-matching quests
               if (questTemplateId && quest.templateId !== questTemplateId) continue;
               
-              // Find the template for this quest
               const template = templates.find((t: any) => t.id === quest.templateId);
               if (!template) continue;
               
-              // Search for the objective by its completion.key
               for (const objective of template.objectives || []) {
                 const completionKeys = [objective.completion?.key, ...(objective.completion?.keys || [])].filter(Boolean);
-                
-                console.log(`[completeQuestObjectiveByKey] Checking objective "${objective.description}" (id: ${objective.id}) with keys:`, completionKeys);
                 
                 for (const completionKey of completionKeys) {
                   if (completionKey === objectiveDetectionKey || 
                       completionKey?.toLowerCase() === objectiveDetectionKey.toLowerCase() ||
                       completionKey === `obj-${objectiveDetectionKey}`) {
-                    console.log(`[completeQuestObjectiveByKey] MATCH! Objective "${objective.description}" (key: ${completionKey}) in quest ${quest.templateId}`);
-                    store.completeObjective?.(sessionId, quest.templateId, objective.id, characterId);
-                    return true;
+                    matchedObjective = objective;
+                    matchedQuest = quest;
+                    matchedTemplate = template;
+                    break;
                   }
                 }
+                if (matchedObjective) break;
               }
+              if (matchedObjective) break;
             }
             
-            // Try case-insensitive partial match
-            const lowerKey = objectiveDetectionKey.toLowerCase();
-            console.log(`[completeQuestObjectiveByKey] Trying partial match with lowerKey: "${lowerKey}"`);
-            for (const quest of activeQuests) {
-              if (questTemplateId && quest.templateId !== questTemplateId) continue;
-              
-              const template = templates.find((t: any) => t.id === quest.templateId);
-              if (!template) continue;
-              
-              for (const objective of template.objectives || []) {
-                const completionKeys = [objective.completion?.key, ...(objective.completion?.keys || [])].filter(Boolean);
+            // Try case-insensitive partial match if no exact match
+            if (!matchedObjective) {
+              const lowerKey = objectiveDetectionKey.toLowerCase();
+              for (const quest of activeQuests) {
+                if (questTemplateId && quest.templateId !== questTemplateId) continue;
                 
-                for (const completionKey of completionKeys) {
-                  if (completionKey?.toLowerCase().includes(lowerKey) || lowerKey.includes(completionKey?.toLowerCase())) {
-                    console.log(`[completeQuestObjectiveByKey] PARTIAL MATCH! Objective "${objective.description}" (key: ${completionKey}) in quest ${quest.templateId}`);
-                    store.completeObjective?.(sessionId, quest.templateId, objective.id, characterId);
-                    return true;
+                const template = templates.find((t: any) => t.id === quest.templateId);
+                if (!template) continue;
+                
+                for (const objective of template.objectives || []) {
+                  const completionKeys = [objective.completion?.key, ...(objective.completion?.keys || [])].filter(Boolean);
+                  
+                  for (const completionKey of completionKeys) {
+                    if (completionKey?.toLowerCase().includes(lowerKey) || lowerKey.includes(completionKey?.toLowerCase())) {
+                      matchedObjective = objective;
+                      matchedQuest = quest;
+                      matchedTemplate = template;
+                      break;
+                    }
                   }
+                  if (matchedObjective) break;
                 }
+                if (matchedObjective) break;
               }
             }
             
-            console.log(`[TriggerSystem] Objective not found: ${objectiveDetectionKey}`);
-            return false;
+            if (!matchedObjective || !matchedTemplate || !matchedQuest) {
+              console.log(`[TriggerSystem] Objective not found: ${objectiveDetectionKey}`);
+              return false;
+            }
+            
+            // Check if objective is already completed in the session (prevent duplicate rewards)
+            const sessionObjective = matchedQuest.objectives?.find((o: any) => o.templateId === matchedObjective.id);
+            if (sessionObjective?.isCompleted) {
+              console.log(`[completeQuestObjectiveByKey] Objective "${matchedObjective.description}" is already completed, skipping.`);
+              return true; // Return true since the objective WAS found (just already done)
+            }
+            
+            // Complete the objective using progressQuestObjective (same function quest-detector uses)
+            // Note: store.completeObjective is from sessionSlice now (conflicting questSlice version removed)
+            console.log(`[completeQuestObjectiveByKey] MATCH! Completing objective "${matchedObjective.description}" in quest ${matchedQuest.templateId}`);
+            store.progressQuestObjective?.(sessionId, matchedQuest.templateId, matchedObjective.id, 999, characterId);
+            // Note: Rewards (objective + quest auto-completion) are executed by progressQuestObjective internally
+            
+            return true;
           } catch (err) {
             console.error('[TriggerSystem] Error completing objective:', err);
             return false;
@@ -856,9 +877,13 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
                       playSound: store.playSound?.bind(store),
                       setBackground: store.setBackground?.bind(store),
                       setActiveOverlays: store.setActiveOverlays?.bind(store),
-                      completeObjective: store.completeObjective?.bind(store),
+                      progressQuestObjective: store.progressQuestObjective?.bind(store),
                       completeQuestObjective: completeQuestObjectiveByKey,
                       completeSolicitud: store.completeSolicitud?.bind(store),
+                      getSessionQuests: (sid: string) => {
+                        const s = store.sessions?.find((session: any) => session.id === sid);
+                        return s?.sessionQuests || [];
+                      },
                     });
                     console.log(`[TriggerSystem] Reward executed: ${reward.type} - ${reward.key || reward.id}`);
                   } catch (err) {
@@ -901,6 +926,10 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
                         setActiveOverlays: store.setActiveOverlays?.bind(store),
                         completeQuestObjective: completeQuestObjectiveByKey,
                         completeSolicitud: store.completeSolicitud?.bind(store),
+                        getSessionQuests: (sid: string) => {
+                          const s = store.sessions?.find((session: any) => session.id === sid);
+                          return s?.sessionQuests || [];
+                        },
                       });
                       console.log(`[TriggerSystem] Executed threshold effect for ${threshold.attributeName}`);
                     } catch (err) {
@@ -952,16 +981,12 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
           }
         }
 
-        // 7. Quest Handler
-        if (config.questEnabled !== false && store.questSettings?.enabled) {
-          if (questHandler.canHandle(detectedKey, questKeyHandlerContext)) {
-            const result = questHandler.handleKey(detectedKey, questKeyHandlerContext);
-            if (result?.matched) {
-              console.log(`[TriggerSystem] Quest key matched: ${detectedKey.key}`);
-              questHandler.execute(result.trigger, questKeyHandlerContext);
-            }
-          }
-        }
+        // 7. Quest Handler — DISABLED: quests are processed by the legacy quest-detector
+        // system below (checkQuestTriggers) which has full reward execution support,
+        // prefix expansion, value conditions, and word boundary matching.
+        // The unified QuestKeyHandler was causing double-processing and missing rewards.
+        // Quest keys are still registered for word detection above (questActivationKeys,
+        // questObjectiveKeys, questCompletionKeys) to ensure they reach the legacy path.
 
         // 8. Stats Handler
         if (config.statsEnabled !== false && character?.statsConfig?.enabled) {
@@ -1194,13 +1219,8 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
                 
               case 'progress':
                 // Progress an objective
+                // Note: store.progressQuestObjective now handles reward execution internally
                 if (hit.questId && hit.objectiveId) {
-                  // Check quest status BEFORE progressing (to detect auto-completion)
-                  const questBefore = activeSession?.sessionQuests?.find(
-                    (q: { templateId: string; status: string }) => q.templateId === hit.questId
-                  );
-                  const wasActive = questBefore?.status === 'active';
-                  
                   store.progressQuestObjective(
                     sessionId,
                     hit.questId,
@@ -1208,211 +1228,17 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
                     hit.progress || 1,
                     character?.id
                   );
-                  
-                  // Execute objective rewards if this progress completes the objective
-                  if (hit.completesObjective && hit.objectiveRewards && hit.objectiveRewards.length > 0) {
-                    console.log(`[TriggerSystem] Objective completed! Executing ${hit.objectiveRewards.length} rewards`);
-                    
-                    const objectiveRewardContext = {
-                      sessionId,
-                      characterId: character?.id || '',
-                      character,
-                      allCharacters: characters, // Para targetMode en group chats
-                      sessionStats: activeSession?.sessionStats,
-                      timestamp: Date.now(),
-                      // Pass resources for trigger lookup
-                      soundCollections: store.soundCollections,
-                      soundTriggers: store.soundTriggers,
-                      soundSequenceTriggers: store.soundSequenceTriggers,
-                      backgroundPacks: store.backgroundTriggerPacks,
-                      soundSettings: {
-                        enabled: settings.sound?.enabled ?? false,
-                        globalVolume: settings.sound?.globalVolume ?? 0.85,
-                      },
-                      backgroundSettings: {
-                        transitionDuration: settings.backgroundTriggers?.transitionDuration ?? 500,
-                        defaultTransitionType: settings.backgroundTriggers?.defaultTransitionType ?? 'fade',
-                      },
-                    };
-                    
-                    const rewardActions: RewardStoreActions = {
-                      updateCharacterStat: store.updateCharacterStat.bind(store),
-                      applyTriggerForCharacter: store.applyTriggerForCharacter?.bind(store),
-                      scheduleReturnToIdleForCharacter: store.scheduleReturnToIdleForCharacter?.bind(store),
-                      isSpriteLocked: store.isSpriteLocked?.bind(store),
-                      playSound: store.playSound?.bind(store),
-                      setBackground: store.setBackground?.bind(store),
-                      setActiveOverlays: store.setActiveOverlays?.bind(store),
-                    };
-                    
-                    const objectiveRewardResult = executeObjectiveRewards(
-                      hit.objectiveRewards,
-                      objectiveRewardContext,
-                      rewardActions
-                    );
-                    
-                    console.log(
-                      `[TriggerSystem] Objective "${hit.objective?.description}" rewards: ${objectiveRewardResult.successCount} succeeded, ${objectiveRewardResult.failureCount} failed`
-                    );
-                    
-                    // Add notification for objective rewards
-                    if (objectiveRewardResult.successCount > 0 && store.questSettings.showNotifications) {
-                      const rewardMessages = objectiveRewardResult.results
-                        .filter(r => r.success)
-                        .map(r => r.message)
-                        .filter(Boolean);
-                      
-                      if (rewardMessages.length > 0) {
-                        store.addQuestNotification({
-                          questId: hit.questId,
-                          questName: hit.template?.name || 'Quest',
-                          type: 'objective_complete',
-                          message: `Objective "${hit.objective?.description}" completed! Rewards: ${rewardMessages.join(', ')}`,
-                          rewards: hit.objectiveRewards,
-                        });
-                      }
-                    }
-                  }
-                  
-                  // Check if quest was auto-completed (was active before, now completed)
-                  // Get the updated session to check quest status
-                  const updatedSession = store.getActiveSession?.();
-                  const questAfter = updatedSession?.sessionQuests?.find(
-                    (q: { templateId: string; status: string }) => q.templateId === hit.questId
-                  );
-                  const isNowCompleted = questAfter?.status === 'completed';
-                  
-                  if (wasActive && isNowCompleted && hit.template?.rewards && hit.template.rewards.length > 0) {
-                    console.log(`[TriggerSystem] Quest auto-completed! Executing ${hit.template.rewards.length} quest rewards`);
-                    
-                    const questRewardContext = {
-                      sessionId,
-                      characterId: character?.id || '',
-                      character,
-                      allCharacters: characters, // Para targetMode en group chats
-                      sessionStats: updatedSession?.sessionStats,
-                      timestamp: Date.now(),
-                      // Pass resources for trigger lookup
-                      soundCollections: store.soundCollections,
-                      soundTriggers: store.soundTriggers,
-                      soundSequenceTriggers: store.soundSequenceTriggers,
-                      backgroundPacks: store.backgroundTriggerPacks,
-                      soundSettings: {
-                        enabled: settings.sound?.enabled ?? false,
-                        globalVolume: settings.sound?.globalVolume ?? 0.85,
-                      },
-                      backgroundSettings: {
-                        transitionDuration: settings.backgroundTriggers?.transitionDuration ?? 500,
-                        defaultTransitionType: settings.backgroundTriggers?.defaultTransitionType ?? 'fade',
-                      },
-                    };
-                    
-                    const questRewardActions: RewardStoreActions = {
-                      updateCharacterStat: store.updateCharacterStat.bind(store),
-                      applyTriggerForCharacter: store.applyTriggerForCharacter?.bind(store),
-                      scheduleReturnToIdleForCharacter: store.scheduleReturnToIdleForCharacter?.bind(store),
-                      isSpriteLocked: store.isSpriteLocked?.bind(store),
-                      playSound: store.playSound?.bind(store),
-                      setBackground: store.setBackground?.bind(store),
-                      setActiveOverlays: store.setActiveOverlays?.bind(store),
-                    };
-                    
-                    const questRewardResult = executeQuestCompletionRewards(
-                      hit.template,
-                      questRewardContext,
-                      questRewardActions
-                    );
-                    
-                    console.log(
-                      `[TriggerSystem] Quest "${hit.template.name}" auto-completion rewards: ${questRewardResult.successCount} succeeded, ${questRewardResult.failureCount} failed`
-                    );
-                    
-                    // Add quest completion notification with rewards
-                    if (store.questSettings.showNotifications) {
-                      const rewardMessages = questRewardResult.results
-                        .filter(r => r.success)
-                        .map(r => r.message)
-                        .filter(Boolean);
-                      
-                      store.addQuestNotification({
-                        questId: hit.questId,
-                        questName: hit.template.name,
-                        type: 'quest_complete',
-                        message: `¡Misión completada: ${hit.template.name}!${rewardMessages.length > 0 ? ` Recompensas: ${rewardMessages.join(', ')}` : ''}`,
-                        rewards: hit.template.rewards,
-                      });
-                    }
-                  }
+                  // Rewards (objective + quest auto-completion) are now executed by the store.
+                  // No need for duplicate reward execution here.
                 }
                 break;
                 
               case 'complete':
                 if (hit.questId) {
                   // Complete the quest
+                  // Note: store.completeQuest now handles reward execution internally
                   store.completeQuest(sessionId, hit.questId, character?.id);
-                  
-                  // Execute rewards if template has them
-                  if (hit.template?.rewards && hit.template.rewards.length > 0) {
-                    const rewardContext = {
-                      sessionId,
-                      characterId: character?.id || '',
-                      character,
-                      allCharacters: characters, // Para targetMode en group chats
-                      sessionStats: activeSession?.sessionStats,
-                      timestamp: Date.now(),
-                      // Pass resources for trigger lookup
-                      soundCollections: store.soundCollections,
-                      soundTriggers: store.soundTriggers,
-                      soundSequenceTriggers: store.soundSequenceTriggers,
-                      backgroundPacks: store.backgroundTriggerPacks,
-                      soundSettings: {
-                        enabled: settings.sound?.enabled ?? false,
-                        globalVolume: settings.sound?.globalVolume ?? 0.85,
-                      },
-                      backgroundSettings: {
-                        transitionDuration: settings.backgroundTriggers?.transitionDuration ?? 500,
-                        defaultTransitionType: settings.backgroundTriggers?.defaultTransitionType ?? 'fade',
-                      },
-                    };
-                    
-                    const rewardActions: RewardStoreActions = {
-                      updateCharacterStat: store.updateCharacterStat.bind(store),
-                      applyTriggerForCharacter: store.applyTriggerForCharacter?.bind(store),
-                      scheduleReturnToIdleForCharacter: store.scheduleReturnToIdleForCharacter?.bind(store),
-                      isSpriteLocked: store.isSpriteLocked?.bind(store),
-                      playSound: store.playSound?.bind(store),
-                      setBackground: store.setBackground?.bind(store),
-                      setActiveOverlays: store.setActiveOverlays?.bind(store),
-                    };
-                    
-                    const rewardResult = executeQuestCompletionRewards(
-                      hit.template,
-                      rewardContext,
-                      rewardActions
-                    );
-                    
-                    console.log(
-                      `[TriggerSystem] Quest "${hit.template.name}" rewards: ${rewardResult.successCount} succeeded, ${rewardResult.failureCount} failed`
-                    );
-                    
-                    // Add reward info to notification
-                    if (rewardResult.successCount > 0 && store.questSettings.showNotifications) {
-                      const rewardMessages = rewardResult.results
-                        .filter(r => r.success)
-                        .map(r => r.message)
-                        .filter(Boolean);
-                      
-                      if (rewardMessages.length > 0) {
-                        store.addQuestNotification({
-                          questId: hit.questId,
-                          questName: hit.template.name,
-                          type: 'reward_claimed',
-                          message: `Rewards: ${rewardMessages.join(', ')}`,
-                          rewards: hit.template.rewards,
-                        });
-                      }
-                    }
-                  }
+                  // Rewards are now executed by the store. No duplicate here.
                 }
                 break;
                 

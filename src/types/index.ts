@@ -1611,6 +1611,7 @@ export interface ToolsSettings {
   maxToolCallsPerTurn: number;
   characterConfigs: CharacterToolConfig[];
   usePromptBasedFallback?: boolean; // If true, always use prompt-based tools instead of native, even for providers that support native tool calling
+  disabledTools?: string[]; // Global disabled tool IDs — these are excluded for ALL characters
 }
 
 export const DEFAULT_TOOLS_SETTINGS: ToolsSettings = {
@@ -1618,6 +1619,7 @@ export const DEFAULT_TOOLS_SETTINGS: ToolsSettings = {
   maxToolCallsPerTurn: 2,
   characterConfigs: [],
   usePromptBasedFallback: false,
+  disabledTools: [],
 };
 
 // ============ API Types ============

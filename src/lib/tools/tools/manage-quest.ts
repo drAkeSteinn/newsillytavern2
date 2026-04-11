@@ -2,12 +2,12 @@
 // Tool: Manage Quest
 // ============================================
 // Category: in_character
-// Completes quest objectives when the character performs relevant actions
+// Validates quest objective completion and returns metadata
+// for the CLIENT to execute the actual completion (rewards, sprites, sounds, etc.)
+// This tool does NOT directly modify store state — it only validates and prepares data.
 
 import type { ToolDefinition, ToolContext, ToolExecutionResult } from '../types';
-import { useTavernStore } from '@/store';
-import { activateObjectiveDirectly, type QuestStoreAccessor } from '@/lib/quest/quest-reward-executor';
-import type { CharacterCard, QuestNotificationType, SessionQuestInstance, QuestTemplate } from '@/types';
+import type { SessionQuestInstance, QuestTemplate } from '@/types';
 
 export const manageQuestTool: ToolDefinition = {
   id: 'manage_quest',
@@ -57,19 +57,18 @@ export async function manageQuestExecutor(
   }
 
   try {
-    const store = useTavernStore.getState();
     const sessionId = context.sessionId;
     const characterId = context.characterId;
-    
+
     // Get quest data from context (passed from client)
     const sessionQuests: SessionQuestInstance[] = context.sessionQuests || [];
     const questTemplates: QuestTemplate[] = context.questTemplates || [];
-    
+
     // Filter active quests
-    const activeQuests = sessionQuests.filter(q => 
+    const activeQuests = sessionQuests.filter(q =>
       q.status === 'active' || q.status === 'available'
     );
-    
+
     if (activeQuests.length === 0) {
       return {
         success: false,
@@ -87,19 +86,19 @@ export async function manageQuestExecutor(
       objective: QuestTemplate['objectives'][0];
       template: QuestTemplate;
     } | null = null;
-    
+
     const normalizedKey = objectiveKey.toLowerCase().trim();
-    
+
     for (const quest of activeQuests) {
       const template = questTemplates.find(t => t.id === quest.templateId);
       if (!template) continue;
-      
+
       for (const objective of template.objectives || []) {
         const completionKeys = [
           objective.completion?.key,
           ...(objective.completion?.keys || [])
         ].filter(Boolean);
-        
+
         for (const key of completionKeys) {
           if (
             key?.toLowerCase().trim() === normalizedKey ||
@@ -110,12 +109,12 @@ export async function manageQuestExecutor(
             break;
           }
         }
-        
+
         if (foundObjective) break;
       }
       if (foundObjective) break;
     }
-    
+
     if (!foundObjective) {
       return {
         success: false,
@@ -126,9 +125,9 @@ export async function manageQuestExecutor(
         error: 'Objective not found',
       };
     }
-    
+
     const { quest, objective, template } = foundObjective;
-    
+
     // Check if already completed
     const sessionObj = quest.objectives.find(o => o.templateId === objective.id);
     if (sessionObj?.isCompleted) {
@@ -140,141 +139,43 @@ export async function manageQuestExecutor(
         questActivation: {
           type: 'complete_objective',
           key: objectiveKey,
-          metadata: { alreadyCompleted: true },
+          metadata: {
+            alreadyCompleted: true,
+            questTemplateId: template.id,
+            objectiveId: objective.id,
+            objectiveKey,
+            characterId,
+            questName: template.name,
+            objectiveName: objective.description,
+          },
         },
       };
     }
 
+    // Determine if completing this objective would auto-complete the quest.
+    // NOTE: This is an optimistic preview for display/toast only.
+    // The ACTUAL quest completion decision is made by store.completeObjective(),
+    // which correctly handles optional objectives and chain activation.
+    // Therefore, we ALWAYS send type='complete_objective' — the store handles everything.
+    const allObjectives = template.objectives || [];
+    const completedObjectiveIds = new Set(
+      quest.objectives
+        .filter(o => o.isCompleted && o.templateId !== objective.id)
+        .map(o => o.templateId)
+    );
+    completedObjectiveIds.add(objective.id);
+
+    // Build display message
     const lines: string[] = [];
-    let questActivation: ToolExecutionResult['questActivation'] | undefined;
-    
-    try {
-      // Create store accessor that uses context data
-      const storeAccessor: QuestStoreAccessor = {
-        getSessionQuests: (_sid: string) => sessionQuests,
-        getTemplates: () => questTemplates,
-        completeObjective: (sid: string, questTemplateId: string, objectiveId: string, charId?: string) => {
-          store.completeObjective?.(sid, questTemplateId, objectiveId, charId);
-        },
-        addQuestNotification: (notification: { questId: string; questTitle: string; type: string; message: string }) => {
-          const questNotification = {
-            ...notification,
-            type: notification.type as QuestNotificationType,
-          };
-          store.addQuestNotification?.(questNotification as any);
-        },
-      };
+    lines.push(`✓ Objetivo completado: ${objective.description}`);
 
-      const activationResult = activateObjectiveDirectly(
-        objectiveKey,
-        storeAccessor,
-        {
-          sessionId,
-          characterId,
-          character: null as unknown as CharacterCard,
-          sessionStats: undefined,
-          timestamp: Date.now(),
-          soundCollections: store.soundCollections,
-          soundTriggers: store.soundTriggers,
-          soundSequenceTriggers: store.soundSequenceTriggers,
-          backgroundPacks: store.backgroundTriggerPacks,
-          soundSettings: {
-            enabled: store.settings.sound?.enabled ?? false,
-            globalVolume: store.settings.sound?.globalVolume ?? 0.85,
-          },
-          backgroundSettings: {
-            transitionDuration: store.settings.backgroundTriggers?.transitionDuration ?? 500,
-            defaultTransitionType: store.settings.backgroundTriggers?.defaultTransitionType ?? 'fade',
-          },
-        },
-        {
-          updateCharacterStat: (sid, cid, key, value) => {
-            store.updateCharacterStat?.(sid, cid, key, value, 'trigger');
-          },
-          completeQuestObjective: (_sid, _qid, _objKey, _charId): boolean => {
-            // Already handled by the storeAccessor
-            return true;
-          },
-          applyTriggerForCharacter: (cid, hit) => {
-            store.applyTriggerForCharacter?.(cid, hit as any);
-          },
-          scheduleReturnToIdleForCharacter: (cid, triggerSpriteUrl, returnToMode, returnSpriteUrl, returnSpriteLabel, returnToIdleMs) => {
-            store.scheduleReturnToIdleForCharacter?.(cid, triggerSpriteUrl, returnToMode as any, returnSpriteUrl, returnSpriteLabel, returnToIdleMs);
-          },
-          setBackground: (url) => {
-            store.setBackground?.(url);
-          },
-          setActiveOverlays: (overlays) => {
-            store.setActiveOverlays?.(overlays as any);
-          },
-        },
-        {
-          updateCharacterStat: (sid, cid, key, value) => {
-            store.updateCharacterStat?.(sid, cid, key, value, 'trigger');
-          },
-          applyTriggerForCharacter: (cid, hit) => {
-            store.applyTriggerForCharacter?.(cid, hit as any);
-          },
-          scheduleReturnToIdleForCharacter: (cid, triggerSpriteUrl, returnToMode, returnSpriteUrl, returnSpriteLabel, returnToIdleMs) => {
-            store.scheduleReturnToIdleForCharacter?.(cid, triggerSpriteUrl, returnToMode as any, returnSpriteUrl, returnSpriteLabel, returnToIdleMs);
-          },
-          setBackground: (url) => {
-            store.setBackground?.(url);
-          },
-          setActiveOverlays: (overlays) => {
-            store.setActiveOverlays?.(overlays as any);
-          },
-        }
-      );
-
-      if (activationResult.success) {
-        questActivation = {
-          type: activationResult.questCompleted ? 'activate_quest' : 'complete_objective',
-          key: objectiveKey,
-          metadata: {
-            questId: activationResult.questId,
-            questName: template.name,
-            objectiveName: objective.description,
-            questCompleted: activationResult.questCompleted,
-            messages: activationResult.messages,
-          },
-        };
-
-        lines.push(`✓ Objetivo completado: ${objective.description}`);
-        
-        for (const msg of activationResult.messages) {
-          if (!lines.includes(msg)) {
-            lines.push(msg);
-          }
-        }
-        
-        if (narrative) {
-          lines.push('');
-          lines.push(`Narrativa: ${narrative}`);
-        }
-
-        if (activationResult.questCompleted) {
-          lines.push('');
-          lines.push(`🎉 ¡Misión "${template.name}" completada!`);
-        }
-
-        if (activationResult.errors.length > 0) {
-          for (const err of activationResult.errors) {
-            lines.push(`⚠️ ${err}`);
-          }
-        }
-      } else {
-        for (const err of activationResult.errors) {
-          lines.push(`❌ ${err}`);
-        }
-      }
-    } catch (error) {
-      console.error('[manage_quest] Error activating objective:', error);
-      lines.push(`❌ Error al completar el objetivo: ${error instanceof Error ? error.message : String(error)}`);
+    if (narrative) {
+      lines.push('');
+      lines.push(`Narrativa: ${narrative}`);
     }
 
     return {
-      success: questActivation?.metadata?.questId !== undefined,
+      success: true,
       toolName: 'manage_quest',
       result: {
         objectiveKey,
@@ -283,7 +184,20 @@ export async function manageQuestExecutor(
         narrative,
       },
       displayMessage: lines.join('\n'),
-      questActivation,
+      questActivation: {
+        // ALWAYS 'complete_objective' — the store handles quest auto-completion,
+        // rewards, chain activation, and notifications internally.
+        type: 'complete_objective',
+        key: objectiveKey,
+        metadata: {
+          questTemplateId: template.id,
+          objectiveId: objective.id,
+          objectiveKey,
+          characterId,
+          questName: template.name,
+          objectiveName: objective.description,
+        },
+      },
     };
   } catch (error) {
     return {

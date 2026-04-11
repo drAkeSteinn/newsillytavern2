@@ -127,8 +127,20 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   // Always allow viewing prompt for assistant messages
   const hasPromptData = message.metadata?.promptData && message.metadata.promptData.length > 0;
 
-  // Tools used for this message
-  const toolsUsed = message.metadata?.toolsUsed || [];
+  // Tools used for this message — deduplicate by name, prefer success over failure
+  const rawToolsUsed = message.metadata?.toolsUsed || [];
+  const toolsUsed = rawToolsUsed.reduce((acc: typeof rawToolsUsed, tool) => {
+    const existingIdx = acc.findIndex(t => t.name === tool.name);
+    if (existingIdx >= 0) {
+      // Keep the entry that is successful (or keep existing if both have same status)
+      if (tool.success !== false && acc[existingIdx].success === false) {
+        acc[existingIdx] = tool;
+      }
+    } else {
+      acc.push(tool);
+    }
+    return acc;
+  }, []);
 
   // Helper to get icon for tool
   const getToolIcon = (iconName?: string) => {

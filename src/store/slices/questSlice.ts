@@ -1,6 +1,20 @@
 // ============================================
 // Quest Slice - State management for quest/mission system
 // ============================================
+//
+// NOTE: Quest STATE (quests[]) and their actions (startQuest, completeQuest, etc.)
+// operate on the LEGACY quest system (state.quests array).
+//
+// The ACTIVE quest system lives in sessionSlice:
+//   - Quests are stored per-session in session.sessionQuests
+//   - Quest lifecycle (activate/complete/fail) is handled by sessionSlice functions
+//   - Objective progress is handled by sessionSlice.progressQuestObjective
+//
+// Functions that were previously defined here and conflicted with sessionSlice
+// (getSessionQuests, getActiveQuests, completeQuest, failQuest, completeObjective,
+//  clearSessionQuests) have been REMOVED to prevent silent override bugs.
+// The sessionSlice versions are the correct ones to use.
+// ============================================
 
 import type { StateCreator } from 'zustand';
 import {
@@ -11,44 +25,14 @@ import {
   type QuestNotification,
   type QuestStatus,
   type QuestPriority,
-  type QuestTrigger,
 } from '@/types';
 
 // Re-export for convenience
 export { DEFAULT_QUEST_SETTINGS };
 
 // ============================================
-// Helper Functions
+// Helper Functions (Legacy - operates on state.quests)
 // ============================================
-
-function createDefaultQuest(
-  sessionId: string,
-  title: string,
-  description: string,
-  priority: QuestPriority = 'side'
-): Quest {
-  return {
-    id: `quest-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    sessionId,
-    title,
-    description,
-    status: 'active',
-    priority,
-    objectives: [],
-    rewards: [],
-    triggers: {
-      startKeywords: [],
-      completionKeywords: [],
-      autoStart: false,
-      autoComplete: true,
-      trackProgress: true,
-    },
-    updatedAt: new Date().toISOString(),
-    progress: 0,
-    isHidden: false,
-    isRepeatable: false,
-  };
-}
 
 function calculateProgress(objectives: QuestObjective[]): number {
   if (objectives.length === 0) return 0;
@@ -65,30 +49,29 @@ function calculateProgress(objectives: QuestObjective[]): number {
 // ============================================
 
 export interface QuestSlice {
-  // Quest State
+  // Quest State (Legacy)
   quests: Quest[];
+  
+  // Settings (Active - used across the app)
   questSettings: QuestSettings;
+  
+  // Notifications (Active - used across the app)
   questNotifications: QuestNotification[];
   
-  // Quest CRUD
+  // Legacy Quest CRUD (operates on state.quests — mostly unused)
   addQuest: (quest: Quest) => void;
   updateQuest: (id: string, updates: Partial<Quest>) => void;
   deleteQuest: (id: string) => void;
-  getSessionQuests: (sessionId: string) => Quest[];
-  getActiveQuests: (sessionId: string) => Quest[];
   getQuestById: (id: string) => Quest | undefined;
   
-  // Quest Status Actions
+  // Legacy Quest Status Actions (operates on state.quests)
   startQuest: (quest: Omit<Quest, 'id' | 'updatedAt' | 'progress' | 'status' | 'startedAt'>) => Quest;
-  completeQuest: (id: string) => void;
-  failQuest: (id: string) => void;
   pauseQuest: (id: string) => void;
   resumeQuest: (id: string) => void;
   
-  // Objective Actions
+  // Legacy Objective Actions (operates on state.quests)
   addObjective: (questId: string, objective: QuestObjective) => void;
   updateObjective: (questId: string, objectiveId: string, updates: Partial<QuestObjective>) => void;
-  completeObjective: (questId: string, objectiveId: string) => void;
   progressObjective: (questId: string, objectiveId: string, amount: number) => void;
   removeObjective: (questId: string, objectiveId: string) => void;
   
@@ -100,9 +83,6 @@ export interface QuestSlice {
   markNotificationRead: (id: string) => void;
   clearQuestNotifications: () => void;
   getUnreadNotifications: () => QuestNotification[];
-  
-  // Utility
-  clearSessionQuests: (sessionId: string) => void;
 }
 
 // ============================================
@@ -115,7 +95,9 @@ export const createQuestSlice: StateCreator<QuestSlice, [], [], QuestSlice> = (s
   questSettings: DEFAULT_QUEST_SETTINGS,
   questNotifications: [],
   
-  // Quest CRUD
+  // ========================================
+  // Legacy Quest CRUD (operates on state.quests)
+  // ========================================
   addQuest: (quest) => set((state) => ({
     quests: [...state.quests, quest]
   })),
@@ -130,21 +112,14 @@ export const createQuestSlice: StateCreator<QuestSlice, [], [], QuestSlice> = (s
     quests: state.quests.filter(q => q.id !== id)
   })),
   
-  getSessionQuests: (sessionId) => {
-    return get().quests.filter(q => q.sessionId === sessionId);
-  },
-  
-  getActiveQuests: (sessionId) => {
-    return get().quests.filter(q => 
-      q.sessionId === sessionId && q.status === 'active'
-    );
-  },
-  
   getQuestById: (id) => {
     return get().quests.find(q => q.id === id);
   },
   
-  // Quest Status Actions
+  // ========================================
+  // Legacy Quest Status Actions (operates on state.quests)
+  // NOTE: For session-based quests, use sessionSlice.activateQuest/completeQuest/failQuest
+  // ========================================
   startQuest: (questData) => {
     const quest: Quest = {
       ...questData,
@@ -170,57 +145,6 @@ export const createQuestSlice: StateCreator<QuestSlice, [], [], QuestSlice> = (s
     return quest;
   },
   
-  completeQuest: (id) => set((state) => {
-    const quest = state.quests.find(q => q.id === id);
-    if (!quest) return state;
-    
-    // Add notification
-    setTimeout(() => {
-      get().addQuestNotification({
-        questId: id,
-        questTitle: quest.title,
-        type: 'completed',
-        message: `¡Misión completada: ${quest.title}!`,
-      });
-    }, 0);
-    
-    return {
-      quests: state.quests.map(q => 
-        q.id === id ? {
-          ...q,
-          status: 'completed' as QuestStatus,
-          progress: 100,
-          completedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        } : q
-      )
-    };
-  }),
-  
-  failQuest: (id) => set((state) => {
-    const quest = state.quests.find(q => q.id === id);
-    if (!quest) return state;
-    
-    setTimeout(() => {
-      get().addQuestNotification({
-        questId: id,
-        questTitle: quest.title,
-        type: 'failed',
-        message: `Misión fallida: ${quest.title}`,
-      });
-    }, 0);
-    
-    return {
-      quests: state.quests.map(q => 
-        q.id === id ? {
-          ...q,
-          status: 'failed' as QuestStatus,
-          updatedAt: new Date().toISOString(),
-        } : q
-      )
-    };
-  }),
-  
   pauseQuest: (id) => set((state) => ({
     quests: state.quests.map(q => 
       q.id === id ? {
@@ -241,7 +165,10 @@ export const createQuestSlice: StateCreator<QuestSlice, [], [], QuestSlice> = (s
     )
   })),
   
-  // Objective Actions
+  // ========================================
+  // Legacy Objective Actions (operates on state.quests)
+  // NOTE: For session-based objectives, use sessionSlice.progressQuestObjective
+  // ========================================
   addObjective: (questId, objective) => set((state) => ({
     quests: state.quests.map(q => 
       q.id === questId ? {
@@ -263,46 +190,6 @@ export const createQuestSlice: StateCreator<QuestSlice, [], [], QuestSlice> = (s
       } : q
     )
   })),
-  
-  completeObjective: (questId, objectiveId) => set((state) => {
-    const quest = state.quests.find(q => q.id === questId);
-    if (!quest) return state;
-    
-    const objective = quest.objectives.find(o => o.id === objectiveId);
-    
-    // Update objective and calculate new progress
-    const updatedObjectives = quest.objectives.map(o =>
-      o.id === objectiveId ? { ...o, isCompleted: true, currentCount: o.targetCount } : o
-    );
-    
-    const newProgress = calculateProgress(updatedObjectives);
-    const allCompleted = updatedObjectives.filter(o => !o.isOptional).every(o => o.isCompleted);
-    
-    // Add notification
-    if (objective) {
-      setTimeout(() => {
-        get().addQuestNotification({
-          questId,
-          questTitle: quest.title,
-          type: 'objective_complete',
-          message: `Objetivo completado: ${objective.description}`,
-        });
-      }, 0);
-    }
-    
-    return {
-      quests: state.quests.map(q => 
-        q.id === questId ? {
-          ...q,
-          objectives: updatedObjectives,
-          progress: newProgress,
-          status: allCompleted ? 'completed' as QuestStatus : q.status,
-          completedAt: allCompleted ? new Date().toISOString() : q.completedAt,
-          updatedAt: new Date().toISOString(),
-        } : q
-      )
-    };
-  }),
   
   progressObjective: (questId, objectiveId, amount) => set((state) => {
     const quest = state.quests.find(q => q.id === questId);
@@ -354,12 +241,16 @@ export const createQuestSlice: StateCreator<QuestSlice, [], [], QuestSlice> = (s
     };
   }),
   
+  // ========================================
   // Settings Actions
+  // ========================================
   setQuestSettings: (settings) => set((state) => ({
     questSettings: { ...state.questSettings, ...settings }
   })),
   
+  // ========================================
   // Notification Actions
+  // ========================================
   addQuestNotification: (notification) => set((state) => ({
     questNotifications: [
       {
@@ -383,9 +274,4 @@ export const createQuestSlice: StateCreator<QuestSlice, [], [], QuestSlice> = (s
   getUnreadNotifications: () => {
     return get().questNotifications.filter(n => !n.read);
   },
-  
-  // Utility
-  clearSessionQuests: (sessionId) => set((state) => ({
-    quests: state.quests.filter(q => q.sessionId !== sessionId)
-  })),
 });
