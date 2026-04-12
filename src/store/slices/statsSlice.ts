@@ -1146,30 +1146,40 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
 
 /**
  * Evaluate a single requirement against current stats
+ * Supports target requirements (checking attributes of other characters or persona)
  */
 export function evaluateRequirement(
   requirement: StatRequirement,
-  attributeValues: Record<string, number | string>
+  attributeValues: Record<string, number | string>,
+  sessionStats?: SessionStats | null
 ): boolean {
-  const currentValue = attributeValues[requirement.attributeKey];
-  
+  let currentValue: number | string | undefined;
+
+  if (requirement.targetCharacterId) {
+    // Target mode - look up attribute from another character or persona
+    currentValue = sessionStats?.characterStats?.[requirement.targetCharacterId]?.attributeValues?.[requirement.attributeKey];
+  } else {
+    // Self mode - use own attribute values
+    currentValue = attributeValues[requirement.attributeKey];
+  }
+
   if (currentValue === undefined) return false;
-  
+
   const currentNum = typeof currentValue === 'number' ? currentValue : parseFloat(currentValue);
   const valueNum = typeof requirement.value === 'number' ? requirement.value : parseFloat(requirement.value);
-  
+
   if (isNaN(currentNum) || isNaN(valueNum)) {
     // String comparison for non-numeric values
     const currentStr = String(currentValue);
     const valueStr = String(requirement.value);
-    
+
     switch (requirement.operator) {
       case '==': return currentStr === valueStr;
       case '!=': return currentStr !== valueStr;
       default: return false;
     }
   }
-  
+
   switch (requirement.operator) {
     case '<': return currentNum < valueNum;
     case '<=': return currentNum <= valueNum;
@@ -1178,8 +1188,8 @@ export function evaluateRequirement(
     case '==': return currentNum === valueNum;
     case '!=': return currentNum !== valueNum;
     case 'between':
-      const maxNum = typeof requirement.valueMax === 'number' 
-        ? requirement.valueMax 
+      const maxNum = typeof requirement.valueMax === 'number'
+        ? requirement.valueMax
         : parseFloat(requirement.valueMax?.toString() || '0');
       return currentNum >= valueNum && currentNum <= maxNum;
     default: return false;
@@ -1191,10 +1201,11 @@ export function evaluateRequirement(
  */
 export function evaluateRequirements(
   requirements: StatRequirement[],
-  attributeValues: Record<string, number | string>
+  attributeValues: Record<string, number | string>,
+  sessionStats?: SessionStats | null
 ): boolean {
   if (!requirements || requirements.length === 0) return true;
-  return requirements.every(req => evaluateRequirement(req, attributeValues));
+  return requirements.every(req => evaluateRequirement(req, attributeValues, sessionStats));
 }
 
 /**
@@ -1202,9 +1213,10 @@ export function evaluateRequirements(
  */
 export function filterSkillsByRequirements(
   skills: SkillDefinition[],
-  attributeValues: Record<string, number | string>
+  attributeValues: Record<string, number | string>,
+  sessionStats?: SessionStats | null
 ): SkillDefinition[] {
-  return skills.filter(skill => evaluateRequirements(skill.requirements, attributeValues));
+  return skills.filter(skill => evaluateRequirements(skill.requirements, attributeValues, sessionStats));
 }
 
 /**
@@ -1212,9 +1224,10 @@ export function filterSkillsByRequirements(
  */
 export function filterIntentionsByRequirements(
   intentions: IntentionDefinition[],
-  attributeValues: Record<string, number | string>
+  attributeValues: Record<string, number | string>,
+  sessionStats?: SessionStats | null
 ): IntentionDefinition[] {
-  return intentions.filter(intention => evaluateRequirements(intention.requirements, attributeValues));
+  return intentions.filter(intention => evaluateRequirements(intention.requirements, attributeValues, sessionStats));
 }
 
 /**
@@ -1222,7 +1235,8 @@ export function filterIntentionsByRequirements(
  */
 export function filterInvitationsByRequirements(
   invitations: InvitationDefinition[],
-  attributeValues: Record<string, number | string>
+  attributeValues: Record<string, number | string>,
+  sessionStats?: SessionStats | null
 ): InvitationDefinition[] {
-  return invitations.filter(invitation => evaluateRequirements(invitation.requirements, attributeValues));
+  return invitations.filter(invitation => evaluateRequirements(invitation.requirements, attributeValues, sessionStats));
 }

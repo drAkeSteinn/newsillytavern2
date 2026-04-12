@@ -250,9 +250,10 @@ export function buildSkillsBlock(
   attributeValues: Record<string, number | string>,
   header: string,
   questTemplates: { objectives?: { completion?: { key?: string; keys?: string[] }; description?: string }[] }[] = [],
-  characterName?: string
+  characterName?: string,
+  sessionStats?: SessionStats
 ): string {
-  const availableSkills = filterSkillsByRequirements(skills, attributeValues);
+  const availableSkills = filterSkillsByRequirements(skills, attributeValues, sessionStats);
 
   if (availableSkills.length === 0) {
     return '';
@@ -330,9 +331,10 @@ export function buildSkillsBlock(
 export function buildIntentionsBlock(
   intentions: IntentionDefinition[],
   attributeValues: Record<string, number | string>,
-  header: string
+  header: string,
+  sessionStats?: SessionStats
 ): string {
-  const availableIntentions = filterIntentionsByRequirements(intentions, attributeValues);
+  const availableIntentions = filterIntentionsByRequirements(intentions, attributeValues, sessionStats);
 
   if (availableIntentions.length === 0) {
     return '';
@@ -386,7 +388,7 @@ export function buildInvitationsBlock(
   userName?: string,
   characterName?: string
 ): string {
-  const availableInvitations = filterInvitationsByRequirements(invitations, attributeValues);
+  const availableInvitations = filterInvitationsByRequirements(invitations, attributeValues, sessionStats);
 
   if (availableInvitations.length === 0) {
     return '';
@@ -471,7 +473,7 @@ export function resolveInvitations(
   userName?: string,
   characterName?: string
 ): ResolvedInvitation[] {
-  const availableInvitations = filterInvitationsByRequirements(invitations, attributeValues);
+  const availableInvitations = filterInvitationsByRequirements(invitations, attributeValues, sessionStats);
   const resolved: ResolvedInvitation[] = [];
 
   availableInvitations.forEach((invitation) => {
@@ -627,13 +629,15 @@ export function resolveStats(
     attributeValues,
     statsConfig.blockHeaders.skills,
     context.questTemplates || [],
-    context.characterName
+    context.characterName,
+    sessionStats
   );
   
   const intentionsBlock = buildIntentionsBlock(
     statsConfig.intentions,
     attributeValues,
-    statsConfig.blockHeaders.intentions
+    statsConfig.blockHeaders.intentions,
+    sessionStats
   );
   
   const invitationsBlock = buildInvitationsBlock(
@@ -656,9 +660,9 @@ export function resolveStats(
   );
 
   // Filter available items
-  const availableSkills = filterSkillsByRequirements(statsConfig.skills, attributeValues);
-  const availableIntentions = filterIntentionsByRequirements(statsConfig.intentions, attributeValues);
-  const availableInvitations = filterInvitationsByRequirements(statsConfig.invitations, attributeValues);
+  const availableSkills = filterSkillsByRequirements(statsConfig.skills, attributeValues, sessionStats);
+  const availableIntentions = filterIntentionsByRequirements(statsConfig.intentions, attributeValues, sessionStats);
+  const availableInvitations = filterInvitationsByRequirements(statsConfig.invitations, attributeValues, sessionStats);
 
   return {
     attributes: attributesMap,

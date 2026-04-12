@@ -643,3 +643,32 @@ Stage Summary:
 - Target dropdown shows all other characters with attributes + persona (if attributes configured)
 - Selecting a target shows their available attributes; numeric shows action+value, text shows text input
 - Lint: 0 errors. Compilation: GET / 200
+---
+Task ID: 7
+Agent: Main Agent
+Task: Add target-type requirements for character actions (check other character/persona attributes)
+
+Work Log:
+- Added `targetCharacterId` and `targetAttributeName` optional fields to `StatRequirement` type in types/index.ts
+- Updated `RequirementEditor` component (stats-editor.tsx) with mode toggle dropdown (🎭 Yo / 🎯 Target):
+  - Self mode: shows own attribute dropdown (existing behavior)
+  - Target mode: shows target dropdown → attribute dropdown → operator + value
+  - Target dropdown shows other characters with attributes + persona (same targets as reward system)
+- Passed `availableTargets` to RequirementEditor from all 3 parent editors:
+  - SkillEditor (actions)
+  - SolicitudDefinitionEditor (solicitudes)
+  - InvitationEditor (peticiones)
+- Updated `StatsEditor` to pass `availableTargets` to SolicitudDefinitionEditor and InvitationEditor
+- Updated `checkAllRequirements()` in skill-activation-handler.ts:
+  - Added optional `sessionStats` parameter
+  - For target requirements: looks up attribute value from `sessionStats.characterStats[targetCharacterId]`
+  - For self requirements: uses existing `currentValues` (unchanged behavior)
+- Updated both call sites of `checkAllRequirements` to pass `sessionStats`
+- Fixed attribute dropdown keys with index fallback (`attr.key || \`attr-${i}\``) in all 3 locations
+
+Stage Summary:
+- Files modified: src/types/index.ts, src/components/tavern/stats-editor.tsx, src/lib/triggers/handlers/skill-activation-handler.ts, src/components/tavern/character-editor.tsx
+- New requirement mode: "Target" allows checking attributes of other characters or persona
+- Works alongside existing "Self" mode (backward compatible)
+- Target requirements use persona's __user__ entry in sessionStats.characterStats for lookup
+- Lint: 0 errors. Compilation: successful

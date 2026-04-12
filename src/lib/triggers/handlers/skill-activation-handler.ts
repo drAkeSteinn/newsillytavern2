@@ -184,11 +184,13 @@ function checkRequirement(
 
 /**
  * Check all requirements for a skill against current attribute values
+ * Supports target requirements (checking attributes of other characters or persona)
  */
 export function checkAllRequirements(
   requirements: StatRequirement[],
   statsConfig: CharacterStatsConfig,
-  currentValues: Record<string, number | string>
+  currentValues: Record<string, number | string>,
+  sessionStats?: SessionStats
 ): RequirementCheckResult {
   const result: RequirementCheckResult = {
     met: true,
@@ -198,9 +200,23 @@ export function checkAllRequirements(
   for (const requirement of requirements) {
     if (!requirement.attributeKey) continue;
 
-    const attribute = statsConfig.attributes.find(a => a.key === requirement.attributeKey);
-    const currentValue = currentValues[requirement.attributeKey];
-    const attributeName = attribute?.name || requirement.attributeKey;
+    // Determine where to get the attribute value from
+    let currentValue: number | string | undefined;
+    let attributeName: string;
+
+    if (requirement.targetCharacterId) {
+      // Target mode - get value from another character or persona
+      const targetCharStats = sessionStats?.characterStats?.[requirement.targetCharacterId];
+      currentValue = targetCharStats?.attributeValues?.[requirement.attributeKey];
+      attributeName = requirement.targetAttributeName
+        ? `${requirement.targetAttributeName} (${requirement.attributeKey})`
+        : requirement.attributeKey;
+    } else {
+      // Self mode - get value from own attributes
+      const attribute = statsConfig.attributes.find(a => a.key === requirement.attributeKey);
+      currentValue = currentValues[requirement.attributeKey];
+      attributeName = attribute?.name || requirement.attributeKey;
+    }
 
     const check = checkRequirement(requirement, currentValue, attributeName);
 
@@ -408,7 +424,8 @@ export function detectSkillActivations(
       const requirementCheck = checkAllRequirements(
         skill.requirements || [],
         statsConfig,
-        currentValues
+        currentValues,
+        sessionStats
       );
       
       const match: SkillActivationMatch = {
@@ -504,7 +521,8 @@ export function detectSkillActivationsIncremental(
       const requirementCheck = checkAllRequirements(
         skill.requirements || [],
         statsConfig,
-        currentValues
+        currentValues,
+        sessionStats
       );
       
       const match: SkillActivationMatch = {

@@ -593,8 +593,8 @@ function AttributeEditor({ attribute, index, onChange, onDelete, allAttributes, 
                                           <SelectValue placeholder="Atributo..." />
                                         </SelectTrigger>
                                         <SelectContent>
-                                          {targetAttrs.map(attr => (
-                                            <SelectItem key={attr.key} value={attr.key}>
+                                          {targetAttrs.map((attr, i) => (
+                                            <SelectItem key={attr.key || `attr-${i}`} value={attr.key}>
                                               {attr.name} ({attr.key})
                                             </SelectItem>
                                           ))}
@@ -1002,8 +1002,8 @@ function AttributeEditor({ attribute, index, onChange, onDelete, allAttributes, 
                                           <SelectValue placeholder="Atributo..." />
                                         </SelectTrigger>
                                         <SelectContent>
-                                          {targetAttrs.map(attr => (
-                                            <SelectItem key={attr.key} value={attr.key}>
+                                          {targetAttrs.map((attr, i) => (
+                                            <SelectItem key={attr.key || `attr-${i}`} value={attr.key}>
                                               {attr.name} ({attr.key})
                                             </SelectItem>
                                           ))}
@@ -1536,6 +1536,7 @@ function AttributeHUDPreview({ attribute }: AttributeHUDPreviewProps) {
 interface RequirementEditorProps {
   requirement: StatRequirement;
   availableAttributes: AttributeDefinition[];
+  availableTargets?: StatsEditorProps['availableTargets'];
   onChange: (updates: Partial<StatRequirement>) => void;
   onDelete: () => void;
 }
@@ -1551,26 +1552,98 @@ const OPERATOR_OPTIONS: { value: RequirementOperator; label: string; description
   { value: 'between', label: '∈', description: 'Entre (rango)' },
 ];
 
-function RequirementEditor({ requirement, availableAttributes, onChange, onDelete }: RequirementEditorProps) {
+function RequirementEditor({ requirement, availableAttributes, availableTargets = [], onChange, onDelete }: RequirementEditorProps) {
   const selectedOperator = OPERATOR_OPTIONS.find(op => op.value === requirement.operator);
-  
+  const isTargetMode = !!requirement.targetCharacterId;
+  const selectedTarget = isTargetMode ? availableTargets.find(t => t.id === requirement.targetCharacterId) : undefined;
+  const targetAttrs = selectedTarget?.attributes || [];
+
   return (
     <div className="flex items-center gap-2 bg-muted/50 rounded p-2 flex-wrap">
-      {/* Attribute selector */}
+      {/* Target/Mode indicator */}
       <Select
-        value={requirement.attributeKey}
-        onValueChange={(value) => onChange({ attributeKey: value })}
+        value={isTargetMode ? 'target' : 'self'}
+        onValueChange={(value) => {
+          if (value === 'target') {
+            onChange({ attributeKey: '', targetCharacterId: '', targetAttributeName: '' });
+          } else {
+            onChange({ attributeKey: '', targetCharacterId: undefined, targetAttributeName: undefined });
+          }
+        }}
       >
-        <SelectTrigger className="h-7 w-24 text-xs">
-          <SelectValue placeholder="Atributo" />
+        <SelectTrigger className="h-7 w-16 text-xs">
+          <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {availableAttributes.map(attr => (
-            <SelectItem key={attr.id} value={attr.key}>{attr.name}</SelectItem>
-          ))}
+          <SelectItem value="self">
+            <span className="flex items-center gap-1">🎭 Yo</span>
+          </SelectItem>
+          <SelectItem value="target">
+            <span className="flex items-center gap-1">🎯 Target</span>
+          </SelectItem>
         </SelectContent>
       </Select>
-      
+
+      {isTargetMode ? (
+        <>
+          {/* Target selector */}
+          <Select
+            value={requirement.targetCharacterId || ''}
+            onValueChange={(value) => {
+              const target = availableTargets.find(t => t.id === value);
+              onChange({ targetCharacterId: value, attributeKey: '', targetAttributeName: target?.name || '' });
+            }}
+          >
+            <SelectTrigger className="h-7 w-28 text-xs">
+              <SelectValue placeholder="Target..." />
+            </SelectTrigger>
+            <SelectContent>
+              {availableTargets.map(t => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.id === '__user__' ? '👤 ' : '🎭 '}{t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Target attribute selector */}
+          <Select
+            value={requirement.attributeKey}
+            onValueChange={(value) => {
+              const attr = targetAttrs.find(a => a.key === value);
+              onChange({ attributeKey: value, targetAttributeName: attr?.name || '' });
+            }}
+            disabled={!requirement.targetCharacterId}
+          >
+            <SelectTrigger className="h-7 w-28 text-xs">
+              <SelectValue placeholder="Atributo..." />
+            </SelectTrigger>
+            <SelectContent>
+              {targetAttrs.map((attr, i) => (
+                <SelectItem key={attr.key || `attr-${i}`} value={attr.key}>
+                  {attr.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </>
+      ) : (
+        /* Self attribute selector */
+        <Select
+          value={requirement.attributeKey}
+          onValueChange={(value) => onChange({ attributeKey: value })}
+        >
+          <SelectTrigger className="h-7 w-24 text-xs">
+            <SelectValue placeholder="Atributo" />
+          </SelectTrigger>
+          <SelectContent>
+            {availableAttributes.map(attr => (
+              <SelectItem key={attr.id} value={attr.key}>{attr.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+
       {/* Operator selector with descriptions */}
       <Tooltip>
         <TooltipTrigger asChild>
@@ -1578,7 +1651,7 @@ function RequirementEditor({ requirement, availableAttributes, onChange, onDelet
             value={requirement.operator}
             onValueChange={(value: RequirementOperator) => onChange({ operator: value })}
           >
-            <SelectTrigger className="h-7 w-20 text-xs">
+            <SelectTrigger className="h-7 w-16 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -1596,14 +1669,14 @@ function RequirementEditor({ requirement, availableAttributes, onChange, onDelet
         <TooltipContent className="max-w-xs">
           <p className="font-medium">{selectedOperator?.description}</p>
           <p className="text-xs text-muted-foreground mt-1">
-            {requirement.operator === 'between' 
+            {requirement.operator === 'between'
               ? `El valor debe estar entre ${requirement.value} y ${requirement.valueMax || '?'}`
               : `El valor debe ser ${selectedOperator?.description} ${requirement.value}`
             }
           </p>
         </TooltipContent>
       </Tooltip>
-      
+
       {/* Value input */}
       <Input
         type="number"
@@ -1611,7 +1684,7 @@ function RequirementEditor({ requirement, availableAttributes, onChange, onDelet
         onChange={(e) => onChange({ value: parseFloat(e.target.value) || 0 })}
         className="h-7 w-16 text-xs"
       />
-      
+
       {/* Max value for between operator */}
       {requirement.operator === 'between' && (
         <>
@@ -1628,7 +1701,7 @@ function RequirementEditor({ requirement, availableAttributes, onChange, onDelet
           />
         </>
       )}
-      
+
       {/* Delete button */}
       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onDelete}>
         <Trash2 className="w-3 h-3 text-muted-foreground" />
@@ -2014,6 +2087,7 @@ function SkillEditor({ skill, index, availableAttributes, availableObjectives = 
                   key={reqIndex}
                   requirement={req}
                   availableAttributes={availableAttributes}
+                  availableTargets={availableTargets}
                   onChange={(updates) => {
                     const newReqs = [...skill.requirements];
                     newReqs[reqIndex] = { ...newReqs[reqIndex], ...updates };
@@ -2471,8 +2545,8 @@ function SkillEditor({ skill, index, availableAttributes, availableObjectives = 
                                   <SelectValue placeholder="Atributo..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {targetAttrs.map(attr => (
-                                    <SelectItem key={attr.key} value={attr.key}>
+                                  {targetAttrs.map((attr, i) => (
+                                    <SelectItem key={attr.key || `attr-${i}`} value={attr.key}>
                                       {attr.name} ({attr.key})
                                     </SelectItem>
                                   ))}
@@ -2759,11 +2833,12 @@ interface SolicitudDefinitionEditorProps {
   solicitud: SolicitudDefinition;
   index: number;
   availableAttributes: AttributeDefinition[];
+  availableTargets?: StatsEditorProps['availableTargets'];
   onChange: (index: number, updates: Partial<SolicitudDefinition>) => void;
   onDelete: (index: number) => void;
 }
 
-function SolicitudDefinitionEditor({ solicitud, index, availableAttributes, onChange, onDelete }: SolicitudDefinitionEditorProps) {
+function SolicitudDefinitionEditor({ solicitud, index, availableAttributes, availableTargets = [], onChange, onDelete }: SolicitudDefinitionEditorProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -2942,6 +3017,7 @@ function SolicitudDefinitionEditor({ solicitud, index, availableAttributes, onCh
                   key={reqIndex}
                   requirement={req}
                   availableAttributes={availableAttributes}
+                  availableTargets={availableTargets}
                   onChange={(updates) => {
                     const newReqs = [...solicitud.requirements];
                     newReqs[reqIndex] = { ...newReqs[reqIndex], ...updates };
@@ -2974,11 +3050,12 @@ interface InvitationEditorProps {
   index: number;
   availableAttributes: AttributeDefinition[];
   allCharacters?: { id: string; name: string; solicitudDefinitions: SolicitudDefinition[] }[];
+  availableTargets?: StatsEditorProps['availableTargets'];
   onChange: (index: number, updates: Partial<InvitationDefinition>) => void;
   onDelete: (index: number) => void;
 }
 
-function InvitationEditor({ invitation, index, availableAttributes, allCharacters = [], onChange, onDelete }: InvitationEditorProps) {
+function InvitationEditor({ invitation, index, availableAttributes, allCharacters = [], availableTargets = [], onChange, onDelete }: InvitationEditorProps) {
   const [expanded, setExpanded] = useState(false);
 
   // Get selected character's solicitudes
@@ -3141,6 +3218,7 @@ function InvitationEditor({ invitation, index, availableAttributes, allCharacter
                   key={reqIndex}
                   requirement={req}
                   availableAttributes={availableAttributes}
+                  availableTargets={availableTargets}
                   onChange={(updates) => {
                     const newReqs = [...invitation.requirements];
                     newReqs[reqIndex] = { ...newReqs[reqIndex], ...updates };
@@ -3661,6 +3739,7 @@ export function StatsEditor({ statsConfig, onChange, allCharacters = [], questTe
                       solicitud={solicitud}
                       index={index}
                       availableAttributes={config.attributes}
+                      availableTargets={availableTargets}
                       onChange={updateSolicitudDefinition}
                       onDelete={deleteSolicitudDefinition}
                     />
@@ -3735,6 +3814,7 @@ export function StatsEditor({ statsConfig, onChange, allCharacters = [], questTe
                       index={index}
                       availableAttributes={config.attributes}
                       allCharacters={allCharacters}
+                      availableTargets={availableTargets}
                       onChange={updateInvitation}
                       onDelete={deleteInvitation}
                     />

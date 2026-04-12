@@ -3079,10 +3079,14 @@ export type CostOperator = '+' | '-' | '*' | '/' | '=' | 'set_min' | 'set_max';
 
 // Single requirement for skills/intentions/invitations
 export interface StatRequirement {
-  attributeKey: string;      // Key del atributo: "vida", "mana"
+  attributeKey: string;      // Key del atributo: "vida", "mana" (empty when target mode)
   operator: RequirementOperator;
   value: number | string;
   valueMax?: number;         // Para operador 'between'
+
+  // Target mode - requisito sobre atributo de otro personaje o persona
+  targetCharacterId?: string; // ID del target, o '__user__' para la persona. Cuando se establece, attributeKey se refiere al atributo del target.
+  targetAttributeName?: string; // Nombre del atributo del target (para display)
 }
 
 // Activation cost - modifies attribute when skill is used

@@ -155,35 +155,37 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
       name: string;
       attributes: Array<{ key: string; name: string; type: 'number' | 'keyword' | 'text'; min?: number; max?: number }>;
     }> = [];
+    // Helper: map attributes filtering out those without a valid key
+    const mapAttrs = (attrs: Array<{ key: string; name: string; type: 'number' | 'keyword' | 'text'; min?: number; max?: number }>) =>
+      attrs.filter(a => a.key && a.key.trim() !== '').map(a => ({
+        key: a.key,
+        name: a.name,
+        type: a.type,
+        min: a.min,
+        max: a.max,
+      }));
+
     // Add OTHER characters with attributes (exclude the one being edited)
     characters.forEach(c => {
-      if (c.id !== characterId && c.statsConfig?.enabled && (c.statsConfig.attributes?.length || 0) > 0) {
+      const attrs = mapAttrs(c.statsConfig?.attributes || []);
+      if (c.id !== characterId && c.statsConfig?.enabled && attrs.length > 0) {
         targets.push({
           id: c.id,
           name: c.name,
-          attributes: (c.statsConfig.attributes || []).map(a => ({
-            key: a.key,
-            name: a.name,
-            type: a.type,
-            min: a.min,
-            max: a.max,
-          })),
+          attributes: attrs,
         });
       }
     });
     // Add active persona with attributes
-    if (activePersona?.statsConfig?.enabled && (activePersona.statsConfig.attributes?.length || 0) > 0) {
-      targets.push({
-        id: '__user__',
-        name: activePersona.name || 'Persona',
-        attributes: (activePersona.statsConfig.attributes || []).map(a => ({
-          key: a.key,
-          name: a.name,
-          type: a.type,
-          min: a.min,
-          max: a.max,
-        })),
-      });
+    if (activePersona?.statsConfig?.enabled) {
+      const attrs = mapAttrs(activePersona.statsConfig.attributes || []);
+      if (attrs.length > 0) {
+        targets.push({
+          id: '__user__',
+          name: activePersona.name || 'Persona',
+          attributes: attrs,
+        });
+      }
     }
     return targets;
   }, [characters, characterId, activePersona]);
