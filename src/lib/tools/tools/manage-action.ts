@@ -12,6 +12,7 @@
 
 import type { ToolDefinition, ToolContext, ToolExecutionResult } from '../types';
 import type { SkillDefinition } from '@/types';
+import { checkAllRequirements } from '@/lib/triggers/handlers/skill-activation-handler';
 
 export const manageActionTool: ToolDefinition = {
   id: 'manage_action',
@@ -118,6 +119,33 @@ export async function manageActionExecutor(
         displayMessage: `Error: No se encontró una acción con la key "${actionKey}".${hint}`,
         error: 'Action not found',
       };
+    }
+
+    // Check requirements (both self and target requirements)
+    if (matchedSkill.requirements && matchedSkill.requirements.length > 0) {
+      const charStats = context.sessionStats?.characterStats?.[characterId];
+      const currentValues = charStats?.attributeValues || {};
+
+      const requirementCheck = checkAllRequirements(
+        matchedSkill.requirements,
+        statsConfig,
+        currentValues,
+        context.sessionStats
+      );
+
+      if (!requirementCheck.met) {
+        const failedDescs = requirementCheck.failedRequirements.map(fr =>
+          `${fr.attributeName}: necesita ${fr.operator} ${fr.requiredValue} (actual: ${fr.currentValue})`
+        ).join('; ');
+
+        return {
+          success: false,
+          toolName: 'manage_action',
+          result: null,
+          displayMessage: `❌ No se puede ejecutar "${matchedSkill.name}": requisitos no cumplidos.\n${failedDescs}`,
+          error: 'Requirements not met',
+        };
+      }
     }
 
     // Build display message

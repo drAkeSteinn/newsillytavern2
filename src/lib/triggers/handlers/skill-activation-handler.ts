@@ -127,6 +127,47 @@ function checkRequirement(
     };
   }
 
+  const isTextOperator = requirement.operator === 'contains' || requirement.operator === 'not_contains';
+
+  // Text comparison for text operators or non-numeric values
+  if (isTextOperator || (typeof currentValue === 'string' && isNaN(parseFloat(currentValue)))) {
+    const currentStr = String(currentValue).toLowerCase();
+    const requiredStr = String(requirement.value).toLowerCase();
+
+    let met = false;
+    switch (requirement.operator) {
+      case '==':
+        met = currentStr === requiredStr;
+        break;
+      case '!=':
+        met = currentStr !== requiredStr;
+        break;
+      case 'contains':
+        met = currentStr.includes(requiredStr);
+        break;
+      case 'not_contains':
+        met = !currentStr.includes(requiredStr);
+        break;
+      default:
+        met = false;
+    }
+
+    if (!met) {
+      return {
+        met: false,
+        failedRequirement: {
+          attributeKey: requirement.attributeKey,
+          attributeName,
+          currentValue,
+          requiredValue: requirement.value,
+          operator: requirement.operator,
+          valueMax: requirement.valueMax,
+        },
+      };
+    }
+    return { met: true };
+  }
+
   const current = typeof currentValue === 'string' ? parseFloat(currentValue) || 0 : currentValue;
   const required = typeof requirement.value === 'string' ? parseFloat(requirement.value) || 0 : requirement.value;
   const requiredMax = requirement.valueMax !== undefined

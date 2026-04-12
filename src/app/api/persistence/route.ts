@@ -103,9 +103,12 @@ export async function PUT(request: NextRequest) {
       // Sound system
       soundTriggers, soundCollections, soundSequenceTriggers,
       // Visual systems
-      backgrounds, backgroundPacks, spritePacks, sprites, hudTemplates,
+      backgrounds, backgroundPacks, backgroundIndex, backgroundTriggerPacks, backgroundCollections,
+      spritePacks, spritePacksV2, sprites, hudTemplates,
       // Advanced systems
       atmosphere, memory, quests, dialogue, inventory,
+      // Timeline
+      collections,
       // Active states
       activeStates,
     } = body;
@@ -133,7 +136,11 @@ export async function PUT(request: NextRequest) {
     // Visual systems
     if (backgrounds !== undefined) results.backgrounds = safeWritePersistentData('backgrounds', backgrounds);
     if (backgroundPacks !== undefined) results.backgroundPacks = safeWritePersistentData('backgroundPacks', backgroundPacks);
+    if (backgroundIndex !== undefined) results.backgroundIndex = safeWritePersistentData('backgroundIndex', backgroundIndex);
+    if (backgroundTriggerPacks !== undefined) results.backgroundTriggerPacks = safeWritePersistentData('backgroundTriggerPacks', backgroundTriggerPacks);
+    if (backgroundCollections !== undefined) results.backgroundCollections = safeWritePersistentData('backgroundCollections', backgroundCollections);
     if (spritePacks !== undefined) results.spritePacks = safeWritePersistentData('spritePacks', spritePacks);
+    if (spritePacksV2 !== undefined) results.spritePacksV2 = safeWritePersistentData('spritePacksV2', spritePacksV2);
     if (sprites !== undefined) results.sprites = safeWritePersistentData('sprites', sprites);
     if (hudTemplates !== undefined) results.hudTemplates = safeWritePersistentData('hudTemplates', hudTemplates);
 
@@ -143,6 +150,9 @@ export async function PUT(request: NextRequest) {
     if (quests !== undefined) results.quests = safeWritePersistentData('quests', quests);
     if (dialogue !== undefined) results.dialogue = safeWritePersistentData('dialogue', dialogue);
     if (inventory !== undefined) results.inventory = safeWritePersistentData('inventory', inventory);
+
+    // Timeline
+    if (collections !== undefined) results.collections = safeWritePersistentData('collections', collections);
 
     // Active states
     if (activeStates !== undefined) results.activeStates = safeWritePersistentData('activeStates', activeStates);

@@ -2,14 +2,53 @@
   {
     "id": "default",
     "name": "drAke",
-    "description": "Un hombre tranquilo y sereno",
+    "description": "{{user}} es un hombre con una vergota, se le nota el paquete en el pantalon.\nLe gusta el shibari y penetrar culos grandes y bocas babosas para hacer facefuck o que le hagan garganta profunda.\nEstado actual de {{user}}:\n{{pene_visible}}\n{{pene_erecto}}\n{{orgasmo}}",
     "avatar": "",
     "isActive": true,
     "createdAt": "2026-03-01T21:37:31.485Z",
-    "updatedAt": "2026-03-14T21:22:50.632Z",
+    "updatedAt": "2026-04-12T08:57:23.746Z",
     "statsConfig": {
       "enabled": true,
-      "attributes": [],
+      "attributes": [
+        {
+          "id": "attr-1775983375695",
+          "name": "Pene visible",
+          "key": "pene_visible",
+          "type": "text",
+          "defaultValue": "NO",
+          "showInHUD": true,
+          "caseSensitive": false,
+          "icon": "🍆",
+          "hudStyle": "status",
+          "color": "purple"
+        },
+        {
+          "id": "attr-1775983447360",
+          "name": "Pene erecto",
+          "key": "pene_erecto",
+          "type": "text",
+          "defaultValue": "NO",
+          "showInHUD": true,
+          "caseSensitive": false,
+          "icon": "⚡",
+          "color": "orange",
+          "hudStyle": "status"
+        },
+        {
+          "id": "attr-1775983488569",
+          "name": "Progreso de orgasmo",
+          "key": "orgasmo",
+          "type": "number",
+          "defaultValue": 0,
+          "showInHUD": true,
+          "caseSensitive": false,
+          "min": 0,
+          "max": 100,
+          "icon": "🤤",
+          "hudStyle": "progress",
+          "color": "white"
+        }
+      ],
       "skills": [],
       "intentions": [],
       "invitations": [

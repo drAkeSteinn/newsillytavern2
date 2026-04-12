@@ -5,11 +5,11 @@
  * during chat and injecting them as context into the LLM prompt.
  *
  * Results are SPLIT into two categories:
- * - Non-memory (lore, world, rules, events) → injected into system prompt
- * - Memory (auto-extracted facts, source_type='memory') → injected before chat history
+ * - Non-memory (lore, world, rules, events) → injected before chat history (first)
+ * - Memory (auto-extracted facts, source_type='memory') → injected before chat history (second)
  *
- * This separation leverages recency primacy: static knowledge (lore) goes with
- * the character definition, while dynamic memories go near the conversation.
+ * Both are injected before chat history in this order:
+ *   [CONTEXTO RELEVANTE] → [MEMORIA RELEVANTE] → [Historial del chat]
  *
  * Used by /api/chat/stream, /api/chat/group-stream, and /api/chat/regenerate routes.
  */
@@ -32,9 +32,9 @@ export interface EmbeddingsContextResult {
   searchedNamespaces: string[];
 
   // --- Non-memory (lore, world, rules, events) ---
-  /** Non-memory context string (lore, world, rules) — goes into system prompt */
+  /** Non-memory context string (lore, world, rules) — goes before chat history (first) */
   nonMemoryContextString: string;
-  /** Non-memory prompt section for prompt viewer — goes into system sections */
+  /** Non-memory prompt section for prompt viewer — goes before chat history (first) */
   nonMemorySection: PromptSection | null;
   /** Non-memory count */
   nonMemoryCount: number;
@@ -42,14 +42,18 @@ export interface EmbeddingsContextResult {
   nonMemoryTypeGroups: Record<string, number>;
 
   // --- Memory (auto-extracted, source_type='memory') ---
-  /** Memory context string — goes before chat history */
+  /** Memory context string — goes before chat history (second) */
   memoryContextString: string;
-  /** Memory prompt section for prompt viewer — goes before chat history */
+  /** Memory prompt section for prompt viewer — goes before chat history (second) */
   memorySection: PromptSection | null;
   /** Memory count */
   memoryCount: number;
   /** Memory type groups: type → count */
   memoryTypeGroups: Record<string, number>;
+  /** User memory count (sujeto=usuario or sujeto=otro) */
+  userMemoryCount: number;
+  /** Character memory count (sujeto=personaje or missing) */
+  characterMemoryCount: number;
 
   // --- Legacy fields (combined, for backward compat) ---
   /** Combined context string (all results) */
@@ -75,6 +79,8 @@ function emptyResult(): EmbeddingsContextResult {
     memorySection: null,
     memoryCount: 0,
     memoryTypeGroups: {},
+    userMemoryCount: 0,
+    characterMemoryCount: 0,
     contextString: '',
     section: null,
     typeGroups: {},
@@ -184,11 +190,40 @@ export async function retrieveEmbeddingsContext(
     const nonMemoryBudget = Math.floor(maxBudget * 0.45);
     const memoryBudget = Math.floor(maxBudget * 0.55);
 
-    // Build grouped context strings for each category
+    // Build grouped context strings for non-memory
     const nonMemory = buildGroupedContextString(nonMemoryResults, namespaceTypes, nonMemoryBudget, 'CONTEXTO RELEVANTE');
-    const memory = buildGroupedContextString(memoryResults, namespaceTypes, memoryBudget, 'MEMORIA DEL PERSONAJE');
 
-    if (!nonMemory.contextString.trim() && !memory.contextString.trim()) {
+    // Split memory results by subject
+    const userMemories = memoryResults.filter(r => {
+      const subject = (r.metadata as Record<string, any>)?.memory_subject;
+      return subject === 'usuario' || subject === 'otro';
+    });
+    const characterMemories = memoryResults.filter(r => {
+      const subject = (r.metadata as Record<string, any>)?.memory_subject;
+      return subject === 'personaje' || !subject; // Default: personaje for backward compat
+    });
+
+    // Split budget 50/50
+    const userBudget = Math.floor(memoryBudget * 0.5);
+    const charBudget = memoryBudget - userBudget;
+
+    const userCtx = buildGroupedContextString(userMemories, namespaceTypes, userBudget, 'MEMORIA DEL USUARIO');
+    const charCtx = buildGroupedContextString(characterMemories, namespaceTypes, charBudget, 'MEMORIA DEL PERSONAJE');
+
+    // Combine memory with [MEMORIA RELEVANTE] wrapper
+    // Only build if at least one section has content
+    const hasUserMemory = userCtx.contextString.trim().length > 0;
+    const hasCharMemory = charCtx.contextString.trim().length > 0;
+    let memoryContextString = '';
+    if (hasUserMemory || hasCharMemory) {
+      const memoryParts: string[] = ['[MEMORIA RELEVANTE]'];
+      if (hasUserMemory) memoryParts.push('', userCtx.contextString);
+      if (hasCharMemory) memoryParts.push('', charCtx.contextString);
+      memoryContextString = memoryParts.join('\n');
+    }
+    const memoryTypeGroups = { ...userCtx.typeGroups, ...charCtx.typeGroups };
+
+    if (!nonMemory.contextString.trim() && !memoryContextString.trim()) {
       return emptyResult();
     }
 
@@ -204,11 +239,11 @@ export async function retrieveEmbeddingsContext(
         }
       : null;
 
-    const memorySection: PromptSection | null = memory.contextString.trim()
+    const memorySection: PromptSection | null = memoryContextString.trim()
       ? {
           type: 'memory',
           label: 'MEMORIA',
-          content: memory.contextString,
+          content: memoryContextString,
           color: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
         }
       : null;
@@ -216,7 +251,7 @@ export async function retrieveEmbeddingsContext(
     // Build combined (legacy) for backward compat
     const allContextParts: string[] = [];
     if (nonMemory.contextString.trim()) allContextParts.push(nonMemory.contextString);
-    if (memory.contextString.trim()) allContextParts.push(memory.contextString);
+    if (memoryContextString.trim()) allContextParts.push(memoryContextString);
     const combinedContextString = allContextParts.join('\n\n');
 
     const combinedSection: PromptSection | null = combinedContextString.trim()
@@ -241,15 +276,17 @@ export async function retrieveEmbeddingsContext(
       nonMemoryTypeGroups: nonMemory.typeGroups,
 
       // Memory
-      memoryContextString: memory.contextString,
+      memoryContextString,
       memorySection: showInViewer ? memorySection : null,
       memoryCount: memoryResults.length,
-      memoryTypeGroups: memory.typeGroups,
+      memoryTypeGroups,
+      userMemoryCount: userMemories.length,
+      characterMemoryCount: characterMemories.length,
 
       // Legacy
       contextString: combinedContextString,
       section: showInViewer ? combinedSection : null,
-      typeGroups: { ...nonMemory.typeGroups, ...memory.typeGroups },
+      typeGroups: { ...nonMemory.typeGroups, ...memoryTypeGroups },
     };
   } catch (error) {
     console.error('[Embeddings] Context retrieval failed:', error);
@@ -445,6 +482,8 @@ export function formatEmbeddingsForSSE(result: EmbeddingsContextResult): {
   namespaces: string[];
   nonMemoryCount: number;
   memoryCount: number;
+  userMemoryCount: number;
+  characterMemoryCount: number;
   nonMemoryTypeGroups: Record<string, number>;
   memoryTypeGroups: Record<string, number>;
   topResults: Array<{
@@ -461,6 +500,8 @@ export function formatEmbeddingsForSSE(result: EmbeddingsContextResult): {
     namespaces: result.searchedNamespaces,
     nonMemoryCount: result.nonMemoryCount,
     memoryCount: result.memoryCount,
+    userMemoryCount: result.userMemoryCount,
+    characterMemoryCount: result.characterMemoryCount,
     nonMemoryTypeGroups: result.nonMemoryTypeGroups,
     memoryTypeGroups: result.memoryTypeGroups,
     topResults: result.results.slice(0, 5).map(r => ({

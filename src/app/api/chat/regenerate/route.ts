@@ -200,16 +200,15 @@ export async function POST(request: NextRequest) {
 
     // Combine all sections in order
     // Order: System -> [CONTEXTO] non-memory -> [MEMORIA] memory -> Chat History -> Post-History
-    // Non-memory (lore, world) stays with character definition. Memory goes before chat history for recency primacy.
     const personaIndex = systemSections.findIndex(s => s.type === 'persona');
     const prePersonaSections = personaIndex >= 0 ? systemSections.slice(0, personaIndex + 1) : systemSections;
     const postPersonaSections = personaIndex >= 0 ? systemSections.slice(personaIndex + 1) : [];
 
     let allPromptSections: PromptSection[] = [
       ...prePersonaSections,
-      ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []),  // Non-memory: after persona
       ...postPersonaSections,
-      ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []),  // Memory: before chat history
+      ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []),  // Non-memory: before chat
+      ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []),  // Memory: before chat
       ...chatHistorySections,
       ...(postHistorySection ? [postHistorySection] : [])
     ];
@@ -219,17 +218,19 @@ export async function POST(request: NextRequest) {
       allPromptSections = injectHUDContextIntoSections(allPromptSections, hudContextSection, hudContext.position);
     }
 
-    // Non-memory embeddings: append to system prompt (static knowledge)
-    // Memory embeddings: inject as separate system message before chat history (recency primacy)
-    const memoryContextString = embeddingsResult.memoryContextString?.trim()
-      ? `[${embeddingsResult.memorySection?.label || 'MEMORIA DEL PERSONAJE'}]\n${embeddingsResult.memoryContextString}`
-      : undefined;
-
-    // Build the final system prompt (non-memory embeddings appended)
-    let finalSystemPrompt = systemPrompt;
+    // Build combined embeddings context: [CONTEXTO RELEVANTE] then [MEMORIA RELEVANTE]
+    // Both injected before chat history (not in system prompt)
+    const contextParts: string[] = [];
     if (embeddingsResult.nonMemoryContextString?.trim()) {
-      finalSystemPrompt += `\n\n[${embeddingsResult.nonMemorySection?.label || 'CONTEXTO'}]\n${embeddingsResult.nonMemoryContextString}`;
+      contextParts.push(embeddingsResult.nonMemoryContextString);
     }
+    if (embeddingsResult.memoryContextString?.trim()) {
+      contextParts.push(embeddingsResult.memoryContextString);
+    }
+    const embeddingsContext = contextParts.length > 0 ? contextParts.join('\n\n') : undefined;
+
+    // Build the final system prompt (no embeddings appended)
+    const finalSystemPrompt = systemPrompt;
 
     // Create a TransformStream for SSE
     const stream = new ReadableStream({
@@ -262,7 +263,7 @@ export async function POST(request: NextRequest) {
                 processedCharacter.postHistoryInstructions,
                 undefined,  // authorNote
                 false,      // useSystemRole
-                memoryContextString  // Memory embeddings before chat history
+                embeddingsContext  // Combined embeddings context before chat history
               );
               // Inject HUD context into chat messages if enabled
               if (hudContextSection && hudContext) {
@@ -287,7 +288,7 @@ export async function POST(request: NextRequest) {
                 processedCharacter.postHistoryInstructions,
                 undefined,  // authorNote
                 true,       // useSystemRole
-                memoryContextString  // Memory embeddings before chat history
+                embeddingsContext  // Combined embeddings context before chat history
               );
               // Inject HUD context into chat messages if enabled
               if (hudContextSection && hudContext) {
@@ -309,7 +310,7 @@ export async function POST(request: NextRequest) {
                 processedCharacter.postHistoryInstructions,
                 undefined,  // authorNote
                 true,       // useSystemRole
-                memoryContextString  // Memory embeddings before chat history
+                embeddingsContext  // Combined embeddings context before chat history
               );
               // Inject HUD context into chat messages if enabled
               if (hudContextSection && hudContext) {
@@ -326,7 +327,7 @@ export async function POST(request: NextRequest) {
                 character: processedCharacter,
                 userName: effectiveUserName,
                 postHistoryInstructions: processedCharacter.postHistoryInstructions,
-                embeddingsContext: memoryContextString  // Memory embeddings before chat history
+                embeddingsContext: embeddingsContext  // Memory embeddings before chat history
               });
               generator = streamOllama(prompt, llmConfig);
               break;
@@ -341,7 +342,7 @@ export async function POST(request: NextRequest) {
                 processedCharacter.postHistoryInstructions,
                 undefined,
                 true,
-                memoryContextString
+                embeddingsContext
               );
               if (hudContextSection && hudContext) {
                 chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
@@ -359,7 +360,7 @@ export async function POST(request: NextRequest) {
                 character: processedCharacter,
                 userName: effectiveUserName,
                 postHistoryInstructions: processedCharacter.postHistoryInstructions,
-                embeddingsContext: memoryContextString  // Memory embeddings before chat history
+                embeddingsContext: embeddingsContext  // Memory embeddings before chat history
               });
               generator = streamTextGenerationWebUI(prompt, llmConfig);
               break;

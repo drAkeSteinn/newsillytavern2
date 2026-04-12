@@ -672,3 +672,219 @@ Stage Summary:
 - Works alongside existing "Self" mode (backward compatible)
 - Target requirements use persona's __user__ entry in sessionStats.characterStats for lookup
 - Lint: 0 errors. Compilation: successful
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix requirement inputs to support text-type attributes in action requirements
+
+Work Log:
+- Extended `RequirementOperator` type in `src/types/index.ts` to add `contains` and `not_contains` operators
+- Updated `evaluateRequirement` in `src/store/slices/statsSlice.ts` to handle text operators (`contains`, `not_contains`) with case-insensitive comparison
+- Updated `checkRequirement` in `src/lib/triggers/handlers/skill-activation-handler.ts` to detect text operators and non-numeric values, performing string comparison instead of numeric
+- Rewrote `RequirementEditor` in `src/components/tavern/stats-editor.tsx`:
+  - Split operator options into `NUMERIC_OPERATOR_OPTIONS` (>=, >, <=, <, ==, !=, between) and `TEXT_OPERATOR_OPTIONS` (==, !=, contains, not_contains)
+  - Added attribute type detection for both self and target modes
+  - When a text/keyword attribute is selected, switches to text operators and text input field
+  - When a number attribute is selected, shows numeric operators and number input
+  - Attribute dropdowns now show type icons (📝 text, 🏷️ keyword, 🔢 number) with color hints
+  - Switching between modes/targets/attributes auto-resets operator and value appropriately
+- Fixed JSX closing tag bug (missing `</span>`)
+
+Stage Summary:
+- Text attributes now properly show text-appropriate operators (==, !=, contains, not_contains) and text input
+- Number attributes continue to show numeric operators (>=, >, <=, <, ==, !=, between) and number input
+- Works for both "Yo" (self) and "Target" modes in action requirements
+- All lint checks pass, dev server compiles cleanly
+---
+Task ID: 2
+Agent: Main Agent
+Task: Fix template key resolution ({{char}}, {{user}}) in pre-LLM action blocks
+
+Work Log:
+- Analyzed the key resolution pipeline: resolveAllKeys runs Phase 1 ({{user}}, {{char}}) BEFORE Phase 2 ({{acciones}}, {{intenciones}}) — so blocks injected in Phase 2 contained unresolved template keys
+- Updated `buildSkillsBlock` in `src/lib/stats/stats-resolver.ts`:
+  - Added `userName` parameter
+  - Applied `resolveTemplateKeys` to `skill.name`, `skill.description`, and `skill.injectFormat` before injection
+- Updated `buildIntentionsBlock` in `src/lib/stats/stats-resolver.ts`:
+  - Added `userName` and `characterName` parameters
+  - Applied `resolveTemplateKeys` to `intention.name`, `intention.description`, and `intention.injectFormat` before injection
+- Updated `resolveStats` call site to pass `context.userName` to both build functions
+- Verified `buildInvitationsBlock` and `buildSolicitudesBlock` already had proper resolution (no changes needed)
+- All lint checks pass, dev server compiles cleanly
+
+Stage Summary:
+- All four block builders now properly resolve {{char}}, {{user}}, {{solicitante}}, {{solicitado}} at build time
+- Skills, Intentions, Invitations, and Solicitudes blocks all have consistent key resolution
+---
+Task ID: 3
+Agent: Main Agent
+Task: Review and fix the action tool system for correct operation in normal and group chat
+
+Work Log:
+- Performed comprehensive audit of the entire action/skill activation flow across 3 paths:
+  - Path A: Text-based key detection (client-side, SkillKeyHandler)
+  - Path B: Native tool-calling (server-side manage_action → client activateSkillByTool)
+  - Path C: Legacy token-based detection (skill-activation-handler.ts)
+- Found CRITICAL bug: Requirements were NEVER checked in the two active paths (A and B)
+- Found bug: 'z-ai' provider missing from group-stream charSupportsTools list
+- Found minor: progressQuestObjective missing from activateSkillByTool RewardStoreActions
+
+Fixes applied:
+1. **SkillKeyHandler** (`src/lib/triggers/handlers/skill-key-handler.ts`):
+   - Added `requirements` to trigger data in `handleKey()`
+   - Added requirement check at start of `execute()` using `checkAllRequirements()`
+   - Returns `{ skipped: true, reason }` when requirements not met
+   - Imported `checkAllRequirements` from skill-activation-handler
+
+2. **use-trigger-system.ts** (`src/lib/triggers/use-trigger-system.ts`):
+   - Added `skipped` check after `skillHandler.execute()` 
+   - When skipped, rewards and threshold effects are NOT executed
+   - Properly closes the else block for requirements-met path
+
+3. **manageActionExecutor** (`src/lib/tools/tools/manage-action.ts`):
+   - Added requirement check after finding matched skill
+   - Returns error with descriptive message listing failed requirements
+   - Imported `checkAllRequirements`
+
+4. **activateSkillByTool** (`src/store/slices/sessionSlice.ts`):
+   - Added defense-in-depth requirement check (finds skill by name in statsConfig)
+   - Uses `checkAllRequirements()` with sessionStats for target requirements
+   - Imported `checkAllRequirements` and `SkillDefinition` type
+
+5. **group-stream route** (`src/app/api/chat/group-stream/route.ts`):
+   - Added `'z-ai'` to `charSupportsTools` provider list (was missing)
+
+6. **activateSkillByTool RewardStoreActions** (`src/store/slices/sessionSlice.ts`):
+   - Added `progressQuestObjective` to reward store actions
+   - Enables direct objective-ID path for objective rewards from tool activations
+
+Stage Summary:
+- All three activation paths now properly check requirements (including target requirements)
+- Group chat with z-ai provider now supports native tool calling
+- Lint passes cleanly
+- Requirements are enforced at 3 layers: server-side tool validation, client-side store, and client-side key detection
+---
+Task ID: 4
+Agent: Main Agent
+Task: Fix remaining group chat bugs found during action system audit
+
+Work Log:
+- Found BUG: `allCharacters` was undefined in group-stream route — the variable was never declared in POST scope but referenced in 10+ places
+- Found BUG: `toolsSettings` was not sent from client in group chat fetch body — disabled tools, per-character configs, maxToolCallsPerTurn were all ignored
+
+Fixes applied:
+1. `group-stream/route.ts`:
+   - Added `allCharacters` variable built from `characters` + persona pseudo-character (`__user__`)
+   - Updated `resolveStats` and prompt builder calls to use `allCharacters` (includes persona for target requirements)
+   - Updated `executeGroupToolCalls` calls to pass proper `allCharacters`
+
+2. `chat-panel.tsx`:
+   - Added `toolsSettings: settings.tools` to group chat fetch body
+   - Now disabled tools, character configs, usePromptBasedFallback, maxToolCallsPerTurn all work in group chat
+
+Stage Summary:
+- All 4 action activation paths verified working:
+  1. Normal chat + manage_action tool ✅
+  2. Normal chat + activation key ✅
+  3. Group chat + manage_action tool ✅ (fixed allCharacters + toolsSettings)
+  4. Group chat + activation key ✅
+- Requirements checked at all activation points (including target requirements)
+- Persona available as `__user__` in all paths for target attribute checks
+
+---
+Task ID: 10
+Agent: Main Agent
+Task: Implement memory subject system (sujeto) for embeddings — split character memories into usuario/personaje/otro
+
+Work Log:
+- Updated all 3 extraction prompts in `memory-extraction-prompts.ts`:
+  - Added `userName` to `MEMORY_PROMPT_VARIABLES` and `GROUP_MEMORY_PROMPT_VARIABLES`
+  - Added sujeto instructions to all 3 prompts (DEFAULT, GROUP, DYNAMICS)
+  - Updated all JSON examples to include `"sujeto"` field
+  - Examples use `{userName}` and `{characterName}` for clarity
+- Updated `memory-extraction.ts`:
+  - Added `sujeto?: 'usuario' | 'personaje' | 'otro'` to `MemoryFact` interface
+  - `normalizeSingleFact` now parses `sujeto` from `obj.sujeto || obj.subject`, defaults to `'personaje'`
+  - `extractMemories` accepts `userName` parameter, replaces `{userName}` in prompt template
+  - `saveMemoriesAsEmbeddings` adds `memory_subject: fact.sujeto || 'personaje'` to embedding metadata
+  - `extractAndSaveMemories` accepts `userName` in options and passes it through
+- Updated `chat-context.ts`:
+  - Added `userMemoryCount` and `characterMemoryCount` to `EmbeddingsContextResult`
+  - `retrieveEmbeddingsContext` splits memory results by `memory_subject` metadata:
+    - `usuario` + `otro` → `[MEMORIA DEL USUARIO]`
+    - `personaje` + missing → `[MEMORIA DEL PERSONAJE]` (backward compat)
+  - Budget split 50/50 between user and character memories
+  - Combined wrapper: `[MEMORIA RELEVANTE]` with sub-sections
+  - `formatEmbeddingsForSSE` includes new counts
+- Updated 4 stream routes (stream, group-stream, regenerate, generate):
+  - Removed extra `[MEMORIA DEL PERSONAJE]` header wrapping (context already has `[MEMORIA RELEVANTE]`)
+- Updated 2 stream routes (stream, group-stream):
+  - Added `userName: effectiveUserName` to extract-memory API body
+- Updated `extract-memory/route.ts`:
+  - Extracts `userName` from request body, passes to `extractAndSaveMemories`
+- Updated `manual-memory/route.ts`:
+  - Extracts `memorySubject` from body, adds `memory_subject` to embedding metadata
+- Updated `character-memory-editor.tsx`:
+  - Added `newEventSubject` state variable
+  - Added subject selector UI with Badge toggle (character name vs Usuario)
+  - Passes `memorySubject` in fetch body
+  - Resets subject on dialog close
+  - Added `newEventSubject` to useCallback deps
+- Updated `search-memory.ts` tool:
+  - Shows subject label with emoji (👤 Usuario, 🌐 Otro, 🧑 Personaje) in display message
+
+Stage Summary:
+- Files modified: memory-extraction-prompts.ts, memory-extraction.ts, chat-context.ts, stream/route.ts, group-stream/route.ts, regenerate/route.ts, generate/route.ts, extract-memory/route.ts, manual-memory/route.ts, character-memory-editor.tsx, search-memory.ts
+- Memory format now splits into `[MEMORIA RELEVANTE]` > `[MEMORIA DEL USUARIO]` + `[MEMORIA DEL PERSONAJE]`
+- Backward compatible: existing memories without `sujeto` default to `personaje`
+- Lint passes with 0 errors
+- Dev server compiles and serves 200 OK
+---
+Task ID: 1
+Agent: Main
+Task: Implement split memory injection (MEMORIA DEL USUARIO / MEMORIA DEL PERSONAJE)
+
+Work Log:
+- Analyzed existing embeddings system: found that `sujeto` field already existed in extraction prompts, parser, and storage (`memory_subject` in metadata)
+- Found that `chat-context.ts` already had split logic but had an edge case bug (empty memory produced `[MEMORIA RELEVANTE]` wrapper)
+- Fixed edge case in `chat-context.ts`: now only builds wrapper when at least one memory section has content
+- Verified all 4 stream routes already use `memoryContextString` directly without extra label wrapping
+- Updated `manage-memory` tool: added `memory_subject` parameter, stores it in embedding metadata, classifies relationships as 'otro'
+- Updated `character-memory-editor.tsx`: added 'Otro' option to sujeto selector (was missing, only had personaje/usuario)
+- Updated `search-memory` tool: added `memory_subject` filter parameter and filter logic
+- Updated `embeddings-context-indicator.tsx`: shows user/character memory count badges with icons
+
+Stage Summary:
+- Memory injection format now produces:
+  ```
+  [MEMORIA RELEVANTE]
+  
+  [MEMORIA DEL USUARIO]
+  - fact about user...
+  
+  [MEMORIA DEL PERSONAJE]
+  - fact about character...
+  ```
+- `sujeto` classification flows through all paths: auto-extraction, manual editor, LLM tools (save_memory, search_memory)
+- Budget split: 45% non-memory, 55% memory (50/50 between user and character)
+- Lint passes clean, no TypeScript errors
+---
+Task ID: 1
+Agent: Main Agent
+Task: Review and fix two runtime errors (SyntaxError + ChunkLoadError)
+
+Work Log:
+- Read dev.log and found SWC compilation errors: "Expression expected" in use-trigger-system.ts:1418
+- Also found "SyntaxError: Unexpected end of JSON input" at page '/'
+- Checked use-trigger-system.ts for syntax issues: braces balanced, no null bytes, no encoding issues
+- Determined errors were from stale/corrupted `.next` build cache, not actual source code issues
+- Cleared `.next` cache and restarted dev server - all errors resolved
+- Compiled successfully with `GET / 200` in 11s
+- Also verified the injection order change from previous session was already implemented correctly
+- Updated outdated comments in chat-context.ts to reflect current injection behavior
+
+Stage Summary:
+- Root cause: stale `.next` build cache caused both SyntaxError and ChunkLoadError
+- Fix: `rm -rf .next` + server restart
+- Confirmed injection order is correct: [CONTEXTO RELEVANTE] → [MEMORIA RELEVANTE] → [Historial del chat]
+- Updated chat-context.ts JSDoc comments to reflect current behavior

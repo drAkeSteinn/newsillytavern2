@@ -1541,8 +1541,8 @@ interface RequirementEditorProps {
   onDelete: () => void;
 }
 
-// Operator definitions with descriptions
-const OPERATOR_OPTIONS: { value: RequirementOperator; label: string; description: string }[] = [
+// Numeric operator definitions with descriptions
+const NUMERIC_OPERATOR_OPTIONS: { value: RequirementOperator; label: string; description: string }[] = [
   { value: '>=', label: '≥', description: 'Mayor o igual que' },
   { value: '>', label: '>', description: 'Mayor que' },
   { value: '<=', label: '≤', description: 'Menor o igual que' },
@@ -1552,11 +1552,30 @@ const OPERATOR_OPTIONS: { value: RequirementOperator; label: string; description
   { value: 'between', label: '∈', description: 'Entre (rango)' },
 ];
 
+// Text operator definitions with descriptions
+const TEXT_OPERATOR_OPTIONS: { value: RequirementOperator; label: string; description: string }[] = [
+  { value: '==', label: '=', description: 'Exactamente igual' },
+  { value: '!=', label: '≠', description: 'Diferente de' },
+  { value: 'contains', label: '⊂', description: 'Contiene' },
+  { value: 'not_contains', label: '⊄', description: 'No contiene' },
+];
+
 function RequirementEditor({ requirement, availableAttributes, availableTargets = [], onChange, onDelete }: RequirementEditorProps) {
-  const selectedOperator = OPERATOR_OPTIONS.find(op => op.value === requirement.operator);
-  const isTargetMode = !!requirement.targetCharacterId;
-  const selectedTarget = isTargetMode ? availableTargets.find(t => t.id === requirement.targetCharacterId) : undefined;
+  const isTargetMode = requirement.targetCharacterId !== undefined;
+  const selectedTarget = isTargetMode && requirement.targetCharacterId
+    ? availableTargets.find(t => t.id === requirement.targetCharacterId)
+    : undefined;
   const targetAttrs = selectedTarget?.attributes || [];
+
+  // Determine the selected attribute and its type
+  const selectedSelfAttr = !isTargetMode ? availableAttributes.find(a => a.key === requirement.attributeKey) : undefined;
+  const selectedTargetAttr = isTargetMode ? targetAttrs.find(a => a.key === requirement.attributeKey) : undefined;
+  const selectedAttr = selectedSelfAttr || selectedTargetAttr;
+  const attrType = selectedAttr?.type || 'number';
+  const isTextType = attrType === 'text' || attrType === 'keyword';
+
+  const operatorOptions = isTextType ? TEXT_OPERATOR_OPTIONS : NUMERIC_OPERATOR_OPTIONS;
+  const selectedOperator = operatorOptions.find(op => op.value === requirement.operator);
 
   return (
     <div className="flex items-center gap-2 bg-muted/50 rounded p-2 flex-wrap">
@@ -1565,9 +1584,9 @@ function RequirementEditor({ requirement, availableAttributes, availableTargets 
         value={isTargetMode ? 'target' : 'self'}
         onValueChange={(value) => {
           if (value === 'target') {
-            onChange({ attributeKey: '', targetCharacterId: '', targetAttributeName: '' });
+            onChange({ attributeKey: '', targetCharacterId: '', targetAttributeName: '', operator: '==', value: '' });
           } else {
-            onChange({ attributeKey: '', targetCharacterId: undefined, targetAttributeName: undefined });
+            onChange({ attributeKey: '', targetCharacterId: undefined, targetAttributeName: undefined, operator: '>=', value: 0 });
           }
         }}
       >
@@ -1611,7 +1630,13 @@ function RequirementEditor({ requirement, availableAttributes, availableTargets 
             value={requirement.attributeKey}
             onValueChange={(value) => {
               const attr = targetAttrs.find(a => a.key === value);
-              onChange({ attributeKey: value, targetAttributeName: attr?.name || '' });
+              const isText = attr?.type === 'text' || attr?.type === 'keyword';
+              onChange({
+                attributeKey: value,
+                targetAttributeName: attr?.name || '',
+                operator: isText ? '==' : '>=',
+                value: isText ? '' : 0,
+              });
             }}
             disabled={!requirement.targetCharacterId}
           >
@@ -1621,7 +1646,12 @@ function RequirementEditor({ requirement, availableAttributes, availableTargets 
             <SelectContent>
               {targetAttrs.map((attr, i) => (
                 <SelectItem key={attr.key || `attr-${i}`} value={attr.key}>
-                  {attr.name}
+                  <span className="flex items-center gap-1">
+                    <span className={attr.type === 'text' || attr.type === 'keyword' ? 'text-blue-400' : 'text-green-400'}>
+                      {attr.type === 'text' ? '📝' : attr.type === 'keyword' ? '🏷️' : '🔢'}
+                    </span>
+                    {attr.name}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -1631,14 +1661,29 @@ function RequirementEditor({ requirement, availableAttributes, availableTargets 
         /* Self attribute selector */
         <Select
           value={requirement.attributeKey}
-          onValueChange={(value) => onChange({ attributeKey: value })}
+          onValueChange={(value) => {
+            const attr = availableAttributes.find(a => a.key === value);
+            const isText = attr?.type === 'text' || attr?.type === 'keyword';
+            onChange({
+              attributeKey: value,
+              operator: isText ? '==' : '>=',
+              value: isText ? '' : 0,
+            });
+          }}
         >
           <SelectTrigger className="h-7 w-24 text-xs">
             <SelectValue placeholder="Atributo" />
           </SelectTrigger>
           <SelectContent>
             {availableAttributes.map(attr => (
-              <SelectItem key={attr.id} value={attr.key}>{attr.name}</SelectItem>
+              <SelectItem key={attr.id} value={attr.key}>
+                <span className="flex items-center gap-1">
+                  <span className={attr.type === 'text' || attr.type === 'keyword' ? 'text-blue-400' : 'text-green-400'}>
+                    {attr.type === 'text' ? '📝' : attr.type === 'keyword' ? '🏷️' : '🔢'}
+                  </span>
+                  {attr.name}
+                </span>
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -1648,14 +1693,14 @@ function RequirementEditor({ requirement, availableAttributes, availableTargets 
       <Tooltip>
         <TooltipTrigger asChild>
           <Select
-            value={requirement.operator}
+            value={operatorOptions.some(op => op.value === requirement.operator) ? requirement.operator : operatorOptions[0].value}
             onValueChange={(value: RequirementOperator) => onChange({ operator: value })}
           >
             <SelectTrigger className="h-7 w-16 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {OPERATOR_OPTIONS.map(op => (
+              {operatorOptions.map(op => (
                 <SelectItem key={op.value} value={op.value}>
                   <div className="flex items-center gap-2">
                     <span className="font-mono w-4">{op.label}</span>
@@ -1677,16 +1722,26 @@ function RequirementEditor({ requirement, availableAttributes, availableTargets 
         </TooltipContent>
       </Tooltip>
 
-      {/* Value input */}
-      <Input
-        type="number"
-        value={requirement.value}
-        onChange={(e) => onChange({ value: parseFloat(e.target.value) || 0 })}
-        className="h-7 w-16 text-xs"
-      />
+      {/* Value input - text or number based on attribute type */}
+      {isTextType ? (
+        <Input
+          type="text"
+          value={typeof requirement.value === 'string' ? requirement.value : String(requirement.value)}
+          onChange={(e) => onChange({ value: e.target.value })}
+          placeholder="Texto..."
+          className="h-7 w-24 text-xs"
+        />
+      ) : (
+        <Input
+          type="number"
+          value={requirement.value}
+          onChange={(e) => onChange({ value: parseFloat(e.target.value) || 0 })}
+          className="h-7 w-16 text-xs"
+        />
+      )}
 
-      {/* Max value for between operator */}
-      {requirement.operator === 'between' && (
+      {/* Max value for between operator (only for numeric) */}
+      {!isTextType && requirement.operator === 'between' && (
         <>
           <span className="text-xs text-muted-foreground">y</span>
           <Input

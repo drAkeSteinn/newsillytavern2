@@ -845,9 +845,13 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
               console.log(`[TriggerSystem] Skill key matched: ${detectedKey.key}`);
               const executeResult = skillHandler.execute(result.trigger, skillHandlerContext);
               
-              // Execute activation rewards (sounds, sprites, objective completions, etc.)
-              const rewards = result.trigger.data?.activationRewards || [];
-              if (rewards.length > 0) {
+              // If skill was skipped due to unmet requirements, don't execute rewards
+              if (executeResult.skipped) {
+                console.log(`[TriggerSystem] Skill "${result.trigger.data?.skillName}" skipped: ${executeResult.reason}`);
+              } else {
+                // Execute activation rewards (sounds, sprites, objective completions, etc.)
+                const rewards: any[] = result.trigger.data?.activationRewards || [];
+                if (rewards.length > 0) {
                 console.log(`[TriggerSystem] Executing ${rewards.length} skill activation rewards`);
                 for (const reward of rewards) {
                   try {
@@ -938,6 +942,7 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
                   }
                 }
               }
+              } // end else (requirements met — execute rewards and thresholds)
             }
           }
         }

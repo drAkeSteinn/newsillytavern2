@@ -493,6 +493,7 @@ export function ChatPanel() {
             questSettings,  // Pass quest settings
             hudContext: activeHUDContext,  // Pass HUD context for prompt injection
             allCharacters: allCharactersWithPersona,  // Pass all characters + persona for peticiones/solicitudes
+            toolsSettings: settings.tools,  // Pass tools settings for group chat tool-calling
             soundTriggers,  // Pass sound triggers for {{sonidos}} resolution
             settings,  // Pass settings for {{sonidos}} template
             embeddingsChat: {

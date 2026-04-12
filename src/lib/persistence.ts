@@ -24,7 +24,11 @@ export const DATA_FILES = {
   // Visual systems
   backgrounds: path.join(DATA_DIR, 'backgrounds.json'),
   backgroundPacks: path.join(DATA_DIR, 'background-packs.json'),
+  backgroundIndex: path.join(DATA_DIR, 'background-index.json'),
+  backgroundTriggerPacks: path.join(DATA_DIR, 'background-trigger-packs.json'),
+  backgroundCollections: path.join(DATA_DIR, 'background-collections.json'),
   spritePacks: path.join(DATA_DIR, 'sprite-packs.json'),
+  spritePacksV2: path.join(DATA_DIR, 'sprite-packs-v2.json'),
   sprites: path.join(DATA_DIR, 'sprites.json'),
   hudTemplates: path.join(DATA_DIR, 'hud-templates.json'),
   // Advanced systems
@@ -33,6 +37,8 @@ export const DATA_FILES = {
   quests: path.join(DATA_DIR, 'quests.json'),
   dialogue: path.join(DATA_DIR, 'dialogue.json'),
   inventory: path.join(DATA_DIR, 'inventory.json'),
+  // Timeline
+  collections: path.join(DATA_DIR, 'collections.json'),
   // Active states (session restoration)
   activeStates: path.join(DATA_DIR, 'active-states.json'),
 } as const;
@@ -46,9 +52,12 @@ export const VALID_DATA_TYPES = [
   // Sound system
   'soundTriggers', 'soundCollections', 'soundSequenceTriggers',
   // Visual systems
-  'backgrounds', 'backgroundPacks', 'spritePacks', 'sprites', 'hudTemplates',
+  'backgrounds', 'backgroundPacks', 'backgroundIndex', 'backgroundTriggerPacks', 'backgroundCollections',
+  'spritePacks', 'spritePacksV2', 'sprites', 'hudTemplates',
   // Advanced systems
   'atmosphere', 'memory', 'quests', 'dialogue', 'inventory',
+  // Timeline
+  'collections',
   // Active states
   'activeStates',
 ] as const;
@@ -203,7 +212,11 @@ export const DEFAULT_DATA = {
   // Visual systems
   backgrounds: [],
   backgroundPacks: [],
+  backgroundIndex: {},
+  backgroundTriggerPacks: [],
+  backgroundCollections: [],
   spritePacks: [],
+  spritePacksV2: [],
   sprites: {
     spriteIndex: {},
     spriteLibraries: []
@@ -257,6 +270,8 @@ export const DEFAULT_DATA = {
     },
     inventoryNotifications: []
   },
+  // Timeline
+  collections: [],
   // Active states
   activeStates: {
     activeSessionId: null,

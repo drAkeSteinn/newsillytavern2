@@ -1168,14 +1168,17 @@ export function evaluateRequirement(
   const currentNum = typeof currentValue === 'number' ? currentValue : parseFloat(currentValue);
   const valueNum = typeof requirement.value === 'number' ? requirement.value : parseFloat(requirement.value);
 
-  if (isNaN(currentNum) || isNaN(valueNum)) {
-    // String comparison for non-numeric values
-    const currentStr = String(currentValue);
-    const valueStr = String(requirement.value);
+  // String comparison for text operators
+  const isTextOperator = requirement.operator === 'contains' || requirement.operator === 'not_contains';
+  if (isTextOperator || isNaN(currentNum) || isNaN(valueNum)) {
+    const currentStr = String(currentValue).toLowerCase();
+    const valueStr = String(requirement.value).toLowerCase();
 
     switch (requirement.operator) {
       case '==': return currentStr === valueStr;
       case '!=': return currentStr !== valueStr;
+      case 'contains': return currentStr.includes(valueStr);
+      case 'not_contains': return !currentStr.includes(valueStr);
       default: return false;
     }
   }
@@ -1187,11 +1190,12 @@ export function evaluateRequirement(
     case '>=': return currentNum >= valueNum;
     case '==': return currentNum === valueNum;
     case '!=': return currentNum !== valueNum;
-    case 'between':
+    case 'between': {
       const maxNum = typeof requirement.valueMax === 'number'
         ? requirement.valueMax
         : parseFloat(requirement.valueMax?.toString() || '0');
       return currentNum >= valueNum && currentNum <= maxNum;
+    }
     default: return false;
   }
 }

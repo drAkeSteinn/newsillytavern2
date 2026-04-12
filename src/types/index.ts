@@ -3072,7 +3072,7 @@ export interface CharacterEquipment {
 export type AttributeType = 'number' | 'keyword' | 'text';
 
 // Requirement operator for skill/intention/invitation conditions
-export type RequirementOperator = '<' | '<=' | '>' | '>=' | '==' | '!=' | 'between';
+export type RequirementOperator = '<' | '<=' | '>' | '>=' | '==' | '!=' | 'between' | 'contains' | 'not_contains';
 
 // Cost operator for activation costs (how to modify attribute)
 export type CostOperator = '+' | '-' | '*' | '/' | '=' | 'set_min' | 'set_max';

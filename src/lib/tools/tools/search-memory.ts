@@ -33,6 +33,12 @@ export const searchMemoryTool: ToolDefinition = {
         enum: ['hecho', 'evento', 'relacion', 'preferencia', 'secreto', 'otro'],
         required: false,
       },
+      memory_subject: {
+        type: 'string',
+        description: 'Filtrar por sujeto: "usuario" (memorias sobre el jugador), "personaje" (memorias sobre ti), "otro" (sobre otros personajes)',
+        enum: ['usuario', 'personaje', 'otro'],
+        required: false,
+      },
       max_results: {
         type: 'number',
         description: 'Cuántos resultados máximos devolver (default: 5)',
@@ -50,6 +56,7 @@ export async function searchMemoryExecutor(
 ): Promise<ToolExecutionResult> {
   const query = String(params.query || '').trim();
   const memoryType = params.memory_type ? String(params.memory_type) : undefined;
+  const memorySubject = params.memory_subject ? String(params.memory_subject) : undefined;
   const maxResults = Math.min(Math.max(Number(params.max_results) || 5, 1), 10);
 
   if (!query || query.length < 2) {
@@ -106,6 +113,10 @@ export async function searchMemoryExecutor(
           if (memoryType && r.metadata?.memory_type !== memoryType) {
             continue;
           }
+          // Filter by memory subject if specified
+          if (memorySubject && r.metadata?.memory_subject !== memorySubject) {
+            continue;
+          }
           allResults.push(r);
         }
       } catch (nsErr) {
@@ -122,8 +133,8 @@ export async function searchMemoryExecutor(
       return {
         success: true,
         toolName: 'search_memory',
-        result: { query, memories: [], memoryType },
-        displayMessage: `🧠 No se encontraron memorias sobre "${query}"${memoryType ? ` (tipo: ${memoryType})` : ''}`,
+        result: { query, memories: [], memoryType, memorySubject },
+        displayMessage: `🧠 No se encontraron memorias sobre "${query}"${memoryType ? ` (tipo: ${memoryType})` : ''}${memorySubject ? ` (sujeto: ${memorySubject})` : ''}`,
       };
     }
 
@@ -131,6 +142,9 @@ export async function searchMemoryExecutor(
     
     if (memoryType) {
       lines[0] += ` [Tipo: ${memoryType}]`;
+    }
+    if (memorySubject) {
+      lines[0] += ` [Sujeto: ${memorySubject}]`;
     }
     
     lines.push('');
@@ -140,9 +154,11 @@ export async function searchMemoryExecutor(
       const importance = m.metadata?.importance || 3;
       const type = m.metadata?.memory_type || 'otro';
       const stars = '★'.repeat(Math.ceil(importance)) + '☆'.repeat(5 - Math.ceil(importance));
+      const subject = m.metadata?.memory_subject || 'personaje';
+      const subjectLabel = subject === 'usuario' ? '👤 Usuario' : subject === 'otro' ? '🌐 Otro' : '🧑 Personaje';
       
       lines.push(`${i + 1}. ${m.content}`);
-      lines.push(`   ${stars} (${type})`);
+      lines.push(`   ${stars} (${type}) [${subjectLabel}]`);
     }
 
     return {
@@ -155,10 +171,11 @@ export async function searchMemoryExecutor(
           namespace: m.namespace,
           importance: m.metadata?.importance,
           type: m.metadata?.memory_type,
+          subject: m.metadata?.memory_subject,
           sentiment: m.metadata?.sentiment,
-          subject: m.metadata?.subject,
         })),
         memoryType,
+        memorySubject,
         searchedNamespaces: uniqueNamespaces,
       },
       displayMessage: lines.join('\n'),

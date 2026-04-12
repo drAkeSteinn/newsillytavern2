@@ -15,6 +15,7 @@ import {
   createSkillActivationHandlerState,
   checkSkillActivationTriggersInText,
   executeAllSkillActivations,
+  checkAllRequirements,
   type SkillActivationHandlerState,
   type SkillActivationTriggerContext,
 } from './skill-activation-handler';
@@ -199,6 +200,7 @@ export class SkillKeyHandler implements KeyHandler {
                 matchedKey: key.key,
                 activationCosts: skill.activationCosts || [],
                 activationRewards: skill.activationRewards || [],
+                requirements: skill.requirements || [],
                 // Track position for deduplication
                 position: key.position,
                 length: key.length,
@@ -216,16 +218,43 @@ export class SkillKeyHandler implements KeyHandler {
   /**
    * Execute the trigger action
    * Returns thresholds reached so the caller can execute the effects
+   * 
+   * Checks requirements BEFORE applying costs or executing rewards.
+   * If requirements are not met, the skill is skipped.
    */
-  execute(match: TriggerMatch, context: TriggerContext): { thresholdsReached: ThresholdReachedInfo[] } {
+  execute(match: TriggerMatch, context: TriggerContext): { thresholdsReached: ThresholdReachedInfo[]; skipped?: boolean; reason?: string } {
     const skillContext = context as SkillKeyHandlerContext;
-    const { skillId, skillName, skillDescription, activationCosts, activationRewards } = match.data as {
+    const { skillId, skillName, skillDescription, activationCosts, activationRewards, requirements } = match.data as {
       skillId: string;
       skillName: string;
       skillDescription?: string;
       activationCosts: any[];
       activationRewards: any[];
+      requirements?: any[];
     };
+    
+    // Step 0: Check requirements before doing anything
+    if (requirements && requirements.length > 0) {
+      const charStats = skillContext.sessionStats?.characterStats?.[skillContext.characterId];
+      const currentValues = charStats?.attributeValues || {};
+
+      const checkResult = checkAllRequirements(
+        requirements,
+        skillContext.statsConfig!,
+        currentValues,
+        skillContext.sessionStats
+      );
+
+      if (!checkResult.met) {
+        console.log(`[SkillKeyHandler] Skill "${skillName}" requirements NOT met. Skipping activation.`);
+        if (checkResult.failedRequirements.length > 0) {
+          console.log(`[SkillKeyHandler] Failed requirements:`, checkResult.failedRequirements.map(fr =>
+            `${fr.attributeName} ${fr.operator} ${fr.requiredValue} (current: ${fr.currentValue})`
+          ).join(', '));
+        }
+        return { thresholdsReached: [], skipped: true, reason: 'Requirements not met' };
+      }
+    }
     
     console.log(`[SkillKeyHandler] Executing skill: ${skillName}`);
     

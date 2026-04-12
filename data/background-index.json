@@ -1,0 +1,62 @@
+{
+  "backgrounds": [
+    {
+      "label": "Overlays/sillag.png",
+      "filename": "sillag.png",
+      "url": "/backgrounds/Overlays/sillag.png",
+      "thumb": "/backgrounds/Overlays/sillag.png",
+      "pack": "Overlays"
+    },
+    {
+      "label": "Room/1775203629528-psmcuu.jpg",
+      "filename": "1775203629528-psmcuu.jpg",
+      "url": "/backgrounds/Room/1775203629528-psmcuu.jpg",
+      "thumb": "/backgrounds/Room/1775203629528-psmcuu.jpg",
+      "pack": "Room"
+    },
+    {
+      "label": "Room/Room (1).png",
+      "filename": "Room (1).png",
+      "url": "/backgrounds/Room/Room (1).png",
+      "thumb": "/backgrounds/Room/Room (1).png",
+      "pack": "Room"
+    },
+    {
+      "label": "Room/Room (2).png",
+      "filename": "Room (2).png",
+      "url": "/backgrounds/Room/Room (2).png",
+      "thumb": "/backgrounds/Room/Room (2).png",
+      "pack": "Room"
+    },
+    {
+      "label": "Room/Room (3).png",
+      "filename": "Room (3).png",
+      "url": "/backgrounds/Room/Room (3).png",
+      "thumb": "/backgrounds/Room/Room (3).png",
+      "pack": "Room"
+    },
+    {
+      "label": "Room/Room (4).png",
+      "filename": "Room (4).png",
+      "url": "/backgrounds/Room/Room (4).png",
+      "thumb": "/backgrounds/Room/Room (4).png",
+      "pack": "Room"
+    },
+    {
+      "label": "Room/Room (5).png",
+      "filename": "Room (5).png",
+      "url": "/backgrounds/Room/Room (5).png",
+      "thumb": "/backgrounds/Room/Room (5).png",
+      "pack": "Room"
+    },
+    {
+      "label": "Room/Room (7).png",
+      "filename": "Room (7).png",
+      "url": "/backgrounds/Room/Room (7).png",
+      "thumb": "/backgrounds/Room/Room (7).png",
+      "pack": "Room"
+    }
+  ],
+  "lastUpdated": 1776008113355,
+  "source": "scan"
+}

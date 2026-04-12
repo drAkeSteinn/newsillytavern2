@@ -230,6 +230,24 @@
       "messagesSinceLastSummary": 9,
       "lastSummaryMessageIndex": 0,
       "isGroupChat": false
+    },
+    "51ac633f-cc61-4dc5-832e-de2fb45b4e58": {
+      "sessionId": "51ac633f-cc61-4dc5-832e-de2fb45b4e58",
+      "messagesSinceLastSummary": 17,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "2f8b445b-e98d-4230-a8a6-19fb280afa93": {
+      "sessionId": "2f8b445b-e98d-4230-a8a6-19fb280afa93",
+      "messagesSinceLastSummary": 5,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "7d5ee9f5-442f-488b-aa81-ff236b5c6226": {
+      "sessionId": "7d5ee9f5-442f-488b-aa81-ff236b5c6226",
+      "messagesSinceLastSummary": 5,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
     }
   }
 }

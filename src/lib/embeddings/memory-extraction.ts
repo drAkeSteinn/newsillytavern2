@@ -26,6 +26,7 @@ export interface MemoryFact {
   contenido: string;
   tipo: MemoryType;
   importancia: number; // 1-5
+  sujeto?: 'usuario' | 'personaje' | 'otro';
 }
 
 export type MemoryType = 'hecho' | 'evento' | 'relacion' | 'preferencia' | 'secreto' | 'otro';
@@ -236,10 +237,22 @@ function normalizeSingleFact(item: unknown): MemoryFact | null {
   if (!contenido || contenido.length < 3 || contenido.length > 200) return null;
   if (contenido.toLowerCase() === 'ninguno' || contenido.toLowerCase() === 'none') return null;
 
+  // Parse sujeto (subject): usuario, personaje, or otro. Default to 'personaje' for backward compat.
+  const rawSujeto = String(obj.sujeto || obj.subject || '').toLowerCase().trim();
+  let sujeto: 'usuario' | 'personaje' | 'otro' = 'personaje';
+  if (rawSujeto === 'usuario' || rawSujeto === 'user') {
+    sujeto = 'usuario';
+  } else if (rawSujeto === 'personaje' || rawSujeto === 'character') {
+    sujeto = 'personaje';
+  } else if (rawSujeto === 'otro' || rawSujeto === 'other') {
+    sujeto = 'otro';
+  }
+
   return {
     contenido,
     tipo: normalizeMemoryType(String(obj.tipo || obj.type || 'hecho')),
     importancia: clampImportance(Number(obj.importancia || obj.importance || 3)),
+    sujeto,
   };
 }
 
@@ -268,6 +281,7 @@ export async function extractMemories(
   llmConfig: LLMConfig,
   customPrompt?: string,
   chatContext?: string,
+  userName?: string,
 ): Promise<MemoryFact[]> {
   if (!lastAssistantMessage?.trim() || lastAssistantMessage.length < 20) {
     return []; // Too short to contain meaningful memories
@@ -283,6 +297,7 @@ export async function extractMemories(
   const prompt = promptTemplate
     .replace('{chatContext}', contextSection)
     .replace('{characterName}', characterName)
+    .replace('{userName}', userName || 'User')
     .replace('{lastMessage}', lastAssistantMessage);
 
   try {
@@ -384,6 +399,7 @@ export async function saveMemoriesAsEmbeddings(
           metadata: {
             importance: fact.importancia,
             memory_type: fact.tipo,
+            memory_subject: fact.sujeto || 'personaje',
             extracted_at: new Date().toISOString(),
             character_id: characterId,
             session_id: sessionId,
@@ -471,9 +487,10 @@ export async function extractAndSaveMemories(
     minImportance?: number;
     customPrompt?: string;
     chatContext?: string;
+    userName?: string;
   } = {}
 ): Promise<MemoryExtractionResult> {
-  const { groupId, minImportance = 2, customPrompt, chatContext } = options;
+  const { groupId, minImportance = 2, customPrompt, chatContext, userName } = options;
 
   const emptyResult: MemoryExtractionResult = {
     count: 0,
@@ -485,7 +502,7 @@ export async function extractAndSaveMemories(
 
   try {
     // Step 1: Extract facts via LLM (with optional chat context)
-    const facts = await extractMemories(lastAssistantMessage, characterName, llmConfig, customPrompt, chatContext);
+    const facts = await extractMemories(lastAssistantMessage, characterName, llmConfig, customPrompt, chatContext, userName);
 
     if (facts.length === 0) {
       return emptyResult;

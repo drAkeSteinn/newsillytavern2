@@ -8,7 +8,7 @@
     "showCompletedInLog": true,
     "maxActiveQuests": 10,
     "promptInclude": true,
-    "promptTemplate": "{{activeQuests}}\n\nPROTOCOLO DE MISIONES (para tu respuesta)\n- Siempre muestra el HUD al inicio:\n  [Personaje: Juan | Objetivo: <KEY o NINGUNO>]\n- Objetivo solo puede ser NINGUNO o una key exacta listada arriba.\n- Usa NINGUNO si solo hablas del tema, preguntas o aún no lo cumples.\n- Usa la KEY solo cuando tu respuesta confirme que el objetivo fue cumplido (confirmación clara).\n- Si completas un objetivo opcional, también puedes usar su KEY, pero tu diálogo debe reflejar que es algo extra/voluntario.\n- Máximo 1 objetivo por respuesta (una sola KEY).\n- No inventes objetivos ni keys que no estén listadas.",
+    "promptTemplate": "{{activeQuests}}",
     "autoQuestEnabled": false,
     "autoQuestInterval": 5,
     "autoQuestMode": "random",
@@ -17,6 +17,125 @@
     "objectiveCompletionPrefix": "Objetivo"
   },
   "questNotifications": [
+    {
+      "questId": "examen",
+      "questTitle": "Examen Mental",
+      "type": "objective_complete",
+      "message": "Objetivo completado: Examen Psycologico. Recompensas: resistencia: 0 → 20",
+      "rewards": [
+        {
+          "id": "obj-reward-mnreur7i",
+          "type": "attribute",
+          "attribute": {
+            "key": "resistencia",
+            "value": 20,
+            "action": "add"
+          }
+        }
+      ],
+      "id": "notif-1775891724604-shhkw20r2",
+      "timestamp": "2026-04-11T07:15:24.604Z",
+      "read": true
+    },
+    {
+      "questId": "examen",
+      "questTitle": "Examen Mental",
+      "type": "quest_activated",
+      "message": "¡Nueva misión activada: Examen Mental!",
+      "id": "notif-1775872911802-hpl13yi4b",
+      "timestamp": "2026-04-11T02:01:51.802Z",
+      "read": true
+    },
+    {
+      "questId": "examen",
+      "questTitle": "Examen Mental",
+      "type": "quest_activated",
+      "message": "¡Nueva misión activada: Examen Mental!",
+      "id": "notif-1775872810062-jfacdvusv",
+      "timestamp": "2026-04-11T02:00:10.062Z",
+      "read": true
+    },
+    {
+      "questId": "asd",
+      "questTitle": "Analisis del usuario",
+      "type": "quest_activated",
+      "message": "¡Nueva misión activada: Analisis del usuario!",
+      "id": "notif-1775734191419-x9xcc49kj",
+      "timestamp": "2026-04-09T11:29:51.419Z",
+      "read": true
+    },
+    {
+      "questId": "asd",
+      "questTitle": "Analisis del usuario",
+      "type": "quest_activated",
+      "message": "¡Nueva misión activada: Analisis del usuario!",
+      "id": "notif-1775734153193-hra7duzdj",
+      "timestamp": "2026-04-09T11:29:13.193Z",
+      "read": true
+    },
+    {
+      "questId": "asd",
+      "questTitle": "Analisis del usuario",
+      "type": "quest_activated",
+      "message": "¡Nueva misión activada: Analisis del usuario!",
+      "id": "notif-1775734114881-acs4gtu2a",
+      "timestamp": "2026-04-09T11:28:34.881Z",
+      "read": true
+    },
+    {
+      "questId": "asd",
+      "questTitle": "Saber el estado del usuario",
+      "type": "quest_activated",
+      "message": "¡Nueva misión activada: Saber el estado del usuario!",
+      "id": "notif-1775727221253-6rvenomkp",
+      "timestamp": "2026-04-09T09:33:41.253Z",
+      "read": true
+    },
+    {
+      "questId": "asd",
+      "questTitle": "Saber el estado del usuario",
+      "type": "quest_activated",
+      "message": "¡Nueva misión activada: Saber el estado del usuario!",
+      "id": "notif-1775727185548-iehlbw8kh",
+      "timestamp": "2026-04-09T09:33:05.548Z",
+      "read": true
+    },
+    {
+      "questId": "asd",
+      "questTitle": "Saber el estado del usuario",
+      "type": "quest_activated",
+      "message": "¡Nueva misión activada: Saber el estado del usuario!",
+      "id": "notif-1775724704205-ugm0dtwky",
+      "timestamp": "2026-04-09T08:51:44.205Z",
+      "read": true
+    },
+    {
+      "questId": "asd",
+      "questTitle": "Saber el estado del usuario",
+      "type": "quest_activated",
+      "message": "¡Nueva misión activada: Saber el estado del usuario!",
+      "id": "notif-1775724245893-1ozbhogsr",
+      "timestamp": "2026-04-09T08:44:05.893Z",
+      "read": true
+    },
+    {
+      "questId": "asd",
+      "questTitle": "Saber el estado del usuario",
+      "type": "quest_activated",
+      "message": "¡Nueva misión activada: Saber el estado del usuario!",
+      "id": "notif-1775723893498-332i17qug",
+      "timestamp": "2026-04-09T08:38:13.498Z",
+      "read": true
+    },
+    {
+      "questId": "asd",
+      "questTitle": "Saber el estado del usuario",
+      "type": "quest_activated",
+      "message": "¡Nueva misión activada: Saber el estado del usuario!",
+      "id": "notif-1775723741872-fe4hb5hqi",
+      "timestamp": "2026-04-09T08:35:41.872Z",
+      "read": true
+    },
     {
       "questId": "asd",
       "questTitle": "Mision imposible",
@@ -357,114 +476,6 @@
       "message": "Quest \"Mision imposible\" activated",
       "id": "notif-1773890272087-epao5f5d5",
       "timestamp": "2026-03-19T03:17:52.087Z",
-      "read": true
-    },
-    {
-      "questId": "asd",
-      "questTitle": "Mision imposible",
-      "type": "quest_activated",
-      "message": "¡Nueva misión activada: Mision imposible!",
-      "id": "notif-1773890272036-fnjcid9xk",
-      "timestamp": "2026-03-19T03:17:52.036Z",
-      "read": true
-    },
-    {
-      "questId": "asd",
-      "questName": "Mision imposible",
-      "type": "quest_activated",
-      "message": "Quest \"Mision imposible\" activated",
-      "id": "notif-1773883845134-qlfhgiqiu",
-      "timestamp": "2026-03-19T01:30:45.134Z",
-      "read": true
-    },
-    {
-      "questId": "asd",
-      "questTitle": "Mision imposible",
-      "type": "quest_activated",
-      "message": "¡Nueva misión activada: Mision imposible!",
-      "id": "notif-1773883845095-2dz0snfpe",
-      "timestamp": "2026-03-19T01:30:45.095Z",
-      "read": true
-    },
-    {
-      "questId": "asd",
-      "questName": "Mision imposible",
-      "type": "quest_activated",
-      "message": "Quest \"Mision imposible\" activated",
-      "id": "notif-1773747397127-j60m9wj8t",
-      "timestamp": "2026-03-17T11:36:37.127Z",
-      "read": true
-    },
-    {
-      "questId": "asd",
-      "questTitle": "Mision imposible",
-      "type": "quest_activated",
-      "message": "¡Nueva misión activada: Mision imposible!",
-      "id": "notif-1773747397087-4mar14dis",
-      "timestamp": "2026-03-17T11:36:37.087Z",
-      "read": true
-    },
-    {
-      "questId": "asd",
-      "questName": "Mision imposible",
-      "type": "quest_activated",
-      "message": "Quest \"Mision imposible\" activated",
-      "id": "notif-1773609438832-ee80t4mg7",
-      "timestamp": "2026-03-15T21:17:18.832Z",
-      "read": true
-    },
-    {
-      "questId": "asd",
-      "questTitle": "Mision imposible",
-      "type": "quest_activated",
-      "message": "¡Nueva misión activada: Mision imposible!",
-      "id": "notif-1773609438788-aauwooav1",
-      "timestamp": "2026-03-15T21:17:18.788Z",
-      "read": true
-    },
-    {
-      "questId": "asd",
-      "questName": "Mision imposible",
-      "type": "quest_activated",
-      "message": "Quest \"Mision imposible\" activated",
-      "id": "notif-1773607405561-z2m7047ny",
-      "timestamp": "2026-03-15T20:43:25.561Z",
-      "read": true
-    },
-    {
-      "questId": "asd",
-      "questTitle": "Mision imposible",
-      "type": "quest_activated",
-      "message": "¡Nueva misión activada: Mision imposible!",
-      "id": "notif-1773607405515-n0b6rpjpf",
-      "timestamp": "2026-03-15T20:43:25.515Z",
-      "read": true
-    },
-    {
-      "questId": "asd",
-      "questName": "Mision imposible",
-      "type": "quest_activated",
-      "message": "Quest \"Mision imposible\" activated",
-      "id": "notif-1773607126335-chcpsaeb7",
-      "timestamp": "2026-03-15T20:38:46.335Z",
-      "read": true
-    },
-    {
-      "questId": "asd",
-      "questTitle": "Mision imposible",
-      "type": "quest_activated",
-      "message": "¡Nueva misión activada: Mision imposible!",
-      "id": "notif-1773607126292-1c66n4vi9",
-      "timestamp": "2026-03-15T20:38:46.292Z",
-      "read": true
-    },
-    {
-      "questId": "asd",
-      "questName": "Mision imposible",
-      "type": "quest_activated",
-      "message": "Quest \"Mision imposible\" activated",
-      "id": "notif-1773607071402-rqnf65o6s",
-      "timestamp": "2026-03-15T20:37:51.402Z",
       "read": true
     }
   ]

@@ -15,7 +15,10 @@ const PERSIST_KEYS = [
   // Sound system
   'soundTriggers', 'soundCollections', 'soundSequenceTriggers',
   // Visual systems
-  'backgrounds', 'backgroundPacks', 'spritePacks', 'hudTemplates',
+  'backgrounds', 'backgroundPacks', 'backgroundIndex', 'backgroundTriggerPacks', 'backgroundCollections',
+  'spritePacks', 'hudTemplates',
+  // Sprite data (V2)
+  'spritePacksV2',
   // Advanced systems
   'activeAtmospherePresetId', 'atmosphereSettings',
   'summaries', 'summarySettings', 'characterMemories', 'sessionTracking',
@@ -26,8 +29,10 @@ const PERSIST_KEYS = [
   'activeSessionId', 'activeCharacterId', 'activeGroupId',
   'activeBackground', 'activeOverlayBack', 'activeOverlayFront',
   'activePersonaId', 'activeLorebookIds',
-  // Sprite data
+  // Sprite data (legacy)
   'spriteIndex', 'spriteLibraries',
+  // Timeline
+  'collections',
 ] as const;
 
 type PersistKey = typeof PERSIST_KEYS[number];
@@ -111,8 +116,20 @@ export function usePersistenceSync() {
         if (data.backgroundPacks && Array.isArray(data.backgroundPacks)) {
           updates.backgroundPacks = data.backgroundPacks;
         }
+        if (data.backgroundIndex) {
+          updates.backgroundIndex = data.backgroundIndex;
+        }
+        if (data.backgroundTriggerPacks) {
+          updates.backgroundTriggerPacks = data.backgroundTriggerPacks;
+        }
+        if (data.backgroundCollections) {
+          updates.backgroundCollections = data.backgroundCollections;
+        }
         if (data.spritePacks && Array.isArray(data.spritePacks)) {
           updates.spritePacks = data.spritePacks;
+        }
+        if (data.spritePacksV2) {
+          updates.spritePacksV2 = data.spritePacksV2;
         }
         if (data.sprites) {
           if (data.sprites.spriteIndex) {
@@ -211,6 +228,11 @@ export function usePersistenceSync() {
           }
         }
 
+        // Timeline
+        if (data.collections) {
+          updates.collections = data.collections;
+        }
+
         // Apply updates to store
         if (Object.keys(updates).length > 0) {
           useTavernStore.setState(updates);
@@ -271,7 +293,11 @@ export function usePersistenceSync() {
         // Visual systems
         backgrounds: state.backgrounds,
         backgroundPacks: state.backgroundPacks,
+        backgroundIndex: state.backgroundIndex,
+        backgroundTriggerPacks: state.backgroundTriggerPacks,
+        backgroundCollections: state.backgroundCollections,
         spritePacks: state.spritePacks,
+        spritePacksV2: state.spritePacksV2,
         sprites: {
           spriteIndex: state.spriteIndex,
           spriteLibraries: state.spriteLibraries,
@@ -303,6 +329,8 @@ export function usePersistenceSync() {
           inventorySettings: state.inventorySettings,
           inventoryNotifications: state.inventoryNotifications,
         },
+        // Timeline
+        collections: state.collections,
         // Active states
         activeStates: {
           activeSessionId: state.activeSessionId,

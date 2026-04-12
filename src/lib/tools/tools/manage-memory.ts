@@ -44,6 +44,12 @@ export const manageMemoryTool: ToolDefinition = {
         description: 'Personaje, lugar u objeto relacionado con la memoria',
         required: false,
       },
+      memory_subject: {
+        type: 'string',
+        description: 'Quién es el sujeto de la memoria: "usuario" (sobre el jugador), "personaje" (sobre ti mismo), "otro" (sobre otro personaje o entidad)',
+        enum: ['usuario', 'personaje', 'otro'],
+        required: false,
+      },
       sentiment: {
         type: 'number',
         description: 'Cambio de sentimiento (-100 muy negativo, +100 muy positivo) para relaciones',
@@ -83,6 +89,7 @@ export async function manageMemoryExecutor(
   const memoryType = params.memory_type ? normalizeMemoryType(String(params.memory_type)) : 'hecho';
   const content = params.content ? String(params.content) : '';
   const subject = params.subject ? String(params.subject) : context.characterName;
+  const memorySubject = params.memory_subject ? String(params.memory_subject) : 'personaje';
   const sentiment = params.sentiment !== undefined ? Number(params.sentiment) : 0;
   const importance = params.importance !== undefined ? Math.max(1, Math.min(5, Math.round(Number(params.importance)))) : 3;
   const narrative = params.narrative ? String(params.narrative) : '';
@@ -133,6 +140,7 @@ export async function manageMemoryExecutor(
             metadata: {
               memory_type: memoryType,
               importance: importance,
+              memory_subject: memorySubject,
               subject: subject,
               sentiment: sentiment,
               narrative: narrative,
@@ -151,12 +159,13 @@ export async function manageMemoryExecutor(
 
         const sentimentEmoji = sentiment > 20 ? '😊' : sentiment < -20 ? '😢' : '📝';
         const importanceStars = '★'.repeat(Math.ceil(importance)) + '☆'.repeat(5 - Math.ceil(importance));
+        const subjectLabel = memorySubject === 'usuario' ? '👤 Usuario' : memorySubject === 'otro' ? '👥 Otro' : '🧑 Personaje';
 
         const lines = [
           '🧠 **Memoria Guardada:**',
           `${sentimentEmoji} Tipo: ${memoryType}`,
           `${importanceStars} Importancia: ${importance}/5`,
-          `Relacionado: ${subject}`,
+          `${subjectLabel} | Relacionado: ${subject}`,
           '',
           `Contenido: ${memoryContent}`,
           '',
@@ -171,6 +180,7 @@ export async function manageMemoryExecutor(
             memoryType,
             content: memoryContent,
             subject,
+            memorySubject,
             importance,
             characterId: context.characterId,
             sessionId: context.sessionId,
@@ -232,6 +242,7 @@ export async function manageMemoryExecutor(
             metadata: {
               memory_type: 'relacion',
               importance: Math.abs(sentiment) > 50 ? 4 : 3,
+              memory_subject: 'otro',
               subject: subject,
               sentiment: sentiment,
               sentimentLabel: sentimentLabel,

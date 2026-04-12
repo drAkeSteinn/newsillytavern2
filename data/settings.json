@@ -17,8 +17,8 @@
       "response": "Busca en internet las novedades de google home en este 2026"
     },
     {
-      "label": "...",
-      "response": "..."
+      "label": "test",
+      "response": "realiza un test psycologico"
     },
     {
       "label": "Yes",
@@ -60,7 +60,7 @@
     "chatWidth": 49.39787950596018,
     "chatHeight": 49.753086419753096,
     "chatX": 30.765699553452585,
-    "chatY": 75.12345679012346,
+    "chatY": 75.04115226337449,
     "chatOpacity": 0.95,
     "blurBackground": false,
     "showCharacterSprite": true
@@ -164,10 +164,11 @@
     "memoryExtractionEnabled": true,
     "memoryExtractionFrequency": 5,
     "memoryExtractionMinImportance": 2,
-    "memoryConsolidationEnabled": false,
+    "memoryConsolidationEnabled": true,
     "memoryConsolidationThreshold": 50,
     "memoryConsolidationKeepRecent": 10,
-    "memoryConsolidationKeepHighImportance": 4
+    "memoryConsolidationKeepHighImportance": 4,
+    "groupDynamicsExtraction": true
   },
   "tools": {
     "enabled": true,

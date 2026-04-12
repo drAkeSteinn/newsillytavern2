@@ -497,6 +497,16 @@ export async function POST(request: NextRequest) {
     // Extract lorebooks from body (not validated by validation.ts)
     const lorebooks: Lorebook[] = body.lorebooks || [];
 
+    // Build allCharacters including persona for cross-character lookups (target requirements, peticiones)
+    const allCharacters: CharacterCard[] = [...(characters || [])];
+    if (persona?.statsConfig?.enabled) {
+      allCharacters.push({
+        id: '__user__',
+        name: persona.name || 'User',
+        statsConfig: persona.statsConfig,
+      } as CharacterCard);
+    }
+
     // Extract Quest data for pre-LLM integration (NEW FORMAT)
     const questTemplates: QuestTemplate[] = body.questTemplates || [];
     const sessionQuests: SessionQuestInstance[] = body.sessionQuests || [];
@@ -755,7 +765,7 @@ export async function POST(request: NextRequest) {
               lorebookSectionForCharacter,
               typedSessionStats,
               undefined, // postHistoryInstructions
-              characters, // allCharacters - needed for peticiones/solicitudes resolution
+              allCharacters, // allCharacters - needed for peticiones/solicitudes resolution (includes persona)
               questTemplates // Pass quest templates for objective names in actions
             );
 
@@ -764,7 +774,7 @@ export async function POST(request: NextRequest) {
               characterId: responder.id,
               statsConfig: responder.statsConfig,
               sessionStats: typedSessionStats,
-              allCharacters: characters,
+              allCharacters: allCharacters,
               userName: effectiveUserName,
               characterName: responder.name,
               questTemplates,
@@ -816,17 +826,19 @@ export async function POST(request: NextRequest) {
               }
             }
 
-            // Non-memory embeddings: append to system prompt (static knowledge)
-            // Memory embeddings: inject as separate system message before chat history
-            const memoryContextString = embeddingsResult.memoryContextString?.trim()
-              ? `[${embeddingsResult.memorySection?.label || 'MEMORIA DEL PERSONAJE'}]\n${embeddingsResult.memoryContextString}`
-              : undefined;
-
-            // Add non-memory embeddings + quest section to the system prompt
-            let finalSystemPrompt = systemPrompt;
+            // Build combined embeddings context: [CONTEXTO RELEVANTE] then [MEMORIA RELEVANTE]
+            // Both injected before chat history (not in system prompt)
+            const contextParts: string[] = [];
             if (embeddingsResult.nonMemoryContextString?.trim()) {
-              finalSystemPrompt += `\n\n[${embeddingsResult.nonMemorySection?.label || 'CONTEXTO'}]\n${embeddingsResult.nonMemoryContextString}`;
+              contextParts.push(embeddingsResult.nonMemoryContextString);
             }
+            if (embeddingsResult.memoryContextString?.trim()) {
+              contextParts.push(embeddingsResult.memoryContextString);
+            }
+            const embeddingsContext = contextParts.length > 0 ? contextParts.join('\n\n') : undefined;
+
+            // Build the final system prompt (quest section only, no embeddings)
+            let finalSystemPrompt = systemPrompt;
             if (resolvedQuestSection) {
               finalSystemPrompt += `\n\n[${resolvedQuestSection.label}]\n${resolvedQuestSection.content}`;
             }
@@ -845,7 +857,7 @@ export async function POST(request: NextRequest) {
               charAvailableTools = charAvailableTools.filter(t => !charGlobalDisabled.includes(t.id));
             }
             const charToolsEnabled = toolsSettings.enabled && charAvailableTools.length > 0;
-            const charSupportsTools = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama', 'grok', 'text-generation-webui', 'koboldcpp'].includes(llmConfig.provider);
+            const charSupportsTools = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama', 'z-ai', 'grok', 'text-generation-webui', 'koboldcpp'].includes(llmConfig.provider);
             // If usePromptBasedFallback is true, disable native tools so prompt-based injection is used instead
             const charShouldUseTools = charToolsEnabled && charSupportsTools && !toolsSettings.usePromptBasedFallback;
 
@@ -916,19 +928,18 @@ export async function POST(request: NextRequest) {
               resolvedPostHistoryInstructions,  // Post-history instructions AFTER chat (with keys resolved)
               undefined,  // authorNote
               isResponderNarrator,  // If responder is narrator, they see all messages
-              memoryContextString  // Memory embeddings before chat history
+              embeddingsContext  // Memory embeddings before chat history
             );
 
             // Combine prompt sections with chat history for the viewer
-            // Order: System -> [CONTEXTO] non-memory -> Quest -> [MEMORIA] memory -> Chat History -> Post-History
-            // Non-memory stays with character definition. Memory goes before chat history for recency primacy.
+            // Order: System -> Quest -> [CONTEXTO] non-memory -> [MEMORIA] memory -> Chat History -> Post-History
             const personaIndex = promptSections.findIndex(s => s.type === 'persona');
             const prePersonaSections = personaIndex >= 0 ? promptSections.slice(0, personaIndex + 1) : promptSections;
             const postPersonaSections = personaIndex >= 0 ? promptSections.slice(personaIndex + 1) : [];
 
             let allPromptSections: PromptSection[] = chatHistorySection
-              ? [...prePersonaSections, ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []), ...postPersonaSections, ...(resolvedQuestSection ? [resolvedQuestSection] : []), ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []), chatHistorySection, ...(postHistorySection ? [postHistorySection] : [])]
-              : [...prePersonaSections, ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []), ...postPersonaSections, ...(resolvedQuestSection ? [resolvedQuestSection] : []), ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []), ...(postHistorySection ? [postHistorySection] : [])];
+              ? [...prePersonaSections, ...postPersonaSections, ...(resolvedQuestSection ? [resolvedQuestSection] : []), ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []), ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []), chatHistorySection, ...(postHistorySection ? [postHistorySection] : [])]
+              : [...prePersonaSections, ...postPersonaSections, ...(resolvedQuestSection ? [resolvedQuestSection] : []), ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []), ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []), ...(postHistorySection ? [postHistorySection] : [])];
 
             // Inject HUD context into sections if enabled
             if (hudContextSection && typedHUDContext) {
@@ -1417,7 +1428,7 @@ export async function POST(request: NextRequest) {
                       character: responder,
                       userName: effectiveUserName,
                       postHistoryInstructions: resolvedPostHistoryInstructions,
-                      embeddingsContext: memoryContextString
+                      embeddingsContext: embeddingsContext
                     });
                     generator = streamOllama(prompt, llmConfig);
                   }
@@ -1608,7 +1619,7 @@ export async function POST(request: NextRequest) {
                       character: responder,
                       userName: effectiveUserName,
                       postHistoryInstructions: resolvedPostHistoryInstructions,
-                      embeddingsContext: memoryContextString
+                      embeddingsContext: embeddingsContext
                     });
                     generator = streamTextGenerationWebUI(prompt, llmConfig);
                   }
@@ -1622,7 +1633,7 @@ export async function POST(request: NextRequest) {
                     character: responder,
                     userName: effectiveUserName,
                     postHistoryInstructions: resolvedPostHistoryInstructions,
-                    embeddingsContext: memoryContextString
+                    embeddingsContext: embeddingsContext
                   });
                   generator = streamTextGenerationWebUI(prompt, llmConfig);
                   break;
@@ -1758,6 +1769,7 @@ export async function POST(request: NextRequest) {
                         characterId: resp.characterId,
                         sessionId: sessionId || '',
                         groupId: group.id,
+                        userName: effectiveUserName,
                         llmConfig: {
                           provider: llmConfig.provider,
                           endpoint: llmConfig.endpoint,

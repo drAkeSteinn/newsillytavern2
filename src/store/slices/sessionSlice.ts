@@ -13,6 +13,7 @@ import type {
 } from '@/types';
 import { processMessageTemplate } from '@/lib/prompt-template';
 import { uuidv4 } from '@/lib/uuid';
+import { checkAllRequirements } from '@/lib/triggers/handlers/skill-activation-handler';
 import {
   executeObjectiveRewards,
   executeQuestCompletionRewards,
@@ -20,7 +21,7 @@ import {
   type RewardExecutionContext,
   type RewardStoreActions,
 } from '@/lib/quest/quest-reward-executor';
-import type { ActivationCost, QuestReward } from '@/types';
+import type { ActivationCost, QuestReward, SkillDefinition } from '@/types';
 
 // ============================================
 // Quest Reward Execution Guard
@@ -1492,6 +1493,31 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
         return;
       }
 
+      // Find the skill definition to check requirements (defense-in-depth)
+      const matchedSkill = statsConfig.skills?.find(
+        (s: SkillDefinition) => s.name === skillName
+      );
+
+      if (matchedSkill?.requirements && matchedSkill.requirements.length > 0) {
+        const charStats = session.sessionStats?.characterStats?.[characterId];
+        const currentValues = charStats?.attributeValues || {};
+
+        const requirementCheck = checkAllRequirements(
+          matchedSkill.requirements,
+          statsConfig,
+          currentValues,
+          session.sessionStats
+        );
+
+        if (!requirementCheck.met) {
+          console.warn(`[activateSkillByTool] Skill "${skillName}" requirements NOT met. Skipping activation.`);
+          console.warn(`[activateSkillByTool] Failed:`, requirementCheck.failedRequirements.map(
+            (fr: any) => `${fr.attributeName} ${fr.operator} ${fr.requiredValue} (current: ${fr.currentValue})`
+          ).join(', '));
+          return;
+        }
+      }
+
       // Save ultima_accion_realizada for {{eventos}} key
       const actionDescription = `${character?.name || characterId} - ${skillName}${skillDescription ? `: ${skillDescription}` : ''}`;
       get().updateSessionEvent?.(sessionId, 'ultima_accion_realizada', actionDescription);
@@ -1586,6 +1612,9 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
           },
           completeQuestObjective: (sid: string, qid: string, objKey: string, cid?: string) => {
             return findAndCompleteObjectiveByKey(get, sid, qid || '', objKey, cid || characterId);
+          },
+          progressQuestObjective: (sid: string, qid: string, objId: string, count: number, cid?: string) => {
+            get().progressQuestObjective?.(sid, qid, objId, count as number | undefined, cid);
           },
           completeSolicitud: (sid: string, cid: string, solicitudKey: string) => {
             return get().completeSolicitud?.(sid, cid, solicitudKey) || null;

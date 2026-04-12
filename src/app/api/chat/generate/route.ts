@@ -127,16 +127,19 @@ export async function POST(request: NextRequest) {
       embeddingsChat
     );
 
-    // Memory embeddings: inject before chat history
-    const memoryContextString = embeddingsResult.memoryContextString?.trim()
-      ? `[${embeddingsResult.memorySection?.label || 'MEMORIA DEL PERSONAJE'}]\n${embeddingsResult.memoryContextString}`
-      : undefined;
-
-    // Build final system prompt: non-memory embeddings go in system prompt, memory goes separately
-    let finalSystemPrompt = systemPrompt;
+    // Build combined embeddings context: [CONTEXTO RELEVANTE] then [MEMORIA RELEVANTE]
+    // Both injected before chat history (not in system prompt)
+    const contextParts: string[] = [];
     if (embeddingsResult.nonMemoryContextString?.trim()) {
-      finalSystemPrompt += `\n\n[${embeddingsResult.nonMemorySection?.label || 'CONTEXTO'}]\n${embeddingsResult.nonMemoryContextString}`;
+      contextParts.push(embeddingsResult.nonMemoryContextString);
     }
+    if (embeddingsResult.memoryContextString?.trim()) {
+      contextParts.push(embeddingsResult.memoryContextString);
+    }
+    const embeddingsContext = contextParts.length > 0 ? contextParts.join('\n\n') : undefined;
+
+    // Build final system prompt (no embeddings appended)
+    const finalSystemPrompt = systemPrompt;
 
     // Build HUD context section if enabled
     const hudContextSection = hudContext ? buildHUDContextSection(hudContext) : null;
@@ -158,7 +161,7 @@ export async function POST(request: NextRequest) {
           processedCharacter.postHistoryInstructions,
           undefined,  // authorNote
           false,     // useSystemRole
-          memoryContextString  // Memory embeddings before chat history
+          embeddingsContext  // Combined embeddings context before chat history
         );
         // Inject HUD context into chat messages if enabled
         if (hudContextSection && hudContext) {
@@ -184,7 +187,7 @@ export async function POST(request: NextRequest) {
           processedCharacter.postHistoryInstructions,
           undefined,  // authorNote
           true,      // useSystemRole
-          memoryContextString  // Memory embeddings before chat history
+          embeddingsContext  // Combined embeddings context before chat history
         );
         // Inject HUD context into chat messages if enabled
         if (hudContextSection && hudContext) {
@@ -206,7 +209,7 @@ export async function POST(request: NextRequest) {
           processedCharacter.postHistoryInstructions,
           undefined,  // authorNote
           true,      // useSystemRole
-          memoryContextString  // Memory embeddings before chat history
+          embeddingsContext  // Combined embeddings context before chat history
         );
         // Inject HUD context into chat messages if enabled
         if (hudContextSection && hudContext) {
@@ -223,7 +226,7 @@ export async function POST(request: NextRequest) {
           character: processedCharacter,
           userName: effectiveUserName,
           postHistoryInstructions: processedCharacter.postHistoryInstructions,
-          embeddingsContext: memoryContextString  // Memory embeddings before chat history
+          embeddingsContext: embeddingsContext  // Memory embeddings before chat history
         });
         response = await callOllama(prompt, llmConfig);
         break;
@@ -238,7 +241,7 @@ export async function POST(request: NextRequest) {
           processedCharacter.postHistoryInstructions,
           undefined,
           true,
-          memoryContextString
+          embeddingsContext
         );
         if (hudContextSection && hudContext) {
           chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
@@ -256,7 +259,7 @@ export async function POST(request: NextRequest) {
           character: processedCharacter,
           userName: effectiveUserName,
           postHistoryInstructions: processedCharacter.postHistoryInstructions,
-          embeddingsContext: memoryContextString  // Memory embeddings before chat history
+          embeddingsContext: embeddingsContext  // Memory embeddings before chat history
         });
         response = await callTextGenerationWebUI(prompt, llmConfig);
         break;

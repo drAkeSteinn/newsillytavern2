@@ -731,6 +731,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
           sessionTracking: store.sessionTracking,
           // Quest
           questSettings: store.questSettings,
+          questTemplates: store.questTemplates,
           questNotifications: store.questNotifications,
           // Dialogue
           dialogueSettings: store.dialogueSettings,
@@ -792,7 +793,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
           'hudTemplates',
           'atmosphereSettings', 'activeAtmospherePresetId',
           'summarySettings', 'characterMemories', 'sessionTracking',
-          'questSettings', 'questNotifications',
+          'questSettings', 'questTemplates', 'questNotifications',
           'dialogueSettings',
           'inventorySettings', 'inventoryNotifications'
         ];
@@ -868,6 +869,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
           sessionTracking: store.sessionTracking,
           // Quest
           questSettings: store.questSettings,
+          questTemplates: store.questTemplates,
           quests: store.quests,
           questNotifications: store.questNotifications,
           // Dialogue
@@ -947,7 +949,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
           'hudTemplates',
           'atmosphereSettings', 'activeAtmospherePresetId',
           'summarySettings', 'summaries', 'characterMemories', 'sessionTracking',
-          'questSettings', 'quests', 'questNotifications',
+          'questSettings', 'questTemplates', 'quests', 'questNotifications',
           'dialogueSettings',
           'inventorySettings', 'items', 'containers', 'currencies', 'inventoryNotifications',
           // Timeline

@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { content, characterId, characterName, memoryType, importance } = body;
+    const { content, characterId, characterName, memoryType, importance, memorySubject } = body;
 
     if (!content || typeof content !== 'string' || content.trim().length === 0) {
       return NextResponse.json({ error: 'content is required' }, { status: 400 });
@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
       metadata: {
         importance: importance ?? 3,
         memory_type: memoryType || 'hecho',
+        memory_subject: memorySubject || 'personaje',
         extracted_at: new Date().toISOString(),
         character_id: characterId,
         manual: true,

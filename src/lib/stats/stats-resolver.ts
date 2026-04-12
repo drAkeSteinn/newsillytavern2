@@ -251,7 +251,8 @@ export function buildSkillsBlock(
   header: string,
   questTemplates: { objectives?: { completion?: { key?: string; keys?: string[] }; description?: string }[] }[] = [],
   characterName?: string,
-  sessionStats?: SessionStats
+  sessionStats?: SessionStats,
+  userName?: string
 ): string {
   const availableSkills = filterSkillsByRequirements(skills, attributeValues, sessionStats);
 
@@ -260,7 +261,7 @@ export function buildSkillsBlock(
   }
 
   const charName = characterName || '{{char}}';
-  const introText = header.includes('ACCIONES') 
+  const introText = header.includes('ACCIONES')
     ? `${charName} puede realizar las siguientes acciones cuando la situación lo requiera.\nCuando una acción tenga "Puede completar", USA LA TOOL "manage_quest" o "manage_solicitud" con la key correspondiente para marcar como completado:\n`
     : '';
 
@@ -270,16 +271,21 @@ export function buildSkillsBlock(
   }
 
   availableSkills.forEach((skill) => {
+    // Resolve template keys in skill text fields
+    const resolvedName = resolveTemplateKeys(skill.name, userName, characterName);
+    const resolvedDescription = resolveTemplateKeys(skill.description, userName, characterName);
+
     // Check for custom inject format first
     if (skill.injectFormat) {
-      const formatted = skill.injectFormat
-        .replace('{name}', skill.name)
-        .replace('{description}', skill.description)
+      const resolvedInjectFormat = resolveTemplateKeys(skill.injectFormat, userName, characterName);
+      const formatted = resolvedInjectFormat
+        .replace('{name}', resolvedName)
+        .replace('{description}', resolvedDescription)
         .replace('{key}', skill.activationKey || skill.key || '');
       lines.push(`- ${formatted}`);
     } else {
       // New readable format
-      lines.push(`- Nombre: ${skill.name}`);
+      lines.push(`- Nombre: ${resolvedName}`);
 
       // Type (preparacion/ejecucion)
       if (skill.type) {
@@ -287,12 +293,12 @@ export function buildSkillsBlock(
         lines.push(`  Tipo: ${tipoLabel}`);
       }
 
-      lines.push(`  Descripción: ${skill.description}`);
+      lines.push(`  Descripción: ${resolvedDescription}`);
 
       // Collect objectives and solicitudes that this skill can complete
       const objectives: string[] = [];
       const solicitudes: string[] = [];
-      
+
       for (const reward of skill.activationRewards || []) {
         if (reward.type === 'objective' && reward.objective?.objectiveKey) {
           const objectiveName = findObjectiveNameByKey(reward.objective.objectiveKey, questTemplates);
@@ -332,7 +338,9 @@ export function buildIntentionsBlock(
   intentions: IntentionDefinition[],
   attributeValues: Record<string, number | string>,
   header: string,
-  sessionStats?: SessionStats
+  sessionStats?: SessionStats,
+  userName?: string,
+  characterName?: string
 ): string {
   const availableIntentions = filterIntentionsByRequirements(intentions, attributeValues, sessionStats);
 
@@ -345,17 +353,22 @@ export function buildIntentionsBlock(
   availableIntentions.forEach((intention, index) => {
     const intentionNumber = index + 1;
 
+    // Resolve template keys in intention text fields
+    const resolvedName = resolveTemplateKeys(intention.name, userName, characterName);
+    const resolvedDescription = resolveTemplateKeys(intention.description, userName, characterName);
+
     // Check for custom inject format first
     if (intention.injectFormat) {
-      const formatted = intention.injectFormat
-        .replace('{name}', intention.name)
-        .replace('{description}', intention.description)
+      const resolvedInjectFormat = resolveTemplateKeys(intention.injectFormat, userName, characterName);
+      const formatted = resolvedInjectFormat
+        .replace('{name}', resolvedName)
+        .replace('{description}', resolvedDescription)
         .replace('{key}', intention.key || '');
       lines.push(`${intentionNumber}) ${formatted}`);
     } else {
       // Default format with description and activation key
-      lines.push(`${intentionNumber}) ${intention.name}`);
-      lines.push(`   - Descripción: ${intention.description}`);
+      lines.push(`${intentionNumber}) ${resolvedName}`);
+      lines.push(`   - Descripción: ${resolvedDescription}`);
 
       // Show activation key only if it exists
       if (intention.key) {
@@ -630,14 +643,17 @@ export function resolveStats(
     statsConfig.blockHeaders.skills,
     context.questTemplates || [],
     context.characterName,
-    sessionStats
+    sessionStats,
+    context.userName
   );
   
   const intentionsBlock = buildIntentionsBlock(
     statsConfig.intentions,
     attributeValues,
     statsConfig.blockHeaders.intentions,
-    sessionStats
+    sessionStats,
+    context.userName,
+    context.characterName
   );
   
   const invitationsBlock = buildInvitationsBlock(

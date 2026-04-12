@@ -76,6 +76,7 @@ export function CharacterMemoryEditor({
     content: '',
     importance: 0.5
   });
+  const [newEventSubject, setNewEventSubject] = useState<'usuario' | 'personaje' | 'otro'>('personaje');
   const [newRelation, setNewRelation] = useState<Partial<RelationshipMemory>>({
     targetId: '',
     targetName: '',
@@ -118,6 +119,7 @@ export function CharacterMemoryEditor({
         characterName,
         memoryType: mapEventType(newEvent.type || 'fact'),
         importance: Math.round((newEvent.importance || 0.5) * 5), // Convert 0-1 to 1-5
+        memorySubject: newEventSubject,
       }),
     }).then(res => res.json()).then(result => {
       if (result.success) {
@@ -133,8 +135,9 @@ export function CharacterMemoryEditor({
     });
 
     setNewEvent({ type: 'fact', content: '', importance: 0.5 });
+    setNewEventSubject('personaje');
     setAddEventOpen(false);
-  }, [characterId, newEvent, addMemoryEvent, characterName]);
+  }, [characterId, newEvent, addMemoryEvent, characterName, newEventSubject]);
 
   const handleAddRelation = useCallback(() => {
     if (!newRelation.targetName?.trim() || !newRelation.relationship?.trim()) return;
@@ -188,6 +191,35 @@ export function CharacterMemoryEditor({
                   <DialogTitle>Agregar Memoria</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 pt-4">
+                  <div className="space-y-2">
+                    <Label>¿Sobre quién es esta memoria?</Label>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge
+                        variant={newEventSubject === 'personaje' ? 'default' : 'outline'}
+                        className="cursor-pointer px-3 py-1.5"
+                        onClick={() => setNewEventSubject('personaje')}
+                      >
+                        <Sparkles className="w-3 h-3 mr-1" />
+                        {characterName}
+                      </Badge>
+                      <Badge
+                        variant={newEventSubject === 'usuario' ? 'default' : 'outline'}
+                        className="cursor-pointer px-3 py-1.5"
+                        onClick={() => setNewEventSubject('usuario')}
+                      >
+                        <User className="w-3 h-3 mr-1" />
+                        Usuario
+                      </Badge>
+                      <Badge
+                        variant={newEventSubject === 'otro' ? 'default' : 'outline'}
+                        className="cursor-pointer px-3 py-1.5"
+                        onClick={() => setNewEventSubject('otro')}
+                      >
+                        <Heart className="w-3 h-3 mr-1" />
+                        Otro
+                      </Badge>
+                    </div>
+                  </div>
                   <div className="space-y-2">
                     <Label>Tipo de evento</Label>
                     <div className="flex flex-wrap gap-2">

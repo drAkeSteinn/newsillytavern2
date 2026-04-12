@@ -83,26 +83,5 @@
     },
     "isActive": false,
     "id": "14105a9e-cebd-4a80-b717-c4ed015edb67"
-  },
-  {
-    "name": "asd",
-    "provider": "grok",
-    "endpoint": "https://api.x.ai/v1",
-    "apiKey": "",
-    "model": "",
-    "parameters": {
-      "temperature": 0.7,
-      "topP": 0.9,
-      "topK": 40,
-      "maxTokens": 512,
-      "contextSize": 4096,
-      "repetitionPenalty": 1.1,
-      "frequencyPenalty": 0,
-      "presencePenalty": 0,
-      "stopStrings": [],
-      "stream": true
-    },
-    "isActive": true,
-    "id": "6092cff5-0362-40a4-b68f-42a8cfa81cbc"
   }
 ]
