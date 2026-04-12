@@ -517,6 +517,30 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
         }
       }
     }
+
+    // Also add persona's stats as __user__ entry
+    if (activePersona?.statsConfig?.enabled && activePersona.statsConfig.attributes?.length > 0) {
+      const personaStats = createDefaultCharacterStats(activePersona.statsConfig);
+      if (sessionStats) {
+        sessionStats = {
+          ...sessionStats,
+          characterStats: {
+            ...sessionStats.characterStats,
+            '__user__': personaStats,
+          },
+        };
+      } else {
+        sessionStats = {
+          characterStats: { '__user__': personaStats },
+          solicitudes: {
+            characterSolicitudes: {},
+            lastModified: Date.now(),
+          },
+          initialized: true,
+          lastModified: Date.now(),
+        };
+      }
+    }
     
     set((state: any) => ({
       sessions: [...state.sessions, {
@@ -590,6 +614,17 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     // Delete memory namespaces and their embeddings (async, don't wait)
     if (session) {
       try {
+        // For group sessions, collect member IDs so individual character namespaces are also deleted
+        let memberIds: string[] | undefined;
+        if (groupId) {
+          const group = get().getGroupById?.(groupId);
+          if (group?.members) {
+            memberIds = group.members
+              .map((m: any) => m.characterId)
+              .filter((id: string) => !!id);
+          }
+        }
+
         await fetch('/api/embeddings/delete-session-namespaces', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -597,6 +632,7 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
             characterId,
             groupId,
             sessionId: id,
+            memberIds,
           }),
         });
         console.log(`[Session] Deleted memory namespaces for session ${id}`);
@@ -676,7 +712,19 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     }
     
     // Reset session stats to default values
-    const newSessionStats = initializeSessionStatsForCharacters(characters);
+    let newSessionStats = initializeSessionStatsForCharacters(characters);
+
+    // Also add persona's stats as __user__ entry
+    const resetActivePersona = get().getActivePersona?.();
+    if (resetActivePersona?.statsConfig?.enabled && resetActivePersona.statsConfig.attributes?.length > 0) {
+      newSessionStats = {
+        ...newSessionStats,
+        characterStats: {
+          ...newSessionStats.characterStats,
+          '__user__': createDefaultCharacterStats(resetActivePersona.statsConfig),
+        },
+      };
+    }
     
     set((state: any) => ({
       sessions: state.sessions.map((s: ChatSession) =>
@@ -720,7 +768,18 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     }
     
     // Reset session stats to default values
-    const newSessionStats = initializeSessionStatsForCharacters(characters);
+    let newSessionStats = initializeSessionStatsForCharacters(characters);
+
+    // Also add persona's stats as __user__ entry
+    if (activePersona?.statsConfig?.enabled && activePersona.statsConfig.attributes?.length > 0) {
+      newSessionStats = {
+        ...newSessionStats,
+        characterStats: {
+          ...newSessionStats.characterStats,
+          '__user__': createDefaultCharacterStats(activePersona.statsConfig),
+        },
+      };
+    }
     
     // Reset session quests to template defaults
     let newSessionQuests: SessionQuestInstance[] = [];

@@ -56,7 +56,7 @@ import type {
 
 // Import defaults for merge function
 import { defaultSettings, defaultPersona } from './defaults';
-import { DEFAULT_DIALOGUE_SETTINGS, DEFAULT_SUMMARY_SETTINGS, DEFAULT_QUEST_SETTINGS, DEFAULT_CHATBOX_APPEARANCE } from '@/types';
+import { DEFAULT_DIALOGUE_SETTINGS, DEFAULT_SUMMARY_SETTINGS, DEFAULT_QUEST_SETTINGS, DEFAULT_CHATBOX_APPEARANCE, DEFAULT_TOOLS_SETTINGS } from '@/types';
 
 // Combined store type
 export type TavernState = CharacterSlice &
@@ -237,6 +237,11 @@ export const useTavernStore = create<TavernState>()(
               ...DEFAULT_CHATBOX_APPEARANCE.input,
               ...((persistedChatboxAppearance?.input as Record<string, unknown>) || {})
             }
+          },
+          // Ensure tools settings exist with defaults (for backward compatibility)
+          tools: {
+            ...DEFAULT_TOOLS_SETTINGS,
+            ...((persistedSettings?.tools as Record<string, unknown>) || {})
           }
         };
 

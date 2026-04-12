@@ -2155,7 +2155,7 @@ export interface QuestObjectiveTemplate {
 // Los triggers se ejecutan a través del UnifiedTriggerExecutor,
 // que simula que el TokenDetector encontró la key.
 
-export type QuestRewardType = 'attribute' | 'trigger' | 'objective' | 'solicitud';
+export type QuestRewardType = 'attribute' | 'trigger' | 'objective' | 'solicitud' | 'target_attribute';
 
 // Target mode para grupos
 export type TriggerTargetMode = 'self' | 'all' | 'target';
@@ -2211,6 +2211,14 @@ export interface QuestRewardSolicitud {
   solicitudName?: string;     // Nombre de la solicitud para mostrar
 }
 
+// Configuración de atributo de target para recompensa (modifica atributo de OTRO personaje o persona)
+export interface QuestRewardTargetAttribute {
+  targetCharacterId: string;  // ID del personaje objetivo, o '__user__' para la persona
+  key: string;                // Key del atributo del target: "vida", "oro", etc.
+  value: number | string;     // Valor a aplicar
+  action: AttributeAction;    // Tipo de operación: set, add, subtract, etc.
+}
+
 // Opción para dropdown de selección de objetivos en UI
 export interface ObjectiveDropdownOption {
   questId: string;
@@ -2246,6 +2254,9 @@ export interface QuestReward {
 
   // Para type: 'solicitud' - completa una solicitud del personaje
   solicitud?: QuestRewardSolicitud;
+
+  // Para type: 'target_attribute' - modifica atributo de otro personaje o persona
+  target_attribute?: QuestRewardTargetAttribute;
 
   // Condiciones opcionales para ejecutar el reward
   condition?: QuestRewardCondition;

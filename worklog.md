@@ -465,3 +465,181 @@ Stage Summary:
 - Tool validates keys against actual definitions before returning metadata
 - Follows same architecture as manage-quest and manage-action: stateless server validation → SSE metadata → client execution
 - Both normal chat and group chat fully supported
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix Tools Settings Panel UI - disabled state gray box, config persistence, import/export
+
+Work Log:
+- Analyzed the ToolsSettingsPanel component (src/components/tools/tools-settings-panel.tsx)
+- Identified the UI issue: disabled tool cards used `bg-muted/30 opacity-60` creating a heavy gray overlay that obscured content
+- Redesigned disabled state: removed gray background, kept `bg-background`, applied subtle opacity only to text/icon area, added line-through on label, kept Switch fully visible
+- Verified tools configuration persistence: `settings.tools` is persisted via Zustand `persist` middleware (partialize includes `settings`)
+- Verified import/export: tools config is already included via `settings` key in both config and full backup export/import
+- Added tools merge in store persist (src/store/index.ts) for backward compatibility: ensures `disabledTools` and `usePromptBasedFallback` defaults exist when loading old data
+- Ran lint: no errors
+
+Stage Summary:
+- Fixed disabled tool card UI: no more gray box overlay, cleaner visual distinction between enabled/disabled states
+- Tools config already persisted correctly via `settings.tools` in localStorage and server-side JSON
+- Tools config already included in import/export via the `settings` key
+- Added backward-compatible merge for tools settings in store hydration
+
+---
+Task ID: 2a-6
+Agent: Main Agent
+Task: Review embeddings system - 6 points (namespace creation, deletion, memory extraction, chatbox memorias, settings namespace deletion)
+
+Work Log:
+- Analyzed entire embeddings system: 15 API routes, 12 lib modules, 3 components, chat integration
+- **Point 1 (Create namespace)**: `createSession` already calls `ensure-namespace` API which creates `memory-character-{characterId}-{sessionId}` for single chars and `memory-group-{groupId}-{sessionId}` + `memory-character-{memberId}-{sessionId}` for groups. ✅ ALREADY WORKS
+- **Point 2 (Delete namespace)**: Found BUG — `deleteSession` in sessionSlice didn't pass `memberIds`, so group member namespaces weren't being deleted. Fixed both:
+  - Updated `delete-session-namespaces/route.ts` with dual strategy: (1) metadata-based search for ALL namespaces with session_id, (2) fallback pattern-based matching with memberIds
+  - Updated `sessionSlice.ts` deleteSession to collect and pass memberIds for group sessions
+- **Point 3 (Memory extraction every X turns)**: `chat/stream/route.ts` already triggers extraction when `turnCount % frequency === 0`, calls `extractAndSaveMemories()` which saves to session-scoped namespace. ✅ ALREADY WORKS
+- **Point 5 (Chatbox memorias tab)**: `novel-chat-box.tsx` already loads from `memory-character-{id}-{sessionId}` namespace, supports adding/deleting memories. ✅ ALREADY WORKS
+- **Point 6 (Settings namespace deletion)**: `namespaces/[namespace]/route.ts` DELETE calls `LanceDBWrapper.deleteNamespace()` which first deletes all embeddings via `deleteAllByNamespace`, then the namespace record, then drops the table. ✅ ALREADY WORKS
+
+Stage Summary:
+- 4 of 6 points already working correctly
+- Fixed 1 bug: group session deletion now properly cleans up all member namespaces
+- Improved deletion API with metadata-based search as primary strategy (more robust than pattern matching)
+
+---
+Task ID: 3-6
+Agent: Main Agent
+Task: Add persona (user) attributes system mirroring character stats system
+
+Work Log:
+- Analyzed the full character stats system: creation (StatsEditor UI), session storage (initializeSessionStatsForCharacters), PRE-LLM resolution (resolveStats → key-resolver 4-phase), HUD display, POST-LLM detection (stats-detector → StatsKeyHandler)
+
+## Task 2: Session Stats Initialization for Persona
+- Modified `src/store/slices/sessionSlice.ts` in 3 places (createSession, resetSessionStats, clearChat)
+- After initializing character stats, also initializes persona stats under `__user__` key if persona has `statsConfig.enabled` and attributes
+- Uses `getActivePersona()` to get the current persona's statsConfig
+
+## Task 3: PRE-LLM Resolution for Persona Attributes
+- Modified `src/lib/key-resolver.ts`:
+  - Added `personaResolvedStats` to `KeyResolutionContext`
+  - Updated `resolveStatsKeys()` to accept persona stats and resolve attribute keys
+  - Updated `resolveAllKeys()` to pass persona stats
+  - Updated `buildKeyResolutionContext()` and `buildGroupKeyResolutionContext()` with new parameter
+- Modified `src/lib/llm/prompt-builder.ts`:
+  - Added `ResolvedStats` import
+  - In `buildSystemPrompt()` and `buildGroupSystemPrompt()`: resolve persona stats with `resolveStats({characterId: '__user__', statsConfig: persona.statsConfig, sessionStats})` and pass to context
+  - Persona attributes' {{key}} now resolve in ALL prompt sections (including persona description)
+
+## Task 4: POST-LLM Detection for Persona Attributes
+- Modified `src/lib/triggers/use-trigger-system.ts`:
+  - Added persona stats detection after character stats detection in the streaming trigger system
+  - Uses `config.activePersona.statsConfig` with `__user__` characterId
+  - Calls same `checkStatsTriggersInText()` → `executeStatsTrigger()` pipeline
+  - Supports all operators: set, +N, -N, =N
+
+## Task 5: HUD Display for Persona Attributes
+- Modified `src/components/tavern/hud-display.tsx`:
+  - Added `activePersonaId` and `personas` to store subscriptions
+  - After character attributes, resolves persona attributes from `sessionStats.characterStats['__user__']`
+  - Renders persona attributes in separate card with persona name header
+  - Same styles and rendering as character attributes (progress, gauge, badge, etc.)
+  - Only shown when persona has stats enabled with attributes that have `showInHUD: true`
+
+## Task 6: Attributes Editor in Persona Panel
+- Modified `src/components/tavern/persona-panel.tsx`:
+  - Added "Atributos y Estadísticas" section before "Peticiones y Solicitudes"
+  - Compact attributes editor with: name, key, type (number/estado/text), default, min/max, HUD toggle, detection keys
+  - Toggle switch to enable/disable the entire system
+  - Existing toggle for peticiones now controls both attributes AND peticiones/solicitudes
+  - Fixed JSX nesting issue (removed orphaned closing div)
+
+Stage Summary:
+- Persona attributes fully integrated: creation → session storage → PRE-LLM resolution → HUD display → POST-LLM detection → modification via key:value
+- Uses `__user__` as characterId throughout for persona stats (same pattern as existing user peticiones/solicitudes)
+- All lint checks pass
+---
+Task ID: 2
+Agent: Main Agent
+Task: Fix persona attributes editor to use shared StatsEditor component (same as character editor)
+
+Work Log:
+- Fixed `personaAttributes is not defined` error in hud-display.tsx: Added `PersonaAttributesData` interface, extended `MultiCharacterAttributesHUDProps` to include `personaAttributes`, destructured it in the component, passed it from parent, fixed rendering condition to `(hasAttributes || hasPersonaAttributes)`
+- Fixed `{{key}}` JSX error in persona-panel.tsx: Wrapped text in string literal `{'...{{key}}...'}` to prevent JSX interpretation
+- Replaced entire inline persona attributes section (simplified editor) + peticiones/solicitudes section with shared `StatsEditor` component from stats-editor.tsx
+- Removed ~320 lines of duplicate code: `PersonaInvitationEditor`, `PersonaSolicitudEditor`, `handleToggleStats`, `handleAddSolicitud`, `handleUpdateSolicitud`, `handleDeleteSolicitud`, `handleAddInvitation`, `handleUpdateInvitation`, `handleDeleteInvitation`, `DEFAULT_PERSONA_STATS_CONFIG`
+- Cleaned up unused imports: `Switch`, `Select`, `X`, `Sparkles`, `GripVertical`, `ChevronDown`, `ChevronUp`, `Target`, `Zap`, `StatRequirement`, `InvitationDefinition`, `DEFAULT_STATS_BLOCK_HEADERS`
+- Updated persona list view to show attributes badge count
+- Updated editor info sidebar to include attributes documentation
+- Verified all backend systems already work: session creation/reset/restore with `__user__` key, PRE-LLM template resolution via `resolveStats` + `buildKeyResolutionContext`, POST-LLM detection via `StatsKeyHandler` with persona context
+- All lint checks pass
+
+Stage Summary:
+- Persona editor now uses the exact same `StatsEditor` component as character editor (identical UI, all options: name, key, type, min/max, threshold effects, detection keys, output format, icon, color, HUD customization)
+- No code duplication - single source of truth for stats editing
+- All persona attribute systems verified working: UI creation → JSON persistence → session storage → PRE-LLM `{{key}}` resolution → HUD display → POST-LLM `key: value` detection → `updateCharacterStat` modification
+---
+Task ID: 4-persona-ui
+Agent: Main Agent
+Task: Redesign persona editor panel UI layout for better space usage
+
+Work Log:
+- Analyzed current persona editor layout issues:
+  1. Right sidebar (info panel) only visible on `2xl` screens — almost never shown
+  2. Basic info section vertically stacked — avatar above, fields below, wasting horizontal space
+  3. `max-w-5xl` constraint limits editor width unnecessarily
+  4. Header was bulky with large avatar and excessive padding
+- Redesigned `PersonaEditorPanel` in `src/components/tavern/persona-panel.tsx`:
+  1. **Compact header**: Reduced padding from `px-6 py-4` to `px-4 py-3`, smaller avatar (w-8 h-8), smaller font, text truncation
+  2. **Two-column grid on lg+**: Changed from `2xl:grid-cols-[1fr_320px]` to `lg:grid-cols-[1fr_300px] xl:grid-cols-[1fr_340px]`
+  3. **Basic info horizontal layout**: Changed from `flex items-start gap-6` to `grid grid-cols-[auto_1fr] gap-5` — avatar left, name/description right
+  4. **Removed max-w-5xl**: Editor now uses full available width
+  5. **Right sidebar always visible on lg+**: Changed from `hidden 2xl:block` to `hidden lg:block`
+  6. **Added Quick Stats Summary**: New sidebar card showing count of attributes, actions, intentions, petitions, and solicitudes (visible when statsConfig.enabled)
+  7. **Increased description textarea**: From 4 rows to 6 rows to use horizontal space better
+- Verified: Lint passes cleanly, dev server compiles with GET / 200
+
+Stage Summary:
+- File modified: src/components/tavern/persona-panel.tsx
+- Key improvements: responsive 2-column layout on lg+ (was 2xl), horizontal basic info layout (was vertical), compact header, removed max-width constraint, added stats summary sidebar card
+- Editor now efficiently uses all available horizontal space on medium and large screens
+---
+Task ID: 5-target-attribute-reward
+Agent: Main Agent
+Task: Add target_attribute reward type for character actions
+
+Work Log:
+- Analyzed the existing reward system: 4 types (attribute, trigger, objective, solicitud), execution pipeline, StatsEditor UI
+- Added new reward type across the full stack:
+
+## 1. Types (src/types/index.ts)
+- Added "target_attribute" to QuestRewardType union
+- Added QuestRewardTargetAttribute interface: { targetCharacterId, key, value, action }
+- Added target_attribute field to QuestReward interface
+
+## 2. Reward Utilities (src/lib/quest/quest-reward-utils.ts)
+- Added createTargetAttributeReward() factory function
+- Added target_attribute to normalizeReward() (passthrough + fallback)
+- Added target_attribute to validateReward() (checks targetCharacterId, key, value)
+- Added target_attribute to describeReward() (shows: 🔗 @target.key ± value)
+- Restored accidentally removed describeReward() function
+
+## 3. Reward Executor (src/lib/quest/quest-reward-executor.ts)
+- Added executeTargetAttributeReward() function that reads target stats, calculates new value, calls updateCharacterStat on the TARGET character/persona
+- Added case "target_attribute" to executeReward() switch
+
+## 4. StatsEditor UI (src/components/tavern/stats-editor.tsx)
+- Added availableTargets prop to StatsEditorProps, AttributeEditorProps, SkillEditorProps
+- Added "🔗 Atributo Target" button in 3 places: onMinReached, onMaxReached, skill activation rewards
+- Added target_attribute rendering with: target dropdown → attribute dropdown → action/value inputs
+- Supports numeric attributes (6 actions: set/add/subtract/multiply/divide/percent) and text/keyword attributes (text input with set action)
+
+## 5. Parent Components
+- persona-panel.tsx: Built availableTargets from characters + active persona, passed to StatsEditor
+- character-editor.tsx: Built availableTargets from other characters + active persona, passed to StatsEditor
+
+Stage Summary:
+- Files modified: src/types/index.ts, src/lib/quest/quest-reward-utils.ts, src/lib/quest/quest-reward-executor.ts, src/components/tavern/stats-editor.tsx, src/components/tavern/persona-panel.tsx, src/components/tavern/character-editor.tsx
+- New reward type "target_attribute" fully integrated: type system → utilities → execution → UI → data flow
+- Target dropdown shows all other characters with attributes + persona (if attributes configured)
+- Selecting a target shows their available attributes; numeric shows action+value, text shows text input
+- Lint: 0 errors. Compilation: GET / 200

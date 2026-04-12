@@ -148,6 +148,46 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
     return result;
   }, [characters, characterId, activePersona]);
 
+  // Build available targets for target_attribute rewards: other characters + persona
+  const availableTargets = useMemo(() => {
+    const targets: Array<{
+      id: string;
+      name: string;
+      attributes: Array<{ key: string; name: string; type: 'number' | 'keyword' | 'text'; min?: number; max?: number }>;
+    }> = [];
+    // Add OTHER characters with attributes (exclude the one being edited)
+    characters.forEach(c => {
+      if (c.id !== characterId && c.statsConfig?.enabled && (c.statsConfig.attributes?.length || 0) > 0) {
+        targets.push({
+          id: c.id,
+          name: c.name,
+          attributes: (c.statsConfig.attributes || []).map(a => ({
+            key: a.key,
+            name: a.name,
+            type: a.type,
+            min: a.min,
+            max: a.max,
+          })),
+        });
+      }
+    });
+    // Add active persona with attributes
+    if (activePersona?.statsConfig?.enabled && (activePersona.statsConfig.attributes?.length || 0) > 0) {
+      targets.push({
+        id: '__user__',
+        name: activePersona.name || 'Persona',
+        attributes: (activePersona.statsConfig.attributes || []).map(a => ({
+          key: a.key,
+          name: a.name,
+          type: a.type,
+          min: a.min,
+          max: a.max,
+        })),
+      });
+    }
+    return targets;
+  }, [characters, characterId, activePersona]);
+
   // Initialize character data based on characterId
   const getInitialCharacter = () => {
     if (characterId) {
@@ -712,6 +752,7 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
       allCharacters={allCharacters}
       questTemplates={questTemplates}
       questTemplateIds={character.questTemplateIds}
+      availableTargets={availableTargets}
     />
   );
 

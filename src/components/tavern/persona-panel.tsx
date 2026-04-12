@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -15,7 +14,6 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
@@ -25,21 +23,14 @@ import {
   Check, 
   User,
   Edit2,
-  X,
   Upload,
   Loader2,
   HelpCircle,
   Users,
-  Sparkles,
   Mail,
   Inbox,
   Send,
-  Target,
-  ChevronDown,
-  ChevronUp,
-  GripVertical,
   Settings2,
-  Zap,
   ArrowLeft,
   Save,
 } from 'lucide-react';
@@ -49,24 +40,11 @@ import type {
   CharacterCard, 
   CharacterStatsConfig, 
   SolicitudDefinition, 
-  InvitationDefinition,
-  StatRequirement,
 } from '@/types';
-import { DEFAULT_STATS_BLOCK_HEADERS } from '@/types';
 import { getLogger } from '@/lib/logger';
+import { StatsEditor } from './stats-editor';
 
 const personaLogger = getLogger('persona');
-
-// Default stats config for Persona (only petitions/solicitudes, no attributes/skills)
-const DEFAULT_PERSONA_STATS_CONFIG: CharacterStatsConfig = {
-  enabled: false,
-  attributes: [],
-  skills: [],
-  intentions: [],
-  invitations: [],
-  solicitudDefinitions: [],
-  blockHeaders: DEFAULT_STATS_BLOCK_HEADERS,
-};
 
 export function PersonaPanel() {
   const { 
@@ -105,6 +83,47 @@ export function PersonaPanel() {
         solicitudDefinitions: c.statsConfig?.solicitudDefinitions || [],
       }));
   }, [characters]);
+
+  // Build available targets for target_attribute rewards: other characters + persona
+  const availableTargets = useMemo(() => {
+    const targets: Array<{
+      id: string;
+      name: string;
+      attributes: Array<{ key: string; name: string; type: 'number' | 'keyword' | 'text'; min?: number; max?: number }>;
+    }> = [];
+    // Add characters with attributes
+    characters.forEach(c => {
+      if (c.statsConfig?.enabled && (c.statsConfig.attributes?.length || 0) > 0) {
+        targets.push({
+          id: c.id,
+          name: c.name,
+          attributes: (c.statsConfig.attributes || []).map(a => ({
+            key: a.key,
+            name: a.name,
+            type: a.type,
+            min: a.min,
+            max: a.max,
+          })),
+        });
+      }
+    });
+    // Add active persona with attributes
+    const activePersona = personas.find(p => p.id === activePersonaId);
+    if (activePersona?.statsConfig?.enabled && (activePersona.statsConfig.attributes?.length || 0) > 0) {
+      targets.push({
+        id: '__user__',
+        name: activePersona.name || 'Persona',
+        attributes: (activePersona.statsConfig.attributes || []).map(a => ({
+          key: a.key,
+          name: a.name,
+          type: a.type,
+          min: a.min,
+          max: a.max,
+        })),
+      });
+    }
+    return targets;
+  }, [characters, personas, activePersonaId]);
 
   const handleCreatePersona = () => {
     const newPersona: Omit<Persona, 'id' | 'createdAt' | 'updatedAt'> = {
@@ -210,106 +229,6 @@ export function PersonaPanel() {
   // ============================================
   // Stats Config Handlers
   // ============================================
-
-  const handleToggleStats = (enabled: boolean) => {
-    setEditForm(prev => ({
-      ...prev,
-      statsConfig: enabled 
-        ? { ...DEFAULT_PERSONA_STATS_CONFIG, enabled: true }
-        : { ...(prev.statsConfig || DEFAULT_PERSONA_STATS_CONFIG), enabled: false },
-    }));
-  };
-
-  // Solicitud Definition handlers (requests user can receive)
-  const handleAddSolicitud = () => {
-    const newSolicitud: SolicitudDefinition = {
-      id: `solicitud-${Date.now()}`,
-      name: 'Nueva Solicitud',
-      peticionKey: '',
-      solicitudKey: '',
-      peticionDescription: '',
-      solicitudDescription: '',
-      requirements: [],
-    };
-    setEditForm(prev => ({
-      ...prev,
-      statsConfig: {
-        ...(prev.statsConfig || DEFAULT_PERSONA_STATS_CONFIG),
-        solicitudDefinitions: [
-          ...(prev.statsConfig?.solicitudDefinitions || []),
-          newSolicitud,
-        ],
-      },
-    }));
-  };
-
-  const handleUpdateSolicitud = (index: number, updates: Partial<SolicitudDefinition>) => {
-    setEditForm(prev => {
-      const solicitudes = [...(prev.statsConfig?.solicitudDefinitions || [])];
-      solicitudes[index] = { ...solicitudes[index], ...updates };
-      return {
-        ...prev,
-        statsConfig: {
-          ...(prev.statsConfig || DEFAULT_PERSONA_STATS_CONFIG),
-          solicitudDefinitions: solicitudes,
-        },
-      };
-    });
-  };
-
-  const handleDeleteSolicitud = (index: number) => {
-    setEditForm(prev => ({
-      ...prev,
-      statsConfig: {
-        ...(prev.statsConfig || DEFAULT_PERSONA_STATS_CONFIG),
-        solicitudDefinitions: (prev.statsConfig?.solicitudDefinitions || []).filter((_, i) => i !== index),
-      },
-    }));
-  };
-
-  // Invitation handlers (petitions user can send)
-  const handleAddInvitation = () => {
-    const newInvitation: InvitationDefinition = {
-      id: `invitation-${Date.now()}`,
-      name: 'Nueva Peticion',
-      requirements: [],
-    };
-    setEditForm(prev => ({
-      ...prev,
-      statsConfig: {
-        ...(prev.statsConfig || DEFAULT_PERSONA_STATS_CONFIG),
-        invitations: [
-          ...(prev.statsConfig?.invitations || []),
-          newInvitation,
-        ],
-      },
-    }));
-  };
-
-  const handleUpdateInvitation = (index: number, updates: Partial<InvitationDefinition>) => {
-    setEditForm(prev => {
-      const invitations = [...(prev.statsConfig?.invitations || [])];
-      invitations[index] = { ...invitations[index], ...updates };
-      return {
-        ...prev,
-        statsConfig: {
-          ...(prev.statsConfig || DEFAULT_PERSONA_STATS_CONFIG),
-          invitations: invitations,
-        },
-      };
-    });
-  };
-
-  const handleDeleteInvitation = (index: number) => {
-    setEditForm(prev => ({
-      ...prev,
-      statsConfig: {
-        ...(prev.statsConfig || DEFAULT_PERSONA_STATS_CONFIG),
-        invitations: (prev.statsConfig?.invitations || []).filter((_, i) => i !== index),
-      },
-    }));
-  };
-
   // Find the persona being edited
   const editingPersona = editingId ? personas.find(p => p.id === editingId) : null;
 
@@ -327,14 +246,8 @@ export function PersonaPanel() {
           handleSaveEdit={handleSaveEdit}
           handleCancelEdit={handleCancelEdit}
           handleAvatarUpload={handleAvatarUpload}
-          handleToggleStats={handleToggleStats}
-          handleAddSolicitud={handleAddSolicitud}
-          handleUpdateSolicitud={handleUpdateSolicitud}
-          handleDeleteSolicitud={handleDeleteSolicitud}
-          handleAddInvitation={handleAddInvitation}
-          handleUpdateInvitation={handleUpdateInvitation}
-          handleDeleteInvitation={handleDeleteInvitation}
           charactersWithSolicitudes={charactersWithSolicitudes}
+          availableTargets={availableTargets}
         />
       ) : (
         <div className="h-full flex flex-col gap-4 overflow-hidden">
@@ -435,6 +348,11 @@ export function PersonaPanel() {
                         <div className="flex gap-1 mt-1">
                           {persona.statsConfig?.enabled && (
                             <>
+                              {(persona.statsConfig.attributes?.length || 0) > 0 && (
+                                <Badge className="text-[9px] bg-violet-500/10 text-violet-400 border-violet-500/20">
+                                  {persona.statsConfig.attributes?.length} atributos
+                                </Badge>
+                              )}
                               {(persona.statsConfig.invitations?.length || 0) > 0 && (
                                 <Badge className="text-[9px] bg-blue-500/10 text-blue-400 border-blue-500/20">
                                   <Send className="w-2.5 h-2.5 mr-0.5" />
@@ -548,14 +466,12 @@ interface PersonaEditorPanelProps {
   handleSaveEdit: (id: string) => void;
   handleCancelEdit: () => void;
   handleAvatarUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  handleToggleStats: (enabled: boolean) => void;
-  handleAddSolicitud: () => void;
-  handleUpdateSolicitud: (index: number, updates: Partial<SolicitudDefinition>) => void;
-  handleDeleteSolicitud: (index: number) => void;
-  handleAddInvitation: () => void;
-  handleUpdateInvitation: (index: number, updates: Partial<InvitationDefinition>) => void;
-  handleDeleteInvitation: (index: number) => void;
   charactersWithSolicitudes: { id: string; name: string; solicitudDefinitions: SolicitudDefinition[] }[];
+  availableTargets?: Array<{
+    id: string;
+    name: string;
+    attributes: Array<{ key: string; name: string; type: 'number' | 'keyword' | 'text'; min?: number; max?: number }>;
+  }>;
 }
 
 function PersonaEditorPanel({
@@ -569,14 +485,8 @@ function PersonaEditorPanel({
   handleSaveEdit,
   handleCancelEdit,
   handleAvatarUpload,
-  handleToggleStats,
-  handleAddSolicitud,
-  handleUpdateSolicitud,
-  handleDeleteSolicitud,
-  handleAddInvitation,
-  handleUpdateInvitation,
-  handleDeleteInvitation,
   charactersWithSolicitudes,
+  availableTargets,
 }: PersonaEditorPanelProps) {
   if (!persona) return null;
 
@@ -587,46 +497,45 @@ function PersonaEditorPanel({
       transition={{ duration: 0.2 }}
       className="h-full flex flex-col"
     >
-      {/* Header */}
-      <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-border/50 bg-background/95 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={handleCancelEdit} className="h-9 w-9" disabled={uploading}>
-            <ArrowLeft className="w-5 h-5" />
+      {/* Compact Header */}
+      <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-border/50 bg-background/95 backdrop-blur-sm">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Button variant="ghost" size="icon" onClick={handleCancelEdit} className="h-8 w-8 shrink-0" disabled={uploading}>
+            <ArrowLeft className="w-4 h-4" />
           </Button>
-          <div className="flex items-center gap-3">
-            <Avatar className="w-10 h-10 border-2 border-violet-500/30">
-              <AvatarImage src={editForm.avatar} />
-              <AvatarFallback className="bg-violet-500/20">
-                <User className="w-5 h-5 text-violet-600" />
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <h2 className="text-xl font-bold">{editForm.name || 'Nueva Persona'}</h2>
-              <p className="text-xs text-muted-foreground">Edita la información y configuración de la persona</p>
-            </div>
+          <Avatar className="w-8 h-8 border-2 border-violet-500/30 shrink-0">
+            <AvatarImage src={editForm.avatar} />
+            <AvatarFallback className="bg-violet-500/20">
+              <User className="w-4 h-4 text-violet-600" />
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <h2 className="text-base font-bold truncate">{editForm.name || 'Nueva Persona'}</h2>
+            <p className="text-[11px] text-muted-foreground truncate">Edita la información y configuración de la persona</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handleCancelEdit} disabled={uploading}>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button variant="outline" size="sm" onClick={handleCancelEdit} disabled={uploading}>
             Cancelar
           </Button>
           <Button 
+            size="sm"
             onClick={() => handleSaveEdit(persona.id)} 
             disabled={uploading || !editForm.name.trim()}
             className="bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white"
           >
-            {uploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+            {uploading ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1.5" />}
             Guardar
           </Button>
         </div>
       </div>
 
-      {/* Scrollable Content */}
+      {/* Scrollable Content - Two columns on lg+ */}
       <div className="flex-1 overflow-y-auto">
-        <div className="grid grid-cols-1 2xl:grid-cols-[1fr_320px] gap-6 p-6 max-w-5xl mx-auto w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] xl:grid-cols-[1fr_340px] gap-6 p-6 w-full">
           {/* Left Column - Editor */}
-          <div className="space-y-6">
-            {/* Basic Info */}
+          <div className="space-y-6 min-w-0">
+            {/* Basic Info - Horizontal layout: avatar left, fields right */}
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                 <div className="p-1.5 rounded-md bg-violet-500/10">
@@ -634,11 +543,12 @@ function PersonaEditorPanel({
                 </div>
                 Información Básica
               </div>
-              <div className="flex items-start gap-6 p-4 rounded-xl border border-border/60 bg-gradient-to-br from-muted/30 to-muted/10">
+              <div className="grid grid-cols-[auto_1fr] gap-5 p-4 rounded-xl border border-border/60 bg-gradient-to-br from-muted/30 to-muted/10">
+                {/* Avatar Column */}
                 <div className="relative shrink-0">
                   <Avatar 
                     className={cn(
-                      "w-20 h-20 border-2 border-dashed border-muted-foreground/30",
+                      "w-24 h-24 border-2 border-dashed border-muted-foreground/30",
                       !uploading && "cursor-pointer hover:border-violet-500/50"
                     )} 
                     onClick={() => !uploading && fileInputRef.current?.click()}
@@ -674,7 +584,8 @@ function PersonaEditorPanel({
                     disabled={uploading}
                   />
                 </div>
-                <div className="flex-1 space-y-3">
+                {/* Fields Column */}
+                <div className="flex flex-col space-y-3 min-w-0">
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Nombre de la Persona</Label>
                     <Input
@@ -685,14 +596,14 @@ function PersonaEditorPanel({
                       disabled={uploading}
                     />
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 flex-1">
                     <Label className="text-xs text-muted-foreground">Descripción</Label>
                     <Textarea
                       value={editForm.description}
                       onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
                       placeholder="Describe la personalidad, antecedentes, motivaciones..."
-                      rows={4}
-                      className="text-sm resize-none"
+                      rows={6}
+                      className="text-sm resize-none flex-1"
                       disabled={uploading}
                     />
                   </div>
@@ -702,13 +613,18 @@ function PersonaEditorPanel({
 
             <Separator className="bg-border/50" />
 
-            {/* Peticiones y Solicitudes */}
+            {/* Stats System - Uses shared StatsEditor component (same as character editor) */}
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                 <div className="p-1.5 rounded-md bg-cyan-500/10">
                   <Settings2 className="w-4 h-4 text-cyan-500" />
                 </div>
-                Peticiones y Solicitudes
+                Atributos y Estadísticas
+                {(editForm.statsConfig?.attributes?.length || 0) > 0 && (
+                  <Badge className="bg-violet-500/20 text-violet-400 text-[10px]">
+                    {editForm.statsConfig?.attributes?.length} atributos
+                  </Badge>
+                )}
                 {(editForm.statsConfig?.invitations?.length || 0) > 0 && (
                   <Badge className="bg-blue-500/20 text-blue-400 text-[10px]">
                     {editForm.statsConfig?.invitations?.length} peticiones
@@ -721,124 +637,18 @@ function PersonaEditorPanel({
                 )}
               </div>
 
-              <div className="space-y-4">
-                {/* Enable/Disable */}
-                <div className="flex items-center justify-between p-3 rounded-lg border border-border/60 bg-gradient-to-br from-muted/30 to-muted/10">
-                  <div className="flex items-center gap-3">
-                    <Switch
-                      checked={editForm.statsConfig?.enabled || false}
-                      onCheckedChange={handleToggleStats}
-                    />
-                    <div>
-                      <Label className="text-xs font-medium cursor-pointer">Habilitar sistema de peticiones</Label>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">
-                        Permite enviar peticiones y recibir solicitudes de personajes
-                      </p>
-                    </div>
-                  </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <HelpCircle className="w-4 h-4 text-muted-foreground cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p>Activa el sistema para configurar peticiones y solicitudes.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-
-                {editForm.statsConfig?.enabled && (
-                  <>
-                    {/* Invitaciones (Peticiones) */}
-                    <div className="space-y-3 p-4 rounded-xl border border-blue-500/20 bg-blue-500/5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Send className="w-4 h-4 text-blue-400" />
-                          <Label className="text-sm font-medium text-blue-400">Peticiones (enviar)</Label>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-xs">
-                              <p>Peticiones que puedes hacer a otros personajes.</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs"
-                          onClick={handleAddInvitation}
-                        >
-                          <Plus className="w-3 h-3 mr-1" /> Agregar
-                        </Button>
-                      </div>
-                      
-                      {(editForm.statsConfig?.invitations || []).map((invitation, idx) => (
-                        <PersonaInvitationEditor
-                          key={invitation.id}
-                          invitation={invitation}
-                          index={idx}
-                          allCharacters={charactersWithSolicitudes}
-                          onChange={handleUpdateInvitation}
-                          onDelete={handleDeleteInvitation}
-                        />
-                      ))}
-                      {(editForm.statsConfig?.invitations || []).length === 0 && (
-                        <p className="text-xs text-muted-foreground italic pl-6">
-                          Sin peticiones configuradas. Agrega una para poder solicitar cosas a los personajes.
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Solicitudes (recibir) */}
-                    <div className="space-y-3 p-4 rounded-xl border border-amber-500/20 bg-amber-500/5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Inbox className="w-4 h-4 text-amber-400" />
-                          <Label className="text-sm font-medium text-amber-400">Solicitudes (recibir)</Label>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-xs">
-                              <p>Solicitudes que los personajes pueden hacerte.</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs"
-                          onClick={handleAddSolicitud}
-                        >
-                          <Plus className="w-3 h-3 mr-1" /> Agregar
-                        </Button>
-                      </div>
-                      
-                      {(editForm.statsConfig?.solicitudDefinitions || []).map((solicitud, idx) => (
-                        <PersonaSolicitudEditor
-                          key={solicitud.id}
-                          solicitud={solicitud}
-                          index={idx}
-                          onChange={handleUpdateSolicitud}
-                          onDelete={handleDeleteSolicitud}
-                        />
-                      ))}
-                      {(editForm.statsConfig?.solicitudDefinitions || []).length === 0 && (
-                        <p className="text-xs text-muted-foreground italic pl-6">
-                          Sin solicitudes configuradas. Los personajes no podrán hacerte peticiones.
-                        </p>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
+              <StatsEditor
+                statsConfig={editForm.statsConfig}
+                onChange={(statsConfig) => setEditForm(prev => ({ ...prev, statsConfig }))}
+                allCharacters={charactersWithSolicitudes}
+                availableTargets={availableTargets}
+              />
             </div>
           </div>
 
-          {/* Right Sidebar - Info (visible on 2xl) */}
-          <div className="hidden 2xl:block space-y-4">
-            <div className="sticky top-0 space-y-3">
+          {/* Right Sidebar - Info (visible on lg+) */}
+          <div className="hidden lg:block space-y-4">
+            <div className="sticky top-0 space-y-4">
               <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                 <div className="p-1.5 rounded-md bg-slate-500/10">
                   <HelpCircle className="w-4 h-4 text-slate-500" />
@@ -847,12 +657,53 @@ function PersonaEditorPanel({
               </div>
               <div className="p-4 rounded-xl border border-border/60 bg-gradient-to-br from-muted/30 to-muted/10 space-y-3">
                 <p className="text-xs text-muted-foreground">
+                  <strong>Atributos:</strong> Propiedades del usuario (vida, resistencia, etc.) que se muestran en el HUD y se resuelven como {'{key}'} en la descripción.
+                </p>
+                <p className="text-xs text-muted-foreground">
                   <strong>Peticiones:</strong> Solicitudes que puedes hacer a los personajes. Aparecerán como tags rapidos en el chatbox.
                 </p>
                 <p className="text-xs text-muted-foreground">
                   <strong>Solicitudes:</strong> Peticiones que los personajes pueden hacerte. Aparecerán en un panel para aceptar o rechazar.
                 </p>
               </div>
+
+              {/* Quick Stats Summary */}
+              {editForm.statsConfig?.enabled && (
+                <>
+                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <div className="p-1.5 rounded-md bg-emerald-500/10">
+                      <Settings2 className="w-4 h-4 text-emerald-500" />
+                    </div>
+                    Resumen
+                  </div>
+                  <div className="p-4 rounded-xl border border-border/60 bg-gradient-to-br from-muted/30 to-muted/10 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Atributos</span>
+                      <span className="font-medium">{(editForm.statsConfig.attributes?.length || 0)}</span>
+                    </div>
+                    <Separator className="bg-border/30" />
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Acciones</span>
+                      <span className="font-medium">{(editForm.statsConfig.skills?.length || 0)}</span>
+                    </div>
+                    <Separator className="bg-border/30" />
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Intenciones</span>
+                      <span className="font-medium">{(editForm.statsConfig.intentions?.length || 0)}</span>
+                    </div>
+                    <Separator className="bg-border/30" />
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Peticiones</span>
+                      <span className="font-medium">{(editForm.statsConfig.invitations?.length || 0)}</span>
+                    </div>
+                    <Separator className="bg-border/30" />
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Solicitudes</span>
+                      <span className="font-medium">{(editForm.statsConfig.solicitudDefinitions?.length || 0)}</span>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -861,321 +712,3 @@ function PersonaEditorPanel({
   );
 }
 
-interface PersonaInvitationEditorProps {
-  invitation: InvitationDefinition;
-  index: number;
-  allCharacters: { id: string; name: string; solicitudDefinitions: SolicitudDefinition[] }[];
-  onChange: (index: number, updates: Partial<InvitationDefinition>) => void;
-  onDelete: (index: number) => void;
-}
-
-function PersonaInvitationEditor({ 
-  invitation, 
-  index, 
-  allCharacters,
-  onChange, 
-  onDelete 
-}: PersonaInvitationEditorProps) {
-  const [expanded, setExpanded] = useState(false);
-
-  // Get selected character's solicitudes
-  const selectedCharacter = allCharacters.find(c => c.id === invitation.objetivo?.characterId);
-  const selectedSolicitud = selectedCharacter?.solicitudDefinitions.find(
-    s => s.id === invitation.objetivo?.solicitudId
-  );
-
-  return (
-    <div className="border rounded-lg bg-muted/30">
-      <div
-        className="flex items-center justify-between p-2 cursor-pointer hover:bg-muted/50 transition-colors"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-center gap-2">
-          <GripVertical className="w-3 h-3 text-muted-foreground cursor-grab" />
-          <Mail className="w-3.5 h-3.5 text-blue-400" />
-          <span className="text-xs font-medium">{invitation.name || `Peticion #${index + 1}`}</span>
-          {selectedSolicitud && (
-            <code className="text-[10px] bg-blue-500/10 text-blue-400 px-1 py-0.5 rounded">
-              {selectedSolicitud.peticionKey}
-            </code>
-          )}
-          {selectedCharacter && (
-            <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-400 border-blue-500/20">
-              → {selectedCharacter.name}
-            </Badge>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-5 w-5"
-            onClick={(e) => { e.stopPropagation(); onDelete(index); }}
-          >
-            <Trash2 className="w-3 h-3 text-destructive" />
-          </Button>
-          {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-        </div>
-      </div>
-
-      {expanded && (
-        <div className="px-3 pb-3 space-y-2 border-t">
-          <div className="pt-2">
-            <Label className="text-[10px] mb-1 block">Nombre *</Label>
-            <Input
-              value={invitation.name}
-              onChange={(e) => onChange(index, { name: e.target.value })}
-              placeholder="Petición de madera"
-              className="h-7 text-xs"
-            />
-          </div>
-
-          {/* Target Selection */}
-          <div className="space-y-1.5 p-2 bg-blue-500/10 rounded border border-blue-500/20">
-            <div className="flex items-center gap-1.5">
-              <Target className="w-3 h-3 text-blue-400" />
-              <Label className="text-[10px] font-medium text-blue-400">Personaje Objetivo</Label>
-            </div>
-
-            <Select
-              value={invitation.objetivo?.characterId || ''}
-              onValueChange={(v) => {
-                onChange(index, {
-                  objetivo: v ? { characterId: v, solicitudId: '' } : undefined
-                });
-              }}
-            >
-              <SelectTrigger className="h-7 bg-background text-xs">
-                <SelectValue placeholder="Seleccionar personaje..." />
-              </SelectTrigger>
-              <SelectContent>
-                {allCharacters.filter(c => c.solicitudDefinitions.length > 0).map(char => (
-                  <SelectItem key={char.id} value={char.id}>
-                    {char.name} ({char.solicitudDefinitions.length} solicitudes)
-                  </SelectItem>
-                ))}
-                {allCharacters.filter(c => c.solicitudDefinitions.length > 0).length === 0 && (
-                  <SelectItem value="_none" disabled>No hay personajes con solicitudes</SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-
-            {selectedCharacter && (
-              <>
-                <Label className="text-[10px] text-blue-300">Solicitud a solicitar:</Label>
-                <Select
-                  value={invitation.objetivo?.solicitudId || ''}
-                  onValueChange={(v) => onChange(index, {
-                    objetivo: { ...invitation.objetivo!, solicitudId: v }
-                  })}
-                >
-                  <SelectTrigger className="h-7 bg-background text-xs">
-                    <SelectValue placeholder="Seleccionar solicitud..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {selectedCharacter.solicitudDefinitions.map(sol => (
-                      <SelectItem key={sol.id} value={sol.id}>
-                        {sol.name} ({sol.peticionKey})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {selectedSolicitud && (
-                  <div className="p-1.5 bg-background/50 rounded border text-[10px] space-y-0.5">
-                    <p><strong>Key:</strong> <code className="bg-muted px-1 rounded">{selectedSolicitud.peticionKey}</code></p>
-                    <p className="text-muted-foreground">{selectedSolicitud.peticionDescription || '(sin descripción)'}</p>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ============================================
-// Persona Solicitud Editor Component
-// ============================================
-
-interface PersonaSolicitudEditorProps {
-  solicitud: SolicitudDefinition;
-  index: number;
-  onChange: (index: number, updates: Partial<SolicitudDefinition>) => void;
-  onDelete: (index: number) => void;
-}
-
-function PersonaSolicitudEditor({ 
-  solicitud, 
-  index, 
-  onChange, 
-  onDelete 
-}: PersonaSolicitudEditorProps) {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div className="border rounded-lg bg-muted/30">
-      <div
-        className="flex items-center justify-between p-2 cursor-pointer hover:bg-muted/50 transition-colors"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-center gap-2">
-          <GripVertical className="w-3 h-3 text-muted-foreground cursor-grab" />
-          <Inbox className="w-3.5 h-3.5 text-amber-400" />
-          <span className="text-xs font-medium">{solicitud.name || `Solicitud #${index + 1}`}</span>
-          {solicitud.peticionKey && (
-            <code className="text-[10px] bg-amber-500/10 text-amber-400 px-1 py-0.5 rounded">
-              {solicitud.peticionKey}
-            </code>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-5 w-5"
-            onClick={(e) => { e.stopPropagation(); onDelete(index); }}
-          >
-            <Trash2 className="w-3 h-3 text-destructive" />
-          </Button>
-          {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-        </div>
-      </div>
-
-      {expanded && (
-        <div className="px-3 pb-3 space-y-2 border-t">
-          <div className="pt-2">
-            <Label className="text-[10px] mb-1 block">Nombre *</Label>
-            <Input
-              value={solicitud.name}
-              onChange={(e) => onChange(index, { name: e.target.value })}
-              placeholder="Dar madera"
-              className="h-7 text-xs"
-            />
-          </div>
-
-          {/* Peticion Activation Keys */}
-          <div className="p-2 bg-amber-500/10 rounded border border-amber-500/20 space-y-2">
-            <div className="flex items-center gap-1.5">
-              <Zap className="w-3 h-3 text-amber-400" />
-              <Label className="text-[10px] font-medium text-amber-400">Key de Petición (Activación)</Label>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-[9px] text-muted-foreground mb-0.5 block">Key principal *</Label>
-                <Input
-                  value={solicitud.peticionKey}
-                  onChange={(e) => onChange(index, { peticionKey: e.target.value.toLowerCase().replace(/\s+/g, '_') })}
-                  placeholder="pedir_madera"
-                  className="h-7 text-xs font-mono"
-                />
-              </div>
-              <div>
-                <Label className="text-[9px] text-muted-foreground mb-0.5 block">Keys alternativas</Label>
-                <Input
-                  value={(solicitud.peticionActivationKeys || []).join(', ')}
-                  onChange={(e) => {
-                    const keys = e.target.value.split(',').map(k => k.trim().toLowerCase().replace(/\s+/g, '_')).filter(Boolean);
-                    onChange(index, { peticionActivationKeys: keys.length > 0 ? keys : undefined });
-                  }}
-                  placeholder="pm, pedir"
-                  className="h-7 text-xs"
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={solicitud.peticionKeyCaseSensitive || false}
-                onCheckedChange={(checked) => onChange(index, { peticionKeyCaseSensitive: checked })}
-                className="scale-75"
-              />
-              <Label className="text-[9px]">Distinguir mayúsculas/minúsculas</Label>
-            </div>
-          </div>
-
-          {/* Solicitud Completion Keys */}
-          <div className="p-2 bg-emerald-500/10 rounded border border-emerald-500/20 space-y-2">
-            <div className="flex items-center gap-1.5">
-              <Zap className="w-3 h-3 text-emerald-400" />
-              <Label className="text-[10px] font-medium text-emerald-400">Key de Solicitud (Completación)</Label>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-[9px] text-muted-foreground mb-0.5 block">Key principal *</Label>
-                <Input
-                  value={solicitud.solicitudKey}
-                  onChange={(e) => onChange(index, { solicitudKey: e.target.value.toLowerCase().replace(/\s+/g, '_') })}
-                  placeholder="dar_madera"
-                  className="h-7 text-xs font-mono"
-                />
-              </div>
-              <div>
-                <Label className="text-[9px] text-muted-foreground mb-0.5 block">Keys alternativas</Label>
-                <Input
-                  value={(solicitud.solicitudActivationKeys || []).join(', ')}
-                  onChange={(e) => {
-                    const keys = e.target.value.split(',').map(k => k.trim().toLowerCase().replace(/\s+/g, '_')).filter(Boolean);
-                    onChange(index, { solicitudActivationKeys: keys.length > 0 ? keys : undefined });
-                  }}
-                  placeholder="dm, dar"
-                  className="h-7 text-xs"
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={solicitud.solicitudKeyCaseSensitive || false}
-                onCheckedChange={(checked) => onChange(index, { solicitudKeyCaseSensitive: checked })}
-                className="scale-75"
-              />
-              <Label className="text-[9px]">Distinguir mayúsculas/minúsculas</Label>
-            </div>
-          </div>
-
-          <div>
-            <Label className="text-[10px] mb-1 block">Descripción de Petición</Label>
-            <Textarea
-              value={solicitud.peticionDescription}
-              onChange={(e) => onChange(index, { peticionDescription: e.target.value })}
-              placeholder="Lo que vera el personaje cuando quiera hacerte esta peticion..."
-              className="min-h-[40px] text-xs"
-            />
-          </div>
-
-          <div>
-            <Label className="text-[10px] mb-1 block">Descripción de Solicitud</Label>
-            <Textarea
-              value={solicitud.solicitudDescription}
-              onChange={(e) => onChange(index, { solicitudDescription: e.target.value })}
-              placeholder="Lo que veras tu cuando recibas esta solicitud..."
-              className="min-h-[40px] text-xs"
-            />
-          </div>
-
-          <div>
-            <div className="flex items-center gap-1 mb-1">
-              <Label className="text-[10px]">Descripción de Completado</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                  <p>Texto que se guardará en el evento "ultima_solicitud_completada" cuando se complete esta solicitud.</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Describe la acción completada.</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <Textarea
-              value={solicitud.completionDescription || ''}
-              onChange={(e) => onChange(index, { completionDescription: e.target.value })}
-              placeholder="Has entregado madera al solicitante..."
-              className="min-h-[40px] text-xs"
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}

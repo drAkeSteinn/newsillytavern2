@@ -312,6 +312,72 @@ export function executeAttributeReward(
 }
 
 // ============================================
+// Target Attribute Reward Execution
+// ============================================
+
+/**
+ * Execute a target_attribute reward — modifies an attribute of ANOTHER character or the persona.
+ * Uses the same updateCharacterStat store action but with the target's characterId.
+ */
+export function executeTargetAttributeReward(
+  reward: QuestReward,
+  context: RewardExecutionContext,
+  storeActions: RewardStoreActions
+): RewardExecutionResult {
+  const { sessionId, sessionStats } = context;
+
+  try {
+    const normalized = normalizeReward(reward);
+    const ta = normalized.target_attribute;
+
+    if (!ta) {
+      return {
+        rewardId: reward.id,
+        type: 'target_attribute',
+        key: 'unknown',
+        success: false,
+        error: 'Invalid target_attribute reward structure',
+      };
+    }
+
+    const targetId = ta.targetCharacterId;
+    const targetLabel = targetId === '__user__' ? 'Persona' : targetId;
+
+    // Get current value of the target's attribute
+    const currentValue = sessionStats?.characterStats?.[targetId]?.attributeValues?.[ta.key];
+
+    // Calculate new value
+    const newValue = calculateNewAttributeValue(currentValue, ta.value, ta.action);
+
+    // Execute update on the TARGET character/persona
+    storeActions.updateCharacterStat(
+      sessionId,
+      targetId,
+      ta.key,
+      newValue,
+      'trigger'
+    );
+
+    return {
+      rewardId: reward.id,
+      type: 'target_attribute',
+      key: ta.key,
+      value: newValue,
+      success: true,
+      message: `[${targetLabel}] ${ta.key}: ${currentValue ?? 0} → ${newValue}`,
+    };
+  } catch (error) {
+    return {
+      rewardId: reward.id,
+      type: 'target_attribute',
+      key: 'unknown',
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+// ============================================
 // Trigger Reward Execution
 // ============================================
 
@@ -722,6 +788,9 @@ export function executeReward(
 
     case 'solicitud':
       return executeSolicitudRewardFromAction(normalized, context, storeActions);
+
+    case 'target_attribute':
+      return executeTargetAttributeReward(normalized, context, storeActions);
 
     default:
       return {

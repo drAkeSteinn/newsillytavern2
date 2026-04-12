@@ -585,19 +585,19 @@ export function ToolsSettingsPanel() {
                       className={`flex items-center gap-3 p-3 rounded-lg border transition-all duration-150 ${
                         enabled
                           ? 'border-border bg-background'
-                          : 'border-border/50 bg-muted/30 opacity-60'
+                          : 'border-border/40 bg-background'
                       }`}
                     >
-                      <div className={`p-2 rounded-lg shrink-0 ${CATEGORY_COLORS[tool.category]}`}>
+                      <div className={`p-2 rounded-lg shrink-0 ${CATEGORY_COLORS[tool.category]} ${!enabled ? 'opacity-40' : ''}`}>
                         <Icon className="w-4 h-4" />
                       </div>
 
-                      <div className="flex-1 min-w-0 overflow-hidden">
+                      <div className={`flex-1 min-w-0 overflow-hidden ${!enabled ? 'opacity-50' : ''}`}>
                         <div className="flex items-center gap-2 min-h-5">
-                          <span className="text-sm font-medium truncate">{tool.label}</span>
+                          <span className={`text-sm font-medium truncate ${!enabled ? 'line-through decoration-muted-foreground/50' : ''}`}>{tool.label}</span>
                           <Badge
                             variant="secondary"
-                            className="text-[10px] px-1.5 py-0 shrink-0"
+                            className={`text-[10px] px-1.5 py-0 shrink-0 ${!enabled ? 'opacity-50' : ''}`}
                           >
                             {CATEGORY_LABELS[tool.category]}
                           </Badge>

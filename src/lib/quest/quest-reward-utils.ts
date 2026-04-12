@@ -11,6 +11,7 @@ import type {
   QuestRewardTrigger,
   QuestRewardObjective,
   QuestRewardSolicitud,
+  QuestRewardTargetAttribute,
   QuestRewardCondition,
   AttributeAction,
   TriggerCategory,
@@ -127,6 +128,32 @@ export function createSolicitudReward(
       solicitudKey,
       solicitudId,
       solicitudName: options?.solicitudName,
+    },
+    condition: options?.condition,
+  };
+}
+
+/**
+ * Crea una recompensa de atributo de target (modifica atributo de otro personaje/persona)
+ */
+export function createTargetAttributeReward(
+  targetCharacterId: string,
+  key: string,
+  value: number | string,
+  action: AttributeAction = 'set',
+  options?: {
+    id?: string;
+    condition?: QuestRewardCondition;
+  }
+): QuestReward {
+  return {
+    id: options?.id || generateId(),
+    type: 'target_attribute',
+    target_attribute: {
+      targetCharacterId,
+      key,
+      value,
+      action,
     },
     condition: options?.condition,
   };
@@ -299,6 +326,22 @@ export function validateReward(reward: QuestReward): { valid: boolean; errors: s
     }
   }
 
+  if (reward.type === 'target_attribute') {
+    if (!reward.target_attribute) {
+      errors.push('Target attribute reward must have target_attribute config');
+    } else {
+      if (!reward.target_attribute.targetCharacterId) {
+        errors.push('Target attribute reward must have target_attribute.targetCharacterId');
+      }
+      if (!reward.target_attribute.key) {
+        errors.push('Target attribute reward must have target_attribute.key');
+      }
+      if (reward.target_attribute.value === undefined) {
+        errors.push('Target attribute reward must have target_attribute.value');
+      }
+    }
+  }
+
   return {
     valid: errors.length === 0,
     errors,
@@ -380,6 +423,14 @@ export function describeReward(reward: QuestReward): string {
     return `${attr.key} ${symbol} ${attr.value}`;
   }
 
+  if (reward.type === 'target_attribute') {
+    const ta = reward.target_attribute;
+    if (!ta) return 'Atributo de Target inválido';
+    const symbol = getActionSymbol(ta.action);
+    const targetLabel = ta.targetCharacterId === '__user__' ? '👤 Persona' : `@${ta.targetCharacterId}`;
+    return `🔗 ${targetLabel}.${ta.key} ${symbol} ${ta.value}`;
+  }
+
   if (reward.type === 'trigger') {
     const trig = reward.trigger;
     if (!trig) return 'Trigger inválido';
@@ -431,6 +482,9 @@ export function normalizeReward(reward: QuestReward): QuestReward {
   if (reward.type === 'solicitud' && reward.solicitud) {
     return reward;
   }
+  if (reward.type === 'target_attribute' && reward.target_attribute) {
+    return reward;
+  }
 
   // Si tiene campos legacy, crear la estructura nueva
   if (reward.type === 'attribute') {
@@ -476,6 +530,19 @@ export function normalizeReward(reward: QuestReward): QuestReward {
       objective: {
         objectiveKey: reward.objective?.objectiveKey || '',
         questId: reward.objective?.questId,
+      },
+    };
+  }
+
+  // Handle target_attribute type
+  if (reward.type === 'target_attribute') {
+    return {
+      ...reward,
+      target_attribute: {
+        targetCharacterId: reward.target_attribute?.targetCharacterId || '',
+        key: reward.target_attribute?.key || '',
+        value: reward.target_attribute?.value ?? 0,
+        action: reward.target_attribute?.action || 'set',
       },
     };
   }

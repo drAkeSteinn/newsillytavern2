@@ -1374,6 +1374,34 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
           }
         }
       }
+
+      // Also process stats for the user persona (if persona has stats enabled)
+      if (config.activePersona?.statsConfig?.enabled) {
+        const personaStatsContext: StatsTriggerContext = {
+          ...context,
+          characterId: '__user__',
+          characterName: config.activePersona.name || 'User',
+          statsConfig: config.activePersona.statsConfig,
+          sessionStats: activeSession?.sessionStats,
+        };
+
+        const personaStatsResult = checkStatsTriggersInText(
+          content,
+          personaStatsContext,
+          statsHandlerState
+        );
+
+        if (personaStatsResult.matched && personaStatsResult.trigger) {
+          const hits = executeStatsTrigger(personaStatsResult.trigger, personaStatsContext, {
+            updateCharacterStat: store.updateCharacterStat.bind(store),
+            activeSessionId: sessionId,
+          });
+
+          if (hits.length > 0) {
+            console.log(`[TriggerSystem] Persona stats updated: ${hits.map(h => `${h.attributeName}=${h.newValue}`).join(', ')}`);
+          }
+        }
+      }
     }
     
     // ============================================

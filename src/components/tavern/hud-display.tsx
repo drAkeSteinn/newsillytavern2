@@ -87,6 +87,8 @@ export function HUDDisplay({ className }: HUDDisplayProps) {
   const characters = useTavernStore((state) => state.characters);
   const sessions = useTavernStore((state) => state.sessions);
   const activeSessionId = useTavernStore((state) => state.activeSessionId);
+  const activePersonaId = useTavernStore((state) => state.activePersonaId);
+  const personas = useTavernStore((state) => state.personas);
 
   // Get derived values from subscribed state
   const activeCharacter = characters.find((c) => c.id === activeCharacterId);
@@ -171,12 +173,34 @@ export function HUDDisplay({ className }: HUDDisplayProps) {
       charactersWithAttributes = [{ character: activeCharacter, attributes, values }];
     }
   }
+
+  // Also include persona (user) attributes if available
+  const activePersona = activePersonaId ? personas.find((p) => p.id === activePersonaId) : null;
+  let personaAttributes: { attributes: AttributeDefinition[]; values: Record<string, number | string>; personaName: string } | null = null;
+
+  if (activePersona?.statsConfig?.enabled && activePersona.statsConfig.attributes?.length > 0) {
+    const attributes = activePersona.statsConfig.attributes.filter((attr) => attr.showInHUD !== false);
+    const storedValues = sessionStats?.characterStats?.['__user__']?.attributeValues;
+    const values: Record<string, number | string> = {};
+
+    for (const attr of attributes) {
+      values[attr.key] = attr.defaultValue;
+    }
+    if (storedValues) {
+      Object.assign(values, storedValues);
+    }
+
+    if (attributes.length > 0) {
+      personaAttributes = { attributes, values, personaName: activePersona.name };
+    }
+  }
   
   // No active HUD and no character attributes
   const hasTemplate = activeTemplate && activeTemplate.fields.length > 0;
   const hasAttributes = charactersWithAttributes.length > 0;
+  const hasPersonaAttributes = personaAttributes !== null;
 
-  if (!hasTemplate && !hasAttributes) {
+  if (!hasTemplate && !hasAttributes && !hasPersonaAttributes) {
     return null;
   }
 
@@ -198,12 +222,13 @@ export function HUDDisplay({ className }: HUDDisplayProps) {
       )}
 
       {/* Character Attributes HUD */}
-      {hasAttributes && (
+      {(hasAttributes || hasPersonaAttributes) && (
         <MultiCharacterAttributesHUD
           charactersWithAttributes={charactersWithAttributes}
           compact={activeTemplate?.compact}
           isGroupChat={isGroupChat}
           style={hudStyle}
+          personaAttributes={personaAttributes}
         />
       )}
     </div>
@@ -220,14 +245,21 @@ interface CharacterWithAttributes {
   values: Record<string, number | string>;
 }
 
+interface PersonaAttributesData {
+  attributes: AttributeDefinition[];
+  values: Record<string, number | string>;
+  personaName: string;
+}
+
 interface MultiCharacterAttributesHUDProps {
   charactersWithAttributes: CharacterWithAttributes[];
   compact?: boolean;
   isGroupChat: boolean;
   style?: HUDStyle;
+  personaAttributes?: PersonaAttributesData | null;
 }
 
-function MultiCharacterAttributesHUD({ charactersWithAttributes, compact, isGroupChat, style = 'card' }: MultiCharacterAttributesHUDProps) {
+function MultiCharacterAttributesHUD({ charactersWithAttributes, compact, isGroupChat, style = 'card', personaAttributes }: MultiCharacterAttributesHUDProps) {
   // Get container classes based on style
   const getStyleClasses = () => {
     switch (style) {
@@ -292,6 +324,44 @@ function MultiCharacterAttributesHUD({ charactersWithAttributes, compact, isGrou
           </div>
         </div>
       ))}
+
+      {/* Persona (User) Attributes */}
+      {personaAttributes && (
+        <div
+          className={cn(
+            'pointer-events-auto rounded-xl border transition-all duration-300',
+            getStyleClasses(),
+            compact ? 'p-2' : 'p-4',
+            'shadow-xl'
+          )}
+        >
+          {/* User Persona Header */}
+          <div className={cn(
+            'font-medium mb-2 pb-1 border-b border-white/10',
+            compact ? 'text-[10px]' : 'text-xs',
+            style === 'neon' && 'text-cyan-400 uppercase tracking-wider',
+            style === 'fantasy' && 'text-amber-400',
+            style === 'retro' && 'text-green-400',
+            style === 'holographic' && 'text-cyan-300',
+            (!['neon', 'fantasy', 'retro', 'holographic'].includes(style)) && 'text-white/80'
+          )}>
+            {style === 'fantasy' && <span className="mr-1">🛡</span>}
+            {style === 'retro' && <span className="mr-1">&gt;</span>}
+            {personaAttributes.personaName}
+          </div>
+
+          <div className={cn('flex flex-col', compact ? 'gap-1.5' : 'gap-2.5')}>
+            {personaAttributes.attributes.map((attr) => (
+              <AttributeHUDField
+                key={attr.id}
+                attribute={attr}
+                value={personaAttributes.values[attr.key] ?? attr.defaultValue}
+                compact={compact}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

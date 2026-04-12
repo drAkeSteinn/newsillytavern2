@@ -39,6 +39,9 @@ export interface KeyResolutionContext {
   // Stats resolution
   resolvedStats?: ResolvedStats | null;
 
+  // Persona stats resolution (attributes from user's persona)
+  personaResolvedStats?: ResolvedStats | null;
+
   // Session stats for event keys ({{solicitante}}, {{solicitado}}, {{eventos}})
   sessionStats?: SessionStats | null;
   characterId?: string;  // ID of the current character for looking up solicitudes
@@ -142,12 +145,20 @@ function getVariableValue(varName: string, context: KeyResolutionContext): strin
  * Resolve stats keys in text
  * Delegates to stats-resolver module
  * Handles: {{attributeKey}}, {{habilidades}}, {{intenciones}}, {{invitaciones}}
+ * Also resolves persona attributes if personaResolvedStats is provided
  */
 export function resolveStatsKeys(
   text: string,
-  resolvedStats: ResolvedStats | null | undefined
+  resolvedStats: ResolvedStats | null | undefined,
+  personaResolvedStats?: ResolvedStats | null | undefined
 ): string {
-  return resolveStatsInText(text, resolvedStats ?? null);
+  let result = resolveStatsInText(text, resolvedStats ?? null);
+  // If persona has stats, also resolve persona-specific attribute keys
+  // (only attributes, not block keys like acciones/intenciones)
+  if (personaResolvedStats?.attributes) {
+    result = resolveStatsInText(result, { ...personaResolvedStats, skillsBlock: undefined, intentionsBlock: undefined, invitationsBlock: undefined, solicitudesBlock: undefined });
+  }
+  return result;
 }
 
 // ============================================
@@ -402,8 +413,8 @@ export function resolveAllKeys(
   // Phase 1: Resolve template variables
   let result = resolveTemplateVariables(text, context);
 
-  // Phase 2: Resolve stats keys
-  result = resolveStatsKeys(result, context.resolvedStats);
+  // Phase 2: Resolve stats keys (character + persona attributes)
+  result = resolveStatsKeys(result, context.resolvedStats, context.personaResolvedStats);
 
   // Phase 3: Resolve event keys
   result = resolveEventKeys(result, context);
@@ -462,7 +473,8 @@ export function buildKeyResolutionContext(
   resolvedStats?: ResolvedStats | null,
   sessionStats?: SessionStats | null,
   soundTriggers?: SoundTrigger[],
-  soundSettings?: AppSettings['sound']
+  soundSettings?: AppSettings['sound'],
+  personaResolvedStats?: ResolvedStats | null
 ): KeyResolutionContext {
   return {
     user: persona?.name || userName,
@@ -471,6 +483,7 @@ export function buildKeyResolutionContext(
     character,
     persona,
     resolvedStats,
+    personaResolvedStats,
     sessionStats,
     characterId: character.id,
     soundTriggers,
@@ -487,9 +500,10 @@ export function buildGroupKeyResolutionContext(
   userName: string = 'User',
   persona?: Persona,
   resolvedStats?: ResolvedStats | null,
-  sessionStats?: SessionStats | null
+  sessionStats?: SessionStats | null,
+  personaResolvedStats?: ResolvedStats | null
 ): KeyResolutionContext {
-  return buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats);
+  return buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, undefined, undefined, personaResolvedStats);
 }
 
 // ============================================

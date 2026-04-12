@@ -17,6 +17,7 @@ import type {
   SessionQuestInstance,
   SoundTrigger,
   AppSettings,
+  ResolvedStats,
 } from '@/types';
 import type { ChatApiMessage, CompletionPromptConfig, GroupPromptBuildResult } from './types';
 import { processExampleDialogue } from '@/lib/prompt-template';
@@ -371,8 +372,18 @@ export function buildSystemPrompt(
     questTemplates,
   });
 
+  // Resolve stats for the persona (user attributes like {{resistencia}})
+  let personaResolvedStats: ResolvedStats | null = null;
+  if (persona?.statsConfig?.enabled && sessionStats) {
+    personaResolvedStats = resolveStats({
+      characterId: '__user__',
+      statsConfig: persona.statsConfig,
+      sessionStats,
+    });
+  }
+
   // Build unified key resolution context
-  const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, soundTriggers, soundSettings);
+  const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, soundTriggers, soundSettings, personaResolvedStats);
 
   // Main system instruction
   // If character has a custom system prompt, use it instead of the default
@@ -768,8 +779,18 @@ export function buildGroupSystemPrompt(
     questTemplates,
   });
 
+  // Resolve stats for the persona (user attributes like {{resistencia}})
+  let personaResolvedStats: ResolvedStats | null = null;
+  if (persona?.statsConfig?.enabled && sessionStats) {
+    personaResolvedStats = resolveStats({
+      characterId: '__user__',
+      statsConfig: persona.statsConfig,
+      sessionStats,
+    });
+  }
+
   // Build unified key resolution context
-  const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats);
+  const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, undefined, undefined, personaResolvedStats);
 
   // System Prompt Priority: Group > Character > Default
   let systemContent: string;
