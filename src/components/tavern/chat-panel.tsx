@@ -78,6 +78,58 @@ export function ChatPanel() {
       loadQuestTemplates();
     }
   }, []); // Run once on mount
+
+  // Ensure memory namespaces exist when session is restored from localStorage
+  // setActiveSession calls ensure-namespace, but on app restore the session is already
+  // active without calling setActiveSession, so we ensure namespaces here
+  useEffect(() => {
+    if (!activeSessionId) return;
+
+    const ensureNamespaces = async () => {
+      try {
+        const session = useTavernStore.getState().getSessionById(activeSessionId);
+        if (!session) return;
+
+        const state = useTavernStore.getState();
+        let memberIds: string[] = [];
+        let memberNames: string[] = [];
+
+        if (session.groupId) {
+          const group = state.getGroupById?.(session.groupId);
+          if (group?.members) {
+            const groupCharacters = group.members
+              .map((m: any) => state.getCharacterById(m.characterId))
+              .filter((c: any) => c !== undefined);
+            memberIds = groupCharacters.map((c: any) => c.id);
+            memberNames = groupCharacters.map((c: any) => c.name);
+          }
+        }
+
+        const resp = await fetch('/api/embeddings/ensure-namespace', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            characterId: session.characterId,
+            characterName: session.characterId ? state.getCharacterById?.(session.characterId)?.name : '',
+            groupId: session.groupId,
+            groupName: session.groupId ? state.getGroupById?.(session.groupId)?.name : undefined,
+            memberIds,
+            memberNames,
+            sessionId: activeSessionId,
+          }),
+        });
+
+        if (resp.ok) {
+          console.log(`[ChatPanel] Ensured memory namespaces for restored session ${activeSessionId.slice(0, 8)}`);
+        }
+      } catch (err) {
+        // Non-blocking — namespaces are created on-demand anyway
+        console.warn('[ChatPanel] Failed to ensure namespaces on restore:', err);
+      }
+    };
+
+    ensureNamespaces();
+  }, [activeSessionId]);
   
   // Sound triggers for {{sonidos}} key resolution
   const soundTriggers = useTavernStore((state) => state.soundTriggers);

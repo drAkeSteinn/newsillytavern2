@@ -101,6 +101,7 @@ import {
   FileText,
   Star,
   HelpCircle,
+  Play,
 } from 'lucide-react';
 import {
   DndContext,
@@ -222,6 +223,7 @@ export function QuestTemplateManager() {
           onClose={handleClose}
           existingIds={questTemplates.map(t => t.id)}
           objectivePrefix={objectivePrefix}
+          allTemplates={questTemplates}
         />
       ) : (
         <div className="h-full overflow-y-auto p-6">
@@ -341,6 +343,12 @@ export function QuestTemplateManager() {
                           <>
                             <Link2 className="w-3.5 h-3.5" />
                             <span>En cadena</span>
+                          </>
+                        )}
+                        {template.activation.method === 'automatic' && (
+                          <>
+                            <Play className="w-3.5 h-3.5" />
+                            <span>Automático</span>
                           </>
                         )}
                       </div>
@@ -1190,9 +1198,10 @@ interface QuestTemplateEditorDialogProps {
   onClose: () => void;
   existingIds: string[];
   objectivePrefix: string;
+  allTemplates: QuestTemplate[];
 }
 
-function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingIds, objectivePrefix }: QuestTemplateEditorDialogProps) {
+function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingIds, objectivePrefix, allTemplates }: QuestTemplateEditorDialogProps) {
   // Basic info
   const [id, setId] = useState(template?.id || '');
   const [name, setName] = useState(template?.name || '');
@@ -1209,6 +1218,7 @@ function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingI
   const [activationCaseSensitive, setActivationCaseSensitive] = useState(template?.activation?.caseSensitive ?? false);
   const [activationMethod, setActivationMethod] = useState<QuestActivationMethod>(template?.activation?.method || 'keyword');
   const [turnInterval, setTurnInterval] = useState(template?.activation?.turnInterval || 5);
+  const [chainPrerequisiteId, setChainPrerequisiteId] = useState<string>('');
   
   // Completion
   const [completionKey, setCompletionKey] = useState(template?.completion?.key || '');
@@ -1237,6 +1247,8 @@ function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingI
 
   // Get all characters for the character filter
   const allCharacters = useTavernStore((state) => state.characters);
+  const personas = useTavernStore((state) => state.personas);
+  const activePersonaId = useTavernStore((state) => state.activePersonaId);
 
   // DnD sensors for objectives
   const sensors = useSensors(
@@ -1415,10 +1427,23 @@ function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingI
       if (updates.type && updates.type !== reward.type) {
         if (updates.type === 'attribute') {
           return createAttributeReward(
-            reward.attribute?.key || reward.key || '',
-            reward.attribute?.value ?? reward.value ?? 0,
-            reward.attribute?.action || reward.action || 'add'
+            reward.attribute?.key || reward.target_attribute?.key || reward.key || '',
+            reward.attribute?.value ?? reward.target_attribute?.value ?? reward.value ?? 0,
+            reward.attribute?.action || reward.target_attribute?.action || reward.action || 'add'
           );
+        }
+        if (updates.type === 'target_attribute') {
+          const existingTargetId = reward.target_attribute?.targetCharacterId || updates.target_attribute?.targetCharacterId || '__user__';
+          return {
+            id: reward.id,
+            type: 'target_attribute',
+            target_attribute: {
+              targetCharacterId: existingTargetId,
+              key: reward.target_attribute?.key || reward.attribute?.key || reward.key || '',
+              value: reward.target_attribute?.value ?? reward.attribute?.value ?? reward.value ?? 0,
+              action: (reward.target_attribute?.action || reward.attribute?.action || reward.action || 'add') as AttributeAction,
+            },
+          };
         }
         if (updates.type === 'trigger') {
           return createTriggerReward(
@@ -1450,6 +1475,16 @@ function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingI
           returnToIdleMs: updates.trigger?.returnToIdleMs ?? reward.trigger?.returnToIdleMs,
           volume: updates.trigger?.volume ?? reward.trigger?.volume,
           transitionDuration: updates.trigger?.transitionDuration ?? reward.trigger?.transitionDuration,
+        };
+      }
+      
+      // Si es tipo target_attribute, actualizar el objeto target_attribute
+      if (updated.type === 'target_attribute') {
+        updated.target_attribute = {
+          targetCharacterId: updates.target_attribute?.targetCharacterId ?? reward.target_attribute?.targetCharacterId ?? '__user__',
+          key: updates.target_attribute?.key ?? reward.target_attribute?.key ?? reward.attribute?.key ?? reward.key ?? '',
+          value: updates.target_attribute?.value ?? reward.target_attribute?.value ?? reward.attribute?.value ?? reward.value ?? 0,
+          action: updates.target_attribute?.action ?? reward.target_attribute?.action ?? reward.attribute?.action ?? reward.action ?? 'add',
         };
       }
       
@@ -1708,16 +1743,58 @@ function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingI
                   </div>
                   Prerrequisitos
                 </div>
-                <div className="pl-8 space-y-2">
-                  <Input
-                    id="prerequisites"
-                    value={prerequisites.join(', ')}
-                    onChange={(e) => setPrerequisites(e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-                    placeholder="mision-anterior, otra-mision"
-                    className="bg-background font-mono"
-                  />
+                <div className="pl-8 space-y-3">
+                  {prerequisites.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {prerequisites.map((prereqId) => {
+                        const prereqTemplate = allTemplates.find(t => t.id === prereqId);
+                        return (
+                          <Badge
+                            key={prereqId}
+                            variant="outline"
+                            className="bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20 gap-1 pr-1"
+                          >
+                            {prereqTemplate?.name || prereqId}
+                            <button
+                              type="button"
+                              className="ml-0.5 rounded-full hover:bg-cyan-500/20 p-0.5"
+                              onClick={() => setPrerequisites(prerequisites.filter(p => p !== prereqId))}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <Select
+                    value=""
+                    onValueChange={(v) => {
+                      if (v && !prerequisites.includes(v)) {
+                        setPrerequisites([...prerequisites, v]);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="bg-background h-8 text-xs">
+                      <SelectValue placeholder="Seleccionar misión prerrequisito..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allTemplates
+                        .filter(t => t.id !== id && !prerequisites.includes(t.id))
+                        .map(t => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.icon} {t.name}
+                          </SelectItem>
+                        ))}
+                      {allTemplates.filter(t => t.id !== id && !prerequisites.includes(t.id)).length === 0 && (
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                          No hay más misiones disponibles
+                        </div>
+                      )}
+                    </SelectContent>
+                  </Select>
                   <p className="text-[10px] text-muted-foreground">
-                    Esta misión no estará disponible hasta que se completen las misiones listadas (IDs separadas por coma)
+                    Esta misión no estará disponible hasta que se completen las misiones seleccionadas
                   </p>
                 </div>
               </div>
@@ -1831,6 +1908,15 @@ function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingI
                           </div>
                         </div>
                       </SelectItem>
+                      <SelectItem value="automatic">
+                        <div className="flex items-center gap-2">
+                          <Play className="w-4 h-4 text-emerald-500" />
+                          <div>
+                            <span className="font-medium">Automático</span>
+                            <span className="text-xs text-muted-foreground ml-2">Se activa al iniciar/restaurar sesión</span>
+                          </div>
+                        </div>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
 
@@ -1851,6 +1937,73 @@ function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingI
                             className="bg-background w-32"
                           />
                         </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activationMethod === 'automatic' && (
+                    <div className="p-4 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-emerald-500/20">
+                          <Play className="w-4 h-4 text-emerald-500" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                            Activación Automática
+                          </p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            Esta misión se activará automáticamente al iniciar una nueva sesión o restaurar una existente.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2 ml-9">
+                        <Info className="w-3.5 h-3.5 text-emerald-400 mt-0.5 shrink-0" />
+                        <p className="text-[11px] text-muted-foreground">
+                          No requiere key ni condición. Si tiene prerrequisitos, se activará solo cuando estos estén cumplidos.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {activationMethod === 'chain' && (
+                    <div className="p-4 rounded-lg border border-purple-500/20 bg-purple-500/5 space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-purple-500/20">
+                          <Link2 className="w-4 h-4 text-purple-500" />
+                        </div>
+                        <div className="flex-1 space-y-1">
+                          <Label className="text-xs text-muted-foreground">Misión prerrequisito que activa esta misión</Label>
+                          <Select
+                            value={chainPrerequisiteId}
+                            onValueChange={setChainPrerequisiteId}
+                          >
+                            <SelectTrigger className="bg-background h-8 text-xs">
+                              <SelectValue placeholder="Seleccionar prerrequisito..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {prerequisites.length === 0 ? (
+                                <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                                  Primero agrega prerrequisitos en la sección Info Básica
+                                </div>
+                              ) : (
+                                prerequisites.map(prereqId => {
+                                  const prereqTemplate = allTemplates.find(t => t.id === prereqId);
+                                  return (
+                                    <SelectItem key={prereqId} value={prereqId}>
+                                      {prereqTemplate?.icon} {prereqTemplate?.name || prereqId}
+                                    </SelectItem>
+                                  );
+                                })
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2 ml-9">
+                        <Info className="w-3.5 h-3.5 text-purple-400 mt-0.5 shrink-0" />
+                        <p className="text-[11px] text-muted-foreground">
+                          Esta misión se activará automáticamente cuando se complete la misión seleccionada.
+                        </p>
                       </div>
                     </div>
                   )}
@@ -2262,6 +2415,7 @@ function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingI
                   {rewards.map((reward, index) => {
                     const normalized = normalizeReward(reward);
                     const isAttr = normalized.type === 'attribute';
+                    const isTargetAttr = normalized.type === 'target_attribute';
                     const isTrig = normalized.type === 'trigger';
 
                     return (
@@ -2303,54 +2457,201 @@ function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingI
                           </Button>
                         </div>
                         
-                        {/* Config según tipo */}
-                        {isAttr && normalized.attribute && (
-                          <div className="grid grid-cols-3 gap-3 p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
-                            <div className="space-y-1">
-                              <Label className="text-[10px] text-muted-foreground">Key del Atributo</Label>
-                              <Input
-                                value={normalized.attribute.key}
-                                onChange={(e) => updateReward(index, { 
-                                  attribute: { ...normalized.attribute!, key: e.target.value } 
-                                })}
-                                placeholder="oro, xp, vida..."
-                                className="bg-background h-8 text-xs"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-[10px] text-muted-foreground">Valor</Label>
-                              <Input
-                                type="number"
-                                value={normalized.attribute.value}
-                                onChange={(e) => updateReward(index, { 
-                                  attribute: { ...normalized.attribute!, value: Number(e.target.value) } 
-                                })}
-                                placeholder="100"
-                                className="bg-background h-8 text-xs"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-[10px] text-muted-foreground">Acción</Label>
-                              <Select 
-                                value={normalized.attribute.action} 
-                                onValueChange={(v) => updateReward(index, { 
-                                  attribute: { ...normalized.attribute!, action: v as AttributeAction } 
-                                })}
-                              >
-                                <SelectTrigger className="bg-background h-8 text-xs">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="add">+ Sumar</SelectItem>
-                                  <SelectItem value="subtract">- Restar</SelectItem>
-                                  <SelectItem value="set">= Establecer</SelectItem>
-                                  <SelectItem value="multiply">× Multiplicar</SelectItem>
-                                  <SelectItem value="divide">÷ Dividir</SelectItem>
-                                  <SelectItem value="percent">% Porcentaje</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
+                        {/* Config para attribute / target_attribute */}
+                        {(isAttr || isTargetAttr) && (
+                          (() => {
+                            const attrData = normalized.attribute || normalized.target_attribute;
+                            if (!attrData) return null;
+                            const currentTargetId = isTargetAttr ? (normalized.target_attribute?.targetCharacterId || '') : '';
+                            
+                            // Build list of available attributes for the current target
+                            const getTargetAttributes = () => {
+                              if (isAttr) {
+                                // Self: no specific target dropdown needed, show empty
+                                return [];
+                              }
+                              if (!currentTargetId) return [];
+                              if (currentTargetId === '__user__') {
+                                const persona = personas.find(p => p.id === activePersonaId);
+                                return persona?.statsConfig?.attributes || [];
+                              }
+                              const char = allCharacters.find(c => c.id === currentTargetId);
+                              return char?.statsConfig?.attributes || [];
+                            };
+                            
+                            const availableAttributes = getTargetAttributes();
+
+                            return (
+                              <div className="space-y-3">
+                                {/* Target selection row */}
+                                <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-purple-500/5 border border-purple-500/20">
+                                  <div className="space-y-1">
+                                    <Label className="text-[10px] text-muted-foreground">Target</Label>
+                                    <Select
+                                      value={isAttr ? '__self__' : currentTargetId}
+                                      onValueChange={(v) => {
+                                        if (v === '__self__') {
+                                          // Switch to attribute type (self)
+                                          updateReward(index, {
+                                            type: 'attribute',
+                                            attribute: {
+                                              key: attrData.key,
+                                              value: attrData.value,
+                                              action: attrData.action,
+                                            },
+                                          });
+                                        } else {
+                                          // Switch to target_attribute type
+                                          updateReward(index, {
+                                            type: 'target_attribute',
+                                            target_attribute: {
+                                              targetCharacterId: v,
+                                              key: '',
+                                              value: attrData.value,
+                                              action: attrData.action,
+                                            },
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      <SelectTrigger className="bg-background h-8 text-xs">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="__self__">
+                                          <div className="flex items-center gap-1.5">
+                                            <User className="w-3.5 h-3.5 text-slate-500" />
+                                            Mismo personaje
+                                          </div>
+                                        </SelectItem>
+                                        {allCharacters.map(char => (
+                                          <SelectItem key={char.id} value={char.id}>
+                                            <div className="flex items-center gap-1.5">
+                                              <Users className="w-3.5 h-3.5 text-emerald-500" />
+                                              {char.name}
+                                            </div>
+                                          </SelectItem>
+                                        ))}
+                                        {personas.length > 0 && (
+                                          <SelectItem value="__user__">
+                                            <div className="flex items-center gap-1.5">
+                                              <User className="w-3.5 h-3.5 text-violet-500" />
+                                              👤 Persona
+                                            </div>
+                                          </SelectItem>
+                                        )}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  {/* Attribute dropdown - only shown when a target is selected (not self) */}
+                                  <div className="space-y-1">
+                                    <Label className="text-[10px] text-muted-foreground">Atributo</Label>
+                                    {isTargetAttr && availableAttributes.length > 0 ? (
+                                      <Select
+                                        value={attrData.key}
+                                        onValueChange={(v) => {
+                                          updateReward(index, {
+                                            target_attribute: {
+                                              ...normalized.target_attribute!,
+                                              key: v,
+                                            },
+                                          });
+                                        }}
+                                      >
+                                        <SelectTrigger className="bg-background h-8 text-xs">
+                                          <SelectValue placeholder="Seleccionar atributo..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {availableAttributes.map(attr => (
+                                            <SelectItem key={attr.key} value={attr.key}>
+                                              {attr.name} <span className="text-muted-foreground ml-1">({attr.type})</span>
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    ) : isTargetAttr ? (
+                                      <div className="h-8 flex items-center text-xs text-muted-foreground px-3 border rounded-md border-border/60 bg-background">
+                                        {currentTargetId ? 'Sin atributos definidos' : 'Selecciona un target primero'}
+                                      </div>
+                                    ) : (
+                                      <div className="h-8" />
+                                    )}
+                                  </div>
+                                </div>
+                                {/* Key, Value, Action row */}
+                                <div className="grid grid-cols-3 gap-3 p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                                  <div className="space-y-1">
+                                    <Label className="text-[10px] text-muted-foreground">Key del Atributo</Label>
+                                    <Input
+                                      value={attrData.key}
+                                      onChange={(e) => {
+                                        if (isAttr) {
+                                          updateReward(index, { 
+                                            attribute: { ...normalized.attribute!, key: e.target.value } 
+                                          });
+                                        } else {
+                                          updateReward(index, { 
+                                            target_attribute: { ...normalized.target_attribute!, key: e.target.value } 
+                                          });
+                                        }
+                                      }}
+                                      placeholder="oro, xp, vida..."
+                                      className="bg-background h-8 text-xs"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-[10px] text-muted-foreground">Valor</Label>
+                                    <Input
+                                      type="number"
+                                      value={attrData.value}
+                                      onChange={(e) => {
+                                        if (isAttr) {
+                                          updateReward(index, { 
+                                            attribute: { ...normalized.attribute!, value: Number(e.target.value) } 
+                                          });
+                                        } else {
+                                          updateReward(index, { 
+                                            target_attribute: { ...normalized.target_attribute!, value: Number(e.target.value) } 
+                                          });
+                                        }
+                                      }}
+                                      placeholder="100"
+                                      className="bg-background h-8 text-xs"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-[10px] text-muted-foreground">Acción</Label>
+                                    <Select 
+                                      value={attrData.action} 
+                                      onValueChange={(v) => {
+                                        if (isAttr) {
+                                          updateReward(index, { 
+                                            attribute: { ...normalized.attribute!, action: v as AttributeAction } 
+                                          });
+                                        } else {
+                                          updateReward(index, { 
+                                            target_attribute: { ...normalized.target_attribute!, action: v as AttributeAction } 
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      <SelectTrigger className="bg-background h-8 text-xs">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="add">+ Sumar</SelectItem>
+                                        <SelectItem value="subtract">- Restar</SelectItem>
+                                        <SelectItem value="set">= Establecer</SelectItem>
+                                        <SelectItem value="multiply">× Multiplicar</SelectItem>
+                                        <SelectItem value="divide">÷ Dividir</SelectItem>
+                                        <SelectItem value="percent">% Porcentaje</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()
                         )}
 
                         {isTrig && normalized.trigger && (
@@ -2551,6 +2852,7 @@ function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingI
                     {activationMethod === 'turn' && `Cada ${turnInterval} turnos`}
                     {activationMethod === 'manual' && 'Manual'}
                     {activationMethod === 'chain' && 'En cadena'}
+                    {activationMethod === 'automatic' && 'Automático'}
                   </p>
                 </div>
 

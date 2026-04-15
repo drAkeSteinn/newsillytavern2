@@ -25,7 +25,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { CharacterEditor } from './character-editor';
 import { GroupEditor } from './group-editor';
@@ -71,6 +71,15 @@ export function CharacterPanel() {
   const addCharacter = useTavernStore((s) => s.addCharacter);
   const addGroup = useTavernStore((s) => s.addGroup);
   const sidebarOpen = useTavernStore((s) => s.sidebarOpen);
+
+  // Ensure quest templates are loaded (needed for createSession to instantiate quests)
+  const questTemplates = useTavernStore((s) => s.questTemplates);
+  const loadTemplates = useTavernStore((s) => s.loadTemplates);
+  useEffect(() => {
+    if (questTemplates.length === 0) {
+      loadTemplates();
+    }
+  }, []);
 
   const filteredCharacters = characters.filter(c => 
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||

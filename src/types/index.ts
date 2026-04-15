@@ -2297,7 +2297,7 @@ export interface QuestChainConfig {
 // QUEST ACTIVATION CONFIG
 // ============================================
 
-export type QuestActivationMethod = 'keyword' | 'turn' | 'manual' | 'chain';
+export type QuestActivationMethod = 'keyword' | 'turn' | 'manual' | 'chain' | 'automatic';
 
 export interface QuestActivationConfig {
   // Keys para detectar activación (sistema unificado como HUD)

@@ -888,3 +888,150 @@ Stage Summary:
 - Fix: `rm -rf .next` + server restart
 - Confirmed injection order is correct: [CONTEXTO RELEVANTE] → [MEMORIA RELEVANTE] → [Historial del chat]
 - Updated chat-context.ts JSDoc comments to reflect current behavior
+---
+Task ID: 2-a,2-b,2-c
+Agent: Main Agent (with full-stack-developer subagent)
+Task: Quest template editor improvements - prerequisites dropdown, chain activation, attribute target selection
+
+Work Log:
+- Explored quest system types: QuestTemplate, QuestReward, QuestActivationConfig, AttributeDefinition, Persona
+- Identified the editor component: quest-template-manager.tsx (QuestTemplateEditorDialog)
+- Found that prerequisites already exist as string[] in QuestTemplate but UI only had text input
+- Found that 'chain' activation method existed but had no configuration UI
+- Found that attribute rewards had no target selection (no character/persona dropdown)
+
+Changes made to quest-template-manager.tsx:
+1. **Prerequisites multi-select** (lines 1708-1770): Replaced comma-separated text input with badge-based multi-select dropdown. Shows quest names from allTemplates, filtered to exclude current template and already-selected ones.
+2. **Chain activation config** (lines 1928-1968): When activation method is 'chain', shows a dropdown to select which prerequisite quest triggers this one. Shows warning if no prerequisites set.
+3. **Attribute reward target selection** (lines 2420-2615): Added target dropdown (Mismo personaje / characters / Persona) and attribute dropdown. When target is not self, switches to target_attribute type. Shows available attributes from selected target's statsConfig.
+
+Stage Summary:
+- All 3 changes implemented and lint passes cleanly
+- Server compiles with GET / 200
+- Types already existed for most features (target_attribute, chain activation)
+- Added new props: allTemplates to QuestTemplateEditorDialog
+- Added new state: chainPrerequisiteId, personas, activePersonaId
+---
+Task ID: 8
+Agent: Main Agent
+Task: Add 'Automatico' activation method to quest/mission templates
+
+Work Log:
+- Analyzed existing activation methods: keyword, turn, manual, chain
+- Added 'automatic' to QuestActivationMethod type union in types/index.ts
+- Updated quest-template-manager.tsx UI:
+  - Added 'Automático' option in activation method dropdown (emerald/green color, Play icon)
+  - Added display for automatic method in template cards (list view)
+  - Added display for automatic method in editor review section
+  - Added info panel when automatic is selected (explains auto-activation on session start/restore)
+  - Added Play icon import from lucide-react
+- Modified createQuestInstancesFromTemplates in sessionSlice.ts:
+  - Automatic quests without prerequisites start as 'active' immediately
+  - Automatic quests with prerequisites start as 'available' (activated when prerequisites met)
+- Added auto-activation logic in completeQuest:
+  - After any quest completion, checks if any 'available' automatic quests have all prerequisites met
+  - Auto-activates qualifying quests via activateQuest
+
+Stage Summary:
+- Files modified: src/types/index.ts, src/components/settings/quest-template-manager.tsx, src/store/slices/sessionSlice.ts
+- New activation method 'automatic': quest auto-activates on session start/restore
+- Automatic quests respect prerequisites — with prerequisites, they activate when prerequisites are completed
+- Lint passes cleanly, server compiles with GET / 200
+---
+Task ID: 9
+Agent: Main Agent
+Task: Review and fix quest prompt injection - missions not visible in prompt
+
+Work Log:
+- Traced complete quest prompt injection flow: client → API → buildQuestPromptSection → finalSystemPrompt → LLM
+- Found `buildQuestPromptForLLM` in prompt-builder.ts is exported but NEVER called anywhere (dead code)
+- Found race condition: `questTemplates` loaded async via useEffect in chat-panel.tsx, but `createSession` in character-panel.tsx and sessions-sidebar.tsx could run BEFORE templates finish loading → session created with empty sessionQuests
+- Found double header in `buildQuestPromptSection`: function wraps content with `[MISIONES ACTIVAS]` AND the template has `**Misiones Activas:**` → redundant
+- Verified stream route correctly: receives questSettings/sessionQuests/questTemplates, checks conditions, builds section, appends to finalSystemPrompt
+- Verified group-stream route correctly: builds quest section per-responder with characterId filtering
+- Verified prompt viewer correctly: displays all sections from promptSections SSE data
+
+Fixes Applied:
+1. Added `loadTemplates()` useEffect to `character-panel.tsx` (where createSession is called)
+2. Added `loadTemplates()` useEffect to `sessions-sidebar.tsx` (also has createSession)
+3. Removed redundant `[MISIONES ACTIVAS]` header from `buildQuestPromptSection` (template provides header)
+4. Added diagnostic logging in `stream/route.ts` to trace quest section building
+5. Enhanced logging in `buildQuestPromptSection` to show template/quest counts
+
+Stage Summary:
+- Files modified: character-panel.tsx, sessions-sidebar.tsx, quest-handler.ts, stream/route.ts
+- Race condition fixed: quest templates now loaded when character panel and session sidebar mount
+- Clean prompt format: no more double header for quest section
+- Diagnostic logging: [Stream Quest] and [QuestHandler] logs now show template/quest counts
+- Lint passes cleanly, server compiles with GET / 200
+---
+Task ID: 10
+Agent: Main Agent
+Task: Review and fix memory embeddings namespace system
+
+Work Log:
+- Deep-traced complete embeddings memory system: namespace creation, extraction, retrieval, deletion
+- Found naming convention: `memory-character-{charId}-{sessionId}` (single), `memory-group-{groupId}-{sessionId}` (group shared), `memory-character-{memberId}-{sessionId}` (group per-member)
+
+**Verified working correctly:**
+1. Session create → calls ensure-namespace API → creates `memory-character-{charId}-{sessionId}` (single) or `memory-group-{groupId}-{sessionId}` + per-member namespaces (group) ✅
+2. Memory extraction every N turns → checks `turnCount % frequency === 0` → calls extract-memory API → saves embeddings ✅
+3. Namespace deletion → calls delete-session-namespaces API → Strategy 1: metadata search → Strategy 2: pattern fallback → deletes all embeddings + namespace record + table ✅
+4. Group chat retrieval → searches per-character namespace + group namespace + lore + global ✅
+
+**Critical bug found and fixed:**
+- Bug: In group chat, per-character namespaces (`memory-character-{memberId}-{sessionId}`) were CREATED by ensure-namespace but NEVER POPULATED by saveMemoriesAsEmbeddings
+- Root cause: `saveMemoriesAsEmbeddings` had `groupId ? memory-group-... : memory-character-...` — when groupId present, ALL memories went to the group namespace regardless of character
+- Per-character namespaces existed as empty shells, wasting resources and confusing the architecture
+
+**Fix applied in memory-extraction.ts:**
+- Changed `saveMemoriesAsEmbeddings` to ALWAYS use `memory-character-{characterId}-{sessionId}` for individual character memories
+- Added special case: when `characterId === 'group' && groupId` (group dynamics extraction), uses `memory-group-{groupId}-{sessionId}`
+- Updated namespace metadata subtype: `character_in_group` for group members, `group_dynamics` for group dynamics, `character` for single chat
+
+**Result:**
+- Single chat: memories → `memory-character-{charId}-{sessionId}` ✅ (unchanged)
+- Group chat individual memories: memories → `memory-character-{memberId}-{sessionId}` ✅ (FIXED — was going to group namespace)
+- Group chat dynamics: memories → `memory-group-{groupId}-{sessionId}` ✅ (unchanged)
+- Retrieval: searches per-character namespace + group namespace + lore → finds all relevant memories ✅
+- Deletion: metadata search finds all session namespaces including per-character group ones → deletes all ✅
+
+Stage Summary:
+- Files modified: src/lib/embeddings/memory-extraction.ts
+- Per-character memory isolation now works correctly in group chat
+- Each character's memories in a group session are stored in their own namespace
+- Group dynamics (inter-character relationships) still use the shared group namespace
+- No changes needed to retrieval, deletion, or UI (already supported per-character namespaces)
+- Lint passes cleanly, server compiles with GET / 200
+---
+Task ID: 11
+Agent: Main Agent
+Task: Review and fix chained quest auto-activation + namespace restore on session load
+
+Work Log:
+- Reviewed all 3 quest completion paths: completeQuest, progressQuestObjective, completeObjective
+- Found that chain activation only checked template.chain config (explicit nextQuestId)
+- Found that prerequisite-based activation was only in completeQuest, not in the other 2 paths
+- Found that on app restore from localStorage, activeSessionId was already set but setActiveSession was never called → ensure-namespace never ran
+
+Fix 1 — Unified prerequisite-based auto-activation:
+- Created activateQuestsWhosePrerequisitesAreMet() helper function
+- Searches ALL available quests with prerequisites, checks if ALL prerequisites are completed
+- Activates matching quests via activateQuest (which also validates prerequisites)
+- Works for ALL activation methods: chain, automatic, keyword, turn — any quest with prerequisites
+- Replaced inline logic in completeQuest with call to helper
+- Added helper call in progressQuestObjective (after chain check, only if quest auto-completed)
+- Added helper call in completeObjective (after chain check, only if quest auto-completed)
+
+Fix 2 — Namespace creation on session restore:
+- Added useEffect in chat-panel.tsx that runs when activeSessionId changes
+- Calls /api/embeddings/ensure-namespace with session data (characterId, groupId, memberIds)
+- Handles group chat with per-member namespaces
+- Non-blocking: failures don't block the UI
+- Complements existing setActiveSession logic which already calls ensure-namespace
+
+Stage Summary:
+- Files modified: src/store/slices/sessionSlice.ts, src/components/tavern/chat-panel.tsx
+- Quests with prerequisites now auto-activate from ALL completion paths (not just completeQuest)
+- Session restore now ensures memory namespaces exist even when setActiveSession isn't called
+- Lint passes cleanly, server compiles with GET / 200

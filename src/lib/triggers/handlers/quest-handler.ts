@@ -510,7 +510,7 @@ export function buildQuestPromptSection(
   isForNarrator: boolean = false,
   questSettings?: QuestSettings
 ): string {
-  console.log(`[QuestHandler] buildQuestPromptSection called with characterId: ${characterId}, isForNarrator: ${isForNarrator}, hasPrefix: ${!!questSettings?.objectiveCompletionPrefix}`);
+  console.log(`[QuestHandler] buildQuestPromptSection called with characterId: ${characterId}, isForNarrator: ${isForNarrator}, hasPrefix: ${!!questSettings?.objectiveCompletionPrefix}, templates: ${templates.length}, sessionQuests: ${sessionQuests.length}`);
 
   // For narrator, show different format with both active and available quests
   if (isForNarrator) {
@@ -634,11 +634,8 @@ ${objectiveLines}`;
 
   if (!questList) return '';
 
-  // Add header and replace placeholder
-  const fullQuestSection = `[MISIONES ACTIVAS]
-${questList}`;
-
-  return templateStr.replace('{{activeQuests}}', fullQuestSection);
+  // Replace placeholder with quest list (template already provides the header)
+  return templateStr.replace('{{activeQuests}}', questList);
 }
 
 /**

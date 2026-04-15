@@ -370,23 +370,88 @@ function initializeSessionStatsForCharacters(
 /**
  * Create quest instances from templates
  * Creates 'available' status quests (not yet activated)
+ * 'automatic' quests without prerequisites start as 'active' immediately
  */
 function createQuestInstancesFromTemplates(
   templates: QuestTemplate[]
 ): SessionQuestInstance[] {
-  return templates.map(template => ({
-    templateId: template.id,
-    status: 'available' as const,
-    objectives: template.objectives.map(obj => ({
-      templateId: obj.id,
-      currentCount: 0,
-      isCompleted: false,
-    })),
-    progress: 0,
-    activatedAt: undefined,
-    completedAt: undefined,
-    activatedAtTurn: undefined,
-  }));
+  return templates.map(template => {
+    const isAutomatic = template.activation.method === 'automatic';
+    const hasPrerequisites = template.prerequisites && template.prerequisites.length > 0;
+
+    // Automatic quests without prerequisites become active immediately
+    const isActive = isAutomatic && !hasPrerequisites;
+
+    return {
+      templateId: template.id,
+      status: isActive ? ('active' as const) : ('available' as const),
+      objectives: template.objectives.map(obj => ({
+        templateId: obj.id,
+        currentCount: 0,
+        isCompleted: false,
+      })),
+      progress: 0,
+      activatedAt: isActive ? new Date().toISOString() : undefined,
+      completedAt: undefined,
+      activatedAtTurn: isActive ? 0 : undefined,
+    };
+  });
+}
+
+/**
+ * Check and auto-activate quests whose prerequisites are now met.
+ * Called after any quest or objective completion.
+ * 
+ * Activates quests that:
+ * - Are in 'available' status
+ * - Have prerequisites, and ALL prerequisites are completed
+ * - Are NOT already the quest that just completed
+ * 
+ * This handles both:
+ * - 'chain' method quests (traditional chain via template.chain)
+ * - 'automatic' method quests (auto-activate on prerequisites)
+ * - Any quest with prerequisites that should chain-activate
+ */
+function activateQuestsWhosePrerequisitesAreMet(
+  get: any,
+  sessionId: string,
+  completedQuestId?: string
+): void {
+  try {
+    const session = get().sessions.find((s: ChatSession) => s.id === sessionId);
+    if (!session?.sessionQuests) return;
+
+    const completedQuestIds = session.sessionQuests
+      .filter(q => q.status === 'completed')
+      .map(q => q.templateId);
+
+    // Find candidates: available quests that aren't the one just completed
+    const candidates = session.sessionQuests.filter(
+      (q: SessionQuestInstance) =>
+        q.status === 'available' &&
+        q.templateId !== completedQuestId &&
+        q.templateId !== undefined
+    );
+
+    if (candidates.length === 0) return;
+
+    for (const candidate of candidates) {
+      const candidateTemplate = get().getTemplateById?.(candidate.templateId);
+      if (!candidateTemplate?.prerequisites?.length) continue;
+
+      // Check if ALL prerequisites are completed
+      const allMet = candidateTemplate.prerequisites.every(id =>
+        completedQuestIds.includes(id)
+      );
+
+      if (allMet) {
+        console.log(`[Quest Auto] Activating "${candidateTemplate.name}" (${candidateTemplate.activation.method}) — all prerequisites met`);
+        get().activateQuest(sessionId, candidate.templateId);
+      }
+    }
+  } catch (e) {
+    console.warn('[Quest Auto] Error checking prerequisite-based activation:', e);
+  }
 }
 
 /**
@@ -1223,6 +1288,10 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
       }
     }
     
+    // Auto-activate quests whose prerequisites are now met
+    // This handles: chain quests, automatic quests, and any quest with prerequisites
+    activateQuestsWhosePrerequisitesAreMet(get, sessionId, questTemplateId);
+    
     // Add completion notification (only if no rewards were executed, to avoid duplicates)
     if (template && (!template.rewards || template.rewards.length === 0)) {
       get().addQuestNotification?.({
@@ -1351,6 +1420,11 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
         }
       }
     }
+
+    // Auto-activate quests whose prerequisites are now met (if quest was auto-completed)
+    if (chainQuest) {
+      activateQuestsWhosePrerequisitesAreMet(get, sessionId, questTemplateId);
+    }
   },
 
   getSessionQuests: (sessionId) => {
@@ -1470,6 +1544,11 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
           }
         }
       }
+    }
+
+    // Auto-activate quests whose prerequisites are now met (if quest was auto-completed)
+    if (chainQuestObj) {
+      activateQuestsWhosePrerequisitesAreMet(get, sessionId, questTemplateId);
     }
   },
 

@@ -15,6 +15,7 @@ import {
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useEffect } from 'react';
 
 export function SessionsSidebar() {
   // Use individual selectors to avoid re-rendering on unrelated store changes
@@ -29,6 +30,15 @@ export function SessionsSidebar() {
   const setSettingsOpen = useTavernStore((s) => s.setSettingsOpen);
   const activeCharacterId = useTavernStore((s) => s.activeCharacterId);
   const groups = useTavernStore((s) => s.groups);
+
+  // Ensure quest templates are loaded (needed for createSession to instantiate quests)
+  const questTemplates = useTavernStore((s) => s.questTemplates);
+  const loadTemplates = useTavernStore((s) => s.loadTemplates);
+  useEffect(() => {
+    if (questTemplates.length === 0) {
+      loadTemplates();
+    }
+  }, []);
 
   const handleNewChat = () => {
     if (activeCharacterId) {

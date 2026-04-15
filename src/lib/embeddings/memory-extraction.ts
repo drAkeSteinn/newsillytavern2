@@ -357,9 +357,11 @@ export async function saveMemoriesAsEmbeddings(
   }
 
   // Determine namespace (include sessionId to isolate memories per session)
-  // Pattern: memory-character-{characterId}-{sessionId} or memory-group-{groupId}-{sessionId}
+  // Individual memories: memory-character-{characterId}-{sessionId}
+  // Group dynamics: memory-group-{groupId}-{sessionId} (when characterId === 'group' and groupId present)
   const sessionSuffix = sessionId && sessionId !== 'unknown' ? `-${sessionId}` : '';
-  const namespace = groupId
+  const isGroupDynamics = characterId === 'group' && groupId;
+  const namespace = isGroupDynamics
     ? `memory-group-${groupId}${sessionSuffix}`
     : `memory-character-${characterId}${sessionSuffix}`;
 
@@ -373,12 +375,12 @@ export async function saveMemoriesAsEmbeddings(
     try {
       await client.upsertNamespace({
         namespace,
-        description: groupId
-          ? `Memorias del grupo: sesión ${sessionId || 'unknown'}`
+        description: isGroupDynamics
+          ? `Dinámicas de grupo: sesión ${sessionId || 'unknown'}`
           : `Memorias de personaje: sesión ${sessionId || 'unknown'}`,
         metadata: {
           type: 'memory',
-          subtype: groupId ? 'group' : 'character',
+          subtype: isGroupDynamics ? 'group_dynamics' : (groupId ? 'character_in_group' : 'character'),
           character_id: characterId,
           session_id: sessionId,
           group_id: groupId || undefined,

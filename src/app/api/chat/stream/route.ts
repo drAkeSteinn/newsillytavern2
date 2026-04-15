@@ -432,7 +432,9 @@ export async function POST(request: NextRequest) {
     // Build quest section if enabled (pre-LLM integration)
     // Pass characterId to filter objectives for this character
     let questSection: PromptSection | null = null;
+    console.log(`[Stream Quest] enabled=${questSettings.enabled}, promptInclude=${questSettings.promptInclude}, sessionQuests=${sessionQuests.length}, questTemplates=${questTemplates.length}`);
     if (questSettings.enabled && questSettings.promptInclude && sessionQuests.length > 0 && questTemplates.length > 0) {
+      console.log(`[Stream Quest] Building quest section. Active quests: ${sessionQuests.filter(q => q.status === 'active').length}`);
       const questPromptContent = buildQuestPromptSection(
         questTemplates,
         sessionQuests,
@@ -448,7 +450,12 @@ export async function POST(request: NextRequest) {
           content: resolvedQuestContent,
           color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
         };
+        console.log(`[Stream Quest] Quest section built successfully, content length: ${resolvedQuestContent.length}`);
+      } else {
+        console.log(`[Stream Quest] buildQuestPromptSection returned empty content`);
       }
+    } else {
+      console.log(`[Stream Quest] Quest section skipped. Conditions not met.`);
     }
 
     // Build chat history sections (for prompt viewer)
