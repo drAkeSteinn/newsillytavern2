@@ -2,23 +2,30 @@
 // Use Timeline Sprite Sounds Hook
 // ============================================
 //
-// This hook connects sprite activation with timeline sound playback.
-// When a sprite is activated (via trigger), it:
+// This hook connects sprite display (idle, trigger, talk, thinking)
+// with timeline sound AND haptic playback.
+//
+// When a sprite is displayed in the chat scene, it:
 // 1. Extracts the collection name from the sprite URL
 // 2. Loads the metadata.json from that collection
 // 3. Finds the sprite's timeline configuration
-// 4. Plays sounds using the soundTriggerId references
+// 4. Plays sounds at keyframe times
+// 5. Sends haptic positions to Handy device
 //
+// Supports: idle sprites, trigger sprites, WEBP/GIF/WebM
 // ============================================
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTavernStore } from '@/store';
 import type {
   SpriteTimelineData,
   TimelineTrack,
-  TimelineKeyframe,
+  HapticKeyframeValue,
   SoundTrigger,
   SoundCollection,
+  CharacterCard,
+  SpritePackV2,
+  StateCollectionV2,
 } from '@/types';
 
 // ============================================
@@ -38,7 +45,7 @@ interface CollectionMetadata {
   sprites: Record<string, SpriteMetadata>;
 }
 
-interface ActiveTimelineSound {
+interface ActiveTimeline {
   spriteUrl: string;
   startTime: number;
   duration: number;
@@ -48,6 +55,7 @@ interface ActiveTimelineSound {
   timelineData: SpriteTimelineData;
   soundTriggers: SoundTrigger[];
   soundCollections: SoundCollection[];
+  characterId: string;
 }
 
 // ============================================
@@ -66,55 +74,145 @@ function getAudio(url: string): HTMLAudioElement {
 }
 
 // ============================================
-// Active Timeline Sounds State
+// Global State
 // ============================================
 
-const activeTimelines = new Map<string, ActiveTimelineSound>();
+const activeTimelines = new Map<string, ActiveTimeline>();
 const collectionMetadataCache = new Map<string, CollectionMetadata>();
 
 // Loop checker state
 let loopCheckerRunning = false;
 let loopAnimationId: number | null = null;
 
+// Haptic state (throttled)
+let lastHapticSendTime = 0;
+let lastSentHapticPosition: number | null = null;
+
+// ============================================
+// Haptic Helpers (read config from localStorage)
+// ============================================
+
+interface HandyConfig {
+  appId: string;
+  connectionKey: string;
+}
+
+function readHandyConfig(): HandyConfig | null {
+  try {
+    const saved = localStorage.getItem('handy-config');
+    if (saved) {
+      const cfg = JSON.parse(saved) as HandyConfig;
+      if (cfg.appId && cfg.connectionKey) return cfg;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+function readHapticEnabled(): boolean {
+  try {
+    return localStorage.getItem('handy-haptic-enabled') === 'true';
+  } catch { return false; }
+}
+
+function readInverted(): boolean {
+  try {
+    return localStorage.getItem('handy-inverted') === 'true';
+  } catch { return false; }
+}
+
+// Send haptic position to Handy device (throttled to ~12fps)
+function sendHapticPosition(position: number, velocity: number = 1.0) {
+  const config = readHandyConfig();
+  if (!config) return;
+
+  // Throttle to ~12fps (80ms interval)
+  const now = Date.now();
+  if (now - lastHapticSendTime < 80) return;
+  lastHapticSendTime = now;
+
+  // Skip if position hasn't changed
+  const roundedPos = Math.round(position * 10) / 10;
+  if (lastSentHapticPosition !== null && lastSentHapticPosition === roundedPos) return;
+  lastSentHapticPosition = roundedPos;
+
+  // Normalize 0-100 → 0-1
+  const normalizedPosition = Math.max(0, Math.min(1, position / 100));
+  const inverted = readInverted();
+  const devicePos = inverted ? 1 - normalizedPosition : normalizedPosition;
+
+  fetch('/api/handy/hdsp/xpvp', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      appId: config.appId,
+      connectionKey: config.connectionKey,
+      xp: devicePos,
+      vp: Math.max(0, Math.min(1, velocity)),
+      stop_on_target: false,
+    }),
+  }).catch(() => { /* silently fail */ });
+}
+
+// Interpolate haptic position between keyframes
+function interpolateHapticPosition(
+  currentTime: number,
+  keyframes: { time: number; value: HapticKeyframeValue }[],
+): number {
+  if (keyframes.length === 0) return 50;
+  if (keyframes.length === 1) return keyframes[0].value.position;
+
+  let prev = keyframes[0];
+  let next = keyframes[keyframes.length - 1];
+
+  for (let i = 0; i < keyframes.length - 1; i++) {
+    if (currentTime >= keyframes[i].time && currentTime <= keyframes[i + 1].time) {
+      prev = keyframes[i];
+      next = keyframes[i + 1];
+      break;
+    }
+  }
+
+  if (currentTime <= prev.time) return prev.value.position;
+  if (currentTime >= next.time) return next.value.position;
+
+  const t = (currentTime - prev.time) / (next.time - prev.time);
+  return prev.value.position + (next.value.position - prev.value.position) * t;
+}
+
 // ============================================
 // Loop Checker - Single Global Loop
 // ============================================
 
 function startLoopChecker() {
-  if (loopCheckerRunning) {
-    console.log('[TimelineSounds] Loop checker already running');
-    return;
-  }
-  
+  if (loopCheckerRunning) return;
+
   loopCheckerRunning = true;
-  console.log('[TimelineSounds] 🔄 Starting loop checker');
-  
+
   const check = () => {
     if (activeTimelines.size === 0) {
       loopCheckerRunning = false;
       loopAnimationId = null;
-      console.log('[TimelineSounds] ⏹️ Loop checker stopped - no active timelines');
+      lastSentHapticPosition = null; // Reset debounce when stopping
       return;
     }
 
     const now = Date.now();
-    console.log(`[TimelineSounds] 🔄 Loop tick - ${activeTimelines.size} active timelines`);
 
-    for (const [characterId, activeSound] of activeTimelines) {
-      const elapsed = now - activeSound.startTime;
-      const currentTime = elapsed % activeSound.duration;
+    for (const [, active] of activeTimelines) {
+      const elapsed = now - active.startTime;
+      const currentTime = elapsed % active.duration;
 
-      console.log(`[TimelineSounds] ⏱️ Character ${characterId.substring(0, 8)}: ${currentTime.toFixed(0)}ms / ${activeSound.duration}ms`);
-
-      // Play sounds at current time using stored timeline data
+      // Play sounds at current time
       playSoundsAtTime(
-        characterId,
-        activeSound.timelineData,
+        active.timelineData,
         currentTime,
-        activeSound.soundTriggers,
-        activeSound.soundCollections,
-        activeSound
+        active.soundTriggers,
+        active.soundCollections,
+        active
       );
+
+      // Send haptic positions for haptic tracks
+      processHapticTracks(active.timelineData, currentTime);
     }
 
     loopAnimationId = requestAnimationFrame(check);
@@ -124,51 +222,75 @@ function startLoopChecker() {
 }
 
 // ============================================
+// Haptic Track Processor
+// ============================================
+
+function processHapticTracks(
+  timeline: SpriteTimelineData,
+  currentTime: number,
+): void {
+  if (!readHapticEnabled()) return;
+
+  const hapticTracks = timeline.tracks.filter(
+    (t) => t.type === 'haptic' && !t.muted && t.enabled
+  );
+
+  if (hapticTracks.length === 0) return;
+
+  for (const track of hapticTracks) {
+    if (track.keyframes.length === 0) continue;
+
+    const hapticKeyframes = track.keyframes.map((kf) => ({
+      time: kf.time,
+      value: kf.value as HapticKeyframeValue,
+    }));
+
+    const position = interpolateHapticPosition(currentTime, hapticKeyframes);
+
+    // Find closest keyframe for velocity
+    let closestKf = hapticKeyframes[0];
+    for (const kf of hapticKeyframes) {
+      if (Math.abs(kf.time - currentTime) < Math.abs(closestKf.time - currentTime)) {
+        closestKf = kf;
+      }
+    }
+
+    const velocity = closestKf.value.velocity ?? 1.0;
+    sendHapticPosition(position, velocity);
+  }
+}
+
+// ============================================
 // Collection Metadata Loader
 // ============================================
 
 async function loadCollectionMetadata(collectionName: string): Promise<CollectionMetadata | null> {
-  // Check cache first
   if (collectionMetadataCache.has(collectionName)) {
     return collectionMetadataCache.get(collectionName)!;
   }
 
   try {
     const response = await fetch(`/sprites/${collectionName}/metadata.json`);
-    if (!response.ok) {
-      console.warn(`[TimelineSounds] No metadata.json found for collection: ${collectionName}`);
-      return null;
-    }
+    if (!response.ok) return null;
 
     const metadata: CollectionMetadata = await response.json();
     collectionMetadataCache.set(collectionName, metadata);
-    console.log(`[TimelineSounds] Loaded metadata for collection: ${collectionName}`, {
-      spriteCount: Object.keys(metadata.sprites).length,
-    });
-    
     return metadata;
-  } catch (error) {
-    console.error(`[TimelineSounds] Failed to load metadata for ${collectionName}:`, error);
+  } catch {
     return null;
   }
 }
 
 // ============================================
-// Extract Collection Name from Sprite URL
+// URL Helpers
 // ============================================
 
 function extractCollectionFromUrl(spriteUrl: string): string | null {
-  // URL format: /sprites/CollectionName/filename.webm
   const match = spriteUrl.match(/\/sprites\/([^/]+)\//);
   return match ? match[1] : null;
 }
 
-// ============================================
-// Extract Filename from Sprite URL
-// ============================================
-
 function extractFilenameFromUrl(spriteUrl: string): string | null {
-  // URL format: /sprites/CollectionName/filename.webm
   const parts = spriteUrl.split('/');
   return parts[parts.length - 1] || null;
 }
@@ -183,13 +305,7 @@ async function playSoundFromTrigger(
   volume: number = 1
 ): Promise<HTMLAudioElement | null> {
   const collection = collections.find(c => c.name === trigger.collection);
-  if (!collection || !collection.files || collection.files.length === 0) {
-    console.warn('[TimelineSounds] ❌ Collection not found or empty:', trigger.collection, {
-      availableCollections: collections.map(c => c.name),
-      requestedCollection: trigger.collection,
-    });
-    return null;
-  }
+  if (!collection || !collection.files || collection.files.length === 0) return null;
 
   let soundFile: string;
   if (trigger.playMode === 'random') {
@@ -199,21 +315,14 @@ async function playSoundFromTrigger(
     soundFile = collection.files[index % collection.files.length];
   }
 
-  console.log('[TimelineSounds] 🔊 Playing sound file:', soundFile);
-
   try {
     const baseAudio = getAudio(soundFile);
     const audioClone = baseAudio.cloneNode() as HTMLAudioElement;
     audioClone.volume = volume * (trigger.volume || 1);
     audioClone.currentTime = 0;
-
-    await audioClone.play().catch(e => {
-      console.warn('[TimelineSounds] Audio play failed:', e);
-    });
-
+    await audioClone.play().catch(() => {});
     return audioClone;
-  } catch (error) {
-    console.error('[TimelineSounds] Failed to play sound:', error);
+  } catch {
     return null;
   }
 }
@@ -227,14 +336,9 @@ async function playSoundFromUrl(
     const audioClone = baseAudio.cloneNode() as HTMLAudioElement;
     audioClone.volume = volume;
     audioClone.currentTime = 0;
-
-    await audioClone.play().catch(e => {
-      console.warn('[TimelineSounds] Audio play failed:', e);
-    });
-
+    await audioClone.play().catch(() => {});
     return audioClone;
-  } catch (error) {
-    console.error('[TimelineSounds] Failed to play sound from URL:', error);
+  } catch {
     return null;
   }
 }
@@ -244,41 +348,29 @@ async function playSoundFromUrl(
 // ============================================
 
 function playSoundsAtTime(
-  characterId: string,
   timeline: SpriteTimelineData,
   currentTime: number,
   soundTriggers: SoundTrigger[],
   soundCollections: SoundCollection[],
-  activeSound: ActiveTimelineSound,
+  active: ActiveTimeline,
   toleranceMs: number = 150
 ): void {
   const globalVolume = timeline.globalVolume ?? 1;
 
-  console.log(`[TimelineSounds] 🎵 playSoundsAtTime: currentTime=${currentTime.toFixed(0)}ms, tolerance=${toleranceMs}ms`);
-  console.log(`[TimelineSounds] 📊 Timeline has ${timeline.tracks.length} tracks`);
-
   for (const track of timeline.tracks) {
-    if (track.muted || !track.enabled) {
-      console.log(`[TimelineSounds] 🔇 Track "${track.name}" muted or disabled`);
-      continue;
-    }
-    
-    // Check if this is a sound track - support both 'sound' and 'sprite' types
-    // (legacy fix: some tracks were saved with type 'sprite' but contain sound keyframes)
+    if (track.muted || !track.enabled) continue;
+
+    // Only process sound tracks (or legacy 'sprite' tracks with sound data)
     const isSoundTrack = track.type === 'sound' || (
       track.type === 'sprite' && track.keyframes.some(kf => {
-        const val = kf.value as Record<string, unknown>;
+        const val = kf.value as unknown as Record<string, unknown>;
         return val?.soundTriggerId || val?.play;
       })
     );
-    
-    if (!isSoundTrack) {
-      console.log(`[TimelineSounds] ⏭️ Track "${track.name}" is not sound type (${track.type})`);
-      continue;
-    }
+
+    if (!isSoundTrack) continue;
 
     const trackId = track.id;
-    console.log(`[TimelineSounds] 🎸 Processing track "${track.name}" with ${track.keyframes.length} keyframes`);
 
     for (const keyframe of track.keyframes) {
       const keyframeId = keyframe.id;
@@ -287,10 +379,8 @@ function playSoundsAtTime(
       // Check if playhead is crossing this keyframe
       const isCrossing = currentTime >= keyframeTime && currentTime < keyframeTime + toleranceMs;
 
-      console.log(`[TimelineSounds] ⏱️ Keyframe at ${keyframeTime}ms: currentTime=${currentTime.toFixed(0)}, isCrossing=${isCrossing}, alreadyTriggered=${activeSound.triggeredKeyframes.has(keyframeId)}`);
-
-      if (isCrossing && !activeSound.triggeredKeyframes.has(keyframeId)) {
-        activeSound.triggeredKeyframes.add(keyframeId);
+      if (isCrossing && !active.triggeredKeyframes.has(keyframeId)) {
+        active.triggeredKeyframes.add(keyframeId);
 
         const soundValue = keyframe.value as {
           soundTriggerId?: string;
@@ -301,13 +391,6 @@ function playSoundsAtTime(
           stop?: boolean;
         };
 
-        console.log(`[TimelineSounds] 🎯 TRIGGERING Keyframe at ${keyframeTime}ms:`, {
-          soundTriggerId: soundValue.soundTriggerId,
-          soundTriggerName: soundValue.soundTriggerName,
-          play: soundValue.play,
-          volume: soundValue.volume,
-        });
-
         if (soundValue.play) {
           (async () => {
             let audioEl: HTMLAudioElement | null = null;
@@ -315,30 +398,20 @@ function playSoundsAtTime(
             // Try sound trigger first (by ID)
             if (soundValue.soundTriggerId) {
               let trigger = soundTriggers.find(t => t.id === soundValue.soundTriggerId);
-              
+
               // Fallback: try to find by name if ID not found
               if (!trigger && soundValue.soundTriggerName) {
-                trigger = soundTriggers.find(t => 
+                trigger = soundTriggers.find(t =>
                   t.name.toLowerCase() === soundValue.soundTriggerName!.toLowerCase()
                 );
-                if (trigger) {
-                  console.log(`[TimelineSounds] ✅ Found trigger by name fallback: ${trigger.name}`);
-                }
               }
-              
+
               if (trigger) {
-                console.log(`[TimelineSounds] 🎵 Playing trigger: ${trigger.name} (collection: ${trigger.collection})`);
                 audioEl = await playSoundFromTrigger(
                   trigger,
                   soundCollections,
                   (soundValue.volume || 1) * globalVolume
                 );
-              } else {
-                console.warn(`[TimelineSounds] ⚠️ Sound trigger not found:`, {
-                  searchedId: soundValue.soundTriggerId,
-                  searchedName: soundValue.soundTriggerName,
-                  availableTriggers: soundTriggers.map(t => ({ id: t.id, name: t.name, collection: t.collection })),
-                });
               }
             }
             // Fall back to direct URL
@@ -350,11 +423,9 @@ function playSoundsAtTime(
             }
 
             if (audioEl) {
-              const trackAudios = activeSound.activeAudios.get(trackId) || [];
+              const trackAudios = active.activeAudios.get(trackId) || [];
               trackAudios.push(audioEl);
-              activeSound.activeAudios.set(trackId, trackAudios);
-
-              // Clean up after playback
+              active.activeAudios.set(trackId, trackAudios);
               audioEl.onended = () => {
                 const idx = trackAudios.indexOf(audioEl!);
                 if (idx > -1) trackAudios.splice(idx, 1);
@@ -365,7 +436,7 @@ function playSoundsAtTime(
 
         // Handle stop command
         if (soundValue.stop) {
-          const trackAudios = activeSound.activeAudios.get(trackId) || [];
+          const trackAudios = active.activeAudios.get(trackId) || [];
           for (const audio of trackAudios) {
             audio.pause();
             audio.remove();
@@ -376,18 +447,22 @@ function playSoundsAtTime(
 
       // Reset trigger for keyframes we've passed (for looping)
       if (currentTime < keyframeTime - toleranceMs) {
-        activeSound.triggeredKeyframes.delete(keyframeId);
+        active.triggeredKeyframes.delete(keyframeId);
       }
     }
   }
 }
 
-function stopTimelineSound(characterId: string) {
-  const activeSound = activeTimelines.get(characterId);
-  if (!activeSound) return;
+// ============================================
+// Start/Stop Timeline
+// ============================================
+
+function stopTimeline(characterId: string) {
+  const active = activeTimelines.get(characterId);
+  if (!active) return;
 
   // Stop all audio elements
-  for (const [, audios] of activeSound.activeAudios) {
+  for (const [, audios] of active.activeAudios) {
     for (const audio of audios) {
       audio.pause();
       audio.remove();
@@ -395,10 +470,15 @@ function stopTimelineSound(characterId: string) {
   }
 
   activeTimelines.delete(characterId);
-  console.log('[TimelineSounds] ⏹️ Stopped timeline sounds for:', characterId);
+
+  // If no more active timelines, send haptic to center
+  if (activeTimelines.size === 0 && readHapticEnabled()) {
+    sendHapticPosition(50, 0.3);
+    lastSentHapticPosition = null;
+  }
 }
 
-function startTimelineSound(
+function startTimeline(
   characterId: string,
   spriteUrl: string,
   timeline: SpriteTimelineData,
@@ -406,26 +486,25 @@ function startTimelineSound(
   soundCollections: SoundCollection[]
 ): void {
   // Stop any existing timeline for this character
-  stopTimelineSound(characterId);
+  stopTimeline(characterId);
 
-  // Filter sound tracks - support both 'sound' and 'sprite' types with sound keyframes
-  const soundTracks = timeline.tracks.filter(
-    t => !t.muted && t.enabled && (
-      t.type === 'sound' || (
-        t.type === 'sprite' && t.keyframes.some(kf => {
-          const val = kf.value as Record<string, unknown>;
-          return val?.soundTriggerId || val?.play;
-        })
-      )
+  // Check if there are any playable tracks (sound or haptic)
+  const hasSoundTracks = timeline.tracks.some(t => !t.muted && t.enabled && (
+    t.type === 'sound' || (
+      t.type === 'sprite' && t.keyframes.some(kf => {
+        const val = kf.value as unknown as Record<string, unknown>;
+        return val?.soundTriggerId || val?.play;
+      })
     )
+  ));
+
+  const hasHapticTracks = readHapticEnabled() && timeline.tracks.some(
+    t => t.type === 'haptic' && !t.muted && t.enabled && t.keyframes.length > 0
   );
 
-  if (soundTracks.length === 0) {
-    console.log('[TimelineSounds] No active sound tracks in timeline');
-    return;
-  }
+  if (!hasSoundTracks && !hasHapticTracks) return;
 
-  const activeSound: ActiveTimelineSound = {
+  const active: ActiveTimeline = {
     spriteUrl,
     startTime: Date.now(),
     duration: timeline.duration || 5000,
@@ -435,33 +514,82 @@ function startTimelineSound(
     timelineData: timeline,
     soundTriggers,
     soundCollections,
+    characterId,
   };
 
-  activeTimelines.set(characterId, activeSound);
+  activeTimelines.set(characterId, active);
 
-  console.log('[TimelineSounds] ▶️ Started timeline sounds:', {
-    characterId,
-    spriteUrl,
+  console.log('[Timeline] ▶️ Started for', characterId.substring(0, 8), {
     duration: timeline.duration,
-    loop: timeline.loop,
-    soundTracks: soundTracks.length,
-    keyframes: soundTracks.reduce((sum, t) => sum + t.keyframes.length, 0),
-    soundTriggersCount: soundTriggers.length,
-    soundCollectionsCount: soundCollections.length,
+    sounds: hasSoundTracks,
+    haptic: hasHapticTracks,
+    url: spriteUrl.split('/').pop(),
   });
 
   // Start the loop checker if not already running
   startLoopChecker();
 
   // Play initial sounds at time 0
-  playSoundsAtTime(
-    characterId,
-    timeline,
-    0,
-    soundTriggers,
-    soundCollections,
-    activeSound
+  if (hasSoundTracks) {
+    playSoundsAtTime(timeline, 0, soundTriggers, soundCollections, active);
+  }
+
+  // Send initial haptic position
+  if (hasHapticTracks) {
+    processHapticTracks(timeline, 0);
+  }
+}
+
+// ============================================
+// Idle Sprite URL Resolver
+// ============================================
+
+// Replicate the same logic as CharacterSprite.getSpriteUrl / getSpriteFromStateCollectionV2
+// to compute the displayed sprite URL for idle/talk/thinking states.
+// This requires character data (spritePacksV2, stateCollectionsV2).
+
+function computeIdleSpriteUrl(
+  spriteState: string,
+  character: CharacterCard | undefined,
+  characterId: string,
+): string | null {
+  if (!character) return null;
+
+  const hasV2Collections = !!(character.stateCollectionsV2 && character.stateCollectionsV2.length > 0);
+  const hasV2Packs = !!(character.spritePacksV2 && character.spritePacksV2.length > 0);
+
+  if (!hasV2Collections || !hasV2Packs) return null;
+
+  // Find state collection matching the current sprite state
+  const stateCollection = character.stateCollectionsV2!.find(
+    (c: StateCollectionV2) => c.state === spriteState
   );
+  if (!stateCollection) return null;
+
+  const pack = character.spritePacksV2!.find(
+    (p: SpritePackV2) => p.id === stateCollection.packId
+  );
+  if (!pack || pack.sprites.length === 0) return null;
+
+  switch (stateCollection.behavior) {
+    case 'principal': {
+      if (stateCollection.principalSpriteId) {
+        const principal = pack.sprites.find(s => s.id === stateCollection.principalSpriteId);
+        if (principal) return principal.url;
+      }
+      return pack.sprites[0]?.url || null;
+    }
+    case 'random':
+    case 'list': {
+      // For random/list, we can't easily predict the URL from here
+      // since random uses Math.random() and list uses a rotation index.
+      // Return first sprite URL as fallback — the actual displayed sprite
+      // may differ, but this ensures we at least try to load timeline data.
+      return pack.sprites[0]?.url || null;
+    }
+    default:
+      return pack.sprites[0]?.url || null;
+  }
 }
 
 // ============================================
@@ -472,101 +600,65 @@ export function useTimelineSpriteSounds() {
   const characterSpriteStates = useTavernStore((state) => state.characterSpriteStates);
   const soundTriggers = useTavernStore((state) => state.soundTriggers ?? []);
   const soundCollections = useTavernStore((state) => state.soundCollections ?? []);
+  const characters = useTavernStore((state) => state.characters ?? []);
+
+  // Build a character lookup map for efficiency
+  const characterMap = useRef<Map<string, CharacterCard>>(new Map());
+  useEffect(() => {
+    characterMap.current = new Map(characters.map(c => [c.id, c]));
+  }, [characters]);
 
   const prevSpriteUrlsRef = useRef<Record<string, string>>({});
 
-  // Start/stop timeline sounds when sprite changes
+  // Start/stop timeline when sprite changes (trigger OR idle)
   useEffect(() => {
     const currentSpriteUrls: Record<string, string> = {};
 
-    console.log('[TimelineSounds] 📋 Checking sprite changes:', {
-      soundTriggersCount: soundTriggers.length,
-      soundCollectionsCount: soundCollections.length,
-      characterSpriteStatesCount: Object.keys(characterSpriteStates).length,
-    });
-
     for (const [characterId, charState] of Object.entries(characterSpriteStates)) {
-      const currentUrl = charState.triggerSpriteUrl;
-      currentSpriteUrls[characterId] = currentUrl || '';
+      // Determine effective sprite URL:
+      // Priority: trigger > idle from state collections
+      let effectiveUrl = charState.triggerSpriteUrl || '';
+
+      if (!effectiveUrl) {
+        // No trigger active — compute idle sprite URL
+        const character = characterMap.current.get(characterId);
+        effectiveUrl = computeIdleSpriteUrl(
+          charState.spriteState,
+          character,
+          characterId
+        ) || '';
+      }
+
+      currentSpriteUrls[characterId] = effectiveUrl;
 
       const prevUrl = prevSpriteUrlsRef.current[characterId];
 
-      // If sprite changed
-      if (currentUrl && currentUrl !== prevUrl) {
-        console.log('[TimelineSounds] 🔄 Sprite URL changed:', {
-          characterId,
-          currentUrl,
-          prevUrl,
-          useTimelineSounds: charState.useTimelineSounds,
-        });
-
-        // Check if timeline sounds are enabled for this character
-        if (!charState.useTimelineSounds) {
-          console.log('[TimelineSounds] ⏸️ Timeline sounds disabled for this character, skipping');
+      // If sprite URL changed to a new sprite
+      if (effectiveUrl && effectiveUrl !== prevUrl) {
+        // Check if timeline sounds are enabled (only for trigger sprites)
+        if (charState.triggerSpriteUrl && !charState.useTimelineSounds) {
+          // For triggers with disabled timeline sounds, skip
           continue;
         }
 
         // Extract collection name and filename from URL
-        const collectionName = extractCollectionFromUrl(currentUrl);
-        const filename = extractFilenameFromUrl(currentUrl);
+        const collectionName = extractCollectionFromUrl(effectiveUrl);
+        const filename = extractFilenameFromUrl(effectiveUrl);
 
-        if (!collectionName || !filename) {
-          console.warn('[TimelineSounds] ⚠️ Could not extract collection/filename from URL:', currentUrl);
-          continue;
-        }
-
-        console.log('[TimelineSounds] 📁 Extracted from URL:', { collectionName, filename });
+        if (!collectionName || !filename) continue;
 
         // Load collection metadata and find sprite timeline
         (async () => {
           const metadata = await loadCollectionMetadata(collectionName);
-          if (!metadata) {
-            console.warn('[TimelineSounds] ⚠️ No metadata found for collection:', collectionName);
-            return;
-          }
+          if (!metadata) return;
 
-          // Find sprite in metadata by filename
           const spriteMeta = metadata.sprites[filename];
-          if (!spriteMeta) {
-            console.warn('[TimelineSounds] ⚠️ Sprite not found in metadata:', filename);
-            console.log('[TimelineSounds] Available sprites:', Object.keys(metadata.sprites));
-            return;
-          }
+          if (!spriteMeta?.timeline?.tracks) return;
 
-          // Check if sprite has timeline with sound tracks
-          if (!spriteMeta.timeline || !spriteMeta.timeline.tracks) {
-            console.log('[TimelineSounds] ℹ️ Sprite has no timeline:', filename);
-            return;
-          }
-
-          // Filter sound tracks - support both 'sound' and 'sprite' types with sound keyframes
-          const soundTracks = spriteMeta.timeline.tracks.filter(
-            (t: TimelineTrack) => !t.muted && t.enabled && (
-              t.type === 'sound' || (
-                t.type === 'sprite' && t.keyframes.some(kf => {
-                  const val = kf.value as Record<string, unknown>;
-                  return val?.soundTriggerId || val?.play;
-                })
-              )
-            )
-          );
-
-          if (soundTracks.length === 0) {
-            console.log('[TimelineSounds] ℹ️ Sprite has no active sound tracks:', filename);
-            return;
-          }
-
-          console.log('[TimelineSounds] ✅ Found sprite with timeline sounds:', {
-            label: spriteMeta.label,
-            duration: spriteMeta.duration,
-            soundTracks: soundTracks.length,
-            keyframes: soundTracks.reduce((sum: number, t: TimelineTrack) => sum + t.keyframes.length, 0),
-          });
-
-          // Start playing timeline sounds
-          startTimelineSound(
+          // Start timeline (handles both sound and haptic tracks)
+          startTimeline(
             characterId,
-            currentUrl,
+            effectiveUrl,
             spriteMeta.timeline,
             soundTriggers,
             soundCollections
@@ -575,8 +667,8 @@ export function useTimelineSpriteSounds() {
       }
 
       // If sprite was cleared but we had an active timeline
-      if (!currentUrl && prevUrl) {
-        stopTimelineSound(characterId);
+      if (!effectiveUrl && prevUrl) {
+        stopTimeline(characterId);
       }
     }
 
@@ -587,7 +679,7 @@ export function useTimelineSpriteSounds() {
   useEffect(() => {
     return () => {
       for (const characterId of activeTimelines.keys()) {
-        stopTimelineSound(characterId);
+        stopTimeline(characterId);
       }
       if (loopAnimationId) {
         cancelAnimationFrame(loopAnimationId);
@@ -599,8 +691,7 @@ export function useTimelineSpriteSounds() {
 
   return {
     hasActiveTimeline: (characterId: string) => activeTimelines.has(characterId),
-    stopTimeline: stopTimelineSound,
+    stopTimeline,
     clearMetadataCache: () => collectionMetadataCache.clear(),
   };
 }
-

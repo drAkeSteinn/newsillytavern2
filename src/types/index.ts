@@ -3492,7 +3492,7 @@ export const createDefaultTriggerQueueState = (): TriggerQueueState => ({
 export type SpriteAnimationFormat = 'webm' | 'mp4' | 'gif' | 'webp' | 'png' | 'jpg';
 
 // Track type for timeline
-export type TimelineTrackType = 'sprite' | 'sound' | 'effect';
+export type TimelineTrackType = 'sprite' | 'sound' | 'effect' | 'haptic';
 
 // Keyframe interpolation type
 export type KeyframeInterpolation = 'hold' | 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
@@ -3605,7 +3605,8 @@ export interface TimelineKeyframe {
 export type KeyframeValue = 
   | SpriteKeyframeValue
   | SoundKeyframeValue
-  | EffectKeyframeValue;
+  | EffectKeyframeValue
+  | HapticKeyframeValue;
 
 /**
  * Sprite Keyframe Value - For sprite tracks
@@ -3642,6 +3643,13 @@ export interface EffectKeyframeValue {
   intensity: number;             // 0-1
   duration: number;              // Effect duration in ms
   params?: Record<string, unknown>;
+}
+
+export interface HapticKeyframeValue {
+  type: 'haptic';
+  position: number;              // 0-100, position of the Handy slider
+  velocity?: number;             // 0-1, movement speed (default 1.0)
+  stopOnTarget?: boolean;        // Whether to stop at target position (default false for continuous playback)
 }
 
 /**
@@ -3732,6 +3740,13 @@ export const DEFAULT_EFFECT_KEYFRAME_VALUE: EffectKeyframeValue = {
   effectType: 'flash',
   intensity: 0.5,
   duration: 200,
+};
+
+export const DEFAULT_HAPTIC_KEYFRAME_VALUE: HapticKeyframeValue = {
+  type: 'haptic',
+  position: 50,
+  velocity: 1.0,
+  stopOnTarget: false,
 };
 
 export const createDefaultTimelineTrack = (type: TimelineTrackType, name: string): TimelineTrack => ({

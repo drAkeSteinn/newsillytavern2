@@ -1,1037 +1,443 @@
 ---
 Task ID: 1
-Agent: Main Agent
-Task: Clone and integrate newsillytavern2 repository into the main Next.js project
+Agent: main
+Task: Fix Handy device connection - ENDPOINT_MAP using wrong PascalCase endpoint names
 
 Work Log:
-- Cloned https://github.com/drAkeSteinn/newsillytavern2.git to /home/z/newsillytavern2
-- Analyzed repository structure (352 source files, Next.js 16 + shadcn/ui + Tailwind + Prisma)
-- Identified it as "TavernFlow" - AI Character Chat Platform with LLM integration
-- Cleaned existing src/ directory and copied all source files from cloned repo
-- Copied additional directories: public/, data/, mini-services/
-- Replaced configuration files: next.config.ts, tsconfig.json, postcss.config.mjs, components.json
-- Merged package.json dependencies: added @lancedb/lancedb (0.26.2), updated react-syntax-highlighter (^16.1.0)
-- Updated dev script to use --webpack flag (required for lancedb native modules)
-- Replaced prisma schema (SQLite with User/Post models)
-- Installed all dependencies with bun install
-- Ran prisma db push - database already in sync
-- Launched dev server successfully on port 3000
-- Verified compilation: GET / 200 in 11.6s
+- Investigated dev.log and found 404 errors on `/getConnected`, `/getDeviceInfo`, etc.
+- Compared actual Handy v3 API URLs from official `handy-examples/handy-rest-api-v3-client.js`
+- Discovered API uses lowercase paths: `/connected`, `/hamp/start`, `/hdsp/xpvp` (NOT PascalCase)
+- The `ENDPOINT_MAP` had wrong mappings like `'connected': 'getConnected'` causing 404s
+- Removed all incorrect mappings, kept only `'mode2': 'mode'` (internal → API name collision)
+- Simplified `resolveEndpoint()` to pass through internal names directly (they match API)
+- Fixed file ownership (was root-owned, preventing Turbopack hot reload)
+- Restarted dev server and verified all endpoints return 200
 
 Stage Summary:
-- Repository fully integrated into main project
-- Application "TavernFlow" is running and accessible via Preview Panel
-- All 352 source files including: chat system, character management, TTS, embeddings, quests, inventory, lorebook, backgrounds, sprites, HUD, triggers, and more
-- Key features available: AI chat with multiple LLM providers (Ollama, Grok, OpenAI, Anthropic, LM Studio, Z.ai), streaming responses, character cards, group chat, memory/embeddings with LanceDB, quest system, inventory, HUD displays, atmospheric effects, sound triggers, background management, sprite animations
+- Root cause: `ENDPOINT_MAP` mapped internal names to PascalCase (getConnected, setHampStart) but Handy v3 API expects lowercase (connected, hamp/start)
+- Fix: Removed all PascalCase mappings from ENDPOINT_MAP, now uses identity mapping
+- Verified: All endpoints (servertime, connected, info, capabilities, mode, hamp/*, hdsp/*) return 200
+- The scrollbar was already implemented at TabsContent level with `overflow-y-auto`
+
+---
+Task ID: 1
+Agent: main
+Task: Fix HAMP stroke, HDSP positions, add HSP streaming mode, scrollbar
+
+Work Log:
+- Read and analyzed full `handy-control-panel.tsx` (1000 lines) and `api/handy/[...path]/route.ts`
+- Identified 3 user-reported issues and 1 pending UI fix
+- Fixed HAMP stroke slider: only sends API calls when HAMP is actively playing, shows actual min/max range values, added helper note
+- Fixed HDSP positions: added `stop_on_target: true` to prevent oscillation, added debounce to prevent duplicate sends, mapped slider range to device physical limits (slideMin-slideMax), added visual PositionBar indicator
+- Added complete HSP (Streaming) mode: 4 patterns (sine, ramp, pulse, sawtooth), speed control 0.1x-3.0x, live position indicator, play/stop controls
+- Added scrollbar: `max-h-[calc(100vh-180px)] overflow-y-auto pr-1` on main container
+- Fixed circular dependency between `setMode` and `hspStopStream` using ref pattern
+- Added HDSP State and HSP State to quick API tests
+- Replaced FW status card with physical range display in device info
+- All changes pass `bun run lint` cleanly
+
+Stage Summary:
+- HAMP: Stroke now only sends to device when playing; shows computed real range
+- HDSP: No more toggle behavior; uses device's actual physical range; added visual position bar
+- HSP: Full streaming mode with 4 pattern generators, speed control, live position display
+- Scrollbar: Haptic tab is now scrollable with proper overflow handling
 
 ---
 Task ID: 2
-Agent: Main Agent
-Task: Review and fix bugs in Quest system and Actions system integration
+Agent: main
+Task: Fix HAMP stroke inversion, display 0-109.3 range, add manual position calibration
 
 Work Log:
-- Analyzed the complete quest system: templates, objectives, rewards, completion keys, chain logic
-- Analyzed the actions/skills system: SkillDefinition, activationKeys, activationCosts, activationRewards
-- Analyzed the POST-LLM detection pipeline: useTriggerSystem → KeyDetector → Handler Registry
-- Identified 4 bugs:
-  - BUG 1 (CRITICAL): completeQuestObjectiveByKey did not execute objective rewards or quest rewards when a Skill's activationReward completed a quest objective
-  - BUG 2 (CRITICAL): progressQuestObjective and completeObjective did not activate quest chain when auto-completing a quest
-  - BUG 3 (MEDIUM): Double processing of quests via two parallel paths (unified QuestKeyHandler + legacy checkQuestTriggers)
-  - BUG 4 (LOW): QuestKeyHandler simplified vs deep engine (prefix, value conditions, word boundaries)
-- Fixed BUG 1: Enhanced completeQuestObjectiveByKey in use-trigger-system.ts to execute objective rewards, check for quest auto-completion, execute quest rewards, and add notifications
-- Fixed BUG 2: Added chain activation logic to progressQuestObjective and completeObjective in sessionSlice.ts (auto-starts next quest when all required objectives are completed)
-- Fixed BUG 3: Disabled the unified QuestKeyHandler from the processing loop to prevent double processing; quests are now processed solely by the feature-complete legacy quest-detector engine
+- Fixed HAMP stroke calculation: removed erroneous `/100` conversion when sending to API
+- The stroke values are now sent in the API's raw scale (0-109.3) instead of normalized 0.0-1.0
+- Fixed inversion: at 100% stroke → full device range (max movement), at 0% → center only (no movement)
+- Updated display to show raw values (0-109.3 range) instead of abstract percentages
+- Renamed slideMin/slideMax → deviceMin/deviceMax for clarity, removed *100 multiplication on read
+- Added manual stroke calibration card in HAMP mode:
+  - "Leer Posición Actual" button reads device's current slider position via GET /slider/state
+  - "Establecer como Mín" / "Establecer como Máx" buttons capture current position
+  - "Aplicar" button sends manual range to PUT /slider/stroke
+  - "Reiniciar" resets to device-detected range
+  - Visual display shows configured manual range in blue highlight
+- Added Crosshair icon import from lucide-react
+- Updated HDSP labels to show raw values without % suffix
 
 Stage Summary:
-- 3 critical/medium bugs fixed in quest-actions integration
-- Files modified: src/lib/triggers/use-trigger-system.ts, src/store/slices/sessionSlice.ts
-- Verified: Server compiles successfully, all routes return 200
-- Remaining: BUG 4 is documented but not fixed (the legacy path already has all features)
----
-Task ID: 1
-Agent: Main Agent
-Task: Fix quest/objective completion reward execution bugs
-
-Work Log:
-- Analyzed all code paths that complete quests/objectives: POST-LLM detection, skill activation, tools, UI manual actions
-- Identified root cause: store functions (progressQuestObjective, completeObjective, completeQuest, toggleObjectiveCompletion) only update state but don't execute rewards
-- Only POST-LLM trigger system path executed rewards; UI and direct callers missed rewards
-- Added `executeCompletionRewards()` helper function in sessionSlice.ts with recursion guard
-- Modified 4 store functions to call reward execution after state update
-- Removed ~200 lines of duplicate reward execution from use-trigger-system.ts (unified and legacy paths)
-- Simplified `activateObjectiveDirectly` in quest-reward-executor.ts (~70 lines removed)
-- Verified with lint - no new errors introduced
-
-Stage Summary:
-- Fixed files: src/store/slices/sessionSlice.ts, src/lib/triggers/use-trigger-system.ts, src/lib/quest/quest-reward-executor.ts
-- Architecture change: Reward execution moved from caller-side to store-side (single source of truth)
-- Recursion guard prevents infinite loops from circular reward chains (e.g., Objective A reward → complete Objective B → reward → complete Objective A)
-- All completion paths now execute rewards: UI manual, POST-LLM detection, skill activation, tools
-
----
-Task ID: 2-a
-Agent: Main Agent
-Task: Verify reward execution works for both normal chat and group chat
-
-Work Log:
-- Reviewed complete reward flow: sessionSlice.ts executeCompletionRewards() is the central hub
-- Verified all 5 store functions call executeCompletionRewards(): completeObjective, progressQuestObjective, completeQuest, toggleObjectiveCompletion
-- Verified group chat support: executeCompletionRewards() builds allCharacters from group members, resolves characterId correctly
-- Verified legacy path (checkQuestTriggers) passes character?.id to all store functions
-- Verified unified QuestKeyHandler is intentionally disabled to prevent double-processing
-- Verified completeQuestObjectiveByKey delegates to store.completeObjective (which handles rewards)
-- **Found Bug**: executeCompletionRewards() was missing `completeQuestObjective` and `completeSolicitud` in its RewardStoreActions object
-  - This caused chained objective rewards (type=objective) and solicitud rewards to silently fail
-- **Fixed**: Added `completeQuestObjective` callback to actions that searches active quests by completion key and delegates to store.completeObjective
-- **Fixed**: Added `completeSolicitud` callback to actions that delegates to store.completeSolicitud
-- **Fixed**: QuestKeyHandler.execute() now passes characterId for 'complete' action (was missing, though handler is disabled)
-- Verified: Server compiles successfully, lint passes (only pre-existing error in fullscreen-editor.tsx)
-
-Stage Summary:
-- Files modified: src/store/slices/sessionSlice.ts, src/lib/triggers/handlers/quest-key-handler.ts
-- The reward execution system now works correctly for:
-  - Normal chat: objective rewards, quest rewards, chain activation
-  - Group chat: correctly resolves characterId, builds allCharacters for group trigger rewards
-  - Chained rewards: objective→objective and objective→solicitud chains now execute correctly
-  - Skill activation rewards: activationRewards that complete objectives now trigger the full reward chain
+- Stroke is no longer inverted - 100% = max movement, 0% = no movement
+- Display values now in 0-109.3 raw API scale
+- Manual stroke calibration allows user to physically position slider and capture boundaries
+- All lint checks pass, no runtime errors
 
 ---
 Task ID: 3
-Agent: Main Agent
-Task: Review and fix manage-quest tool architecture bug
+Agent: main
+Task: Add manual position override and factory reset for Handy slider calibration
 
 Work Log:
-- Analyzed the manage-quest tool (`src/lib/tools/tools/manage-quest.ts`) as a tool-calling complement for quest objectives
-- Traced the full execution path: API route → executeToolCallsAndContinue/executeGroupToolCalls → executeTool → manageQuestExecutor
-- **Found Critical Bug**: The tool runs SERVER-SIDE in the API route but calls CLIENT-SIDE Zustand store functions via `useTavernStore.getState()`
-  - Server-side store has no real data (no sessions, characters, templates, sounds, triggers)
-  - `store.completeObjective()` updates nothing meaningful on server
-  - `executeCompletionRewards()` runs with empty context → rewards (sprites, sounds, stats) never execute
-  - Client never gets its store updated when a tool completes an objective
-- Compared with manage-solicitud tool which correctly avoids store calls (returns instructions for LLM to include detection keys)
-- **Fixed manage-quest.ts**: Rewrote executor as pure validation + data preparation step
-  - Removed all `useTavernStore` imports and `activateObjectiveDirectly` calls
-  - Tool now validates objective exists, checks not already completed, determines quest auto-completion
-  - Returns full metadata in `questActivation` for client processing (questTemplateId, objectiveId, objectiveKey, characterId, questName, objectiveName, questCompleted)
-- **Fixed chat-panel.tsx**: Added client-side `store.completeObjective()` call in quest_activation SSE handler
-  - Both group chat handler (line ~592) and single-character handler (line ~872) now execute the completion CLIENT-SIDE
-  - This ensures rewards, chain activation, notifications, sprite/sound triggers all work with real store data
-- Verified: No new lint errors, server compiles cleanly
+- User reported device reading -0.09 when physically at maximum position (calibration drifted from previous bug)
+- Added manual position override: text input field where user can type any value (0-109.3) instead of relying on device's broken reading
+- Added quick-set position presets: 0 (Retraído), 54.65 (Centro), 109.3 (Extendido), Centro Device (auto-calculated from device range)
+- Added "Reset Fábrica" button in card header: sends PUT /slider/stroke with min=0, max=109.3 to restore factory defaults
+- Added out-of-range warning banner: amber alert when device reading is < 0 or > 110 with actionable instructions
+- Enhanced position display: shows "Lectura del Dispositivo" (green/amber based on validity) and "Posición Manual (Override)" (blue) separately
+- Updated `effectiveSliderPos` logic: manual override takes priority over device reading for min/max calibration
+- Updated `setManualMin`/`setManualMax` to use `effectiveSliderPos` instead of only `currentSliderPos`
+- Added `resetManualStroke` to also clear `manualPositionOverride`
+- Fixed log messages in `hampSetStroke` and `hampApplyPreset` that still showed `(min * 100)%` format
+- All lint checks pass cleanly
 
 Stage Summary:
-- Files modified: src/lib/tools/tools/manage-quest.ts, src/components/tavern/chat-panel.tsx
-- Architecture fix: Tool is now a stateless validation step; actual completion happens on the client
-- Both normal chat and group chat properly handle quest activation from tools
-- All reward types (attribute, trigger, objective, solicitud) now execute correctly when objectives are completed via tool-calling
-
----
-Task ID: 3-b
-Agent: Main Agent
-Task: Verify and fix manage-quest tool: objective completion, rewards, and character assignment for normal and group chat
-
-Work Log:
-- Verified full flow: Tool (server) → SSE quest_activation → Client handler → store.completeObjective() → executeCompletionRewards()
-- **Found Critical Bug**: When all objectives complete the quest, tool sent `type: 'activate_quest'` but client only processed `'complete_objective'`
-  - This meant the LAST objective never got completed in the store (no rewards, no quest completion, no chain)
-- **Found Subtle Bug**: Tool's `questCompleted` checked ALL objectives (including optional) while store only checks REQUIRED ones
-  - Could cause premature 'activate_quest' type even when optional objectives remain
-- **Fixed manage-quest.ts**: Always sends `type: 'complete_objective'` regardless of quest state
-  - Removed `questCompleted` from metadata — store is the single source of truth for quest completion
-  - Store's completeObjective() correctly handles optional objectives and auto-completion
-- **Fixed chat-panel.tsx**: Updated both SSE handlers (group chat + single-char)
-  - Removed `questCompleted` toast branch (store notifications handle quest completion)
-  - Simplified toast to "Objetivo completado" (immediate UX feedback)
-- **Verified characterId correctness**:
-  - Normal chat: stream/route.ts passes `characterId: character.id` (the responding character) ✅
-  - Group chat: group-stream/route.ts passes `characterId: character.id` (the current responder) ✅
-  - Tool passes this characterId to client via `questActivation.metadata.characterId` ✅
-  - Client handler passes it to `store.completeObjective(activeSessionId, ..., characterId)` ✅
-  - `executeCompletionRewards()` uses it to resolve character, build allCharacters, and execute rewards ✅
-- Lint: only pre-existing error in fullscreen-editor.tsx. Server compiles cleanly.
-
-Stage Summary:
-- Files modified: src/lib/tools/tools/manage-quest.ts, src/components/tavern/chat-panel.tsx
-- Tool flow is now identical to POST-LLM detection for reward execution:
-  1. Tool validates → returns metadata via SSE
-  2. Client calls store.completeObjective() with correct characterId
-  3. Store marks objective complete, executes objective rewards
-  4. Store auto-completes quest if all required objectives done (handles optional correctly)
-  5. Store executes quest rewards, activates chain, adds notifications
-- Both normal chat and group chat use the same characterId (the responding character)
+- Users can now manually type position values when device reading is incorrect
+- Quick-set buttons allow instant position selection (0, 54.65, 109.3, center)
+- Factory reset button restores stroke to 0-109.3 on the device
+- Warning banner appears when device position reading is out of valid range
+- Effective position shows both source (device vs manual) with color coding
 
 ---
 Task ID: 4
-Agent: Main Agent
-Task: Verify action→objective completion→cascading rewards flow and fix duplicate reward bug
+Agent: main
+Task: Add software position inversion and hardware diagnostics for Handy device
 
 Work Log:
-- Traced the complete flow: POST-LLM detects skill key → skillHandler.execute() (applies costs) → iterates activationRewards → executeReward() → executeObjectiveRewardFromAction() → storeActions.completeQuestObjective → completeQuestObjectiveByKey → store.completeObjective() → executeCompletionRewards()
-- Verified each step of the chain works correctly
-- **Verified**: Action activation key detection works via skillHandler in POST-LLM trigger system ✅
-- **Verified**: Skill activation costs are applied to character session attributes via skillHandler.execute() ✅
-- **Verified**: Activation rewards with type='objective' are dispatched to executeObjectiveRewardFromAction() ✅
-- **Verified**: executeObjectiveRewardFromAction() calls completeQuestObjectiveByKey which searches active quests for matching objective ✅
-- **Verified**: store.completeObjective() marks objective complete, auto-completes quest if all required objectives done ✅
-- **Verified**: executeCompletionRewards() runs objective rewards + quest rewards if auto-completed + notifications + quest chain ✅
-- **Verified**: Recursion guard prevents infinite loops from circular reward chains ✅
-- **Found Bug**: No protection against re-completing already-completed objectives
-  - completeQuestObjectiveByKey searches template objectives without checking session completion state
-  - completeQuestObjective inside executeCompletionRewards has same gap
-  - store.completeObjective() has no early return for already-completed objectives
-  - If same action fires twice or reward chain hits same objective → rewards duplicated
-- **Fixed**: Added early-return guard in store.completeObjective() — checks objective isCompleted and quest status before proceeding
-- **Fixed**: Added session objective isCompleted check in completeQuestObjectiveByKey (defense in depth)
-- **Fixed**: Added session objective isCompleted check in completeQuestObjective callback inside executeCompletionRewards (defense in depth)
-- Verified: Server compiles cleanly, lint passes (only pre-existing fullscreen-editor.tsx error)
+- Investigated Handy API v3 documentation via web search
+- Discovered HSTP offset is TIME-only (not position) — cannot fix position inversion via API
+- Discovered `GET /settings/slider` returns hardware settings including `x_inverse_hall` and `x_inverse_motor` flags (read-only via API, must change via BLE Onboarding App)
+- Implemented **Software Inversion** system:
+  - Added `positionInverted` state with localStorage persistence (`handy-inverted`)
+  - Added `invertPosition(raw)` helper: transforms raw position using `109.3 - raw`
+  - Added `invertNormalized(norm)` helper: transforms 0-1 value using `1 - norm`
+  - Updated `readSliderPosition()`: applies inversion correction when reading from device, shows both raw and corrected values in log
+  - Updated `hdspMove()`: inverts position before sending to device, logs both UI and device positions
+  - Updated `hspStartStream()`: inverts all streaming positions before sending to device
+- Added **Diagnostics** card in Device Info:
+  - Reads `GET /settings/slider` on connect (with graceful fallback if unavailable)
+  - Displays `x_inverse_hall` (Hall Sensor) and `x_inverse_motor` status with color coding
+  - Shows stroke min/max, speed limits from hardware settings
+  - All read-only since API doesn't support changing these values
+- Added **Corrección por Software** toggle in Device Info:
+  - Amber-themed when active, neutral when inactive
+  - Badge "Inversión Activa" appears in capabilities when enabled
+  - Persists across page refreshes via localStorage
+- Updated calibration warning: only shows when inversion is OFF and position is out of range, directs user to enable software correction
+- Updated position display: shows "Posición Corregida (Software)" with green styling when inversion is active
+- All lint checks pass cleanly
 
 Stage Summary:
-- Files modified: src/store/slices/sessionSlice.ts, src/lib/triggers/use-trigger-system.ts
-- The action→objective→rewards flow is now fully correct with 3 layers of duplicate protection:
-  1. completeQuestObjectiveByKey (trigger system) — skips if session objective already completed
-  2. completeQuestObjective callback (executeCompletionRewards) — skips if session objective already completed
-  3. store.completeObjective() — skips if objective already completed OR quest not active/available
-- Action activation flow: detect key → apply costs → execute rewards → complete objective → cascade objective rewards → auto-complete quest → quest rewards → quest chain
+- Software inversion corrects ALL position readings and commands (HDSP, HSP, calibration)
+- Hardware diagnostics visible: hall sensor and motor inversion flags from device
+- Persistent setting saved in localStorage
+- When device reads -0.05 at physical max, enabling inversion shows 109.3 (correct)
+- The permanent fix requires Handy Onboarding App (BLE) to set `x_inverse_hall`
+
+---
+Task ID: 3
+Agent: main
+Task: Phase 1 - Add haptic track types and foundation
+
+Work Log:
+- Updated TimelineTrackType to include 'haptic'
+- Added HapticKeyframeValue interface
+- Updated KeyframeValue union type
+- Added DEFAULT_HAPTIC_KEYFRAME_VALUE
+
+Stage Summary:
+- Types are ready for haptic track implementation
+- All lint checks pass
 
 ---
 Task ID: 5
-Agent: Main Agent
-Task: Create manage-action tool for models with tool-calling support
+Agent: main
+Task: Phase 2 - Add Haptic Track UI to Sprite Timeline Editor
 
 Work Log:
-- Analyzed existing manage-quest tool architecture: stateless server-side validation → returns metadata via SSE → client executes
-- Analyzed skill activation flow: skillHandler.execute() applies costs + trigger system executes activationRewards
-- Extended ToolContext type to include `statsConfig` and `sessionStats` fields
-- Extended ToolExecutionResult type to include `actionActivation` field with skillId, skillName, activationCosts, activationRewards, characterId
-- Created `src/lib/tools/tools/manage-action.ts`:
-  - Tool definition with id `manage_action`, category `in_character`
-  - Accepts `action_key` parameter (matches by activationKey, activationKeys, name, or template key)
-  - Returns `actionActivation` metadata for client-side processing
-  - Stateless: no direct store modifications
-- Registered tool in `src/lib/tools/tool-registry.ts` (now 12 built-in tools)
-- Updated `src/app/api/chat/stream/route.ts`:
-  - Added `statsConfig` and `sessionStats` optional parameters to `executeToolCallsAndContinue()`
-  - Passes `character.statsConfig` and `sessionStats` in ToolContext
-  - Sends `action_activation` SSE event when tool returns actionActivation
-- Updated `src/app/api/chat/group-stream/route.ts`:
-  - Same changes as stream route for group chat support
-- Added `activateSkillByTool()` store function in `src/store/slices/sessionSlice.ts`:
-  - Saves `ultima_accion_realizada` event for {{eventos}} key
-  - Applies activation costs to character session stats (all operators: -, +, *, /, =, set_min, set_max)
-  - Enforces attribute min/max constraints from definition
-  - Executes activation rewards via `executeAllRewards()` (sounds, sprites, objective completions, etc.)
-  - Full group chat support: builds allCharacters, handles chain rewards
-  - Duplicate protection for objective rewards in chained execution
-- Added SSE event handlers in `src/components/tavern/chat-panel.tsx`:
-  - Both group chat handler (~line 616) and single-character handler (~line 910)
-  - Calls `store.activateSkillByTool()` with all metadata from SSE event
-  - Shows toast notification "⚔️ Acción: {skillName}"
-- Verified: Server compiles successfully, lint passes (only pre-existing fullscreen-editor.tsx error)
+- Read and analyzed full sprite-timeline-editor.tsx (~1875 lines) to understand architecture
+- Added new imports: Vibrate, Waves, Download, Activity, ChevronDown (lucide-react), HapticKeyframeValue/DEFAULT_HAPTIC_KEYFRAME_VALUE (types), Slider/Popover/Select/DropdownMenu (shadcn/ui)
+- Added hapticCsvInputRef and csvImportTargetTrackId state for CSV import targeting
+- Implemented 11 haptic pattern generators (sine, ramp, pulse, sawtooth, fast01, slow01, speedup, slowdown, zigzag, topfast, bottomfast) using mathematical functions with 100ms step intervals
+- Modified handleAddTrack() to accept 'sound' | 'haptic' type parameter with proper naming
+- Implemented handleFillPattern() to replace all keyframes in a haptic track with a generated pattern
+- Implemented handleExportHapticCsv() to export keyframes as funscript CSV (timestamp_ms,position_0-100)
+- Implemented handleImportHapticCsv() to parse funscript CSV and add keyframes to selected haptic track
+- Replaced "Añadir Track" button with DropdownMenu offering Sound Track and Haptic Track options
+- Added hidden file input for haptic CSV import (.csv accept)
+- Rewrote track rendering to be type-aware with conditional rendering:
+  - Sound tracks: original blue-themed rendering with drag-drop for sound triggers
+  - Haptic tracks: 120px height, fuchsia/purple theme, grid lines (0/25/50/75/100), wave SVG connecting keyframes, diamond-shaped keyframes with position lines, click-to-create keyframes
+- Added mini waveform SVG preview in haptic track headers
+- Added haptic track header buttons: Pattern Fill (Popover), Import CSV, Export CSV
+- Added complete haptic keyframe properties panel in right sidebar:
+  - Position slider (0-100) + number input
+  - Velocity slider (0-1)
+  - Stop On Target toggle
+  - Interpolation type selector (Lineal, Ease In/Out, Hold)
+  - Visual haptic keyframe badge indicator
+- Updated empty state text from "track de sonido" to generic "track"
+- All UI text in Spanish matching existing convention
+- All lint checks pass cleanly
 
 Stage Summary:
-- Files created: src/lib/tools/tools/manage-action.ts
-- Files modified: src/lib/tools/types.ts, src/lib/tools/tool-registry.ts, src/store/slices/sessionSlice.ts, src/components/tavern/chat-panel.tsx, src/app/api/chat/stream/route.ts, src/app/api/chat/group-stream/route.ts
-- The manage_action tool follows the same architecture as manage_quest:
-  1. Tool (server) validates skill exists in character's statsConfig → returns metadata via SSE
-  2. Client receives `action_activation` SSE event → calls store.activateSkillByTool()
-  3. Store applies costs, executes rewards, saves event
-- Works for both normal chat and group chat
-- Full reward chain support: action → objective completion → quest auto-completion → quest chain
+- Full haptic track support added to sprite timeline editor
+- Track creation dropdown allows choosing Sound or Haptic track types
+- Haptic tracks render with purple/fuchsia theme, diamond keyframes, wave connections, position grid
+- Click on haptic track lane creates new keyframes at position 50 with linear interpolation
+- 11 preset patterns available via Pattern Fill popover (sine, ramp, pulse, sawtooth, fast/slow 0-100, speed up/down, zigzag, top/bottom fast)
+- Funscript CSV import/export for haptic keyframes
+- Properties panel shows full haptic controls (position, velocity, stopOnTarget, interpolation)
+- Mini waveform preview in track header shows keyframe shape at a glance
+- No breaking changes to existing sound track functionality
 
 ---
-Task ID: 6
-Agent: Main Agent
-Task: Add global tool toggle UI and manage_action to tools settings panel
+Task ID: 3
+Agent: main
+Task: Add Haptic Playback Engine to the Sprite Timeline Editor
 
 Work Log:
-- Analyzed existing tools-settings-panel.tsx: had per-character toggles but NO global toggles (only info tooltip in "__all__" mode)
-- Found hardcoded BUILT_IN_TOOLS list (10 tools) was missing manage_action (11 registered in backend)
-- Added `disabledTools?: string[]` field to `ToolsSettings` type in types/index.ts
-- Updated `DEFAULT_TOOLS_SETTINGS` to include `disabledTools: []`
-- Updated stream/route.ts to extract `disabledTools` from request body and filter out globally disabled tools after per-character config filtering
-- Updated group-stream/route.ts with same disabledTools filtering logic
-- Updated tools-settings-panel.tsx:
-  - Added `manage_action` to BUILT_IN_TOOLS list (now 12 tools)
-  - Added `Sword` icon import for manage_action
-  - Added global toggle functions: toggleGlobalTool(), isGloballyDisabled(), toggleAllGlobalTools()
-  - Replaced info tooltip with actual Switch in global ("__all__") mode
-  - Added "Desactivar todas / Activar todas" button in global mode
-  - Global mode now uses disabledTools array; per-character mode continues to use characterConfigs[].enabledTools
-- Verified: Server compiles successfully, lint passes (only pre-existing fullscreen-editor.tsx error)
+- Created `/src/hooks/use-haptic-playback.ts` - custom hook for real-time Handy device playback during timeline playback
+- Hook reads Handy config (appId, connectionKey) and inversion settings from localStorage
+- Uses refs for config to avoid setState-in-effect lint violations (reads from localStorage on init + 2s polling)
+- Provides connect/disconnect/sendPosition/startHapticPlayback/stopHapticPlayback API
+- Position sends throttled to ~12fps (80ms) with debounce for duplicate positions
+- Normalizes 0-100 positions to 0-1, applies software inversion when enabled
+- Sends center position (0.5) on stop and unmount to return device to neutral
+- Added `interpolateHapticPosition()` helper function supporting 5 interpolation types: hold, linear, ease-in, ease-out, ease-in-out
+- Modified `handlePlay()` to iterate all non-muted haptic tracks, interpolate positions per frame, find nearest keyframe velocity, and send to device
+- Modified `handlePause()` and `handleStop()` to stop haptic playback and return device to center
+- Added cleanup in unmount effect to stop haptic and return device to neutral
+- Added haptic UI controls in playback area: toggle button with fuchsia theme + connection status indicator (green/red dot)
+- Toggle button: first click enables + connects, second click disconnects + disables; shows error toast if connection fails
+- Status indicator shows "Conectado" (green) or "OFF" (muted) next to the haptic button
+- All new haptic UI uses fuchsia/purple theme matching Phase 2 design
+- Fixed lint: removed unused eslint-disable directives, refactored useState-in-effect to useRef pattern
+- All changes pass `bun run lint` cleanly with 0 errors, 0 warnings
 
 Stage Summary:
-- Files modified: src/types/index.ts, src/app/api/chat/stream/route.ts, src/app/api/chat/group-stream/route.ts, src/components/tools/tools-settings-panel.tsx
-- Tool filtering logic: per-character allowlist (enabledTools) → global blacklist (disabledTools) → final available tools sent to LLM
-- UI now shows toggle switches for ALL tools in both global and per-character modes
-- "Desactivar todas / Activar todas" button works in both modes
-- manage_action tool now visible in the tools settings UI
----
-Task ID: 7
-Agent: Main Agent
-Task: Fix visual overlap issues in tools settings panel when toggling tools
-
-Work Log:
-- Analyzed tool card layout in tools-settings-panel.tsx (lines 580-629)
-- Identified multiple visual issues causing text overlap:
-  1. Tool card used `items-start` which caused Switch to align to top, creating visual misalignment with multi-line text
-  2. Label + Badge row had no constraint, badge could wrap below text on long labels
-  3. Description text was unbounded with no line-clamp, could extend too far
-  4. Function signature in font-mono could wrap to multiple lines without truncation
-  5. Text area lacked `overflow-hidden` to contain content
-- **Fixed card layout**: Changed from `items-start` to `items-center` for proper vertical alignment
-- **Fixed label row**: Added `truncate` to label, `shrink-0` to Badge, `min-h-5` to row container
-- **Fixed description**: Added `line-clamp-2 leading-relaxed` for max 2 lines with proper spacing
-- **Fixed function signature**: Added `truncate` to keep on single line
-- **Fixed text container**: Added `overflow-hidden` to prevent content leaking
-- **Fixed transition**: Changed from `transition-colors` to `transition-all duration-150` for smoother state changes
-- **Increased ScrollArea**: Changed `max-h-96` to `max-h-[420px]` and `pr-2` to `pr-3` for better spacing
-- **Fixed Switch**: Removed `mt-1` offset, now centered properly with `items-center`
-- **Consolidated Switch JSX**: Removed duplicate Switch blocks (per-char vs global), unified into single Switch with conditional handler
-- **Fixed "Toggle all" button logic**: Changed from checking only first tool to using `every()`/`some()` for accurate state detection
-- Verified: Server compiles successfully, lint passes (only pre-existing error)
-
-Stage Summary:
-- Files modified: src/components/tools/tools-settings-panel.tsx
-- Tool cards now have clean, non-overlapping layout with:
-  - Truncated labels and function signatures
-  - Line-clamped descriptions (max 2 lines)
-  - Properly centered Switch aligned with card content
-  - Smooth transitions when toggling
-- "Desactivar todas / Activar todas" button now accurately reflects actual state of ALL tools
+- Created `useHapticPlayback` hook with full Handy device integration for timeline playback
+- Real-time position interpolation during playback with 5 curve types (hold, linear, ease-in, ease-out, ease-in-out)
+- Throttled sends at ~12fps prevent device overload
+- Haptic toggle + connection status indicator added to timeline playback controls
+- Graceful lifecycle management: connect on enable, center on stop/pause/unmount
+- Works independently from existing Handy control panel (reads same localStorage config)
 
 ---
 Task ID: 8
-Agent: Main Agent
-Task: Fix duplicate tool badges and action reward objective completion
+Agent: main
+Task: Phase 7 - Add vertical drag (Y-axis) for haptic keyframes to change position values
 
 Work Log:
-- **Issue 1: Duplicate "Usar Acción" badges (green + red)**
-  - Root cause: `allToolsUsed` array accumulates across multiple tool execution rounds in stream route
-  - If LLM calls `manage_action` multiple times (or once native + once text-based), duplicate entries appear as separate badges
-  - Fixed: Added deduplication logic in `chat-message.tsx` — for each unique tool name, keeps only one entry (prefers success over failure)
-  
-- **Issue 2: Action rewards that complete objectives not working**
-  - Root cause analysis: The `completeQuestObjective` closures in `activateSkillByTool` and `executeCompletionRewards` had limited matching (only exact + case-insensitive) compared to POST-LLM path (exact + case-insensitive + prefix + partial)
-  - If `questId` filter in the reward didn't match any session quest's `templateId`, the search would fail silently without fallback
-  - No diagnostic logging to trace why objective completion failed
-  - **Fixed**: Created shared `objectiveKeyMatches()` function with unified matching (exact, case-insensitive, prefix "obj-{key}", partial substring)
-  - **Fixed**: Created shared `findAndCompleteObjectiveByKey()` function that:
-    1. Phase 1: Searches with questId filter
-    2. Phase 2: Falls back to searching ALL active quests (handles stale/wrong questId)
-    3. Comprehensive logging at each step (which quests are active, which templates are available, which objectives match)
-  - Replaced both `completeQuestObjective` closures (in `activateSkillByTool` and `executeCompletionRewards`) with calls to the shared function
-  - Both paths now have identical matching behavior and diagnostic logging
+- Analyzed current drag implementation: only horizontal (time) drag was supported
+- Extended `draggingKeyframe` state type to include `isHaptic` flag
+- Added `hapticDragInfo` state for live tooltip during vertical drag
+- Added `hapticDragTrackElRef` ref to store track DOM element for fresh rect on each mouse move (handles vertical scroll)
+- Extended `handleMoveKeyframe()` to accept optional `newPosition` parameter that updates the HapticKeyframeValue position
+- Updated `handleKeyframeMouseMove()` to calculate Y position for haptic tracks: converts `e.clientY - trackRect.top` → position 0-100 (top=100, bottom=0)
+- Updated haptic keyframe `onMouseDown` to capture track content element via `closest('[data-track-content]')` and store in ref
+- Updated `handleKeyframeMouseUp` to clear ref and drag info
+- Updated click-to-create handler: now uses Y position from click instead of hardcoded 50 — clicks at top create position ~100, bottom ~0
+- Added `data-track-content` attribute to haptic track content div for DOM lookup
+- Updated tooltip rendering: shows live "Pos: X" during drag (always visible), shows "HH:MM:SS · Pos: X" on hover otherwise
+- Added visual feedback: dragged diamond changes to lighter fuchsia-300/fuchsia-200 colors
+- Added `select-none` class to timeline scroll container during any keyframe drag to prevent text selection
+- Verified sound track drag still works (no `isHaptic` flag → no Y calculation)
 
 Stage Summary:
-- Files modified: src/components/tavern/chat-message.tsx, src/store/slices/sessionSlice.ts
-- Tool badges are now deduplicated: if same tool called multiple times, only one badge shown (green if any success)
-- Objective completion from action rewards now uses robust matching + fallback search + comprehensive logging
-- All three `completeQuestObjective` locations (activateSkillByTool, executeCompletionRewards, POST-LLM) now have consistent behavior
-- Lint passes with 0 errors
+- Haptic keyframes now support **bidirectional drag**: horizontal (time) AND vertical (position 0-100)
+- Click-to-create respects Y position: clicking at top of track creates high-position keyframe, bottom creates low
+- Live tooltip shows position value during drag for immediate feedback
+- Track rect is refreshed on each mouse move via ref → handles vertical scrolling during drag
+- No breaking changes to sound track drag behavior
+- All lint checks pass cleanly, dev server compiles successfully
+
 ---
 Task ID: 9
-Agent: Main Agent
-Task: Deep analysis of action reward objective completion - root cause identification and fix
+Agent: main
+Task: Fix Handy API integration bugs based on official Swagger spec analysis
 
 Work Log:
-- Traced complete data flow: UI config → persistence → session creation → action activation → objective search
-- **Issue 1 (Duplicate badges)**: Already fixed in Task 8 — deduplication by tool name in chat-message.tsx
-  
-- **Root Cause Analysis for objective reward not completing**:
-  1. ✅ Data saved correctly: `objectiveKey` (completion.key) + `questId` (template.id) stored in skill's activationRewards
-  2. ✅ Session quests created correctly: `createQuestInstancesFromTemplates()` creates instances with proper `templateId` and objective `templateId`s
-  3. ✅ Matching logic: Now unified via shared `findAndCompleteObjectiveByKey()` with exact/case-insensitive/prefix/partial matching
-  4. ❌ **CRITICAL BUG FOUND**: `questTemplates` NOT loaded in store when needed
-     - `questTemplates` is loaded via `loadTemplates()` which calls the API
-     - Only called when `quest-selector.tsx` or `quest-activation-dialog.tsx` mounts
-     - **If user never opened quest UI, `questTemplates` is EMPTY (`[]`)**
-     - `findAndCompleteObjectiveByKey()` does `get().questTemplates || []` → gets `[]`
-     - With no templates, cannot find objectives by `completion.key` → search fails silently
-     - Same issue affects POST-LLM path's `completeQuestObjectiveByKey` (line 751 of use-trigger-system.ts)
-  5. ✅ Quest templates are NOT persisted in localStorage (only `quests` state is persisted, not `questTemplates`)
-  
-- **Fixes Applied**:
-  1. Added `loadQuestTemplates()` call in chat-panel.tsx useEffect (runs once on mount if templates not loaded)
-  2. Enhanced logging in `activateSkillByTool()` to show reward details (type, objectiveKey, questId, rawObjective)
-  3. Enhanced logging in `executeReward()` to log condition failures and validation failures
-  4. Fixed `evaluateRewardCondition` call — now only evaluates if `reward.condition` exists (avoids false negative on undefined)
-  
-Stage Summary:
-- Files modified: src/components/tavern/chat-panel.tsx, src/store/slices/sessionSlice.ts, src/lib/quest/quest-reward-executor.ts
-- **Root cause**: `questTemplates` not loaded in store before action rewards execute
-- **Primary fix**: Auto-load quest templates when chat panel mounts
-- **Diagnostic improvements**: Detailed logging at every step of the reward execution pipeline
-- Both POST-LLM path and tool path now benefit from templates being available
----
-Task ID: 1
-Agent: Main Agent
-Task: Fix objective reward from actions not completing quest objectives
-
-Work Log:
-- Analyzed browser console logs to trace the exact failure point
-- Found critical log: `[completeQuestObjectiveByKey] Session quests found: 0` while quest-handler shows `sessionQuestsCount: 1`
-- Identified root cause: JavaScript object spread override in store — both sessionSlice and questSlice define `getSessionQuests()`, questSlice (spread later) overrides sessionSlice's version
-- sessionSlice's version reads from `session.sessionQuests` (where actual quests live)
-- questSlice's version reads from `state.quests` (separate array that's empty for session quests)
-- `completeQuestObjectiveByKey` was calling `store.getSessionQuests()` which resolved to questSlice's version → 0 quests
-- Fixed `completeQuestObjectiveByKey` in use-trigger-system.ts to read from `store.sessions.find(id).sessionQuests` directly
-- Enhanced `executeObjectiveRewardFromAction` in quest-reward-executor.ts with two-strategy approach:
-  - Strategy 1 (primary): Direct completion using `objectiveId + questId` via `store.completeObjective()` — same path quest-detector uses when objective key is detected in text
-  - Strategy 2 (fallback): Key search via `completeQuestObjectiveByKey` — now reads from correct data source
-- Added `completeObjective` to `RewardStoreActions` interface
+- Analyzed 6 critical bugs where raw mm values (0-109.3) were sent to APIs expecting normalized (0-1) or percentage (0-100) values
+- **BUG 1 - slider/stroke normalization**: Fixed `computeStrokeRange()` to divide by SLIDER_ABS_MAX (109.3) before returning min/max. Updated `hampStart`, `hampSetStroke`, `hampApplyPreset` to log both normalized and mm values. Fixed `resetDeviceStroke` to send `{min: 0, max: 1.0}` instead of `{min: 0, max: 109.3}`. Fixed `applyManualStroke` to normalize mm values before sending to API.
+- **BUG 2 - hdspMove clamping**: Added `Math.max(0, Math.min(1, ...))` clamping to the normalized position in `hdspMove` to prevent out-of-range values.
+- **BUG 3 & 4 - HDSP UI range**: Changed HDSP slider from `min={deviceMin} max={deviceMax}` to `min={0} max={100}`. Changed HDSP quick buttons from deviceMin/deviceMax values to 0/25/50/75/100. Changed sweep test from device-range values to `[0, 100, 50, 0, 100, 50]`.
+- **BUG 5 - HSP PositionBar**: Changed HSP live position bar from `min={deviceMin} max={deviceMax}` to `min={0} max={100}`.
+- **BUG 6 - readSliderPosition**: Fixed `invertPosition()` to work with normalized values (`1 - normalized` instead of `109.3 - raw`). Updated `readSliderPosition` to read `position` (normalized 0-1 from API), apply inversion, then multiply by SLIDER_ABS_MAX for mm display. Updated log to show both normalized and mm values.
+- **Device stroke reading**: Changed `connectAndDiscover` to read `min_absolute`/`max_absolute` (mm) from `GET /slider/stroke` instead of normalized `min`/`max`, so deviceMin/deviceMax stay in mm format for calibration UI.
+- **Display labels**: Updated stroke range display to show 3 decimal places (normalized), updated inversion description, updated HSP info box to show "0% — 100%", updated device range to show both mm and normalized values.
 
 Stage Summary:
-- Root cause: store method name collision between sessionSlice and questSlice causing wrong data source
-- Fixed files: `src/lib/triggers/use-trigger-system.ts`, `src/lib/quest/quest-reward-executor.ts`
-- The objective reward from actions should now work using the direct path (same as when objective key is detected in text)
----
-Task ID: 2
-Agent: Main Agent
-Task: Fix objective reward from actions — second attempt (store method override)
-
-Work Log:
-- Analyzed console logs: "Using DIRECT path: store.completeObjective(...)" → "Direct completion executed successfully" but objective still not completed
-- Traced the WORKING path: quest-detector detects "test1" → creates hit with action='progress' → calls `store.progressQuestObjective(sessionId, questId, objectiveId, progress, characterId)`
-- Discovered critical bug: `completeObjective` is defined in BOTH sessionSlice and questSlice
-  - sessionSlice: `completeObjective(sessionId, questTemplateId, objectiveId, characterId)` → operates on `session.sessionQuests`
-  - questSlice: `completeObjective(questId, objectiveId)` → operates on `state.quests` (empty for session quests)
-  - questSlice is spread AFTER sessionSlice in store → overrides sessionSlice's version
-  - When action reward called `store.completeObjective(sessionId, questId, objectiveId, characterId)`, questSlice's version received `sessionId` as `questId` and `questId` as `objectiveId` — completely wrong parameters!
-- Changed ALL callers to use `store.progressQuestObjective` instead (only defined in sessionSlice, no override):
-  - `quest-reward-executor.ts`: `executeObjectiveRewardFromAction` now uses `progressQuestObjective(sessionId, questId, objectiveId, 999, characterId)`
-  - `quest-reward-executor.ts`: `activateObjectiveDirectly` updated to use `progressQuestObjective`
-  - `use-trigger-system.ts`: `completeQuestObjectiveByKey` fallback path updated
-  - `use-trigger-system.ts`: `storeActions` now passes `progressQuestObjective` instead of `completeObjective`
-  - `sessionSlice.ts`: `findAndCompleteObjectiveByKey` internal call updated
-
-Stage Summary:
-- Root cause: store method name collision — `completeObjective` overridden by questSlice (wrong data source + wrong signature)
-- Fix: Use `progressQuestObjective` everywhere (unique to sessionSlice, same function quest-detector uses)
-- Changed files: `src/lib/quest/quest-reward-executor.ts`, `src/lib/triggers/use-trigger-system.ts`, `src/store/slices/sessionSlice.ts`
-- `progressQuestObjective` is the proven working path — same as when objective key "test1" is detected in text
----
-Task ID: 3
-Agent: Main Agent
-Task: Clean up conflicting functions from questSlice
-
-Work Log:
-- Identified 6 functions that questSlice defined with SAME NAMES but DIFFERENT signatures as sessionSlice
-- Conflicting functions: getSessionQuests, getActiveQuests, completeQuest, failQuest, completeObjective, clearSessionQuests
-- Verified NO active callers depend on the questSlice versions (all callers use sessionId-first signatures from sessionSlice)
-- Removed all 6 conflicting functions from questSlice interface and implementation
-- Kept non-conflicting legacy functions: startQuest, pauseQuest, resumeQuest, addObjective, updateObjective, progressObjective, removeObjective
-- Updated all obsolete comments referencing "questSlice override" across use-trigger-system.ts, quest-reward-executor.ts, sessionSlice.ts
-- Ran lint — clean
-
-Stage Summary:
-- Removed 6 functions from questSlice that silently overrode sessionSlice versions
-- questSlice now only contains: legacy state.quests CRUD, questSettings, questNotifications
-- All session-based quest operations now correctly resolve to sessionSlice functions
-- Files modified: questSlice.ts (rewrite), use-trigger-system.ts (comments), quest-reward-executor.ts (comments), sessionSlice.ts (comment)
----
-Task ID: 4
-Agent: Main Agent
-Task: Fix solicitud reward dropdown and rewrite manage_solicitud tool
-
-Work Log:
-- Analyzed the solicitud reward dropdown in stats-editor.tsx: `getAvailableSolicitudes(allCharacters)` was iterating ALL characters' solicitudDefinitions
-- Changed `getAvailableSolicitudes()` to only accept the current character's `statsConfig` and iterate its own `solicitudDefinitions`
-- Updated the call in StatsEditor from `getAvailableSolicitudes(allCharacters)` to `getAvailableSolicitudes(config)`
-- Changed label from `${char.name} → ${sol.name}` to just `${sol.name}` since they're all the same character's
-- Analyzed manage_solicitud tool: was generating fake keys (`pedir:tipo`, `entregar:tipo`) that didn't match real peticionKey/solicitudKey
-- Completely rewrote manage_solicitud tool with 3 actions:
-  - `get_info`: Returns actual pending solicitudes and available peticiones from context
-  - `make_request`: Validates peticionKey against real invitations, checks for duplicates, returns `solicitudActivation` metadata
-  - `complete_request`: Validates solicitudKey against real pending solicitudes, returns `solicitudActivation` metadata
-- Added `allCharacters` to ToolContext type (types.ts)
-- Added `solicitudActivation` field to ToolExecutionResult type
-- Updated `executeToolCallsAndContinue` in stream/route.ts:
-  - Added `allCharacters` parameter
-  - Added `solicitudActivation` SSE event emission
-  - Updated ALL 12 call sites to pass `effectiveCharacter.statsConfig, sessionStats, allCharacters`
-- Updated `executeGroupToolCalls` in group-stream/route.ts:
-  - Added `allCharacters` parameter
-  - Added `solicitudActivation` SSE event emission
-  - Fixed bug: some call sites were passing `sessionQuests, questTemplates` to statsConfig/sessionStats slots
-  - Updated ALL 11 call sites with correct parameters
-- Added `solicitud_activation` SSE handler in chat-panel.tsx (both group chat and single character):
-  - `create_solicitud`: Calls `store.createSolicitud()` with metadata from tool
-  - `complete_solicitud`: Calls `store.completeSolicitud()` with metadata from tool
-  - Shows toast notifications for both actions
-
-Stage Summary:
-- Files modified: stats-editor.tsx, manage-solicitud.ts (rewrite), types.ts, stream/route.ts, group-stream/route.ts, chat-panel.tsx
-- Dropdown now correctly shows only the character's OWN solicitudDefinitions
-- manage_solicitud tool now uses real data from ToolContext (statsConfig, sessionStats, allCharacters)
-- Tool validates keys against actual definitions before returning metadata
-- Follows same architecture as manage-quest and manage-action: stateless server validation → SSE metadata → client execution
-- Both normal chat and group chat fully supported
-
----
-Task ID: 1
-Agent: Main Agent
-Task: Fix Tools Settings Panel UI - disabled state gray box, config persistence, import/export
-
-Work Log:
-- Analyzed the ToolsSettingsPanel component (src/components/tools/tools-settings-panel.tsx)
-- Identified the UI issue: disabled tool cards used `bg-muted/30 opacity-60` creating a heavy gray overlay that obscured content
-- Redesigned disabled state: removed gray background, kept `bg-background`, applied subtle opacity only to text/icon area, added line-through on label, kept Switch fully visible
-- Verified tools configuration persistence: `settings.tools` is persisted via Zustand `persist` middleware (partialize includes `settings`)
-- Verified import/export: tools config is already included via `settings` key in both config and full backup export/import
-- Added tools merge in store persist (src/store/index.ts) for backward compatibility: ensures `disabledTools` and `usePromptBasedFallback` defaults exist when loading old data
-- Ran lint: no errors
-
-Stage Summary:
-- Fixed disabled tool card UI: no more gray box overlay, cleaner visual distinction between enabled/disabled states
-- Tools config already persisted correctly via `settings.tools` in localStorage and server-side JSON
-- Tools config already included in import/export via the `settings` key
-- Added backward-compatible merge for tools settings in store hydration
-
----
-Task ID: 2a-6
-Agent: Main Agent
-Task: Review embeddings system - 6 points (namespace creation, deletion, memory extraction, chatbox memorias, settings namespace deletion)
-
-Work Log:
-- Analyzed entire embeddings system: 15 API routes, 12 lib modules, 3 components, chat integration
-- **Point 1 (Create namespace)**: `createSession` already calls `ensure-namespace` API which creates `memory-character-{characterId}-{sessionId}` for single chars and `memory-group-{groupId}-{sessionId}` + `memory-character-{memberId}-{sessionId}` for groups. ✅ ALREADY WORKS
-- **Point 2 (Delete namespace)**: Found BUG — `deleteSession` in sessionSlice didn't pass `memberIds`, so group member namespaces weren't being deleted. Fixed both:
-  - Updated `delete-session-namespaces/route.ts` with dual strategy: (1) metadata-based search for ALL namespaces with session_id, (2) fallback pattern-based matching with memberIds
-  - Updated `sessionSlice.ts` deleteSession to collect and pass memberIds for group sessions
-- **Point 3 (Memory extraction every X turns)**: `chat/stream/route.ts` already triggers extraction when `turnCount % frequency === 0`, calls `extractAndSaveMemories()` which saves to session-scoped namespace. ✅ ALREADY WORKS
-- **Point 5 (Chatbox memorias tab)**: `novel-chat-box.tsx` already loads from `memory-character-{id}-{sessionId}` namespace, supports adding/deleting memories. ✅ ALREADY WORKS
-- **Point 6 (Settings namespace deletion)**: `namespaces/[namespace]/route.ts` DELETE calls `LanceDBWrapper.deleteNamespace()` which first deletes all embeddings via `deleteAllByNamespace`, then the namespace record, then drops the table. ✅ ALREADY WORKS
-
-Stage Summary:
-- 4 of 6 points already working correctly
-- Fixed 1 bug: group session deletion now properly cleans up all member namespaces
-- Improved deletion API with metadata-based search as primary strategy (more robust than pattern matching)
-
----
-Task ID: 3-6
-Agent: Main Agent
-Task: Add persona (user) attributes system mirroring character stats system
-
-Work Log:
-- Analyzed the full character stats system: creation (StatsEditor UI), session storage (initializeSessionStatsForCharacters), PRE-LLM resolution (resolveStats → key-resolver 4-phase), HUD display, POST-LLM detection (stats-detector → StatsKeyHandler)
-
-## Task 2: Session Stats Initialization for Persona
-- Modified `src/store/slices/sessionSlice.ts` in 3 places (createSession, resetSessionStats, clearChat)
-- After initializing character stats, also initializes persona stats under `__user__` key if persona has `statsConfig.enabled` and attributes
-- Uses `getActivePersona()` to get the current persona's statsConfig
-
-## Task 3: PRE-LLM Resolution for Persona Attributes
-- Modified `src/lib/key-resolver.ts`:
-  - Added `personaResolvedStats` to `KeyResolutionContext`
-  - Updated `resolveStatsKeys()` to accept persona stats and resolve attribute keys
-  - Updated `resolveAllKeys()` to pass persona stats
-  - Updated `buildKeyResolutionContext()` and `buildGroupKeyResolutionContext()` with new parameter
-- Modified `src/lib/llm/prompt-builder.ts`:
-  - Added `ResolvedStats` import
-  - In `buildSystemPrompt()` and `buildGroupSystemPrompt()`: resolve persona stats with `resolveStats({characterId: '__user__', statsConfig: persona.statsConfig, sessionStats})` and pass to context
-  - Persona attributes' {{key}} now resolve in ALL prompt sections (including persona description)
-
-## Task 4: POST-LLM Detection for Persona Attributes
-- Modified `src/lib/triggers/use-trigger-system.ts`:
-  - Added persona stats detection after character stats detection in the streaming trigger system
-  - Uses `config.activePersona.statsConfig` with `__user__` characterId
-  - Calls same `checkStatsTriggersInText()` → `executeStatsTrigger()` pipeline
-  - Supports all operators: set, +N, -N, =N
-
-## Task 5: HUD Display for Persona Attributes
-- Modified `src/components/tavern/hud-display.tsx`:
-  - Added `activePersonaId` and `personas` to store subscriptions
-  - After character attributes, resolves persona attributes from `sessionStats.characterStats['__user__']`
-  - Renders persona attributes in separate card with persona name header
-  - Same styles and rendering as character attributes (progress, gauge, badge, etc.)
-  - Only shown when persona has stats enabled with attributes that have `showInHUD: true`
-
-## Task 6: Attributes Editor in Persona Panel
-- Modified `src/components/tavern/persona-panel.tsx`:
-  - Added "Atributos y Estadísticas" section before "Peticiones y Solicitudes"
-  - Compact attributes editor with: name, key, type (number/estado/text), default, min/max, HUD toggle, detection keys
-  - Toggle switch to enable/disable the entire system
-  - Existing toggle for peticiones now controls both attributes AND peticiones/solicitudes
-  - Fixed JSX nesting issue (removed orphaned closing div)
-
-Stage Summary:
-- Persona attributes fully integrated: creation → session storage → PRE-LLM resolution → HUD display → POST-LLM detection → modification via key:value
-- Uses `__user__` as characterId throughout for persona stats (same pattern as existing user peticiones/solicitudes)
-- All lint checks pass
----
-Task ID: 2
-Agent: Main Agent
-Task: Fix persona attributes editor to use shared StatsEditor component (same as character editor)
-
-Work Log:
-- Fixed `personaAttributes is not defined` error in hud-display.tsx: Added `PersonaAttributesData` interface, extended `MultiCharacterAttributesHUDProps` to include `personaAttributes`, destructured it in the component, passed it from parent, fixed rendering condition to `(hasAttributes || hasPersonaAttributes)`
-- Fixed `{{key}}` JSX error in persona-panel.tsx: Wrapped text in string literal `{'...{{key}}...'}` to prevent JSX interpretation
-- Replaced entire inline persona attributes section (simplified editor) + peticiones/solicitudes section with shared `StatsEditor` component from stats-editor.tsx
-- Removed ~320 lines of duplicate code: `PersonaInvitationEditor`, `PersonaSolicitudEditor`, `handleToggleStats`, `handleAddSolicitud`, `handleUpdateSolicitud`, `handleDeleteSolicitud`, `handleAddInvitation`, `handleUpdateInvitation`, `handleDeleteInvitation`, `DEFAULT_PERSONA_STATS_CONFIG`
-- Cleaned up unused imports: `Switch`, `Select`, `X`, `Sparkles`, `GripVertical`, `ChevronDown`, `ChevronUp`, `Target`, `Zap`, `StatRequirement`, `InvitationDefinition`, `DEFAULT_STATS_BLOCK_HEADERS`
-- Updated persona list view to show attributes badge count
-- Updated editor info sidebar to include attributes documentation
-- Verified all backend systems already work: session creation/reset/restore with `__user__` key, PRE-LLM template resolution via `resolveStats` + `buildKeyResolutionContext`, POST-LLM detection via `StatsKeyHandler` with persona context
-- All lint checks pass
-
-Stage Summary:
-- Persona editor now uses the exact same `StatsEditor` component as character editor (identical UI, all options: name, key, type, min/max, threshold effects, detection keys, output format, icon, color, HUD customization)
-- No code duplication - single source of truth for stats editing
-- All persona attribute systems verified working: UI creation → JSON persistence → session storage → PRE-LLM `{{key}}` resolution → HUD display → POST-LLM `key: value` detection → `updateCharacterStat` modification
----
-Task ID: 4-persona-ui
-Agent: Main Agent
-Task: Redesign persona editor panel UI layout for better space usage
-
-Work Log:
-- Analyzed current persona editor layout issues:
-  1. Right sidebar (info panel) only visible on `2xl` screens — almost never shown
-  2. Basic info section vertically stacked — avatar above, fields below, wasting horizontal space
-  3. `max-w-5xl` constraint limits editor width unnecessarily
-  4. Header was bulky with large avatar and excessive padding
-- Redesigned `PersonaEditorPanel` in `src/components/tavern/persona-panel.tsx`:
-  1. **Compact header**: Reduced padding from `px-6 py-4` to `px-4 py-3`, smaller avatar (w-8 h-8), smaller font, text truncation
-  2. **Two-column grid on lg+**: Changed from `2xl:grid-cols-[1fr_320px]` to `lg:grid-cols-[1fr_300px] xl:grid-cols-[1fr_340px]`
-  3. **Basic info horizontal layout**: Changed from `flex items-start gap-6` to `grid grid-cols-[auto_1fr] gap-5` — avatar left, name/description right
-  4. **Removed max-w-5xl**: Editor now uses full available width
-  5. **Right sidebar always visible on lg+**: Changed from `hidden 2xl:block` to `hidden lg:block`
-  6. **Added Quick Stats Summary**: New sidebar card showing count of attributes, actions, intentions, petitions, and solicitudes (visible when statsConfig.enabled)
-  7. **Increased description textarea**: From 4 rows to 6 rows to use horizontal space better
-- Verified: Lint passes cleanly, dev server compiles with GET / 200
-
-Stage Summary:
-- File modified: src/components/tavern/persona-panel.tsx
-- Key improvements: responsive 2-column layout on lg+ (was 2xl), horizontal basic info layout (was vertical), compact header, removed max-width constraint, added stats summary sidebar card
-- Editor now efficiently uses all available horizontal space on medium and large screens
----
-Task ID: 5-target-attribute-reward
-Agent: Main Agent
-Task: Add target_attribute reward type for character actions
-
-Work Log:
-- Analyzed the existing reward system: 4 types (attribute, trigger, objective, solicitud), execution pipeline, StatsEditor UI
-- Added new reward type across the full stack:
-
-## 1. Types (src/types/index.ts)
-- Added "target_attribute" to QuestRewardType union
-- Added QuestRewardTargetAttribute interface: { targetCharacterId, key, value, action }
-- Added target_attribute field to QuestReward interface
-
-## 2. Reward Utilities (src/lib/quest/quest-reward-utils.ts)
-- Added createTargetAttributeReward() factory function
-- Added target_attribute to normalizeReward() (passthrough + fallback)
-- Added target_attribute to validateReward() (checks targetCharacterId, key, value)
-- Added target_attribute to describeReward() (shows: 🔗 @target.key ± value)
-- Restored accidentally removed describeReward() function
-
-## 3. Reward Executor (src/lib/quest/quest-reward-executor.ts)
-- Added executeTargetAttributeReward() function that reads target stats, calculates new value, calls updateCharacterStat on the TARGET character/persona
-- Added case "target_attribute" to executeReward() switch
-
-## 4. StatsEditor UI (src/components/tavern/stats-editor.tsx)
-- Added availableTargets prop to StatsEditorProps, AttributeEditorProps, SkillEditorProps
-- Added "🔗 Atributo Target" button in 3 places: onMinReached, onMaxReached, skill activation rewards
-- Added target_attribute rendering with: target dropdown → attribute dropdown → action/value inputs
-- Supports numeric attributes (6 actions: set/add/subtract/multiply/divide/percent) and text/keyword attributes (text input with set action)
-
-## 5. Parent Components
-- persona-panel.tsx: Built availableTargets from characters + active persona, passed to StatsEditor
-- character-editor.tsx: Built availableTargets from other characters + active persona, passed to StatsEditor
-
-Stage Summary:
-- Files modified: src/types/index.ts, src/lib/quest/quest-reward-utils.ts, src/lib/quest/quest-reward-executor.ts, src/components/tavern/stats-editor.tsx, src/components/tavern/persona-panel.tsx, src/components/tavern/character-editor.tsx
-- New reward type "target_attribute" fully integrated: type system → utilities → execution → UI → data flow
-- Target dropdown shows all other characters with attributes + persona (if attributes configured)
-- Selecting a target shows their available attributes; numeric shows action+value, text shows text input
-- Lint: 0 errors. Compilation: GET / 200
----
-Task ID: 7
-Agent: Main Agent
-Task: Add target-type requirements for character actions (check other character/persona attributes)
-
-Work Log:
-- Added `targetCharacterId` and `targetAttributeName` optional fields to `StatRequirement` type in types/index.ts
-- Updated `RequirementEditor` component (stats-editor.tsx) with mode toggle dropdown (🎭 Yo / 🎯 Target):
-  - Self mode: shows own attribute dropdown (existing behavior)
-  - Target mode: shows target dropdown → attribute dropdown → operator + value
-  - Target dropdown shows other characters with attributes + persona (same targets as reward system)
-- Passed `availableTargets` to RequirementEditor from all 3 parent editors:
-  - SkillEditor (actions)
-  - SolicitudDefinitionEditor (solicitudes)
-  - InvitationEditor (peticiones)
-- Updated `StatsEditor` to pass `availableTargets` to SolicitudDefinitionEditor and InvitationEditor
-- Updated `checkAllRequirements()` in skill-activation-handler.ts:
-  - Added optional `sessionStats` parameter
-  - For target requirements: looks up attribute value from `sessionStats.characterStats[targetCharacterId]`
-  - For self requirements: uses existing `currentValues` (unchanged behavior)
-- Updated both call sites of `checkAllRequirements` to pass `sessionStats`
-- Fixed attribute dropdown keys with index fallback (`attr.key || \`attr-${i}\``) in all 3 locations
-
-Stage Summary:
-- Files modified: src/types/index.ts, src/components/tavern/stats-editor.tsx, src/lib/triggers/handlers/skill-activation-handler.ts, src/components/tavern/character-editor.tsx
-- New requirement mode: "Target" allows checking attributes of other characters or persona
-- Works alongside existing "Self" mode (backward compatible)
-- Target requirements use persona's __user__ entry in sessionStats.characterStats for lookup
-- Lint: 0 errors. Compilation: successful
----
-Task ID: 1
-Agent: Main Agent
-Task: Fix requirement inputs to support text-type attributes in action requirements
-
-Work Log:
-- Extended `RequirementOperator` type in `src/types/index.ts` to add `contains` and `not_contains` operators
-- Updated `evaluateRequirement` in `src/store/slices/statsSlice.ts` to handle text operators (`contains`, `not_contains`) with case-insensitive comparison
-- Updated `checkRequirement` in `src/lib/triggers/handlers/skill-activation-handler.ts` to detect text operators and non-numeric values, performing string comparison instead of numeric
-- Rewrote `RequirementEditor` in `src/components/tavern/stats-editor.tsx`:
-  - Split operator options into `NUMERIC_OPERATOR_OPTIONS` (>=, >, <=, <, ==, !=, between) and `TEXT_OPERATOR_OPTIONS` (==, !=, contains, not_contains)
-  - Added attribute type detection for both self and target modes
-  - When a text/keyword attribute is selected, switches to text operators and text input field
-  - When a number attribute is selected, shows numeric operators and number input
-  - Attribute dropdowns now show type icons (📝 text, 🏷️ keyword, 🔢 number) with color hints
-  - Switching between modes/targets/attributes auto-resets operator and value appropriately
-- Fixed JSX closing tag bug (missing `</span>`)
-
-Stage Summary:
-- Text attributes now properly show text-appropriate operators (==, !=, contains, not_contains) and text input
-- Number attributes continue to show numeric operators (>=, >, <=, <, ==, !=, between) and number input
-- Works for both "Yo" (self) and "Target" modes in action requirements
-- All lint checks pass, dev server compiles cleanly
----
-Task ID: 2
-Agent: Main Agent
-Task: Fix template key resolution ({{char}}, {{user}}) in pre-LLM action blocks
-
-Work Log:
-- Analyzed the key resolution pipeline: resolveAllKeys runs Phase 1 ({{user}}, {{char}}) BEFORE Phase 2 ({{acciones}}, {{intenciones}}) — so blocks injected in Phase 2 contained unresolved template keys
-- Updated `buildSkillsBlock` in `src/lib/stats/stats-resolver.ts`:
-  - Added `userName` parameter
-  - Applied `resolveTemplateKeys` to `skill.name`, `skill.description`, and `skill.injectFormat` before injection
-- Updated `buildIntentionsBlock` in `src/lib/stats/stats-resolver.ts`:
-  - Added `userName` and `characterName` parameters
-  - Applied `resolveTemplateKeys` to `intention.name`, `intention.description`, and `intention.injectFormat` before injection
-- Updated `resolveStats` call site to pass `context.userName` to both build functions
-- Verified `buildInvitationsBlock` and `buildSolicitudesBlock` already had proper resolution (no changes needed)
-- All lint checks pass, dev server compiles cleanly
-
-Stage Summary:
-- All four block builders now properly resolve {{char}}, {{user}}, {{solicitante}}, {{solicitado}} at build time
-- Skills, Intentions, Invitations, and Solicitudes blocks all have consistent key resolution
----
-Task ID: 3
-Agent: Main Agent
-Task: Review and fix the action tool system for correct operation in normal and group chat
-
-Work Log:
-- Performed comprehensive audit of the entire action/skill activation flow across 3 paths:
-  - Path A: Text-based key detection (client-side, SkillKeyHandler)
-  - Path B: Native tool-calling (server-side manage_action → client activateSkillByTool)
-  - Path C: Legacy token-based detection (skill-activation-handler.ts)
-- Found CRITICAL bug: Requirements were NEVER checked in the two active paths (A and B)
-- Found bug: 'z-ai' provider missing from group-stream charSupportsTools list
-- Found minor: progressQuestObjective missing from activateSkillByTool RewardStoreActions
-
-Fixes applied:
-1. **SkillKeyHandler** (`src/lib/triggers/handlers/skill-key-handler.ts`):
-   - Added `requirements` to trigger data in `handleKey()`
-   - Added requirement check at start of `execute()` using `checkAllRequirements()`
-   - Returns `{ skipped: true, reason }` when requirements not met
-   - Imported `checkAllRequirements` from skill-activation-handler
-
-2. **use-trigger-system.ts** (`src/lib/triggers/use-trigger-system.ts`):
-   - Added `skipped` check after `skillHandler.execute()` 
-   - When skipped, rewards and threshold effects are NOT executed
-   - Properly closes the else block for requirements-met path
-
-3. **manageActionExecutor** (`src/lib/tools/tools/manage-action.ts`):
-   - Added requirement check after finding matched skill
-   - Returns error with descriptive message listing failed requirements
-   - Imported `checkAllRequirements`
-
-4. **activateSkillByTool** (`src/store/slices/sessionSlice.ts`):
-   - Added defense-in-depth requirement check (finds skill by name in statsConfig)
-   - Uses `checkAllRequirements()` with sessionStats for target requirements
-   - Imported `checkAllRequirements` and `SkillDefinition` type
-
-5. **group-stream route** (`src/app/api/chat/group-stream/route.ts`):
-   - Added `'z-ai'` to `charSupportsTools` provider list (was missing)
-
-6. **activateSkillByTool RewardStoreActions** (`src/store/slices/sessionSlice.ts`):
-   - Added `progressQuestObjective` to reward store actions
-   - Enables direct objective-ID path for objective rewards from tool activations
-
-Stage Summary:
-- All three activation paths now properly check requirements (including target requirements)
-- Group chat with z-ai provider now supports native tool calling
-- Lint passes cleanly
-- Requirements are enforced at 3 layers: server-side tool validation, client-side store, and client-side key detection
----
-Task ID: 4
-Agent: Main Agent
-Task: Fix remaining group chat bugs found during action system audit
-
-Work Log:
-- Found BUG: `allCharacters` was undefined in group-stream route — the variable was never declared in POST scope but referenced in 10+ places
-- Found BUG: `toolsSettings` was not sent from client in group chat fetch body — disabled tools, per-character configs, maxToolCallsPerTurn were all ignored
-
-Fixes applied:
-1. `group-stream/route.ts`:
-   - Added `allCharacters` variable built from `characters` + persona pseudo-character (`__user__`)
-   - Updated `resolveStats` and prompt builder calls to use `allCharacters` (includes persona for target requirements)
-   - Updated `executeGroupToolCalls` calls to pass proper `allCharacters`
-
-2. `chat-panel.tsx`:
-   - Added `toolsSettings: settings.tools` to group chat fetch body
-   - Now disabled tools, character configs, usePromptBasedFallback, maxToolCallsPerTurn all work in group chat
-
-Stage Summary:
-- All 4 action activation paths verified working:
-  1. Normal chat + manage_action tool ✅
-  2. Normal chat + activation key ✅
-  3. Group chat + manage_action tool ✅ (fixed allCharacters + toolsSettings)
-  4. Group chat + activation key ✅
-- Requirements checked at all activation points (including target requirements)
-- Persona available as `__user__` in all paths for target attribute checks
-
----
-Task ID: 10
-Agent: Main Agent
-Task: Implement memory subject system (sujeto) for embeddings — split character memories into usuario/personaje/otro
-
-Work Log:
-- Updated all 3 extraction prompts in `memory-extraction-prompts.ts`:
-  - Added `userName` to `MEMORY_PROMPT_VARIABLES` and `GROUP_MEMORY_PROMPT_VARIABLES`
-  - Added sujeto instructions to all 3 prompts (DEFAULT, GROUP, DYNAMICS)
-  - Updated all JSON examples to include `"sujeto"` field
-  - Examples use `{userName}` and `{characterName}` for clarity
-- Updated `memory-extraction.ts`:
-  - Added `sujeto?: 'usuario' | 'personaje' | 'otro'` to `MemoryFact` interface
-  - `normalizeSingleFact` now parses `sujeto` from `obj.sujeto || obj.subject`, defaults to `'personaje'`
-  - `extractMemories` accepts `userName` parameter, replaces `{userName}` in prompt template
-  - `saveMemoriesAsEmbeddings` adds `memory_subject: fact.sujeto || 'personaje'` to embedding metadata
-  - `extractAndSaveMemories` accepts `userName` in options and passes it through
-- Updated `chat-context.ts`:
-  - Added `userMemoryCount` and `characterMemoryCount` to `EmbeddingsContextResult`
-  - `retrieveEmbeddingsContext` splits memory results by `memory_subject` metadata:
-    - `usuario` + `otro` → `[MEMORIA DEL USUARIO]`
-    - `personaje` + missing → `[MEMORIA DEL PERSONAJE]` (backward compat)
-  - Budget split 50/50 between user and character memories
-  - Combined wrapper: `[MEMORIA RELEVANTE]` with sub-sections
-  - `formatEmbeddingsForSSE` includes new counts
-- Updated 4 stream routes (stream, group-stream, regenerate, generate):
-  - Removed extra `[MEMORIA DEL PERSONAJE]` header wrapping (context already has `[MEMORIA RELEVANTE]`)
-- Updated 2 stream routes (stream, group-stream):
-  - Added `userName: effectiveUserName` to extract-memory API body
-- Updated `extract-memory/route.ts`:
-  - Extracts `userName` from request body, passes to `extractAndSaveMemories`
-- Updated `manual-memory/route.ts`:
-  - Extracts `memorySubject` from body, adds `memory_subject` to embedding metadata
-- Updated `character-memory-editor.tsx`:
-  - Added `newEventSubject` state variable
-  - Added subject selector UI with Badge toggle (character name vs Usuario)
-  - Passes `memorySubject` in fetch body
-  - Resets subject on dialog close
-  - Added `newEventSubject` to useCallback deps
-- Updated `search-memory.ts` tool:
-  - Shows subject label with emoji (👤 Usuario, 🌐 Otro, 🧑 Personaje) in display message
-
-Stage Summary:
-- Files modified: memory-extraction-prompts.ts, memory-extraction.ts, chat-context.ts, stream/route.ts, group-stream/route.ts, regenerate/route.ts, generate/route.ts, extract-memory/route.ts, manual-memory/route.ts, character-memory-editor.tsx, search-memory.ts
-- Memory format now splits into `[MEMORIA RELEVANTE]` > `[MEMORIA DEL USUARIO]` + `[MEMORIA DEL PERSONAJE]`
-- Backward compatible: existing memories without `sujeto` default to `personaje`
-- Lint passes with 0 errors
-- Dev server compiles and serves 200 OK
+- All slider/stroke API calls now send normalized 0-1 values as specified by Handy v3 Swagger spec
+- HDSP/HSP controls use consistent 0-100 percentage range
+- Position reading correctly handles normalized 0-1 from API and converts to mm for display
+- Software inversion now works on normalized scale (1-x instead of 109.3-x)
+- No breaking changes to UI behavior or component interfaces
+- All lint checks pass cleanly
 ---
 Task ID: 1
 Agent: Main
-Task: Implement split memory injection (MEMORIA DEL USUARIO / MEMORIA DEL PERSONAJE)
+Task: Review calibration section and verify all Handy modes work correctly
 
 Work Log:
-- Analyzed existing embeddings system: found that `sujeto` field already existed in extraction prompts, parser, and storage (`memory_subject` in metadata)
-- Found that `chat-context.ts` already had split logic but had an edge case bug (empty memory produced `[MEMORIA RELEVANTE]` wrapper)
-- Fixed edge case in `chat-context.ts`: now only builds wrapper when at least one memory section has content
-- Verified all 4 stream routes already use `memoryContextString` directly without extra label wrapping
-- Updated `manage-memory` tool: added `memory_subject` parameter, stores it in embedding metadata, classifies relationships as 'otro'
-- Updated `character-memory-editor.tsx`: added 'Otro' option to sujeto selector (was missing, only had personaje/usuario)
-- Updated `search-memory` tool: added `memory_subject` filter parameter and filter logic
-- Updated `embeddings-context-indicator.tsx`: shows user/character memory count badges with icons
+- Read and analyzed all Handy reference examples: hamp-controller.js, hdsp-controller.js, hvp-controller.js, hsp-patterns.js, point-generator.js, handy-rest-api-v3-client.js
+- Cross-referenced reference implementations against current code (handy-control-panel.tsx)
+- Verified HAMP: stroke (0-1 normalized via /109.3), velocity (/100), start/stop sequence — all correct ✅
+- Verified HDSP: position (0-100→0-1), velocity (/100), stop_on_target, software inversion — all correct ✅
+- Verified HSP: pattern generators output 0-100, streaming via hdsp/xpvp at 80ms (~12fps), inversion applied — correct ✅
+- Found Issue 1: Calibration section was only visible in HAMP mode (mode 0) — fixed to show in modes 0, 2, 4
+- Found Issue 2: deviceMax initial value was 109 instead of 109.3 — fixed to match SLIDER_ABS_MAX
+- Found Issue 3: HVP implementation missing frequency (20-200Hz) and position (1-100%) parameters that reference has — added hvpSetState() function and UI sliders
+- Ran ESLint — passed clean ✅
+- Verified dev server is running
 
 Stage Summary:
-- Memory injection format now produces:
-  ```
-  [MEMORIA RELEVANTE]
-  
-  [MEMORIA DEL USUARIO]
-  - fact about user...
-  
-  [MEMORIA DEL PERSONAJE]
-  - fact about character...
-  ```
-- `sujeto` classification flows through all paths: auto-extraction, manual editor, LLM tools (save_memory, search_memory)
-- Budget split: 45% non-memory, 55% memory (50/50 between user and character)
-- Lint passes clean, no TypeScript errors
+- All positions and velocities verified correct against Handy API v3 reference examples
+- Calibration section now available in HAMP, HDSP, and HSP modes
+- HVP enhanced with frequency and position controls matching reference implementation
+- deviceMax default corrected to 109.3
+- No inversion or misconfiguration issues found in any mode
+
 ---
-Task ID: 1
-Agent: Main Agent
-Task: Review and fix two runtime errors (SyntaxError + ChunkLoadError)
+Task ID: 2
+Agent: main
+Task: Fix mode switching revert bug, review HSP patterns, verify defaults
 
 Work Log:
-- Read dev.log and found SWC compilation errors: "Expression expected" in use-trigger-system.ts:1418
-- Also found "SyntaxError: Unexpected end of JSON input" at page '/'
-- Checked use-trigger-system.ts for syntax issues: braces balanced, no null bytes, no encoding issues
-- Determined errors were from stale/corrupted `.next` build cache, not actual source code issues
-- Cleared `.next` cache and restarted dev server - all errors resolved
-- Compiled successfully with `GET / 200` in 11s
-- Also verified the injection order change from previous session was already implemented correctly
-- Updated outdated comments in chat-context.ts to reflect current injection behavior
+- Identified root cause of mode reverting to HAMP: polling loop (every 5s) unconditionally overwrites `currentMode` with device-reported mode. When device reports old mode during transition, UI reverts.
+- Added `modeChangeTimeRef` + `MODE_LOCK_DURATION` (10s) mechanism: after user explicitly changes mode via `setMode()`, polling ignores device-reported mode changes for 10 seconds
+- Added mode lock in `hspStartStream()` so HSP streaming mode (4) is also protected
+- Changed polling to only update `currentMode` when device reports a DIFFERENT mode (no unnecessary re-renders)
+- Changed HAMP state polling to only run when `currentMode === 0` (reduces unnecessary API calls)
+- Improved HSP sine pattern: added `Math.max(0, Math.min(100, ...))` clamping for safety
+- Improved HSP pulse pattern: faster transitions (10% up/10% down vs 15%/15%), better hold balance (25% top, 55% bottom)
+- Verified all default values: hampVelocity=50, hampStroke=80, hdspPosition=50, hvpFrequency=80Hz, hvpPosition=50, hspSpeed=1.0x, deviceMin=0, deviceMax=109.3 — all appropriate
+- ESLint passed clean, dev server responds 200
 
 Stage Summary:
-- Root cause: stale `.next` build cache caused both SyntaxError and ChunkLoadError
-- Fix: `rm -rf .next` + server restart
-- Confirmed injection order is correct: [CONTEXTO RELEVANTE] → [MEMORIA RELEVANTE] → [Historial del chat]
-- Updated chat-context.ts JSDoc comments to reflect current behavior
+- Mode switching no longer reverts: 10-second mode lock after user-initiated mode changes prevents polling from overwriting
+- HSP streaming mode is locked on start to prevent device mode reports from interrupting
+- HAMP state only polled when in HAMP mode (performance optimization)
+- HSP patterns verified correct: sine (5-95), ramp (0-100 triangle), pulse (0-100 balanced), sawtooth (0-100)
+- All default values confirmed appropriate for The Handy H01 device
+
 ---
-Task ID: 2-a,2-b,2-c
-Agent: Main Agent (with full-stack-developer subagent)
-Task: Quest template editor improvements - prerequisites dropdown, chain activation, attribute target selection
+Task ID: 3
+Agent: main
+Task: Fix sound drag-and-drop to timeline tracks
 
 Work Log:
-- Explored quest system types: QuestTemplate, QuestReward, QuestActivationConfig, AttributeDefinition, Persona
-- Identified the editor component: quest-template-manager.tsx (QuestTemplateEditorDialog)
-- Found that prerequisites already exist as string[] in QuestTemplate but UI only had text input
-- Found that 'chain' activation method existed but had no configuration UI
-- Found that attribute rewards had no target selection (no character/persona dropdown)
-
-Changes made to quest-template-manager.tsx:
-1. **Prerequisites multi-select** (lines 1708-1770): Replaced comma-separated text input with badge-based multi-select dropdown. Shows quest names from allTemplates, filtered to exclude current template and already-selected ones.
-2. **Chain activation config** (lines 1928-1968): When activation method is 'chain', shows a dropdown to select which prerequisite quest triggers this one. Shows warning if no prerequisites set.
-3. **Attribute reward target selection** (lines 2420-2615): Added target dropdown (Mismo personaje / characters / Persona) and attribute dropdown. When target is not self, switches to target_attribute type. Shows available attributes from selected target's statsConfig.
+- Investigated drag-and-drop flow: sound triggers in Resources tab → track content div in timeline
+- Found root cause: `handleTrackDrop` coordinate calculation had a bug — `trackHeaderWidth = 180` was subtracted from `mouseX` even though `getBoundingClientRect()` already accounts for the header position (track content div starts AFTER the 176px header). This resulted in negative coordinate values, causing the drop to fail silently.
+- Fixed coordinate calculation: removed the `trackHeaderWidth` subtraction. Now uses `mouseX = e.clientX - rect.left + scrollLeft` (correct: rect.left already starts after header)
+- Added visual drop feedback: `dragOverTrackId` state tracks which track is being hovered, applies blue highlight with ring border when dragging over sound tracks
+- Added `handleDragLeave` with child element detection (prevents flicker when moving between child elements)
+- Updated `handleDragOver` to accept trackId parameter and set `dragOverTrackId`
+- Updated `handleTrackDrop` to clear `dragOverTrackId` on drop
+- ESLint passed clean, dev server responds 200
 
 Stage Summary:
-- All 3 changes implemented and lint passes cleanly
-- Server compiles with GET / 200
-- Types already existed for most features (target_attribute, chain activation)
-- Added new props: allTemplates to QuestTemplateEditorDialog
-- Added new state: chainPrerequisiteId, personas, activePersonaId
+- Sound drag-and-drop now works correctly: coordinates calculated properly without double subtraction
+- Visual feedback shows blue highlight on sound tracks when dragging a sound trigger over them
+- Drop position maps to correct time on the timeline
+- No changes to haptic track behavior
+
 ---
-Task ID: 8
-Agent: Main Agent
-Task: Add 'Automatico' activation method to quest/mission templates
+Task ID: 4
+Agent: main
+Task: Fix playhead not moving + add "Agregar" button for sound triggers
 
 Work Log:
-- Analyzed existing activation methods: keyword, turn, manual, chain
-- Added 'automatic' to QuestActivationMethod type union in types/index.ts
-- Updated quest-template-manager.tsx UI:
-  - Added 'Automático' option in activation method dropdown (emerald/green color, Play icon)
-  - Added display for automatic method in template cards (list view)
-  - Added display for automatic method in editor review section
-  - Added info panel when automatic is selected (explains auto-activation on session start/restore)
-  - Added Play icon import from lucide-react
-- Modified createQuestInstancesFromTemplates in sessionSlice.ts:
-  - Automatic quests without prerequisites start as 'active' immediately
-  - Automatic quests with prerequisites start as 'available' (activated when prerequisites met)
-- Added auto-activation logic in completeQuest:
-  - After any quest completion, checks if any 'available' automatic quests have all prerequisites met
-  - Auto-activates qualifying quests via activateQuest
+- Investigated playhead not moving during playback in sprite timeline
+- Found issue: animation loop had no error handling — any error in `checkAndPlaySounds` or `haptic.sendPosition` would kill the loop since `requestAnimationFrame(animate)` was at the end of the function
+- Found additional issue: sprites with duration=0 (static images) caused `elapsed % 0 = NaN`, breaking `setPlaybackTime`
+- Fixed `handlePlay`: wrapped animation body in try/catch, moved `requestAnimationFrame` OUTSIDE the try block (always schedules next frame), added duration=0 guard with toast error
+- Added `handleAddSoundAtPlayhead` function: places sound trigger at current playhead position on the first non-muted sound track, with snap support
+- Updated Resources panel UI: each trigger now shows draggable label area + "+" button for click-to-add
+- Description text shows current playhead time so user knows where the trigger will be placed
+- Imported `Plus` icon from lucide-react
+- ESLint passed clean, dev server responds 200
 
 Stage Summary:
-- Files modified: src/types/index.ts, src/components/settings/quest-template-manager.tsx, src/store/slices/sessionSlice.ts
-- New activation method 'automatic': quest auto-activates on session start/restore
-- Automatic quests respect prerequisites — with prerequisites, they activate when prerequisites are completed
-- Lint passes cleanly, server compiles with GET / 200
+- Playhead now moves correctly during playback: animation loop is resilient to errors
+- Duration=0 sprites show error toast instead of silently breaking
+- Each sound trigger in Resources panel now has a "+" button to add it at the playhead position
+- Drag-and-drop still works as alternative method
+- Toast confirms placement with time and track name
+
 ---
-Task ID: 9
-Agent: Main Agent
-Task: Review and fix quest prompt injection - missions not visible in prompt
+Task ID: 2
+Agent: main
+Task: Fix `<g>` tag error and playhead not moving in sprite timeline editor
 
 Work Log:
-- Traced complete quest prompt injection flow: client → API → buildQuestPromptSection → finalSystemPrompt → LLM
-- Found `buildQuestPromptForLLM` in prompt-builder.ts is exported but NEVER called anywhere (dead code)
-- Found race condition: `questTemplates` loaded async via useEffect in chat-panel.tsx, but `createSession` in character-panel.tsx and sessions-sidebar.tsx could run BEFORE templates finish loading → session created with empty sessionQuests
-- Found double header in `buildQuestPromptSection`: function wraps content with `[MISIONES ACTIVAS]` AND the template has `**Misiones Activas:**` → redundant
-- Verified stream route correctly: receives questSettings/sessionQuests/questTemplates, checks conditions, builds section, appends to finalSystemPrompt
-- Verified group-stream route correctly: builds quest section per-responder with characterId filtering
-- Verified prompt viewer correctly: displays all sections from promptSections SSE data
-
-Fixes Applied:
-1. Added `loadTemplates()` useEffect to `character-panel.tsx` (where createSession is called)
-2. Added `loadTemplates()` useEffect to `sessions-sidebar.tsx` (also has createSession)
-3. Removed redundant `[MISIONES ACTIVAS]` header from `buildQuestPromptSection` (template provides header)
-4. Added diagnostic logging in `stream/route.ts` to trace quest section building
-5. Enhanced logging in `buildQuestPromptSection` to show template/quest counts
+- User reported two issues: (1) `<g>` tag unrecognized error on opening Timeline, (2) playhead still not moving on play
+- Investigated `sprite-timeline-editor.tsx` line 2430: `<g key={keyframe.id}>` wrapping regular HTML `<div>`/`<button>` elements outside any `<svg>` context
+- The SVG polyline closes at line 2418, but the `<g>` group at 2430 wraps non-SVG elements — React throws error for invalid DOM element
+- This error crashed the entire component tree, which also killed the `requestAnimationFrame` animation loop — root cause of BOTH issues
+- Fix: Added `Fragment` to React imports, replaced `<g key={...}>...</g>` with `<Fragment key={...}>...</Fragment>`
+- ESLint passes clean
 
 Stage Summary:
-- Files modified: character-panel.tsx, sessions-sidebar.tsx, quest-handler.ts, stream/route.ts
-- Race condition fixed: quest templates now loaded when character panel and session sidebar mount
-- Clean prompt format: no more double header for quest section
-- Diagnostic logging: [Stream Quest] and [QuestHandler] logs now show template/quest counts
-- Lint passes cleanly, server compiles with GET / 200
+- `<g>` tag error fixed by using React Fragment instead of SVG group element
+- Playhead animation now works because the component no longer crashes on render
+- Both issues had the same root cause: component crash from invalid SVG element usage
+
 ---
-Task ID: 10
-Agent: Main Agent
-Task: Review and fix memory embeddings namespace system
+Task ID: 3
+Agent: main
+Task: Fix playhead not moving during playback (real root cause)
 
 Work Log:
-- Deep-traced complete embeddings memory system: namespace creation, extraction, retrieval, deletion
-- Found naming convention: `memory-character-{charId}-{sessionId}` (single), `memory-group-{groupId}-{sessionId}` (group shared), `memory-character-{memberId}-{sessionId}` (group per-member)
-
-**Verified working correctly:**
-1. Session create → calls ensure-namespace API → creates `memory-character-{charId}-{sessionId}` (single) or `memory-group-{groupId}-{sessionId}` + per-member namespaces (group) ✅
-2. Memory extraction every N turns → checks `turnCount % frequency === 0` → calls extract-memory API → saves embeddings ✅
-3. Namespace deletion → calls delete-session-namespaces API → Strategy 1: metadata search → Strategy 2: pattern fallback → deletes all embeddings + namespace record + table ✅
-4. Group chat retrieval → searches per-character namespace + group namespace + lore + global ✅
-
-**Critical bug found and fixed:**
-- Bug: In group chat, per-character namespaces (`memory-character-{memberId}-{sessionId}`) were CREATED by ensure-namespace but NEVER POPULATED by saveMemoriesAsEmbeddings
-- Root cause: `saveMemoriesAsEmbeddings` had `groupId ? memory-group-... : memory-character-...` — when groupId present, ALL memories went to the group namespace regardless of character
-- Per-character namespaces existed as empty shells, wasting resources and confusing the architecture
-
-**Fix applied in memory-extraction.ts:**
-- Changed `saveMemoriesAsEmbeddings` to ALWAYS use `memory-character-{characterId}-{sessionId}` for individual character memories
-- Added special case: when `characterId === 'group' && groupId` (group dynamics extraction), uses `memory-group-{groupId}-{sessionId}`
-- Updated namespace metadata subtype: `character_in_group` for group members, `group_dynamics` for group dynamics, `character` for single chat
-
-**Result:**
-- Single chat: memories → `memory-character-{charId}-{sessionId}` ✅ (unchanged)
-- Group chat individual memories: memories → `memory-character-{memberId}-{sessionId}` ✅ (FIXED — was going to group namespace)
-- Group chat dynamics: memories → `memory-group-{groupId}-{sessionId}` ✅ (unchanged)
-- Retrieval: searches per-character namespace + group namespace + lore → finds all relevant memories ✅
-- Deletion: metadata search finds all session namespaces including per-character group ones → deletes all ✅
+- User confirmed playhead still doesn't move after the `<g>` tag fix
+- Deep analysis of animation loop in `handlePlay`: `requestAnimationFrame` → `setPlaybackTime(currentTime)` → re-render
+- Found the real bug at line 862-873: `useEffect(() => { ... }, [haptic])` — the cleanup depends on `haptic` object
+- `haptic` is a new object reference every render (returned from `useHapticPlayback` hook as `{ isConnected, isPlaying, ... }`)
+- Every re-render triggers the cleanup, which calls `cancelAnimationFrame(animationRef.current)`, killing the animation immediately
+- Fix: Changed dependency from `[haptic]` to `[]` (unmount-only cleanup)
+- Haptic cleanup is already handled by `useHapticPlayback`'s own cleanup effect, so removing it here is safe
+- ESLint passed clean
 
 Stage Summary:
-- Files modified: src/lib/embeddings/memory-extraction.ts
-- Per-character memory isolation now works correctly in group chat
-- Each character's memories in a group session are stored in their own namespace
-- Group dynamics (inter-character relationships) still use the shared group namespace
-- No changes needed to retrieval, deletion, or UI (already supported per-character namespaces)
-- Lint passes cleanly, server compiles with GET / 200
+- Playhead now moves correctly during playback
+- Root cause: `useEffect` cleanup with unstable object reference was cancelling requestAnimationFrame on every re-render
+- The `<g>` tag fix was necessary to prevent component crash, but this was the real playback bug
+
 ---
-Task ID: 11
-Agent: Main Agent
-Task: Review and fix chained quest auto-activation + namespace restore on session load
+Task ID: 4
+Agent: main
+Task: Improve WEBP/GIF seek preview in sprite timeline editor
 
 Work Log:
-- Reviewed all 3 quest completion paths: completeQuest, progressQuestObjective, completeObjective
-- Found that chain activation only checked template.chain config (explicit nextQuestId)
-- Found that prerequisite-based activation was only in completeQuest, not in the other 2 paths
-- Found that on app restore from localStorage, activeSessionId was already set but setActiveSession was never called → ensure-namespace never ran
-
-Fix 1 — Unified prerequisite-based auto-activation:
-- Created activateQuestsWhosePrerequisitesAreMet() helper function
-- Searches ALL available quests with prerequisites, checks if ALL prerequisites are completed
-- Activates matching quests via activateQuest (which also validates prerequisites)
-- Works for ALL activation methods: chain, automatic, keyword, turn — any quest with prerequisites
-- Replaced inline logic in completeQuest with call to helper
-- Added helper call in progressQuestObjective (after chain check, only if quest auto-completed)
-- Added helper call in completeObjective (after chain check, only if quest auto-completed)
-
-Fix 2 — Namespace creation on session restore:
-- Added useEffect in chat-panel.tsx that runs when activeSessionId changes
-- Calls /api/embeddings/ensure-namespace with session data (characterId, groupId, memberIds)
-- Handles group chat with per-member namespaces
-- Non-blocking: failures don't block the UI
-- Complements existing setActiveSession logic which already calls ensure-namespace
+- User reported that WEBP animations don't update preview when seeking (clicking on ruler), only videos do
+- Root cause: browsers don't provide frame-seeking API for animated `<img>` elements (WEBP/GIF), unlike `<video>` with `currentTime`
+- When paused, WEBP shows static first frame; only during playback does the animation run naturally
+- Implemented "seek preview" feature: when user clicks/seeks on timeline while paused with a WEBP/GIF sprite:
+  - Shows the animated image for 2 seconds (restarting the animation)
+  - Returns to static first frame after the timeout
+  - Each new seek resets the 2-second timer
+- Added `seekPreview` state + `seekPreviewTimerRef` for timer management
+- Added `isPlayingRef` to track playing state without adding unstable dependency to `updatePreviewPosition`
+- Preview renders animated image when `isPlaying || seekPreview` is true
+- Cleanup: seek preview timer cancelled on unmount and when play starts (full playback takes over)
+- ESLint passed clean
 
 Stage Summary:
-- Files modified: src/store/slices/sessionSlice.ts, src/components/tavern/chat-panel.tsx
-- Quests with prerequisites now auto-activate from ALL completion paths (not just completeQuest)
-- Session restore now ensures memory namespaces exist even when setActiveSession isn't called
-- Lint passes cleanly, server compiles with GET / 200
+- WEBP/GIF sprites now show a brief animation preview (2 seconds) when seeking while paused
+- When pressing Play, full continuous animation plays as before
+- Videos continue to work with precise frame seeking via `video.currentTime`
+
+---
+Task ID: 5
+Agent: main
+Task: Enable timeline sounds + haptic tracks in main chat scene (idle + trigger + WEBP)
+
+Work Log:
+- Analyzed existing `useTimelineSpriteSounds` hook — only watched `triggerSpriteUrl`, missed idle sprites entirely
+- Analyzed sprite display architecture: `CharacterSprite` and `GroupSprites` components, `CharacterSpriteState` store
+- Found idle sprites come from `SpritePackV2` via `StateCollectionV2`, URL format same as triggers
+- Rewrote entire hook with idle sprite support, haptic track processing, reduced logging
+- WEBP works identically — URL regex handles all extensions
+- ESLint passed, TypeScript type check passed (0 errors in hook file)
+
+Stage Summary:
+- Timeline sounds now play for BOTH trigger sprites AND idle sprites
+- Haptic tracks processed in real-time when sprites displayed in chat
+- WEBP sprites work identically to WebM
+- useTimelineSounds flag on triggers still works
+- When all timelines stop, Handy returns to center position

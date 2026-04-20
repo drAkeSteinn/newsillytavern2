@@ -1,1 +1,130 @@
-[]
+[
+  {
+    "name": "Overlays",
+    "path": "/backgrounds/Overlays",
+    "entries": [
+      {
+        "id": "Overlays_sillag",
+        "name": "sillag",
+        "url": "/backgrounds/Overlays/sillag.png",
+        "triggerKeys": [],
+        "contextKeys": []
+      }
+    ],
+    "files": [
+      {
+        "name": "sillag.png",
+        "url": "/backgrounds/Overlays/sillag.png",
+        "type": "image"
+      }
+    ]
+  },
+  {
+    "name": "Room",
+    "path": "/backgrounds/Room",
+    "description": "Habitación principal - fondos de la habitación del personaje",
+    "version": "1.0",
+    "transitionDuration": 500,
+    "entries": [
+      {
+        "id": "bg_1775203629530_jstjqg",
+        "name": "1775203629528-psmcuu",
+        "url": "/backgrounds/Room/1775203629528-psmcuu.jpg",
+        "triggerKeys": [],
+        "contextKeys": [],
+        "tags": []
+      },
+      {
+        "id": "room_default",
+        "name": "Habitación",
+        "url": "/backgrounds/Room/Room (1).png",
+        "triggerKeys": [],
+        "contextKeys": [],
+        "tags": [
+          "interior",
+          "default"
+        ]
+      },
+      {
+        "id": "room_morning",
+        "name": "Habitación Matutina",
+        "url": "/backgrounds/Room/Room (3).png",
+        "triggerKeys": [],
+        "contextKeys": [],
+        "tags": [
+          "interior",
+          "matutino"
+        ]
+      },
+      {
+        "id": "room_night",
+        "name": "Habitación Nocturna2",
+        "url": "/backgrounds/Room/Room (2).png",
+        "triggerKeys": [],
+        "contextKeys": [],
+        "tags": [
+          "interior",
+          "nocturno"
+        ]
+      },
+      {
+        "id": "Room_Room (4)",
+        "name": "Room (4)",
+        "url": "/backgrounds/Room/Room (4).png",
+        "triggerKeys": [],
+        "contextKeys": []
+      },
+      {
+        "id": "Room_Room (5)",
+        "name": "Room (5)",
+        "url": "/backgrounds/Room/Room (5).png",
+        "triggerKeys": [],
+        "contextKeys": []
+      },
+      {
+        "id": "Room_Room (7)",
+        "name": "Room (7)",
+        "url": "/backgrounds/Room/Room (7).png",
+        "triggerKeys": [],
+        "contextKeys": []
+      }
+    ],
+    "files": [
+      {
+        "name": "1775203629528-psmcuu.jpg",
+        "url": "/backgrounds/Room/1775203629528-psmcuu.jpg",
+        "type": "image"
+      },
+      {
+        "name": "Room (1).png",
+        "url": "/backgrounds/Room/Room (1).png",
+        "type": "image"
+      },
+      {
+        "name": "Room (2).png",
+        "url": "/backgrounds/Room/Room (2).png",
+        "type": "image"
+      },
+      {
+        "name": "Room (3).png",
+        "url": "/backgrounds/Room/Room (3).png",
+        "type": "image"
+      },
+      {
+        "name": "Room (4).png",
+        "url": "/backgrounds/Room/Room (4).png",
+        "type": "image"
+      },
+      {
+        "name": "Room (5).png",
+        "url": "/backgrounds/Room/Room (5).png",
+        "type": "image"
+      },
+      {
+        "name": "Room (7).png",
+        "url": "/backgrounds/Room/Room (7).png",
+        "type": "image"
+      }
+    ]
+  }
+]

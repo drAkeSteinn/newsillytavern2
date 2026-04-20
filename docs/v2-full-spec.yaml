@@ -1,0 +1,2843 @@
+openapi: 3.0.3
+info:
+  description: 'API to interact with the ''TheHandy''. <p> <b>IMPORTANT</b>: This API is compatible with devices running firmware version 3 (v3) only. See note below on how to deal with firmware version 2 (v2) devices with this API. <p> <h3>Join the community</h3> Send us a mail or add us on discord for a more technical chat - **Handy#8756**<br> Follow us on Reddit for updates and announcements: https://www.reddit.com/r/theHandy/ <p> <h3>Server selection</h3> When using the API make sure you connect to the server environment that the device you are trying to interact with is connected to.<br> For most users this will be the production environment API server: <b>https://www.handyfeeling.com/api/handy/v2</b><br> If you have been given special access to firmware that connects to the staging environment, you should use the staging environment API server: <b>https://staging.handyfeeling.com/api/handy/v2</b><br> <p> <h3>Handling firmware v2 devices</h3> Users with firmware v2 devices are required to update their device to firmware v3 before the device can be fully used with this API.<br> To ease this process, two of the endpoints in this API can be used with firmware v2 devices:<br> <ul> <li><code>/connected</code> - Check online status of a device.</li> <li><code>/info</code> - Get general information about the device.</li> </ul> All other endpoints will always return a ''Machine not connected'' error if you try to use them with a firmware v2 device.<br><br> For v2 devices it''s important to handle the fwStatus returned from the <code>/info</code> endpoint properly.<br> v2 devices will always have fwStatus = UPDATE_REQUIRED(2). See <code>/info</code> documentation for more details.<br><br> When using the API with a device, you should always start by verifying that the device have a firmware that is compatible with the API you are using in your service.<br> An example flow could look like this: <ol> <li>Check if device is conncted with <code>/connected</code></li> <li>Check device firmware status with <code>/info</code></li> <li>If a firmware update is required, forward the user to <a href="https://www.handfyfeeling.com">https://www.handfyfeeling.com</a> so they can easily update the device firmware.</li> <li>Continue your service when the firmware status returned in <code>/info</code> is UP_TO_DATE(0).</li> </ol> <p> <h3>Mode specific operations</h3> Operations in <b>BASE</b>, <b>SLIDE</b>, <b>TIMESYNC</b> and <b>HSTP</b> are mode independent and available at any time.<br> Other operations are only available in a specific mode (eg. <b>HAMP</b>, <b>HDSP</b>, <b>HSSP</b>).<br> To access these operations, the device have to first be put in the specific mode (see <code>/mode</code>).<br> If you execute an operation not available in the current mode of the device, you will receive a ''No such method'' error response. <!--See live samples of use cases here: ''https://www.handyfeeling.com/api/handy/v2/demo/ -->'
+  version: 2.0.0-beta-3
+  title: Handy API v2.0.0
+  contact:
+    email: lars@sweettech.no
+servers:
+  - url: "https://www.handyfeeling.com/api/handy/v2"
+    description: Production API server
+  - url: "https://www.handyfeeling.com/api/handy-rest/v2"
+    description: Production API server - alt url.
+  - url: "https://staging.handyfeeling.com/api/handy/v2"
+    description: Staging API server
+  - url: "{protocol}://{ip}:{port}/api/handy/v2"
+    description: Local API server
+    variables:
+      ip:
+        default: 127.0.0.1
+      port:
+        default: "3035"
+      protocol:
+        default: http
+        enum:
+          - http
+  - url: "{protocol}://{ip}:{port}/api/handy-rest/v2"
+    description: Local API server - alt url.
+    variables:
+      ip:
+        default: 127.0.0.1
+      port:
+        default: "3035"
+      protocol:
+        default: http
+        enum:
+          - http
+tags:
+  - name: BASE
+    description: BASE operations and information. Available in all modes.
+  - name: HAMP
+    description: Handy Alternate Motion Protocol (HAMP) operations.<p>The machine must first be put in HAMP mode for these operations to be available.
+  - name: HDSP
+    description: Handy Direct Streaming Protocol (HDSP) operations.<p>The machine must first be put in HDSP mode for these operations to be available.
+  - name: HSSP
+    description: Handy Synced Stream Protocol (HSSP) operations.<p>The machine must first be put in HSSP mode for these operations to be available.
+  - name: HSTP
+    description: HSTP (Handy Simple Timing Protocol) operations and information. Available in all modes. Only available in firmware >= 3.2.x
+  - name: MAINTENANCE
+    description: "MAINTENANCE operations and information. The machine must first be put in MAINTENANCE mode for these operations to be available.<br/> <b>NOTE:</b>The maintenance operations will be removed from the public API in the future. You should not use these in your application if you are a third party developer."
+  - name: OTA
+    description: "OTA (over-the-air) information.<br> <b>NOTE:</b>The ota operations will be removed from the public API in the future. You should not use these in your application if you are a third party developer."
+  - name: SLIDE
+    description: Slide operations and information. Available in all modes.
+  - name: TIMESYNC
+    description: Utilities for time syncronization.
+components:
+  headers:
+    X-RateLimit-Limit:
+      schema:
+        type: integer
+        minimum: 0
+      example: 240
+      description: Request limit per minute window.
+    X-RateLimit-Remaining:
+      schema:
+        type: integer
+        minimum: 0
+      example: 100
+      description: The number of requests left in the current window.
+    X-RateLimit-Reset:
+      schema:
+        type: integer
+        minimum: 0
+      example: 6205
+      description: Milliseconds until next window reset.
+  responses:
+    "400":
+      headers:
+        X-RateLimit-Limit:
+          $ref: "#/components/headers/X-RateLimit-Limit"
+        X-RateLimit-Remaining:
+          $ref: "#/components/headers/X-RateLimit-Remaining"
+        X-RateLimit-Reset:
+          $ref: "#/components/headers/X-RateLimit-Reset"
+      description: Bad request.
+    "403":
+      headers:
+        X-RateLimit-Limit:
+          $ref: "#/components/headers/X-RateLimit-Limit"
+        X-RateLimit-Remaining:
+          $ref: "#/components/headers/X-RateLimit-Remaining"
+        X-RateLimit-Reset:
+          $ref: "#/components/headers/X-RateLimit-Reset"
+      description: Forbidden
+    "404":
+      headers:
+        X-RateLimit-Limit:
+          $ref: "#/components/headers/X-RateLimit-Limit"
+        X-RateLimit-Remaining:
+          $ref: "#/components/headers/X-RateLimit-Remaining"
+        X-RateLimit-Reset:
+          $ref: "#/components/headers/X-RateLimit-Reset"
+      description: Resource not found.
+    "408":
+      headers:
+        X-RateLimit-Limit:
+          $ref: "#/components/headers/X-RateLimit-Limit"
+        X-RateLimit-Remaining:
+          $ref: "#/components/headers/X-RateLimit-Remaining"
+        X-RateLimit-Reset:
+          $ref: "#/components/headers/X-RateLimit-Reset"
+      description: Request timeout.
+    "502":
+      description: Machine not connected.
+      headers:
+        X-RateLimit-Limit:
+          $ref: "#/components/headers/X-RateLimit-Limit"
+        X-RateLimit-Remaining:
+          $ref: "#/components/headers/X-RateLimit-Remaining"
+        X-RateLimit-Reset:
+          $ref: "#/components/headers/X-RateLimit-Reset"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    "504":
+      description: Machine timeout.
+      headers:
+        X-RateLimit-Limit:
+          $ref: "#/components/headers/X-RateLimit-Limit"
+        X-RateLimit-Remaining:
+          $ref: "#/components/headers/X-RateLimit-Remaining"
+        X-RateLimit-Reset:
+          $ref: "#/components/headers/X-RateLimit-Reset"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  parameters:
+    ConnectionKey:
+      name: X-Connection-Key
+      in: header
+      required: true
+      description: Device connection key.
+      schema:
+        $ref: "#/components/schemas/ConnectionKey"
+    ChannelOrKey:
+      name: X-Connection-Key
+      in: header
+      required: true
+      description: Device connection key or a channel reference.
+      schema:
+        type: string
+        minLength: 5
+        maxLength: 64
+        pattern: "^(cid:?:)?[a-zA-Z0-9\/+]{5,64}$"
+        example: "cid:09Amdosdidsa/mdsa"
+  schemas:
+    Timestamp:
+      type: integer
+      minimum: 0
+      example: 1619080355381
+    ConnectionKey:
+      type: string
+      minLength: 5
+      maxLength: 64
+      pattern: "^[a-zA-Z0-9]{5,64}$"
+      example: x82m0S
+    FirmwareVersion:
+      description: Firmware version
+      type: string
+      example: "2.13"
+    HardwareVersion:
+      type: integer
+      format: int32
+      description: Hardware version
+      example: 1
+    Model:
+      description: Device model
+      type: string
+      enum:
+        - H01
+      x-enum-varnames:
+        - H01
+      x-enum-descriptions:
+        - H01
+    Branch:
+      type: string
+      description: Firmware branch
+      enum:
+        - master
+        - master-staging
+      x-enum-varnames:
+        - MASTER
+        - STAGING
+      x-enum-descriptions:
+        - MASTER
+        - STAGING
+    Mode:
+      description: Available device modes.<ul><li>HAMP(0)<li>HSSP(1)</li><li>HDSP(2)</li><li>MAINTENANCE(3)</li><li>HBSP(4)</li></ul>
+      type: number
+      enum:
+        - 0
+        - 1
+        - 2
+        - 3
+        - 4
+      x-enum-varnames:
+        - HAMP
+        - HSSP
+        - HDSP
+        - MAINTENANCE
+        - HBSP
+      x-enum-descriptions:
+        - HAMP
+        - HSSP
+        - HDSP
+        - MAINTENANCE
+        - HBSP
+      example: 1
+    ModeUpdate:
+      description: Mode update payload
+      type: object
+      properties:
+        mode:
+          $ref: "#/components/schemas/Mode"
+      required:
+        - mode
+    ModeUpdateResponse:
+      type: object
+      allOf:
+        - type: object
+          properties:
+            result:
+              description: "Possible result codes from a set mode operation. <ul><li>ERROR(-1) - Failed setting mode.</li><li>SUCCESS_NEW_MODE(0) - Success, another mode was previously set.</li><li>SUCCESS_SAME_MODE(1) - Success, the same mode was previously set.</li>"
+              type: number
+              enum:
+                - -1
+                - 0
+                - 1
+              x-enum-varnames:
+                - ERROR
+                - SUCCESS_NEW_MODE
+                - SUCCESS_SAME_MODE
+              x-enum-descriptions:
+                - ERROR
+                - SUCCESS_NEW_MODE
+                - SUCCESS_SAME_MODE
+          required:
+            - result
+    Offset:
+      type: number
+      format: int32
+    PercentValue:
+      type: number
+      format: double
+      maximum: 100
+      minimum: 0
+      example: 10.5
+    RPCResult:
+      description: Generic response
+      type: object
+      properties:
+        result:
+          $ref: "#/components/schemas/GenericResult"
+      required:
+        - result
+    StateResult:
+      description: Possible result codes returned from a HAMP start/stop operation.<ul><li>ERROR(-1) - Failed stop/starting motion.</li><li>SUCCESS_NEW_STATE(0) - Started/stopped motion.</li><li>SUCCESS_SAME_STATE(1) - Already started/stopped.</li></ul>
+      type: number
+      enum:
+        - -1
+        - 0
+        - 1
+      x-enum-varnames:
+        - ERROR
+        - SUCCESS_NEW_STATE
+        - SUCCESS_SAME_STATE
+      x-enum-descriptions:
+        - ERROR
+        - SUCCESS_NEW_STATE
+        - SUCCESS_SAME_STATE
+    VelocityAbsolute:
+      description: "Absolute velocity in millimeter per millisecond (mm/ms). The sign indicates the direction of the movement. Negative: moving towards the bottom. Positive: moving towards the top."
+      type: number
+      format: int32
+      example: 200
+    PositionAbsolute:
+      description: Absolute position in millimeter (mm). 0 = absolute bottom position.
+      type: number
+      format: double
+    Duration:
+      type: integer
+      minimum: 0
+      description: Duration in milliseconds (ms)
+    HAMPState:
+      description: "Possible HAMP states: <ul> <li>STOPPED(1) - The device slide is not moving.</li> <li>MOVING(2) - The device slide is moving</li> </ul>"
+      type: number
+      enum:
+        - 1
+        - 2
+      x-enum-varnames:
+        - STOPPED
+        - MOVING
+      x-enum-descriptions:
+        - STOPPED
+        - MOVING
+    HAMPStartResponse:
+      type: object
+      allOf:
+        - type: object
+          properties:
+            result:
+              $ref: "#/components/schemas/StateResult"
+          required:
+            - result
+    HAMPStopResponse:
+      type: object
+      allOf:
+        - type: object
+          properties:
+            result:
+              $ref: "#/components/schemas/StateResult"
+          required:
+            - result
+    HAMPVelocityPercentResponse:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/RPCResult"
+        - type: object
+          properties:
+            velocity:
+              $ref: "#/components/schemas/PercentValue"
+          required:
+            - velocity
+    HAMPVelocityPercent:
+      type: object
+      properties:
+        velocity:
+          $ref: "#/components/schemas/PercentValue"
+      required:
+        - velocity
+    HSSPState:
+      description: "Possible HSSP states: <ul> <li>NEED_SYNC(1) - The device need to synchronize with the server. Only returned from devices with firmware version <= 3.1.x</li> <li>NEED_SETUP(2) - No script have yet been setup on the device.</li> <li>STOPPED(3) - The script execution is stopped.</li> <li>PLAYING(4) - The device is executing the script.</li> </ul>"
+      type: number
+      enum:
+        - 1
+        - 2
+        - 3
+        - 4
+      x-enum-varnames:
+        - NEED_SYNC
+        - NEED_SETUP
+        - STOPPED
+        - PLAYING
+      x-enum-descriptions:
+        - NEED_SYNC
+        - NEED_SETUP
+        - STOPPED
+        - PLAYING
+    HSSPPlay:
+      type: object
+      properties:
+        estimatedServerTime:
+          description: The client side estimated server time in milliseconds (Unix Epoch).
+          type: integer
+          minimum: 0
+          example: 1619080355381
+        startTime:
+          description: The time index to start playing from in milliseconds.
+          type: integer
+          minimum: 0
+          example: 5000
+      required:
+        - estimatedServerTime
+        - startTime
+    HSSPPlayResult:
+      description: Possible HSSP play result codes. <ul><li>SUCCESS(0) - Script is playing.</li><li>ERROR(-1) - Script is not playing.</li></ul>
+      type: integer
+      enum:
+        - 0
+        - -1
+      x-enum-varnames:
+        - SUCCESS
+        - ERROR
+      x-enum-descriptions:
+        - Success. Script is playing.
+        - Error. Script is not playing.
+    HSSPPlayResponse:
+      description: The response returned from a hssp/play operation.
+      type: object
+      allOf:
+        - type: object
+          properties:
+            result:
+              $ref: "#/components/schemas/HSSPPlayResult"
+          required:
+            - result
+    Url:
+      type: string
+      example: "http://www.example.org/dataset.csv"
+    Sha256:
+      type: string
+      example: cc8c4129276cd80bb6cbfe7f968b22708240a8afcac9c7c0cbcce7f6c6064927
+    Setup:
+      type: object
+      properties:
+        url:
+          $ref: "#/components/schemas/Url"
+        sha256:
+          $ref: "#/components/schemas/Sha256"
+      required:
+        - url
+    HSSPSetupResult:
+      description: Possible HSSP setup result codes. <ul><li>USING_CACHED(0) - Script already present on the device.</li><li>DOWNLOADED(1) - Script downloaded successfully.</li></ul>
+      type: integer
+      enum:
+        - 0
+        - 1
+      x-enum-varnames:
+        - USING_CACHED
+        - DOWNLOADED
+      x-enum-descriptions:
+        - USING_CACHED
+        - DOWNLOADED
+    Looping:
+      type: boolean
+    LoopSettingResponse:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/RPCResult"
+        - type: object
+          properties:
+            activated:
+              $ref: "#/components/schemas/Looping"
+          required:
+            - activated
+    LoopSettingUpdate:
+      type: object
+      properties:
+        activated:
+          $ref: "#/components/schemas/Looping"
+      required:
+        - activated
+    SyncCount:
+      type: integer
+      format: int32
+      minimum: 15
+      default: 30
+      maximum: 40
+    Outliers:
+      type: integer
+      format: int32
+      minimum: 0
+      default: 6
+      maximum: 10
+    SyncResponse:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/RPCResult"
+        - type: object
+          properties:
+            dtserver:
+              $ref: "#/components/schemas/Timestamp"
+          required:
+            - dtserver
+    OffsetUpdate:
+      type: object
+      properties:
+        offset:
+          $ref: "#/components/schemas/Offset"
+    OffsetResponse:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/RPCResult"
+        - type: object
+          properties:
+            offset:
+              $ref: "#/components/schemas/Offset"
+          required:
+            - offset
+    HDSPRequest:
+      type: object
+      properties:
+        stopOnTarget:
+          description: Flag to indicate whether or not the movement of the slide should stop when the specified target position have been reached. Setting this value to <code>false</code> should in most cases give a smoother movement when sending a stream HDSP commands continuously to the device.
+          type: boolean
+          default: false
+        immediateResponse:
+          type: boolean
+          description: Flag to indicate if the server should return a response immediately upon receinving the command from the client or wait for a response from the device before returning a response to the client.
+          default: false
+    NextXAVA:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/HDSPRequest"
+        - type: object
+          properties:
+            position:
+              $ref: "#/components/schemas/PositionAbsolute"
+            velocity:
+              $ref: "#/components/schemas/VelocityAbsolute"
+          required:
+            - position
+            - velocity
+    NextXPVP:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/HDSPRequest"
+        - type: object
+          properties:
+            position:
+              $ref: "#/components/schemas/PercentValue"
+            velocity:
+              $ref: "#/components/schemas/PercentValue"
+          required:
+            - position
+            - velocity
+    NextXPVA:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/HDSPRequest"
+        - type: object
+          properties:
+            position:
+              $ref: "#/components/schemas/PercentValue"
+            velocity:
+              $ref: "#/components/schemas/VelocityAbsolute"
+          required:
+            - position
+            - velocity
+    HDSPTimeRequest:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/HDSPRequest"
+        - type: object
+          properties:
+            duration:
+              $ref: "#/components/schemas/Duration"
+          required:
+            - duration
+    NextXPT:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/HDSPTimeRequest"
+        - type: object
+          properties:
+            position:
+              $ref: "#/components/schemas/PercentValue"
+          required:
+            - position
+    NextXAT:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/HDSPTimeRequest"
+        - type: object
+          properties:
+            position:
+              $ref: "#/components/schemas/PositionAbsolute"
+          required:
+            - position
+    HDSPResult:
+      description: Possible HDSP result codes. <ul><li>ERROR(-3) - Device failed processing the command.</li><li>SUCCESS_POSITION_REACHED(0)</li><li>SUCCESS_POSITION_NOT_REACHED(1)</li><li>SUCCES_ALREADY_AT_POSITION(2)</li><li>SUCCESS_INTERRTUPTED(3)</li></ul>
+      type: integer
+      enum:
+        - -3
+        - 0
+        - 1
+        - 2
+        - 3
+      x-enum-varnames:
+        - ERROR
+        - SUCCESS_POSITION_REACHED
+        - SUCCESS_POSITION_NOT_REACHED
+        - SUCCES_ALREADY_AT_POSITION
+        - SUCCESS_INTERRTUPTED
+      x-enum-descriptions:
+        - ERROR
+        - SUCCESS_POSITION_REACHED
+        - SUCCESS_POSITION_NOT_REACHED
+        - SUCCES_ALREADY_AT_POSITION
+        - SUCCESS_INTERRTUPTED
+    HDSPResponse:
+      type: object
+      properties:
+        result:
+          $ref: "#/components/schemas/HDSPResult"
+      required:
+        - result
+    FixedPos:
+      description: Flag to indicate if the slide operation is fixed. A fixed operation moves the active slider area (min-max) offset to the new min or max value.
+      type: boolean
+      default: false
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            connected:
+              type: boolean
+            name:
+              type: string
+            message:
+              type: string
+            code:
+              oneOf:
+                - description: The different possible general error codes.<p> <ul> <li>ERROR(1000) - Unspecified error</li> <li>DEVICE_TIMEOUT(1001) - A response from the device was not received within the maximum timeout.</li> <li>DEVICE_NOT_CONNECTED(1002) - The device is not connected.</li> </ul>
+                  type: number
+                  minimum: 1000
+                  maximum: 1999
+                  enum:
+                    - 1000
+                    - 1001
+                    - 1002
+                  x-enum-varnames:
+                    - ERROR
+                    - DEVICE_TIMEOUT
+                    - DEVICE_NOT_CONNECTED
+                  x-enum-descriptions:
+                    - Unspecified error
+                    - A response from the device was not received within the maximum timeout.
+                    - The device is not connected.
+                - $ref: "#/components/schemas/BASEModeErrors"
+                - $ref: "#/components/schemas/HAMPModeErrors"
+                - $ref: "#/components/schemas/HSSPModeErrors"
+                - $ref: "#/components/schemas/HDSPModeErrors"
+                - $ref: "#/components/schemas/MAINTENANCEModeErrors"
+            data:
+              type: object
+          required:
+            - connected
+            - code
+            - name
+            - message
+    PositionAbsoluteResponse:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/RPCResult"
+        - type: object
+          properties:
+            position:
+              $ref: "#/components/schemas/PositionAbsolute"
+          required:
+            - position
+    GenericResult:
+      description: Generic result values.<ul><li>SUCCESS(0)</li><li>ERROR(-1)</li></ul>
+      type: number
+      enum:
+        - 0
+        - -1
+      x-enum-varnames:
+        - SUCCESS
+        - ERROR
+      x-enum-descriptions:
+        - SUCCESS
+        - ERROR
+    SlideResult:
+      description: "Possible slide operation result codes. <ul> <li>ACCEPTED(0) - Value updated.</li> <li>ACCEPTED_ROUNDED_DOWN(1) - Value updated but rounded down.</li> <li>ACCEPTED_ROUNDED_UP(2) - Value updated but rounded up.</li> </ul> "
+      type: number
+      enum:
+        - 0
+        - 1
+        - 2
+      x-enum-varnames:
+        - ACCEPTED
+        - ACCEPTED_ROUNDED_DOWN
+        - ACCEPTED_ROUNDED_UP
+      x-enum-descriptions:
+        - ACCEPTED
+        - ACCEPTED_ROUNDED_DOWN
+        - ACCEPTED_ROUNDED_UP
+    SlideUpdateResponse:
+      type: object
+      properties:
+        result:
+          $ref: "#/components/schemas/SlideResult"
+      required:
+        - result
+    UpdateStatusResponse:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/RPCResult"
+        - type: object
+          properties:
+            status:
+              description: Possible update status values.<ul><li>PENDING(0)<li>IN_PROGRESS(1)</li><li>SUCCESS(2)</li><li>FAILED(3)</li></ul>
+              type: number
+              enum:
+                - 0
+                - 1
+                - 2
+                - 3
+              x-enum-varnames:
+                - PENDING
+                - IN_PROGRESS
+                - SUCCESS
+                - FAILED
+              x-enum-descriptions:
+                - Update pending
+                - Update in progress
+                - Update was successful
+                - Update failed
+              example: 1
+            progress:
+              type: integer
+              minimum: 0
+              maximum: 100
+          required:
+            - progress
+            - status
+    BASEModeErrors:
+      description: The different possible mode independent specific error codes. <p> <ul> <li>ERROR(2000) - Unspecified error.</li> <li>INVALID_REQUEST(2001) - The request could not be processed by the device due to the request content.</li> <li>METHOD_NOT_FOUND(2002) - The requested operation is not supported by the device or the current device mode.</li> </ul>
+      type: number
+      minimum: 2000
+      maximum: 2999
+      enum:
+        - 2000
+        - 2001
+        - 2002
+      x-enum-varnames:
+        - ERROR
+        - INVALID_REQUEST
+        - METHOD_NOT_FOUND
+      x-enum-descriptions:
+        - Unspecified error
+        - The request could not be processed by the device due to the request content.
+        - The requested operation is not supported on the device.
+    HSSPModeErrors:
+      description: The different possible HSSP mode specific error codes. <p> <ul> <li>ERROR(4000) - Unspecified HSSP error.</li> <li>DOWNLOAD_FAILED(4001) - The device could not download the specified script.</li> <li>HASH_ERROR(4002) - Script hash validation error</li> <li>SYNC_REQUIRED(4003) - The device need to resync with the server before HSSP setup can be peformed. Only returned from devices running firmware version <= 3.1.x</li> <li>TOKEN_ERROR(4004) - Unspecified token error. Check error response data property for chained error info.</li> <li>MAX_SCRIPT_SIZE_ERROR(4005) - The script is too large for the device. The maximum supported CSV file size is 524288 bytes.</li> <li>DEVICE_STORAGE_FULL_ERROR(4006) - The setup failed because the device storage is full.</li> <li>DEVICE_STORAGE_FREE_ERROR(4007) - The setup failed. Not enough space left to store the script on the device.</li> <li>DEVICE_STORAGE_CLEAN_ERROR(4008) - The setup failed. An attempt to free up device space failed.</li> </ul>
+      type: number
+      minimum: 4000
+      maximum: 4999
+      enum:
+        - 4000
+        - 4001
+        - 4002
+        - 4003
+        - 4004
+        - 4005
+        - 4006
+        - 4007
+        - 4008
+      x-enum-varnames:
+        - ERROR
+        - DOWNLOAD_FAILED
+        - HASH_ERROR
+        - SYNC_REQUIRED
+        - TOKEN_ERROR
+        - MAX_SCRIPT_SIZE_ERROR
+        - DEVICE_STORAGE_FULL_ERROR
+        - DEVICE_STORAGE_FREE_ERROR
+        - DEVICE_STORAGE_CLEAN_ERROR
+      x-enum-descriptions:
+        - Unspecified HSSP error.
+        - The device could not download the specified script.
+        - The validation of the script hash failed.
+        - The device need to resync with the server before the setup can be peformed.
+        - Generic token error.
+        - The script is too large for the device.
+        - The device storage is full.
+        - The device storage does not have enough free space to store the script.
+        - An attempt to free up device storage space failed.
+    HAMPModeErrors:
+      description: The different possible HAMP mode specific error codes. <p> <ul> <li>ERROR(3000) - Unspecified HAMP error</li> </ul>
+      type: number
+      minimum: 3000
+      maximum: 3999
+      enum:
+        - 3000
+      x-enum-varnames:
+        - ERROR
+      x-enum-descriptions:
+        - Unspecified HAMP error
+    HDSPModeErrors:
+      description: The different possible HDSP mode specific error codes. <p> <ul> <li>ERROR(5000) - Unspecified HDSP error</li> </ul>
+      type: number
+      minimum: 5000
+      maximum: 5999
+      enum:
+        - 5000
+      x-enum-varnames:
+        - ERROR
+      x-enum-descriptions:
+        - Unspecified HSDP error
+    MAINTENANCEModeErrors:
+      description: The different possible MAINTENANCE mode specific error codes. <p> <ul> <li>ERROR(6000) - Unspecified MAINTENANCE error</li> <li>OPERATION_FAILED(6001) - The device failed to complete the MAINTENANCE operation successfully.</li> </ul>
+      type: number
+      minimum: 6000
+      maximum: 6999
+      enum:
+        - 6000
+        - 6001
+      x-enum-varnames:
+        - ERROR
+        - RESTART_FAILED
+        - UPDATE_START_FAILED
+        - STATUS_GET_FAILED
+      x-enum-descriptions:
+        - Unspecified MAINTENANCE error
+        - Failed to restart the device.
+        - Failed to start the update process.
+        - Failed getting the update process status.
+    SessionId:
+      description: Device session id. Unique per connected session.
+      type: string
+      example: 01FZZR1H25CWF77Q5T26YSJMBY
+    Connected:
+      description: Machine connected status
+      type: boolean
+      example: true
+    ConnectedResponse:
+      description: Connected response
+      type: object
+      properties:
+        connected:
+          $ref: "#/components/schemas/Connected"
+      required:
+        - connected
+    FirmwareStatus:
+      description: Possible device firmware status. <p> <ul> <li>0 - UP_TO_DATE - The firmware is up-tp-date (latest version).</li> <li>1 - UPDATE_REQUIRED - A critical update is available.</li> <li>2 - UPDATE_AVAILABLE - An non critical update to the firmware is available.</li> </ul>
+      type: number
+      enum:
+        - 0
+        - 1
+        - 2
+      x-enum-varnames:
+        - UP_TO_DATE
+        - UPDATE_REQUIRED
+        - UPDATE_AVAILABLE
+      x-enum-descriptions:
+        - The firmware is up-tp-date (latest version).
+        - A critical update is available.
+        - An non critical update to the firmware is available.
+    InfoResponse:
+      type: object
+      properties:
+        fwVersion:
+          $ref: "#/components/schemas/FirmwareVersion"
+        fwStatus:
+          $ref: "#/components/schemas/FirmwareStatus"
+        hwVersion:
+          $ref: "#/components/schemas/HardwareVersion"
+        model:
+          $ref: "#/components/schemas/Model"
+        branch:
+          $ref: "#/components/schemas/Branch"
+        sessionId:
+          $ref: "#/components/schemas/SessionId"
+      required:
+        - fwVersion
+        - fwStatus
+        - hwVersion
+        - model
+        - branch
+        - sessionId
+    SettingsResponse:
+      type: object
+      properties:
+        slideMin:
+          $ref: "#/components/schemas/PercentValue"
+        slideMax:
+          $ref: "#/components/schemas/PercentValue"
+      required:
+        - slideMin
+        - slideMax
+    OtaLatest:
+      type: object
+      properties:
+        model:
+          $ref: "#/components/schemas/Model"
+        branch:
+          $ref: "#/components/schemas/Branch"
+      required:
+        - model
+        - branch
+    OtaLatestResponse:
+      type: object
+      properties:
+        fwVersion:
+          $ref: "#/components/schemas/FirmwareVersion"
+      required:
+        - fwVersion
+    StatusResponse:
+      type: object
+      description: Machine status
+      properties:
+        mode:
+          $ref: "#/components/schemas/Mode"
+        state:
+          oneOf:
+            - $ref: "#/components/schemas/HSSPState"
+            - $ref: "#/components/schemas/HAMPState"
+      required:
+        - mode
+    ServerTimeResponse:
+      type: object
+      required:
+        - serverTime
+      properties:
+        serverTime:
+          $ref: "#/components/schemas/Timestamp"
+    GenericError:
+      type: object
+      description: Error result
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+    SlideResultResponse:
+      type: object
+      properties:
+        result:
+          $ref: "#/components/schemas/SlideResult"
+    GenericResultResponse:
+      type: object
+      properties:
+        result:
+          $ref: "#/components/schemas/GenericResult"
+      required:
+        - result
+    SliderMaxResponse:
+      type: object
+      properties:
+        max:
+          $ref: "#/components/schemas/PercentValue"
+      required:
+        - max
+    SliderMinResponse:
+      type: object
+      properties:
+        min:
+          $ref: "#/components/schemas/PercentValue"
+      required:
+        - min
+    SlideResponse:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/SliderMinResponse"
+        - $ref: "#/components/schemas/SliderMaxResponse"
+    SlideSettings:
+      anyOf:
+        - type: object
+          properties:
+            min:
+              $ref: "#/components/schemas/PercentValue"
+            max:
+              $ref: "#/components/schemas/PercentValue"
+          required:
+            - min
+            - max
+          example:
+            min: 10
+            max: 30
+        - type: object
+          properties:
+            min:
+              $ref: "#/components/schemas/PercentValue"
+            fixed:
+              $ref: "#/components/schemas/FixedPos"
+          required:
+            - min
+          example:
+            min: 50
+            fixed: true
+        - type: object
+          properties:
+            max:
+              $ref: "#/components/schemas/PercentValue"
+            fixed:
+              $ref: "#/components/schemas/FixedPos"
+          required:
+            - max
+          example:
+            max: 100
+            fixed: false
+    HSSPResponse:
+      type: object
+      properties:
+        state:
+          $ref: "#/components/schemas/HSSPState"
+        slideMax:
+          $ref: "#/components/schemas/PercentValue"
+        slideMin:
+          $ref: "#/components/schemas/PercentValue"
+        offset:
+          $ref: "#/components/schemas/Offset"
+      required:
+        - slideMin
+        - slideMax
+        - offset
+        - state
+    HAMPResponse:
+      type: object
+      properties:
+        state:
+          $ref: "#/components/schemas/HAMPState"
+        slideMax:
+          $ref: "#/components/schemas/PercentValue"
+        slideMin:
+          $ref: "#/components/schemas/PercentValue"
+        velocity:
+          $ref: "#/components/schemas/PercentValue"
+      required:
+        - slideMin
+        - slideMax
+        - offset
+        - state
+    UpdatePerform:
+      description: Update perform properties
+      type: object
+      properties:
+        fwVersion:
+          $ref: "#/components/schemas/FirmwareVersion"
+      required:
+        - fwVersion
+    Events:
+      type: string
+      enum:
+        - connected
+        - disconnected
+    WebHookOpts:
+      type: object
+      properties:
+        url:
+          type: string
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/Events"
+    WebHook:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/WebHookOpts"
+      properties:
+        id:
+          type: string
+        expires:
+          type: number
+      required:
+        - id
+  examples:
+    DeviceTimeout:
+      value:
+        error:
+          code: 1002
+          name: DeviceTimeout
+          message: Device timeout
+          connected: true
+    DeviceNotConnected:
+      value:
+        error:
+          code: 1001
+          name: DeviceNotConnected
+          message: Device not connected
+          connected: false
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: unique
+paths:
+  /mode:
+    parameters:
+      - $ref: "#/components/parameters/ChannelOrKey"
+    get:
+      description: Get the current mode of the device.
+      summary: Get the current mode of the device.
+      tags:
+        - BASE
+      operationId: getMode
+      responses:
+        "200":
+          description: ModeResponse
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    allOf:
+                      - $ref: "#/components/schemas/RPCResult"
+                      - type: object
+                        properties:
+                          mode:
+                            $ref: "#/components/schemas/Mode"
+                        required:
+                          - mode
+                  - $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                HAMP:
+                  value:
+                    result: 0
+                    mode: 0
+                HSSP:
+                  value:
+                    result: 0
+                    mode: 1
+                HDSP:
+                  value:
+                    result: 0
+                    mode: 2
+                MAINTENANCE:
+                  value:
+                    result: 0
+                    mode: 3
+                GenericBaseError:
+                  value:
+                    error:
+                      code: 2000
+                      name: DeviceError
+                      message: Device error
+                      connected: true
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+    put:
+      description: Set the current mode of the device.
+      summary: Set the current mode of the device.
+      tags:
+        - BASE
+      operationId: setMode
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModeUpdate"
+            examples:
+              HAMP:
+                value:
+                  mode: 0
+              HSSP:
+                value:
+                  mode: 1
+              HDSP:
+                value:
+                  mode: 2
+              MAINTENANCE:
+                value:
+                  mode: 3
+        required: true
+      responses:
+        "200":
+          description: ModeUpdateResponse
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ModeUpdateResponse"
+                  - $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                SuccessNewMode:
+                  value:
+                    result: 0
+                SuccessSameMode:
+                  value:
+                    result: 1
+                GenericBaseError:
+                  $ref: "#/paths/~1mode/get/responses/200/content/application~1json/examples/GenericBaseError"
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /connected:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    get:
+      description: "Check if a specifc device is connected and online. This is the fastest way to check device connectivity.<br><br> If you need a continuous device connectivity check, this is the endpoint you should be using."
+      summary: Check device connectivity.
+      tags:
+        - BASE
+      operationId: isConnected
+      responses:
+        "200":
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          description: Machine connected status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectedResponse"
+              examples:
+                DeviceConnected:
+                  value:
+                    connected: true
+                DeviceNotConnected:
+                  value:
+                    connected: false
+        "400":
+          $ref: "#/components/responses/400"
+  /info:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    get:
+      summary: Get extended device information.
+      description: 'Returns information about the device; hardware version, firmware version, firmware status, firmware branch and device model.<br><br> The most important information returned is the firmware status value (fwStatus).<br> Depending on the value the device may or may not need an update for the device to work with your service.<br><br> The following values are possible: <ul> <li>UP_TO_DATE(0) - The device is running the latest available firmware. No action required for using your service.</li> <li>UPDATE_REQUIRED(1) - The device is running an out-of-date firmware version. An update is required before the device will work with your service.</li> <li>UPDATE_AVAILABLE(2) - The device is running a firmware with available updates. The update is not stricly neccessary for the device to work with your service, but the update might improve the user experience.</li> </ul> Whenever the firmware status is not UP_TO_DATE(0), it''s recommended that you forward the user to <a href="https://www.handyfeeeling.com">https://www.handyfeeeling.com</a> so the user can easily update their device.'
+      tags:
+        - BASE
+      operationId: getInfo
+      responses:
+        "200":
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          description: Device information
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/InfoResponse"
+              examples:
+                DeviceUpToDate:
+                  value:
+                    fwVersion: 3.1.0-a28b8bb
+                    fwStatus: 0
+                    hwVersion: 1
+                    model: H01
+                    branch: master
+                    sessionId: 01FZZR1H25CWF77Q5T26YSJMBY
+                DeviceUpdateRequired:
+                  value:
+                    fwVersion: 3.1.0-a28b8bb
+                    fwStatus: 1
+                    hwVersion: 1
+                    model: H01
+                    branch: master
+                    sessionId: 01FZZR68SPRPZ0RJWMXHPARKR5
+                DeviceUpdateAvailable:
+                  value:
+                    fwVersion: 3.1.0-a28b8bb
+                    fwStatus: 2
+                    hwVersion: 1
+                    model: H01
+                    branch: master
+                    sessionId: 01FZZR6C6YYP3A0H4SQVCARV52
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /settings:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    get:
+      description: Get various device settings.
+      summary: Extended device settings.
+      tags:
+        - BASE
+      operationId: getSettings
+      responses:
+        "200":
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          description: Device settings.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/SettingsResponse"
+              examples:
+                DeviceSettings:
+                  value:
+                    slideMin: 20
+                    slideMax: 100
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /status:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    get:
+      description: "A convenient endpoint for fetching the current mode of the device and the state within the current mode.<br> For modes with a single state, the returned state value will always be 0.<br> For modes with multiple states, see the schema definition for possible values.<br>"
+      summary: Get the device status.
+      tags:
+        - BASE
+      operationId: getStatus
+      responses:
+        "200":
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          description: Device status
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/StatusResponse"
+              examples:
+                StatusHSSPPlaying:
+                  value:
+                    mode: 1
+                    status: 4
+                StatusHAMPMoving:
+                  value:
+                    mode: 0
+                    status: 1
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /hamp/start:
+    parameters:
+      - $ref: "#/components/parameters/ChannelOrKey"
+    put:
+      description: Start alternating motion. No effect if the device is already moving.
+      summary: Start alternating motion.
+      tags:
+        - HAMP
+      operationId: start
+      x-eov-operation-id: start
+      responses:
+        "200":
+          description: HAMPStartResponse
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/HAMPStartResponse"
+              examples:
+                Playing:
+                  value:
+                    result: 0
+                AlreadyPlaying:
+                  value:
+                    result: 1
+                Error:
+                  $ref: "#/paths/~1hamp~1stop/put/responses/200/content/application~1json/examples/Error"
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /hamp/stop:
+    parameters:
+      - $ref: "#/components/parameters/ChannelOrKey"
+    put:
+      description: Stop alternating motion. No effect if the device is already stopped.
+      summary: Stop alternating motion.
+      tags:
+        - HAMP
+      operationId: hampStop
+      x-eov-operation-id: hampStop
+      responses:
+        "200":
+          description: HAMPStopResponse
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/HAMPStopResponse"
+              examples:
+                Stopped:
+                  value:
+                    result: 0
+                AlreadyStopped:
+                  value:
+                    result: 1
+                Error:
+                  value:
+                    error:
+                      code: 3000
+                      name: HampError
+                      message: HampError
+                      connected: true
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /hamp/velocity:
+    parameters:
+      - $ref: "#/components/parameters/ChannelOrKey"
+    get:
+      summary: Get the HAMP velocity setting of the device in percent.
+      description: Get the HAMP velocity setting of the device in percent.
+      tags:
+        - HAMP
+      operationId: getHAMPVelocityPercent
+      x-eov-operation-id: getVelocityPercent
+      responses:
+        "200":
+          description: HAMPVelocityPercentResponse
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/HAMPVelocityPercentResponse"
+              examples:
+                Maximum:
+                  value:
+                    result: 0
+                    velocity: 100
+                Minimum:
+                  value:
+                    result: 0
+                    velocity: 0
+                Medium:
+                  value:
+                    result: 0
+                    velocity: 50
+                Error:
+                  $ref: "#/paths/~1hamp~1stop/put/responses/200/content/application~1json/examples/Error"
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+    put:
+      summary: Set the HAMP velocity setting of the device in percent.
+      description: "Set the HAMP velocity setting of the alternating motion in percent.<p>NOTE: The velocity can only be set when HAMP mode is enabled (mode=2) and when the slide is moving (HAMP state=2). Attempting to set the velocity outside of this mode/state will result in an error response."
+      tags:
+        - HAMP
+      operationId: setHAMPVelocityPercent
+      x-eov-operation-id: setVelocityPercent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HAMPVelocityPercent"
+            examples:
+              Maximum:
+                value:
+                  velocity: 100
+              Minimum:
+                value:
+                  velocity: 0
+              Medium:
+                value:
+                  velocity: 50
+        required: true
+      responses:
+        "200":
+          description: RPCResult
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/RPCResult"
+              examples:
+                VelocitySet:
+                  value:
+                    result: 0
+                Error:
+                  $ref: "#/paths/~1hamp~1stop/put/responses/200/content/application~1json/examples/Error"
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /hamp/state:
+    parameters:
+      - $ref: "#/components/parameters/ChannelOrKey"
+    get:
+      description: Get the HAMP state of the device. See HAMPStateResponse schema for possible values.
+      summary: Get the HAMP state of the device.
+      tags:
+        - HAMP
+      operationId: getHAMPState
+      x-eov-operation-id: getState
+      responses:
+        "200":
+          description: HAMPState
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    allOf:
+                      - $ref: "#/components/schemas/RPCResult"
+                      - type: object
+                        properties:
+                          state:
+                            $ref: "#/components/schemas/HAMPState"
+                        required:
+                          - state
+              examples:
+                Stopped:
+                  value:
+                    result: 0
+                    state: 1
+                Moving:
+                  value:
+                    result: 0
+                    state: 2
+                Error:
+                  $ref: "#/paths/~1hamp~1stop/put/responses/200/content/application~1json/examples/Error"
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /hdsp/xava:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    put:
+      description: "Sets the next absolute position (xa) of the device, and the absolute velocity (va) the device should use to reach the position."
+      summary: "Sets the next absolute position (xa) of the device, and the absolute velocity (va) the device should use to reach the position."
+      tags:
+        - HDSP
+      operationId: nextPostionAbsVelocityAbs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NextXAVA"
+        required: true
+      responses:
+        "200":
+          description: Position
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/HDSPResponse"
+              examples:
+                PositionReached:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/PositionReached"
+                PositionNotReached:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/PositionNotReached"
+                AlreadyAtPosition:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/AlreadyAtPosition"
+                Interrupted:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/Interrupted"
+                Error:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/Error"
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /hdsp/xpva:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    put:
+      description: "Sets the next percent position (xp) of the device, and the absolute velocity (va) the device should use to reach the position."
+      summary: "Sets the next percent position (xp) of the device, and the absolute velocity (va) the device should use to reach the position."
+      tags:
+        - HDSP
+      operationId: nextPositionPercentVelocityAbsolute
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NextXPVA"
+        required: true
+      responses:
+        "200":
+          description: Position
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/HDSPResponse"
+              examples:
+                PositionReached:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/PositionReached"
+                PositionNotReached:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/PositionNotReached"
+                AlreadyAtPosition:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/AlreadyAtPosition"
+                Interrupted:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/Interrupted"
+                Error:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/Error"
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /hdsp/xpvp:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    put:
+      description: "Sets the next percent position (xp) of the device, and the percent velocity (vp) the device should use to reach the position."
+      summary: "Sets the next percent position (xp) of the device, and the percent velocity (vp) the device should use to reach the position."
+      tags:
+        - HDSP
+      operationId: nextPositionPercentVelocityPercent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NextXPVP"
+        required: true
+      responses:
+        "200":
+          description: Position
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/HDSPResponse"
+              examples:
+                PositionReached:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/PositionReached"
+                PositionNotReached:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/PositionNotReached"
+                AlreadyAtPosition:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/AlreadyAtPosition"
+                Interrupted:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/Interrupted"
+                Error:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/Error"
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /hdsp/xat:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    put:
+      description: "Sets the next absolute position (xa) of the device, and the time (t) the device should use to reach the position."
+      summary: "Sets the next absolute position (xa) of the device, and the time (t) the device should use to reach the position."
+      tags:
+        - HDSP
+      operationId: nextPositionAbsInTime
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NextXAT"
+        required: true
+      responses:
+        "200":
+          description: HDSPResponse
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/HDSPResponse"
+              examples:
+                PositionReached:
+                  value:
+                    result: 3
+                PositionNotReached:
+                  value:
+                    result: 1
+                AlreadyAtPosition:
+                  value:
+                    result: 2
+                Interrupted:
+                  value:
+                    result: 3
+                Error:
+                  value:
+                    error:
+                      code: 3000
+                      name: HampError
+                      message: HampError
+                      connected: true
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /hdsp/xpt:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    put:
+      description: "Sets the next percent position (xp) of the device, and the time (t) the device should use to reach the position."
+      summary: "Sets the next percent position (xp) of the device, and the time (t) the device should use to reach the position."
+      tags:
+        - HDSP
+      operationId: nextPositionPercentInTime
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NextXPT"
+        required: true
+      responses:
+        "200":
+          description: HDSPResponse
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/HDSPResponse"
+              examples:
+                PositionReached:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/PositionReached"
+                PositionNotReached:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/PositionNotReached"
+                AlreadyAtPosition:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/AlreadyAtPosition"
+                Interrupted:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/Interrupted"
+                Error:
+                  $ref: "#/paths/~1hdsp~1xat/put/responses/200/content/application~1json/examples/Error"
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /hssp/play:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    put:
+      summary: Start script playing.
+      description: "Start script playing from a specified time index. <p>For the script and a video to be correctly synchronized, the client must provide a client-side-estimated-server-time.<p>See TIMESYNC for further details on how to create a good client-side-estimated-server-time."
+      tags:
+        - HSSP
+      operationId: play
+      x-eov-operation-id: play
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HSSPPlay"
+            examples:
+              PlayFromStart:
+                value:
+                  estimatedServerTime: 1619080355381
+                  startTime: 0
+              PlayFrom1minMark:
+                value:
+                  estimatedServerTime: 1619080355381
+                  startTime: 60000
+        required: true
+      responses:
+        "200":
+          description: HSSPPlayResponse
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/HSSPPlayResponse"
+                  - $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                SuccessScriptPlaying:
+                  value:
+                    result: 0
+                ErrorScriptNotPlaying:
+                  value:
+                    error:
+                      code: 4004
+                      name: PLAY_FAILED
+                      message: The play command failed.
+                      connected: true
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /hssp/stop:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    put:
+      description: Stop script playing.
+      summary: Stop script playing.
+      tags:
+        - HSSP
+      operationId: hsspStop
+      x-eov-operation-id: hsspStop
+      responses:
+        "200":
+          description: HSSPStopResponse
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/RPCResult"
+              examples:
+                ScriptStopped:
+                  value:
+                    result: 0
+                StopError:
+                  value:
+                    error:
+                      code: 4000
+                      connected: true
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /hssp/setup:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    put:
+      summary: Setup script synchronization.
+      description: "Setup script synchronization by providing the device with an URL from where the script can be downloaded. The device need to be able to access the URL for setup to work. <p><b>NOTE: The maximum CSV script size that a device can handle is 524288 bytes. Script larger than this will return an error.</b></p> <p>If the sha-256 value of the script is provided, the device will only download the script if it can not be found in the device cache.</p> <p>See the hssp/setup response examples and the HSSPModeErrors schema for possible responses and error code descriptions.</p> <h2>Using token URLs</h2> <p>NOTE: This secions is only applicable for partners that have integrated with the Script API.</p> <p>If the URL provided to the hssp/setup is a token URL, the sha-256 value is ignored. In addition, more information is available in potential error responses if the error is caused by the token.</p> "
+      tags:
+        - HSSP
+      operationId: setup
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Setup"
+            examples:
+              UrlOnly:
+                value:
+                  url: "https://sweettecheu.s3.eu-central-1.amazonaws.com/scripts/admin/dataset.csv"
+              Url&Hash:
+                value:
+                  url: "https://sweettecheu.s3.eu-central-1.amazonaws.com/scripts/admin/dataset.csv"
+                  sha256: cc8c4129276cd80bb6cbfe7f968b22708240a8afcac9c7c0cbcce7f6c6064927
+              TokenURL:
+                value:
+                  url: "https://scripts01.handyfeeling.com/api/script/v0/token?s=......&t=........&uexp=...."
+        required: true
+      responses:
+        "200":
+          description: SetupResponse
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    allOf:
+                      - type: object
+                        properties:
+                          result:
+                            $ref: "#/components/schemas/HSSPSetupResult"
+                        required:
+                          - result
+              examples:
+                ScriptDownloaded:
+                  value:
+                    result: 1
+                UsingCachedScript:
+                  value:
+                    result: 0
+                UnspecifiedError:
+                  value:
+                    error:
+                      code: 4000
+                      name: ERROR
+                      message: The operation failed to complete successfully.
+                      connected: true
+                DownloadFailed:
+                  value:
+                    error:
+                      code: 4001
+                      name: DOWNLOAD_FAILED
+                      message: The operation failed to complete successfully.
+                      connected: true
+                BadHash:
+                  value:
+                    error:
+                      code: 4002
+                      name: HASH_ERROR
+                      message: The operation failed to complete successfully.
+                      connected: true
+                SyncRequired:
+                  value:
+                    error:
+                      code: 4003
+                      name: SYNC_REQUIRED
+                      message: The operation failed. Device need to sync first.
+                      connected: true
+                TokenError:
+                  value:
+                    error:
+                      code: 4004
+                      name: TOKEN_ERROR
+                      message: Unspecified token error. Check error response data property for chained error info.
+                      connected: true
+                      data:
+                        error:
+                          code: 2000
+                          name: TOKEN_ERROR
+                          message: Generic token error
+                          data: Optional partner specific token instructions for the user.
+                TokenUrlTimeout:
+                  value:
+                    error:
+                      code: 4004
+                      name: TOKEN_ERROR
+                      message: Unspecified token error. Check error response data property for chained error info.
+                      connected: true
+                      data:
+                        error:
+                          code: 2001
+                          name: TOKEN_URL_EXPIRED
+                          message: The token url have expired.
+                          data: Optional partner specific token instructions for the user.
+                TokenExpired:
+                  value:
+                    error:
+                      code: 4004
+                      name: TOKEN_ERROR
+                      message: Unspecified token error. Check error response data property for chained error info.
+                      connected: true
+                      data:
+                        error:
+                          code: 2002
+                          name: TOKEN_EXPIRED
+                          message: The token have expired.
+                          data: Optional partner specific token instructions for the user.
+                TokenInvalid:
+                  value:
+                    error:
+                      code: 4004
+                      name: TOKEN_ERROR
+                      message: Unspecified token error. Check error response data property for chained error info.
+                      connected: true
+                      data:
+                        error:
+                          code: 2003
+                          name: TOKEN_INVALID
+                          message: The token is invalid.
+                          data: Optional partner specific token instructions for the user.
+                TokenRestrictedWithInfo:
+                  value:
+                    error:
+                      code: 4004
+                      name: TOKEN_ERROR
+                      message: Unspecified token error. Check error response data property for chained error info.
+                      connected: true
+                      data:
+                        error:
+                          code: 2004
+                          name: TOKEN_RESTRICTED
+                          message: The token can not be used in the current context.
+                          data: The token can not be used with the provided connection key.
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /hssp/loop:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    get:
+      description: Get the HSSP loop setting of the device. Only available in firmware >= 3.2.x
+      summary: Get the HSSP loop setting of the device. Only available in firmware >= 3.2.x
+      tags:
+        - HSSP
+      operationId: getLoopSetting
+      responses:
+        "200":
+          description: LoopSettingResponse
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/LoopSettingResponse"
+              examples:
+                LoopingActivated:
+                  value:
+                    result: 0
+                    activated: true
+                LoopingNotActivated:
+                  value:
+                    result: 0
+                    activated: false
+                Error:
+                  value:
+                    error:
+                      code: 4000
+                      connected: true
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+    put:
+      description: "If looping is enabled, the device will start replaying the script from the beginning when the end of the script is reached. Only available in firmware >= 3.2.x"
+      summary: Set the HSSP loop setting of the device. Only available in firmware >= 3.2.x
+      tags:
+        - HSSP
+      operationId: setLoopSetting
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoopSettingUpdate"
+            examples:
+              Enable:
+                value:
+                  activated: true
+              Disable:
+                value:
+                  activated: false
+        required: true
+      responses:
+        "200":
+          description: RPCResult
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/RPCResult"
+              examples:
+                LoopSettingOk:
+                  value:
+                    result: 0
+                Error:
+                  value:
+                    error:
+                      code: 4000
+                      connected: true
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /hssp/state:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    get:
+      description: Get the HSSP state of the device.
+      summary: Get the HSSP state of the device.
+      tags:
+        - HSSP
+      operationId: getHSSPState
+      x-eov-operation-id: getState
+      responses:
+        "200":
+          description: HSSPState
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    allOf:
+                      - $ref: "#/components/schemas/RPCResult"
+                      - type: object
+                        properties:
+                          state:
+                            $ref: "#/components/schemas/HSSPState"
+                        required:
+                          - state
+              examples:
+                Playing:
+                  value:
+                    result: 0
+                    state: 4
+                Paused:
+                  value:
+                    result: 0
+                    state: 3
+                NeedSetup:
+                  value:
+                    result: 0
+                    state: 2
+                Error:
+                  value:
+                    error:
+                      code: 4000
+                      connected: true
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /hstp/time:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    get:
+      description: "Get the current time of the device. When the device and the server time is synchronized, this will be the server time estimated by the device."
+      summary: Get the current time of the device.
+      tags:
+        - HSTP
+      operationId: getDeviceTime
+      responses:
+        "200":
+          description: DeviceTimeResponse
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    allOf:
+                      - $ref: "#/components/schemas/RPCResult"
+                      - type: object
+                        properties:
+                          time:
+                            $ref: "#/components/schemas/Timestamp"
+                        required:
+                          - time
+              examples:
+                Success:
+                  value:
+                    time: 1619080355381
+                    result: 0
+                Error:
+                  value:
+                    error:
+                      code: 2000
+                      connected: true
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /hstp/offset:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    get:
+      description: "The purpose of the offset value is to provide a way to manually adjust the device/server clock synchronization.<br> One usecase is when playing scripts (see HSSP). Eg. if the script and video is not in perfect sync, a user could adjust the offset value to compensate.<br> <br> Example:<br> If we assume that the current offset value of the device is 0, and the script is 100ms ahead of the video, setting the offset to -100ms could fix the synchronization issue.<br> If the script is 100ms behind the video, setting the offset to 100ms could do the same.<br> In most cases, the device/server clock synchronization is good enough. In some special cases a manual adjustment might be required to get perfect sync."
+      summary: Get the HSTP offset of the device.
+      tags:
+        - HSTP
+      operationId: getOffset
+      responses:
+        "200":
+          description: OffsetResponse
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/OffsetResponse"
+              examples:
+                OffsetNegative:
+                  value:
+                    result: 0
+                    offset: -100
+                OffsetPositive:
+                  value:
+                    result: 0
+                    offset: 100
+                Error:
+                  value:
+                    error:
+                      code: 4000
+                      connected: true
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+    put:
+      description: "The purpose of the offset value is to provide a way to manually adjust the device/server clock synchronization.<br> One usecase is when playing scripts (see HSSP). Eg. if the script and video is not in perfect sync, a user could adjust the offset value to compensate.<br> <br> Example:<br> If we assume that the current offset value of the device is 0, and the script is 100ms ahead of the video, setting the offset to -100ms could fix the synchronization issue.<br> If the script is 100ms behind the video, setting the offset to 100ms could do the same.<br> In most cases, the device/server clock synchronization is good enough, but in some special cases a manual adjustment might be required to achieve perfect synchronization."
+      summary: Set the HSTP offset of the device.
+      tags:
+        - HSTP
+      operationId: setOffset
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OffsetUpdate"
+            examples:
+              OffsetPositive100ms:
+                value:
+                  offset: 100
+              OffsetNegative100ms:
+                value:
+                  offset: -100
+        required: true
+      responses:
+        "200":
+          description: RPCResult
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/RPCResult"
+              examples:
+                OffsetSetOk:
+                  value:
+                    result: 0
+                Error:
+                  value:
+                    error:
+                      code: 4000
+                      connected: true
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /hstp/rtd:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    get:
+      description: Get the round-trip-delay-time (rtd) between the device and the server. The rtd is calculated when the synchronization of the server and device time is triggered. See hstp/sync for more information.
+      summary: Get the round-trip-delay-time (rtd) between the device and the server.
+      tags:
+        - HSTP
+      operationId: getRoundTripDelay
+      responses:
+        "200":
+          description: RTDResponse
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    allOf:
+                      - $ref: "#/components/schemas/RPCResult"
+                      - type: object
+                        properties:
+                          rtd:
+                            $ref: "#/components/schemas/Timestamp"
+                        required:
+                          - rtd
+              examples:
+                Success:
+                  value:
+                    rtd: 25
+                    result: 0
+                Error:
+                  value:
+                    error:
+                      code: 2000
+                      connected: true
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /hstp/sync:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    get:
+      parameters:
+        - name: syncCount
+          in: query
+          required: false
+          description: The number of round-trip samples to use in synchronization.
+          schema:
+            $ref: "#/components/schemas/SyncCount"
+        - name: outliers
+          in: query
+          required: false
+          description: The number of sample outliers to discard in synchronization.
+          schema:
+            $ref: "#/components/schemas/Outliers"
+      description: Syncronizes the device with the server clock and calculates the round-trip-delay between the device and the server.
+      summary: Syncronize the connected device with the server clock.
+      tags:
+        - HSTP
+      operationId: sync
+      responses:
+        "200":
+          description: HSTPSyncResponse
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    allOf:
+                      - $ref: "#/components/schemas/RPCResult"
+                      - type: object
+                        properties:
+                          time:
+                            $ref: "#/components/schemas/Timestamp"
+                          rtd:
+                            $ref: "#/components/schemas/Timestamp"
+              examples:
+                Synced:
+                  value:
+                    result: 0
+                    time: 1619080355381
+                    rtd: 36
+                Error:
+                  value:
+                    error:
+                      code: 2000
+                      connected: true
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /maintenance/restart:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    put:
+      description: "Restart the device. If the optional reconnect flag is set to <code>true</code>, the device will reconnect to the server after restart. The reconnect value defaults to <code>true</code> if not specified."
+      summary: Restart the device.
+      tags:
+        - MAINTENANCE
+      operationId: restart
+      x-eov-operation-id: restart
+      requestBody:
+        content:
+          application/json:
+            schema:
+              description: Restart options
+              type: object
+              properties:
+                reconnect:
+                  type: boolean
+              required:
+                - reconnect
+            examples:
+              Reconnect:
+                value:
+                  reconnect: true
+              NoReconect:
+                value:
+                  reconnect: false
+        required: false
+      responses:
+        "200":
+          description: RestartResponse
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/RPCResult"
+              examples:
+                Restarting:
+                  value:
+                    result: 0
+                Error:
+                  value:
+                    result: -1
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /maintenance/update/perform:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    put:
+      description: Perform firmware update.
+      summary: Perform firmware update.
+      tags:
+        - MAINTENANCE
+      operationId: updatePerformFW
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePerform"
+        required: true
+      responses:
+        "200":
+          description: UpdatePerformResponse
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/RPCResult"
+              examples:
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /maintenance/update/status:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    get:
+      description: Get the device update status.
+      summary: Get the device update status.
+      tags:
+        - MAINTENANCE
+      operationId: getUpdateStatus
+      responses:
+        "200":
+          description: UpdateStatusResponse
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/UpdateStatusResponse"
+              examples:
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /slide:
+    parameters:
+      - $ref: "#/components/parameters/ChannelOrKey"
+    get:
+      description: Get the slide min and max position.
+      summary: Get the slide settings.
+      tags:
+        - SLIDE
+      operationId: getSlide
+      responses:
+        "200":
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          description: Slider values.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/SlideResponse"
+              examples:
+                SlideFullRange:
+                  value:
+                    min: 0
+                    max: 100
+                SlideTopHalf:
+                  value:
+                    min: 50
+                    max: 100
+                SlideBottomHalf:
+                  value:
+                    min: 0
+                    max: 50
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+    put:
+      description: "Set the slide min and max position. <p>The slide min and max position decides the range of the movement of the slide. <p> Examples: <ul> <li>Use the full range of the slide: (min=0, max=100)</li> <li>Use only the top half of the slide: (min=50, max=100)</li> <li>Use only the bottom half of the slide: (min=0, max=50)</li> </ul> <p>You can update min and max individually or set both values. <p>The fixed flag can be set to move the current min-max-range relative to a new min or max value. By setting fixed=true, the current min-max-range will be shifted relative to the new value. <ul> <li>Existing (min=0, max=30) with new value (min=20, fixed=true) => New setting: (min=20, max=50)</li> <li>Existing (min=85, max=100) with new value (max=20, fixed=true) => New setting: (min=5, max=20)</li> <li>Existing (min=60, max=100) with new value (min=0, fixed=true) => New setting: (min=0, max=40)</li> <li>Existing (min=60, max=100) with new value (max=10, fixed=true) => New setting: (min=0, max=10)</li> <li>Existing (min=60, max=100) with new value (min=80, fixed=true) => New setting: (min=80, max=100)</li> </ul> The fixed flag is ignored when both min and max are specified. <p> When updating the slide values, the device will adjust the provided values if the provided values are not legal. Typical situations where this might occur: <ul> <li>Setting the slide min value higher than the current max.</li> <li>Setting the slide max value lower than the current min.</li> <li>Setting the slide range smaller than the minimum allowed distance (max-min >= MIN_ALLOWED).</li> </ul> </p> <p> If an adjustment was needed, it will be reflected in the response result code. See <b>SlideResult</b> schema for details. </p> "
+      summary: Set slide settings.
+      tags:
+        - SLIDE
+      operationId: setSlide
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SlideSettings"
+            examples:
+              MinAndMax:
+                value:
+                  min: 10
+                  max: 40
+              MinOnly:
+                value:
+                  min: 20
+              MinOnlyFixed:
+                value:
+                  min: 50
+                  fixed: true
+              MaxOnly:
+                value:
+                  max: 60
+              MaxOnlyFixed:
+                value:
+                  max: 80
+                  fixed: true
+        required: true
+      responses:
+        "200":
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          description: SlideSettings
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/SlideUpdateResponse"
+              examples:
+                SettingsUpdated:
+                  value:
+                    result: 0
+                SettingsUpdatedRoundedDown:
+                  value:
+                    result: 1
+                SettingsUpdatedRoundedUp:
+                  value:
+                    result: 2
+                SettingsUpdateFailed:
+                  value:
+                    error:
+                      code: 2000
+                      name: OperationFailed
+                      message: Operation failed
+                      connected: true
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /slide/position/absolute:
+    parameters:
+      - $ref: "#/components/parameters/ConnectionKey"
+    get:
+      description: Get the current slide position in millimeter (mm).
+      summary: Get the current slide position
+      tags:
+        - SLIDE
+      operationId: getPositionAbs
+      responses:
+        "200":
+          description: Current absolute position
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/PositionAbsoluteResponse"
+              examples:
+                Top:
+                  value:
+                    result: 0
+                    position: 107
+                Middle:
+                  value:
+                    result: 0
+                    position: 50
+                Bottom:
+                  value:
+                    result: 0
+                    position: 0
+                Error:
+                  $ref: "#/paths/~1mode/get/responses/200/content/application~1json/examples/GenericBaseError"
+                DeviceTimeout:
+                  $ref: "#/components/examples/DeviceTimeout"
+                DeviceNotConnected:
+                  $ref: "#/components/examples/DeviceNotConnected"
+        "400":
+          $ref: "#/components/responses/400"
+  /servertime:
+    get:
+      operationId: getServerTime
+      tags:
+        - TIMESYNC
+      summary: Get current server time.
+      description: "Provides the server time that you must use when calculating the client-server-offset (<i>cs_offset</i>), which is used when calculating a client-side-estimated-server-time (<i>Tcest</i>).<br><br> <h2>Client-server-offset</h2> The client-server-offset (<i>cs_offset</i>) can be calculated the following way: <br> <ol> <li>Collect X server time (<i>Ts</i>) samples using this endpoint. A higher number of samples will results in longer estimation time but a more accurate result. A good sample size is 30 (X = 30).</li> <li>Track the round-trip-delay (<i>RTD</i>) for each sample by recording the request send time (<i>Tsend</i>) and response received time (<i>Treceive</i>). Calculate <i>RTD = Treceive – Tsend</i>.</li> <li>Calculate the estimated server time when the response is received (<i>Ts_est</i>) by adding half the RTD time to the received server time value (<i>Ts</i>). <i>Ts_est  = Ts + RTD/2</i>.</li> <li>Calculate the offset between estimated server time (<i>Ts_est</i>) and client time (<i>Tc</i>). Upon receive <i>Tc == Treceive</i> => <i>offset = Ts_est  - Treceive</i>.</li> <li>Add the offset to the aggregated offset value (<i>offset_agg</i>).  <i>offset_agg = offset_agg + offset</i>.</li> <li>When all samples have been received calculate the average offset (<i>cs_offset</i>) by dividing aggregated offset (<i>offset_agg</i>) values by the number of samples (X). <i>cs_offset = offset_agg / X</i></li> </ol> The process above gives you a good estimate of the client-server-offset (<i>cs_offset</i>).<br><br> Normally you calculate the <i>cs_offset</i> once, and use it whenever you need to calculate client-side-estimated-server-time (<i>Tcest</i>).<br> However, if the synchronization between device and the service (eg. video/script synchronization) is off (maybe due to changing network topology, clock drift, bad initial calculation, etc.), it might help to re-calculate the <i>cs_offset</i>. <h2>Client-side-estimated-server-time</h2> The client-side-estimated-server-time (<i>Tcest</i>) value is required in some of the API endpoints (eg. /hssp/play).<br><br> The <i>Tcest</i> is calculated the following way:<br><br> &nbsp;&nbsp;&nbsp;<i>Tcest = Tc + cs_offset</i><br><br> where <i>Tc</i> is the current client time and <i>cs_offset</i> is the client-server-offset."
+      responses:
+        "200":
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          description: Current server time in UNIX/Epoch time.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerTimeResponse"
+        "400":
+          $ref: "#/components/responses/400"
+  /ota/latest:
+    parameters:
+      - name: model
+        in: query
+        required: true
+        description: The model to get latest firmware for.
+        schema:
+          $ref: "#/components/schemas/Model"
+      - name: branch
+        in: query
+        required: true
+        description: The branch to get latest firmware for.
+        schema:
+          $ref: "#/components/schemas/Branch"
+    get:
+      description: Get the latest available firmware available for the provided model and branch.
+      summary: Get the latest available firmware available for the provided model and branch.
+      tags:
+        - OTA
+      operationId: latest
+      responses:
+        "200":
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/X-RateLimit-Limit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/X-RateLimit-Remaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/X-RateLimit-Reset"
+          description: OTA latest response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtaLatestResponse"
+        "400":
+          $ref: "#/components/responses/400"

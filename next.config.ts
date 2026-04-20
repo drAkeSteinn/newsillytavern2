@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
     '.space.z.ai',
     '*.space.z.ai',
     'localhost',
+    '127.0.0.1',
   ],
 
   // Externalize native modules so they are loaded at runtime, not bundled.

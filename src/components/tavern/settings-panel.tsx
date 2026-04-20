@@ -94,6 +94,7 @@ import { TTSSettingsPanel } from './tts-settings-panel';
 import { SpriteGeneralPanel } from './sprite-general-panel';
 import { EmbeddingsSettingsPanel } from '@/components/embeddings/embeddings-settings-panel';
 import { ToolsSettingsPanel } from '@/components/tools/tools-settings-panel';
+import { HandyControlPanel } from './handy-control-panel';
 
 // ============================================
 // LM Studio Model Selector
@@ -1150,6 +1151,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
     { value: 'sprites', label: 'Sprites', icon: Sparkles },
     { value: 'embeddings', label: 'Embeddings', icon: Brain },
     { value: 'tools', label: 'Herramientas', icon: Wrench },
+    { value: 'handy', label: 'Haptic', icon: Zap },
   ];
 
   // Separators after these tabs to group related sections
@@ -2258,6 +2260,11 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
             {/* Tools / Actions Settings */}
             <TabsContent value="tools" className="h-full overflow-y-auto p-6 m-0 data-[state=inactive]:hidden">
               <ToolsSettingsPanel />
+            </TabsContent>
+
+            {/* Handy Haptic Device */}
+            <TabsContent value="handy" className="h-full overflow-y-auto p-6 m-0 data-[state=inactive]:hidden">
+              <HandyControlPanel />
             </TabsContent>
                 </div>
                 </Tabs>

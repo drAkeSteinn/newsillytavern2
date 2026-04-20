@@ -1,7 +1,33 @@
 {
   "version": 1,
   "collectionName": "Rick",
-  "sprites": {},
+  "sprites": {
+    "1775208031410-kghc2p.webp": {
+      "label": "1775208031410-kghc2p",
+      "filename": "1775208031410-kghc2p.webp",
+      "duration": 3000,
+      "timeline": {
+        "duration": 3000,
+        "tracks": [
+          {
+            "id": "f7754846-0b04-4682-9569-ade20bc878b7",
+            "type": "sound",
+            "name": "Sound Track 1",
+            "keyframes": [],
+            "enabled": true,
+            "locked": false,
+            "muted": false,
+            "volume": 1
+          }
+        ],
+        "markers": [],
+        "loop": false,
+        "autoPlaySounds": true,
+        "globalVolume": 1
+      },
+      "updatedAt": "2026-04-19T22:04:44.479Z"
+    }
+  },
   "createdAt": "2026-04-03T09:20:16.826Z",
-  "updatedAt": "2026-04-03T09:20:16.826Z"
+  "updatedAt": "2026-04-19T22:04:44.479Z"
 }

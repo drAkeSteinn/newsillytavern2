@@ -1,0 +1,23 @@
+{
+  "code": 200,
+  "data": {
+    "description": "",
+    "external": {},
+    "html": "<html><head><meta name=\"color-scheme\" content=\"light dark\"><meta charset=\"utf-8\"></head><body><pre>{\"name\":\"Bad request\",\"message\":\"Missing connection key in request\"}\n</pre><div class=\"json-formatter-container\"></div></body></html>",
+    "metadata": {
+      "color-scheme": "light dark"
+    },
+    "title": "",
+    "url": "https://www.handyfeeling.com/api/handy-rest/v2/swagger",
+    "usage": {
+      "tokens": 59
+    },
+    "warning": "Target URL returned error 400: Bad Request"
+  },
+  "meta": {
+    "usage": {
+      "tokens": 59
+    }
+  },
+  "status": 20000
+}

@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "collectionName": "custom",
+  "sprites": {
+    "1772240419750-1ppiof.webm": {
+      "label": "1772240419750-1ppiof",
+      "filename": "1772240419750-1ppiof.webm",
+      "duration": 3000,
+      "timeline": {
+        "duration": 3000,
+        "tracks": [
+          {
+            "id": "a0dab9c0-c872-4f6b-8271-7c8e1f5f2f38",
+            "type": "sprite",
+            "name": "Sprite",
+            "keyframes": [
+              {
+                "id": "c7c44522-b5ed-489f-8819-66e8c4defd33",
+                "time": 800,
+                "value": {
+                  "type": "sound",
+                  "soundUrl": "",
+                  "soundTriggerId": "8ff06560-33da-41ff-8a5b-4867936e8786",
+                  "soundTriggerName": "asd",
+                  "volume": 1,
+                  "pan": 0,
+                  "play": true,
+                  "stop": false
+                },
+                "interpolation": "hold"
+              }
+            ],
+            "enabled": true,
+            "locked": false,
+            "muted": false,
+            "volume": 1
+          },
+          {
+            "id": "fad5a45f-6361-47df-9f2c-9a6d03bdf5cb",
+            "type": "haptic",
+            "name": "Haptic Track 1",
+            "keyframes": [
+              {
+                "id": "e637eda0-0437-4dde-87a9-1df5a31e55de",
+                "time": 0,
+                "value": {
+                  "type": "haptic",
+                  "position": 83,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "be31dcb4-63f5-44b4-9414-9a632d215816",
+                "time": 500,
+                "value": {
+                  "type": "haptic",
+                  "position": 68,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "6754ca2c-979e-4ccf-8ed6-9989eb704937",
+                "time": 900,
+                "value": {
+                  "type": "haptic",
+                  "position": 73,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "c212fae8-394c-4fbf-835d-e8948b0e0745",
+                "time": 1400,
+                "value": {
+                  "type": "haptic",
+                  "position": 44,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "3b28524d-84a6-4b40-852b-8e12f46b745f",
+                "time": 1900,
+                "value": {
+                  "type": "haptic",
+                  "position": 76,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "14663e0b-1e61-4689-9e9c-87a17e92f629",
+                "time": 2500,
+                "value": {
+                  "type": "haptic",
+                  "position": 60,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "63b7d350-ed9b-48a9-8b9c-1f3a6f60f325",
+                "time": 3000,
+                "value": {
+                  "type": "haptic",
+                  "position": 3,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              }
+            ],
+            "enabled": true,
+            "locked": false,
+            "muted": false,
+            "volume": 1
+          }
+        ],
+        "markers": [],
+        "loop": true,
+        "autoPlaySounds": true,
+        "globalVolume": 1
+      },
+      "updatedAt": "2026-04-19T22:22:59.998Z"
+    }
+  },
+  "createdAt": "2026-04-19T19:40:05.390Z",
+  "updatedAt": "2026-04-19T22:22:59.998Z"
+}

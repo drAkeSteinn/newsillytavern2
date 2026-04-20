@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,6 +8,23 @@ import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Slider } from '@/components/ui/slider';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import type {
   SpriteTimelineCollection,
@@ -15,12 +32,14 @@ import type {
   TimelineTrack,
   TimelineKeyframe,
   SoundKeyframeValue,
+  HapticKeyframeValue,
   SpriteAnimationFormat,
   SoundTrigger,
   TimelineData,
 } from '@/types';
 import {
   DEFAULT_SOUND_KEYFRAME_VALUE,
+  DEFAULT_HAPTIC_KEYFRAME_VALUE,
   createDefaultTimelineData,
 } from '@/types';
 import {
@@ -47,9 +66,19 @@ import {
   GripVertical,
   Save,
   Move,
+  Vibrate,
+  Waves,
+  Download,
+  Activity,
+  ChevronDown,
+  Wifi,
+  WifiOff,
+  Power,
+  Plus,
 } from 'lucide-react';
 import { useTavernStore } from '@/store/tavern-store';
 import { useToast } from '@/hooks/use-toast';
+import { useHapticPlayback } from '@/hooks/use-haptic-playback';
 
 // Audio cache for preloading sounds
 const audioCache = new Map<string, HTMLAudioElement>();
@@ -121,6 +150,52 @@ interface SpriteCollectionFromAPI {
 // Main Component
 // ============================================
 
+// ============================================
+// Haptic interpolation helper
+// ============================================
+
+function interpolateHapticPosition(
+  currentTime: number,
+  keyframes: TimelineKeyframe[],
+): number {
+  if (keyframes.length === 0) return 50; // Default center
+  if (keyframes.length === 1) return (keyframes[0].value as HapticKeyframeValue).position;
+
+  // Find surrounding keyframes
+  let prev = keyframes[0];
+  let next = keyframes[keyframes.length - 1];
+
+  for (let i = 0; i < keyframes.length - 1; i++) {
+    if (currentTime >= keyframes[i].time && currentTime <= keyframes[i + 1].time) {
+      prev = keyframes[i];
+      next = keyframes[i + 1];
+      break;
+    }
+  }
+
+  const prevPos = (prev.value as HapticKeyframeValue).position;
+  const nextPos = (next.value as HapticKeyframeValue).position;
+
+  // Handle edge cases
+  if (currentTime <= prev.time) return prevPos;
+  if (currentTime >= next.time) return nextPos;
+
+  const t = (currentTime - prev.time) / (next.time - prev.time);
+
+  // Apply interpolation based on type
+  switch (prev.interpolation) {
+    case 'hold': return prevPos;
+    case 'ease-in': return prevPos + (nextPos - prevPos) * (t * t);
+    case 'ease-out': return prevPos + (nextPos - prevPos) * (1 - (1 - t) * (1 - t));
+    case 'ease-in-out': return prevPos + (nextPos - prevPos) * (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+    default: return prevPos + (nextPos - prevPos) * t; // linear
+  }
+}
+
+// ============================================
+// Main Component
+// ============================================
+
 export function SpriteTimelineEditor() {
   const {
     editorState,
@@ -147,6 +222,12 @@ export function SpriteTimelineEditor() {
   const [playbackTime, setPlaybackTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const animationRef = useRef<number | null>(null);
+  // Ref to track isPlaying without causing dependency issues in callbacks
+  const isPlayingRef = useRef(false);
+  // Keep isPlayingRef in sync
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const previewVideoRef = useRef<HTMLVideoElement>(null);
@@ -158,7 +239,20 @@ export function SpriteTimelineEditor() {
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   
   // Keyframe dragging state
-  const [draggingKeyframe, setDraggingKeyframe] = useState<{trackId: string; keyframeId: string} | null>(null);
+  const [draggingKeyframe, setDraggingKeyframe] = useState<{
+    trackId: string;
+    keyframeId: string;
+    isHaptic?: boolean;
+  } | null>(null);
+
+  // Live drag position for haptic tooltip
+  const [hapticDragInfo, setHapticDragInfo] = useState<{position: number; x: number; y: number} | null>(null);
+
+  // Sound drag-and-drop state (track hover feedback)
+  const [dragOverTrackId, setDragOverTrackId] = useState<string | null>(null);
+
+  // Ref to the haptic track content element being dragged (for fresh rect on scroll)
+  const hapticDragTrackElRef = useRef<HTMLElement | null>(null);
   
   // Track which keyframes have been triggered during playback
   const triggeredKeyframesRef = useRef<Set<string>>(new Set());
@@ -166,11 +260,81 @@ export function SpriteTimelineEditor() {
   // Audio context for playing sounds
   const audioContextRef = useRef<AudioContext | null>(null);
 
+  // Haptic CSV file input ref
+  const hapticCsvInputRef = useRef<HTMLInputElement>(null);
+  // Track which haptic track is target for CSV import
+  const [csvImportTargetTrackId, setCsvImportTargetTrackId] = useState<string | null>(null);
+
+  // Haptic playback state
+  const [hapticEnabled, setHapticEnabled] = useState(false);
+  const [hapticConnecting, setHapticConnecting] = useState(false);
+  const haptic = useHapticPlayback({
+    isEnabled: hapticEnabled,
+    onLog: (msg) => console.log('[HapticPlayback]', msg),
+  });
+
+  // Static frame capture for animated images (webp, gif) - show when paused
+  const [staticFrameUrl, setStaticFrameUrl] = useState<string | null>(null);
+  const staticFrameCaptureRef = useRef<boolean>(false);
+
+  // Seek preview for animated images: when seeking while paused,
+  // briefly show the animated WEBP/GIF for ~2 seconds so the user can
+  // preview what happens at that timeline position.
+  const [seekPreview, setSeekPreview] = useState(false);
+  const seekPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Get selected items
   const selectedCollection = timelineCollections.find(c => c.id === editorState.selectedCollectionId);
   const selectedSprite = selectedCollection?.sprites.find(s => s.id === editorState.selectedSpriteId);
   const selectedTrack = selectedSprite?.timeline.tracks.find(t => t.id === editorState.selectedTrackId);
   const selectedKeyframe = selectedTrack?.keyframes.find(k => k.id === editorState.selectedKeyframeId);
+
+  // Capture first frame of animated image (webp, gif) when sprite is selected
+  useEffect(() => {
+    if (!selectedSprite || !selectedSprite.url) {
+      setStaticFrameUrl(null);
+      return;
+    }
+
+    const isAnimatedImage = selectedSprite.format === 'webp' || selectedSprite.format === 'gif';
+    if (!isAnimatedImage) {
+      setStaticFrameUrl(null);
+      return;
+    }
+
+    // Capture the first frame using an offscreen canvas
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          // Try WebP first, fallback to PNG
+          const dataUrl = canvas.toDataURL('image/webp') || canvas.toDataURL('image/png');
+          setStaticFrameUrl(dataUrl);
+          staticFrameCaptureRef.current = true;
+        }
+      } catch (e) {
+        console.warn('[TimelineEditor] Failed to capture first frame:', e);
+        setStaticFrameUrl(null);
+        staticFrameCaptureRef.current = false;
+      }
+    };
+    img.onerror = () => {
+      setStaticFrameUrl(null);
+      staticFrameCaptureRef.current = false;
+    };
+    img.src = selectedSprite.url;
+
+    return () => {
+      setStaticFrameUrl(null);
+      staticFrameCaptureRef.current = false;
+    };
+  }, [selectedSprite?.url, selectedSprite?.format]);
 
   // Fetch sprite collections from filesystem (now includes metadata)
   const fetchCollections = useCallback(async () => {
@@ -188,7 +352,7 @@ export function SpriteTimelineEditor() {
           
           // Use metadata if available, otherwise use defaults
           const timeline = file.timeline || createDefaultTimelineData();
-          const duration = file.duration || (format === 'webm' || format === 'mp4' || format === 'gif' ? 3000 : 0);
+          const duration = file.duration || (format === 'webm' || format === 'mp4' || format === 'gif' || format === 'webp' ? 3000 : 0);
           const label = file.label || file.name.replace(/\.[^/.]+$/, '');
           
           return {
@@ -307,7 +471,7 @@ export function SpriteTimelineEditor() {
             label: file.name.replace(/\.[^/.]+$/, ''),
             url: data.url,
             format,
-            duration: format === 'webm' || format === 'mp4' || format === 'gif' ? 3000 : 0,
+            duration: format === 'webm' || format === 'mp4' || format === 'gif' || format === 'webp' ? 3000 : 0,
             timeline: createDefaultTimelineData(),
             triggerKeys: [],
             triggerRequirePipes: false,
@@ -443,13 +607,33 @@ export function SpriteTimelineEditor() {
 
   // Update preview media position
   const updatePreviewPosition = useCallback((time: number) => {
-    const video = previewVideoRef.current;
+    if (!selectedSprite) return;
     
-    if (video && selectedSprite && (selectedSprite.format === 'webm' || selectedSprite.format === 'mp4')) {
+    const video = previewVideoRef.current;
+    if (video && (selectedSprite.format === 'webm' || selectedSprite.format === 'mp4')) {
       const videoTime = (time / 1000);
       if (video.duration > 0) {
         video.currentTime = videoTime % video.duration;
       }
+      return;
+    }
+
+    // For animated images (WEBP/GIF): trigger a brief seek preview
+    // so the user can see the animation when scrubbing the timeline.
+    // Browsers don't support frame seeking on <img>, so we restart
+    // the animation briefly and return to static frame after 2 seconds.
+    if ((selectedSprite.format === 'webp' || selectedSprite.format === 'gif') && !isPlayingRef.current) {
+      // Clear previous timer
+      if (seekPreviewTimerRef.current) {
+        clearTimeout(seekPreviewTimerRef.current);
+      }
+      // Show animated version
+      setSeekPreview(true);
+      // Return to static after 2 seconds
+      seekPreviewTimerRef.current = setTimeout(() => {
+        setSeekPreview(false);
+        seekPreviewTimerRef.current = null;
+      }, 2000);
     }
   }, [selectedSprite]);
 
@@ -574,24 +758,64 @@ export function SpriteTimelineEditor() {
   const handlePlay = useCallback(() => {
     if (!selectedSprite) return;
     
+    const duration = selectedSprite.timeline.duration;
+    if (!duration || duration <= 0) {
+      toast({ description: 'La duración del sprite es 0. Configura una duración mayor.', variant: 'destructive' });
+      return;
+    }
+    
     // Reset triggered keyframes when starting playback
     if (playbackTime === 0) {
       triggeredKeyframesRef.current.clear();
     }
     
+    // Start haptic playback if enabled
+    if (hapticEnabled && haptic.isConnected) {
+      haptic.startHapticPlayback();
+    }
+    
     setIsPlaying(true);
+    // Cancel any active seek preview (full playback takes over)
+    if (seekPreviewTimerRef.current) {
+      clearTimeout(seekPreviewTimerRef.current);
+      seekPreviewTimerRef.current = null;
+      setSeekPreview(false);
+    }
     const startTime = Date.now() - playbackTime;
     
     const animate = () => {
-      const elapsed = Date.now() - startTime;
-      const duration = selectedSprite.timeline.duration;
-      const currentTime = elapsed % duration;
-      setPlaybackTime(currentTime);
-      updatePreviewPosition(currentTime);
+      try {
+        const elapsed = Date.now() - startTime;
+        const currentTime = elapsed % duration;
+        setPlaybackTime(currentTime);
+        updatePreviewPosition(currentTime);
+        
+        // Check and play sounds at current position
+        checkAndPlaySounds(currentTime);
+        
+        // Send haptic positions for all non-muted haptic tracks
+        if (hapticEnabled && haptic.isConnected) {
+          const hapticTracks = selectedSprite.timeline.tracks.filter(t => t.type === 'haptic' && !t.muted);
+          for (const track of hapticTracks) {
+            if (track.keyframes.length === 0) continue;
+            const position = interpolateHapticPosition(currentTime, track.keyframes);
+            let velocity = 1.0;
+            let closestKf = track.keyframes[0];
+            for (const kf of track.keyframes) {
+              if (Math.abs(kf.time - currentTime) < Math.abs(closestKf.time - currentTime)) {
+                closestKf = kf;
+              }
+            }
+            const hv = closestKf.value as HapticKeyframeValue;
+            if (hv.velocity !== undefined) velocity = hv.velocity;
+            haptic.sendPosition(position, velocity);
+          }
+        }
+      } catch (err) {
+        console.error('[TimelineEditor] Animation frame error:', err);
+      }
       
-      // Check and play sounds at current position
-      checkAndPlaySounds(currentTime);
-      
+      // Always schedule next frame (even if there was an error)
       animationRef.current = requestAnimationFrame(animate);
     };
     animationRef.current = requestAnimationFrame(animate);
@@ -601,7 +825,7 @@ export function SpriteTimelineEditor() {
     if (video && (selectedSprite.format === 'webm' || selectedSprite.format === 'mp4')) {
       video.play().catch(() => {});
     }
-  }, [selectedSprite, playbackTime, updatePreviewPosition, checkAndPlaySounds]);
+  }, [selectedSprite, playbackTime, updatePreviewPosition, checkAndPlaySounds, hapticEnabled, haptic, toast]);
 
   const handlePause = useCallback(() => {
     setIsPlaying(false);
@@ -613,11 +837,16 @@ export function SpriteTimelineEditor() {
     // Clear triggered keyframes on pause so they can be replayed when seeking back
     triggeredKeyframesRef.current.clear();
     
+    // Stop haptic playback
+    if (hapticEnabled && haptic.isPlaying) {
+      haptic.stopHapticPlayback();
+    }
+    
     const video = previewVideoRef.current;
     if (video) {
       video.pause();
     }
-  }, []);
+  }, [hapticEnabled, haptic]);
 
   const handleStop = useCallback(() => {
     setIsPlaying(false);
@@ -628,12 +857,17 @@ export function SpriteTimelineEditor() {
     setPlaybackTime(0);
     triggeredKeyframesRef.current.clear(); // Clear triggered keyframes
     
+    // Stop haptic playback
+    if (hapticEnabled && haptic.isPlaying) {
+      haptic.stopHapticPlayback();
+    }
+    
     const video = previewVideoRef.current;
     if (video) {
       video.pause();
       video.currentTime = 0;
     }
-  }, []);
+  }, [hapticEnabled, haptic]);
 
   // Handle seek to specific time
   const handleSeek = useCallback((time: number) => {
@@ -663,11 +897,17 @@ export function SpriteTimelineEditor() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const lastSavedSpriteRef = useRef<TimelineSprite | null>(null);
 
-  // Cleanup on unmount
+  // Cleanup animation frame on unmount only
+  // NOTE: Do NOT depend on `haptic` here — it's a new object ref every render,
+  // which would cancel the running requestAnimationFrame on each re-render,
+  // killing the playback animation. Haptic cleanup is handled by useHapticPlayback itself.
   useEffect(() => {
     return () => {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
+      }
+      if (seekPreviewTimerRef.current) {
+        clearTimeout(seekPreviewTimerRef.current);
       }
     };
   }, []);
@@ -722,22 +962,275 @@ export function SpriteTimelineEditor() {
     setHasUnsavedChanges(false);
   }, [editorState.selectedSpriteId, editorState.selectedCollectionId]);
 
-  // Handle add track
-  const handleAddTrack = () => {
+  // ============================================
+  // HAPTIC PATTERN GENERATORS
+  // ============================================
+  type HapticPattern = 'sine' | 'ramp' | 'pulse' | 'sawtooth' | 'fast01' | 'slow01' | 'speedup' | 'slowdown' | 'zigzag' | 'topfast' | 'bottomfast';
+
+  const generateHapticPattern = useCallback((pattern: HapticPattern, durationMs: number): Array<{ time: number; position: number }> => {
+    const points: Array<{ time: number; position: number }> = [];
+    const step = 100; // 100ms intervals
+
+    for (let t = 0; t <= durationMs; t += step) {
+      let pos = 50;
+      switch (pattern) {
+        case 'sine': {
+          // Smooth oscillation between 5 and 95, ~2s period
+          pos = 50 + 45 * Math.sin((2 * Math.PI * t) / 2000);
+          break;
+        }
+        case 'ramp': {
+          // Triangle wave between 5 and 95, ~2s period
+          const phase = ((t % 2000) / 2000);
+          pos = phase < 0.5 ? 5 + 90 * (phase * 2) : 95 - 90 * ((phase - 0.5) * 2);
+          break;
+        }
+        case 'pulse': {
+          // Quick up, hold, quick down, hold, ~3s period
+          const phase = (t % 3000) / 3000;
+          if (phase < 0.05) pos = 5 + 85 * (phase / 0.05);
+          else if (phase < 0.3) pos = 90;
+          else if (phase < 0.35) pos = 90 - 85 * ((phase - 0.3) / 0.05);
+          else pos = 5;
+          break;
+        }
+        case 'sawtooth': {
+          // Slow up, fast down, ~2s period
+          const phase = (t % 2000) / 2000;
+          if (phase < 0.9) pos = 5 + 90 * (phase / 0.9);
+          else pos = 95 - 90 * ((phase - 0.9) / 0.1);
+          break;
+        }
+        case 'fast01': {
+          // Quick full strokes, 200ms per stroke
+          const phase = (t % 200) / 200;
+          pos = phase < 0.5 ? 5 + 85 * (phase * 2) : 90 - 85 * ((phase - 0.5) * 2);
+          break;
+        }
+        case 'slow01': {
+          // Slow full strokes, 2s per stroke
+          const phase = (t % 2000) / 2000;
+          pos = phase < 0.5 ? 5 + 85 * (phase * 2) : 90 - 85 * ((phase - 0.5) * 2);
+          break;
+        }
+        case 'speedup': {
+          // Accelerating strokes
+          const cycleCount = 1 + (t / durationMs) * 8;
+          const phase = (t * cycleCount * 2 * Math.PI) / durationMs;
+          pos = 50 + 40 * Math.sin(phase);
+          break;
+        }
+        case 'slowdown': {
+          // Decelerating strokes
+          const cycleCount = 8 - (t / durationMs) * 6;
+          const phase = (t * Math.max(cycleCount, 0.5) * 2 * Math.PI) / durationMs;
+          pos = 50 + 40 * Math.sin(phase);
+          break;
+        }
+        case 'zigzag': {
+          // Ascending zigzag pattern
+          const zigPeriod = 400;
+          const zigPhase = (t % zigPeriod) / zigPeriod;
+          const baseOffset = Math.min((t / durationMs) * 60, 60);
+          pos = baseOffset + (zigPhase < 0.5 ? 20 * (zigPhase * 2) : 20 - 20 * ((zigPhase - 0.5) * 2));
+          break;
+        }
+        case 'topfast': {
+          // Oscillation in 50-100 range
+          pos = 75 + 20 * Math.sin((2 * Math.PI * t) / 400);
+          break;
+        }
+        case 'bottomfast': {
+          // Oscillation in 0-50 range
+          pos = 25 + 20 * Math.sin((2 * Math.PI * t) / 400);
+          break;
+        }
+      }
+      pos = Math.max(0, Math.min(100, Math.round(pos)));
+      points.push({ time: t, position: pos });
+    }
+    return points;
+  }, []);
+
+  const patternNames: Record<HapticPattern, string> = {
+    sine: 'Onda Seno',
+    ramp: 'Triángulo',
+    pulse: 'Pulso',
+    sawtooth: 'Diente de Sierra',
+    fast01: 'Rápido 0-100',
+    slow01: 'Lento 0-100',
+    speedup: 'Acelerar',
+    slowdown: 'Desacelerar',
+    zigzag: 'ZigZag',
+    topfast: 'Rápido Arriba',
+    bottomfast: 'Rápido Abajo',
+  };
+
+  const handleFillPattern = useCallback((trackId: string, pattern: HapticPattern) => {
     if (!selectedSprite) return;
-    
+    const track = selectedSprite.timeline.tracks.find(t => t.id === trackId);
+    if (!track || track.type !== 'haptic') return;
+
+    const duration = selectedSprite.timeline.duration;
+    const points = generateHapticPattern(pattern, duration);
+
+    const newKeyframes: TimelineKeyframe[] = points.map((p, i) => ({
+      id: crypto.randomUUID ? crypto.randomUUID() : `kf_${Date.now()}_${i}`,
+      time: p.time,
+      value: {
+        type: 'haptic' as const,
+        position: p.position,
+        velocity: 1.0,
+        stopOnTarget: false,
+      } as HapticKeyframeValue,
+      interpolation: 'linear' as const,
+    }));
+
+    setTimelineCollections(prev => prev.map(col => ({
+      ...col,
+      sprites: col.sprites.map(s =>
+        s.id === selectedSprite.id
+          ? {
+              ...s,
+              timeline: {
+                ...s.timeline,
+                tracks: s.timeline.tracks.map(t =>
+                  t.id === trackId
+                    ? { ...t, keyframes: newKeyframes }
+                    : t
+                ),
+              },
+            }
+          : s
+      ),
+    })));
+
+    toast({
+      title: 'Patrón aplicado',
+      description: `"${patternNames[pattern]}" aplicado con ${newKeyframes.length} keyframes`,
+    });
+  }, [selectedSprite, generateHapticPattern, toast]);
+
+  // ============================================
+  // HAPTIC CSV IMPORT/EXPORT
+  // ============================================
+
+  const handleExportHapticCsv = useCallback((trackId: string) => {
+    if (!selectedSprite) return;
+    const track = selectedSprite.timeline.tracks.find(t => t.id === trackId);
+    if (!track || track.type !== 'haptic') return;
+
+    const lines = track.keyframes.map(kf => {
+      const hv = kf.value as HapticKeyframeValue;
+      return `${Math.round(kf.time)},${Math.round(hv.position)}`;
+    });
+
+    const csvContent = lines.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${selectedSprite.label.replace(/[^a-zA-Z0-9]/g, '_')}_haptic.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: 'CSV Exportado',
+      description: `${track.keyframes.length} keyframes exportados`,
+    });
+  }, [selectedSprite, toast]);
+
+  const handleImportHapticCsv = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedSprite || !csvImportTargetTrackId) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const text = evt.target?.result as string;
+        const lines = text.trim().split('\n');
+        const newKeyframes: TimelineKeyframe[] = [];
+
+        for (const line of lines) {
+          const parts = line.trim().split(',');
+          if (parts.length < 2) continue;
+          const time = parseInt(parts[0], 10);
+          const position = parseInt(parts[1], 10);
+          if (isNaN(time) || isNaN(position)) continue;
+
+          newKeyframes.push({
+            id: crypto.randomUUID ? crypto.randomUUID() : `kf_${Date.now()}_${Math.random()}`,
+            time: Math.max(0, time),
+            value: {
+              type: 'haptic' as const,
+              position: Math.max(0, Math.min(100, position)),
+              velocity: 1.0,
+              stopOnTarget: false,
+            } as HapticKeyframeValue,
+            interpolation: 'linear' as const,
+          });
+        }
+
+        // Sort by time
+        newKeyframes.sort((a, b) => a.time - b.time);
+
+        setTimelineCollections(prev => prev.map(col => ({
+          ...col,
+          sprites: col.sprites.map(s =>
+            s.id === selectedSprite.id
+              ? {
+                  ...s,
+                  timeline: {
+                    ...s.timeline,
+                    tracks: s.timeline.tracks.map(t =>
+                      t.id === csvImportTargetTrackId
+                        ? { ...t, keyframes: [...t.keyframes, ...newKeyframes] }
+                        : t
+                    ),
+                  },
+                }
+              : s
+          ),
+        })));
+
+        toast({
+          title: 'CSV Importado',
+          description: `${newKeyframes.length} keyframes importados`,
+        });
+      } catch (error) {
+        console.error('Failed to import CSV:', error);
+        toast({
+          title: 'Error',
+          description: 'No se pudo importar el archivo CSV',
+          variant: 'destructive',
+        });
+      }
+    };
+    reader.readAsText(file);
+    setCsvImportTargetTrackId(null);
+    if (hapticCsvInputRef.current) hapticCsvInputRef.current.value = '';
+  }, [selectedSprite, csvImportTargetTrackId, toast]);
+
+  // Handle add track
+  const handleAddTrack = (type: 'sound' | 'haptic' = 'sound') => {
+    if (!selectedSprite) return;
+
     const trackId = crypto.randomUUID ? crypto.randomUUID() : `track_${Date.now()}`;
+    const hapticCount = selectedSprite.timeline.tracks.filter(t => t.type === 'haptic').length;
+    const soundCount = selectedSprite.timeline.tracks.filter(t => t.type === 'sound').length;
     const newTrack: TimelineTrack = {
       id: trackId,
-      type: 'sound',
-      name: `Sound Track ${selectedSprite.timeline.tracks.length + 1}`,
+      type,
+      name: type === 'haptic'
+        ? `Haptic Track ${hapticCount + 1}`
+        : `Sound Track ${soundCount + 1}`,
       keyframes: [],
       enabled: true,
       locked: false,
       muted: false,
       volume: 1,
     };
-    
+
     setTimelineCollections(prev => prev.map(col => ({
       ...col,
       sprites: col.sprites.map(s =>
@@ -828,8 +1321,8 @@ export function SpriteTimelineEditor() {
     }
   };
 
-  // Handle keyframe move
-  const handleMoveKeyframe = (trackId: string, keyframeId: string, newTime: number) => {
+  // Handle keyframe move (supports optional position for haptic tracks)
+  const handleMoveKeyframe = (trackId: string, keyframeId: string, newTime: number, newPosition?: number) => {
     if (!selectedSprite) return;
     
     let time = newTime;
@@ -848,7 +1341,17 @@ export function SpriteTimelineEditor() {
                 ...s.timeline,
                 tracks: s.timeline.tracks.map(t =>
                   t.id === trackId
-                    ? { ...t, keyframes: t.keyframes.map(k => k.id === keyframeId ? { ...k, time } : k).sort((a, b) => a.time - b.time) }
+                    ? {
+                        ...t,
+                        keyframes: t.keyframes.map(k => {
+                          if (k.id !== keyframeId) return k;
+                          const updated = { ...k, time };
+                          if (newPosition !== undefined && (k.value as HapticKeyframeValue)?.type === 'haptic') {
+                            updated.value = { ...k.value, position: Math.round(newPosition) } as HapticKeyframeValue;
+                          }
+                          return updated;
+                        }).sort((a, b) => a.time - b.time),
+                      }
                     : t
                 ),
               },
@@ -867,7 +1370,8 @@ export function SpriteTimelineEditor() {
   // Handle drop on timeline track
   const handleTrackDrop = (e: React.DragEvent, trackId: string) => {
     e.preventDefault();
-    
+    setDragOverTrackId(null);
+
     const triggerData = e.dataTransfer.getData('soundTrigger');
     if (!triggerData || !selectedSprite) return;
     
@@ -875,10 +1379,12 @@ export function SpriteTimelineEditor() {
       const trigger: SoundTrigger = JSON.parse(triggerData);
       
       // Calculate time from drop position
+      // rect is the viewport position of the track content div (which starts after the header)
+      // e.clientX - rect.left gives position within the content div in viewport space
+      // Adding scrollLeft converts to absolute position in the timeline
       const rect = e.currentTarget.getBoundingClientRect();
       const scrollLeft = timelineScrollRef.current?.scrollLeft || 0;
-      const trackHeaderWidth = 180;
-      const mouseX = e.clientX - rect.left + scrollLeft - trackHeaderWidth;
+      const mouseX = e.clientX - rect.left + scrollLeft;
       const time = mouseX / editorState.zoom;
       
       // Create keyframe with sound trigger reference
@@ -934,10 +1440,85 @@ export function SpriteTimelineEditor() {
     }
   };
 
+  // Add sound trigger at current playhead position (click-based alternative to drag-and-drop)
+  const handleAddSoundAtPlayhead = useCallback((trigger: SoundTrigger) => {
+    if (!selectedSprite) {
+      toast({ description: 'Selecciona un sprite primero', variant: 'destructive' });
+      return;
+    }
+
+    // Find the first non-muted sound track, or the first sound track
+    const soundTracks = selectedSprite.timeline.tracks.filter(t => t.type !== 'haptic');
+    const targetTrack = soundTracks.find(t => !t.muted) || soundTracks[0];
+
+    if (!targetTrack) {
+      toast({ description: 'Crea un track de sonido primero (Añadir Track → Track de Sonido)', variant: 'destructive' });
+      return;
+    }
+
+    const time = Math.max(0, Math.min(playbackTime, selectedSprite.timeline.duration));
+
+    // Apply snap
+    let keyframeTime = time;
+    if (editorState.snapEnabled && editorState.snapInterval > 0) {
+      keyframeTime = Math.round(keyframeTime / editorState.snapInterval) * editorState.snapInterval;
+    }
+
+    const keyframeId = crypto.randomUUID ? crypto.randomUUID() : `kf_${Date.now()}`;
+    const newKeyframe: TimelineKeyframe = {
+      id: keyframeId,
+      time: keyframeTime,
+      value: {
+        type: 'sound',
+        soundUrl: '',
+        soundTriggerId: trigger.id,
+        soundTriggerName: trigger.name,
+        volume: trigger.volume,
+        pan: 0,
+        play: true,
+        stop: false,
+      } as SoundKeyframeValue & { soundTriggerId?: string; soundTriggerName?: string },
+      interpolation: 'hold',
+    };
+
+    setTimelineCollections(prev => prev.map(col => ({
+      ...col,
+      sprites: col.sprites.map(s =>
+        s.id === selectedSprite.id
+          ? {
+              ...s,
+              timeline: {
+                ...s.timeline,
+                tracks: s.timeline.tracks.map(t =>
+                  t.id === targetTrack.id
+                    ? { ...t, keyframes: [...t.keyframes, newKeyframe].sort((a, b) => a.time - b.time) }
+                    : t
+                ),
+              },
+            }
+          : s
+      ),
+    })));
+
+    toast({
+      title: 'Sonido agregado',
+      description: `"${trigger.name}" en ${formatTime(keyframeTime)} → ${targetTrack.name}`,
+    });
+  }, [selectedSprite, playbackTime, editorState.snapEnabled, editorState.snapInterval, toast]);
+
   // Handle drag over
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = (e: React.DragEvent, trackId: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
+    setDragOverTrackId(trackId);
+  };
+
+  // Handle drag leave
+  const handleDragLeave = (e: React.DragEvent) => {
+    // Only clear if leaving the track entirely (not entering a child element)
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setDragOverTrackId(null);
+    }
   };
 
   // Safe video play handler for thumbnails
@@ -1021,11 +1602,26 @@ export function SpriteTimelineEditor() {
     // Clamp to valid range
     newTime = Math.max(0, Math.min(newTime, selectedSprite.timeline.duration));
     
-    handleMoveKeyframe(draggingKeyframe.trackId, draggingKeyframe.keyframeId, newTime);
+    // For haptic tracks, also calculate Y position
+    let newPosition: number | undefined;
+    if (draggingKeyframe.isHaptic && hapticDragTrackElRef.current) {
+      // Re-query fresh rect on each move to handle vertical scroll
+      const trackRect = hapticDragTrackElRef.current.getBoundingClientRect();
+      const mouseY = e.clientY - trackRect.top;
+      // Convert Y pixel to position: top = 100, bottom = 0
+      const rawPosition = 100 - (mouseY / 120 * 100);
+      newPosition = Math.max(0, Math.min(100, Math.round(rawPosition)));
+      // Update live drag tooltip
+      setHapticDragInfo({ position: newPosition, x: e.clientX, y: e.clientY });
+    }
+    
+    handleMoveKeyframe(draggingKeyframe.trackId, draggingKeyframe.keyframeId, newTime, newPosition);
   }, [draggingKeyframe, selectedSprite, editorState.zoom, editorState.snapEnabled, editorState.snapInterval, handleMoveKeyframe]);
 
   const handleKeyframeMouseUp = useCallback(() => {
     setDraggingKeyframe(null);
+    setHapticDragInfo(null);
+    hapticDragTrackElRef.current = null;
   }, []);
 
   // Add/remove mouse event listeners for keyframe dragging
@@ -1125,6 +1721,14 @@ export function SpriteTimelineEditor() {
         accept="image/*,video/*"
         multiple
         onChange={handleFileUpload}
+      />
+      {/* Hidden haptic CSV file input */}
+      <input
+        type="file"
+        ref={hapticCsvInputRef}
+        className="hidden"
+        accept=".csv"
+        onChange={handleImportHapticCsv}
       />
       
       {/* Header */}
@@ -1333,121 +1937,216 @@ export function SpriteTimelineEditor() {
         <div className="flex-1 flex flex-col overflow-hidden border rounded-lg bg-muted/20">
           {selectedSprite ? (
             <>
-              {/* Preview Area */}
-              <div className="flex gap-4 p-3 border-b bg-muted/30 flex-shrink-0">
-                {/* Sprite Preview */}
-                <div className="relative w-48 h-32 bg-black/20 rounded-lg overflow-hidden flex items-center justify-center">
-                  {selectedSprite.format === 'webm' || selectedSprite.format === 'mp4' ? (
-                    <video
-                      ref={previewVideoRef}
-                      src={selectedSprite.url}
-                      className="max-w-full max-h-full object-contain"
-                      muted
-                      playsInline
-                      loop
-                    />
-                  ) : selectedSprite.format === 'gif' ? (
-                    <img
-                      src={selectedSprite.url}
-                      alt={selectedSprite.label}
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  ) : (
-                    <img
-                      src={selectedSprite.url}
-                      alt={selectedSprite.label}
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  )}
-                  {/* Time overlay */}
-                  <div className="absolute bottom-1 right-1 bg-black/70 px-2 py-0.5 rounded text-xs font-mono text-white">
-                    {formatTime(playbackTime)}
+              {/* Preview Area - Stacked layout for large preview */}
+              <div className="p-3 border-b bg-muted/30 flex-shrink-0 space-y-3">
+                {/* Sprite Preview - Large */}
+                <div className="flex justify-center">
+                  <div className="relative w-full max-w-xl h-72 bg-black/20 rounded-lg overflow-hidden flex items-center justify-center">
+                    {selectedSprite.format === 'webm' || selectedSprite.format === 'mp4' ? (
+                      <video
+                        ref={previewVideoRef}
+                        src={selectedSprite.url}
+                        className="max-w-full max-h-full object-contain"
+                        muted
+                        playsInline
+                        loop
+                      />
+                    ) : selectedSprite.format === 'gif' || selectedSprite.format === 'webp' ? (
+                      /* Animated image (GIF/WebP): 
+                         - Playing: show animated image
+                         - Seeking while paused: briefly show animation (seekPreview)
+                         - Paused: show static first frame */
+                      (isPlaying || seekPreview) ? (
+                        <img
+                          key={`anim-${selectedSprite.id}-${seekPreview ? `seek-${playbackTime}` : (playbackTime === 0 ? 'start' : 'play')}`}
+                          src={selectedSprite.url}
+                          alt={selectedSprite.label}
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      ) : (
+                        <img
+                          src={staticFrameUrl || selectedSprite.url}
+                          alt={selectedSprite.label}
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      )
+                    ) : (
+                      <img
+                        src={selectedSprite.url}
+                        alt={selectedSprite.label}
+                        className="max-w-full max-h-full object-contain"
+                      />
+                    )}
+                    {/* Time overlay */}
+                    <div className="absolute bottom-2 right-2 bg-black/70 px-3 py-1 rounded text-sm font-mono text-white">
+                      {formatTime(playbackTime)}
+                    </div>
                   </div>
                 </div>
 
-                {/* Controls */}
-                <div className="flex-1 flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={isPlaying ? handlePause : handlePlay}
-                      >
-                        {isPlaying ? (
-                          <Pause className="w-4 h-4" />
-                        ) : (
-                          <Play className="w-4 h-4" />
-                        )}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={handleStop}
-                      >
-                        <Square className="w-4 h-4" />
-                      </Button>
-                    </div>
+                {/* Controls - Horizontal row */}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={isPlaying ? handlePause : handlePlay}
+                    >
+                      {isPlaying ? (
+                        <Pause className="w-4 h-4" />
+                      ) : (
+                        <Play className="w-4 h-4" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={handleStop}
+                    >
+                      <Square className="w-4 h-4" />
+                    </Button>
+                  </div>
 
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm font-mono">{formatTime(playbackTime)}</span>
-                      <span className="text-xs text-muted-foreground">/ {formatTime(selectedSprite.timeline.duration)}</span>
-                    </div>
-                    
-                    {/* Save button */}
+                  {/* Haptic Playback Controls */}
+                  <div className="flex items-center gap-1.5">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 ml-2"
-                      onClick={handleSaveConfiguration}
-                      disabled={saving}
-                    >
-                      {saving ? (
-                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                      ) : (
-                        <Save className="w-3 h-3 mr-1" />
+                      className={cn(
+                        "h-8 gap-1.5 text-xs",
+                        hapticEnabled
+                          ? "bg-fuchsia-600/15 border-fuchsia-500/40 text-fuchsia-400 hover:bg-fuchsia-600/25 hover:text-fuchsia-300"
+                          : "text-muted-foreground",
+                        haptic.isConnected && "border-fuchsia-500/30",
                       )}
-                      Guardar
-                    </Button>
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs">Duración:</Label>
-                      <Input
-                        type="text"
-                        value={formatTime(selectedSprite.timeline.duration)}
-                        onChange={(e) => {
-                          const newDuration = parseTime(e.target.value);
-                          if (newDuration > 0) {
-                            handleUpdateSprite(selectedSprite.id, {
-                              duration: newDuration,
-                              timeline: { ...selectedSprite.timeline, duration: newDuration },
+                      onClick={async () => {
+                        if (!hapticEnabled) {
+                          // First enable, then try to connect
+                          setHapticEnabled(true);
+                          setHapticConnecting(true);
+                          const connected = await haptic.connect();
+                          setHapticConnecting(false);
+                          if (!connected) {
+                            toast({
+                              title: 'Handy no conectado',
+                              description: 'Verifica la configuración en el panel de Handy',
+                              variant: 'destructive',
                             });
+                            setHapticEnabled(false);
                           }
-                        }}
-                        className="w-24 h-7 text-xs font-mono"
-                      />
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs">Loop:</Label>
-                      <Switch
-                        checked={selectedSprite.timeline.loop}
-                        onCheckedChange={(checked) => handleUpdateSprite(selectedSprite.id, {
-                          timeline: { ...selectedSprite.timeline, loop: checked },
-                        })}
-                      />
-                    </div>
-
-                    <Button variant="outline" size="sm" className="h-7 ml-auto" onClick={handleAddTrack}>
-                      <Music className="w-3 h-3 mr-1" />
-                      Añadir Track
+                        } else {
+                          haptic.disconnect();
+                          setHapticEnabled(false);
+                        }
+                      }}
+                      disabled={hapticConnecting}
+                    >
+                      {hapticConnecting ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : hapticEnabled ? (
+                        <Vibrate className="w-3.5 h-3.5" />
+                      ) : (
+                        <Vibrate className="w-3.5 h-3.5" />
+                      )}
+                      {hapticConnecting ? 'Conectando...' : hapticEnabled ? 'Haptic ON' : 'Haptic'}
                     </Button>
+                    {/* Connection status indicator */}
+                    <div className={cn(
+                      "flex items-center gap-1 px-2 py-1 rounded-md text-[10px] border transition-all",
+                      haptic.isConnected
+                        ? "border-green-300/50 bg-green-50/80 dark:bg-green-950/30 dark:border-green-800/50"
+                        : "border-muted bg-muted/40",
+                    )}>
+                      <div className={cn(
+                        "w-2 h-2 rounded-full transition-all",
+                        haptic.isConnected
+                          ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.5)]"
+                          : "bg-muted-foreground/30"
+                      )} />
+                      <span className={cn(
+                        "font-medium",
+                        haptic.isConnected
+                          ? "text-green-700 dark:text-green-400"
+                          : "text-muted-foreground"
+                      )}>
+                        {haptic.isConnected ? 'Conectado' : 'OFF'}
+                      </span>
+                    </div>
                   </div>
+
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm font-mono">{formatTime(playbackTime)}</span>
+                    <span className="text-xs text-muted-foreground">/ {formatTime(selectedSprite.timeline.duration)}</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs">Duración:</Label>
+                    <Input
+                      type="text"
+                      value={formatTime(selectedSprite.timeline.duration)}
+                      onChange={(e) => {
+                        const newDuration = parseTime(e.target.value);
+                        if (newDuration > 0) {
+                          handleUpdateSprite(selectedSprite.id, {
+                            duration: newDuration,
+                            timeline: { ...selectedSprite.timeline, duration: newDuration },
+                          });
+                        }
+                      }}
+                      className="w-24 h-7 text-xs font-mono"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs">Loop:</Label>
+                    <Switch
+                      checked={selectedSprite.timeline.loop}
+                      onCheckedChange={(checked) => handleUpdateSprite(selectedSprite.id, {
+                        timeline: { ...selectedSprite.timeline, loop: checked },
+                      })}
+                    />
+                  </div>
+
+                  {/* Save button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7"
+                    onClick={handleSaveConfiguration}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : (
+                      <Save className="w-3 h-3 mr-1" />
+                    )}
+                    Guardar
+                  </Button>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-7 ml-auto">
+                        <Music className="w-3 h-3 mr-1" />
+                        Añadir Track
+                        <ChevronDown className="w-3 h-3 ml-1" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel> Tipo de Track </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => handleAddTrack('sound')}>
+                        <Music className="w-3 h-3 mr-2 text-blue-400" />
+                        Sound Track
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleAddTrack('haptic')}>
+                        <Vibrate className="w-3 h-3 mr-2 text-fuchsia-500" />
+                        Haptic Track
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
 
                   {/* Sprite info */}
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -1456,8 +2155,7 @@ export function SpriteTimelineEditor() {
                       {selectedSprite.format.toUpperCase()}
                     </span>
                     <span>Tracks: {selectedSprite.timeline.tracks.length}</span>
-                    <span>Keyframes: {selectedSprite.timeline.tracks.reduce((acc, t) => acc + t.keyframes.length, 0)}</span>
-                    <span className="text-muted-foreground">|</span>
+                    <span>KF: {selectedSprite.timeline.tracks.reduce((acc, t) => acc + t.keyframes.length, 0)}</span>
                     <span>Zoom: {(editorState.zoom * 100).toFixed(0)}%</span>
                   </div>
                 </div>
@@ -1468,7 +2166,7 @@ export function SpriteTimelineEditor() {
                 {/* Timeline Container with horizontal scrollbar */}
                 <div 
                   ref={timelineScrollRef}
-                  className="flex-1 overflow-x-auto overflow-y-auto"
+                  className={cn("flex-1 overflow-x-auto overflow-y-auto", draggingKeyframe && "select-none")}
                   style={{ scrollbarWidth: 'thin' }}
                 >
                   <div 
@@ -1530,27 +2228,92 @@ export function SpriteTimelineEditor() {
                     </div>
 
                     {/* Track rows */}
-                    {selectedSprite.timeline.tracks.map((track) => (
-                      <div key={track.id} className="flex border-b min-h-[50px]">
+                    {selectedSprite.timeline.tracks.map((track) => {
+                      const isHaptic = track.type === 'haptic';
+                      const trackHeight = isHaptic ? 120 : 50;
+
+                      return (
+                      <div key={track.id} className="flex border-b" style={{ minHeight: `${trackHeight}px` }}>
                         {/* Track header - Fixed width */}
-                        <div className="w-44 flex-shrink-0 p-2 border-r bg-muted/30 flex flex-col gap-1 sticky left-0 z-10">
+                        <div className={cn(
+                          "w-44 flex-shrink-0 p-2 border-r flex flex-col gap-1 sticky left-0 z-10",
+                          isHaptic ? "bg-fuchsia-950/20" : "bg-muted/30"
+                        )}>
                           <div className="flex items-center gap-2">
-                            <Music className="w-3 h-3 text-blue-400" />
-                            <span className="text-xs font-medium truncate flex-1">{track.name}</span>
+                            {isHaptic ? (
+                              <Waves className="w-3 h-3 text-fuchsia-500" />
+                            ) : (
+                              <Music className="w-3 h-3 text-blue-400" />
+                            )}
+                            <span className={cn(
+                              "text-xs font-medium truncate flex-1",
+                              isHaptic && "text-fuchsia-400"
+                            )}>{track.name}</span>
                           </div>
                           <div className="flex items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-5 w-5"
-                              onClick={() => handleUpdateTrack(track.id, { muted: !track.muted })}
-                            >
-                              {track.muted ? (
-                                <VolumeX className="w-2.5 h-2.5 text-muted-foreground" />
-                              ) : (
-                                <Volume2 className="w-2.5 h-2.5" />
-                              )}
-                            </Button>
+                            {isHaptic ? (
+                              <>
+                                {/* Pattern Fill Popover */}
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-5 w-5 text-fuchsia-500 hover:text-fuchsia-400 hover:bg-fuchsia-500/10" title="Rellenar Patrón">
+                                      <Activity className="w-2.5 h-2.5" />
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-52 p-1" align="start">
+                                    <div className="px-2 py-1.5 text-xs font-medium text-fuchsia-400">Patrones Hápticos</div>
+                                    <DropdownMenuSeparator className="mb-1" />
+                                    <div className="max-h-64 overflow-y-auto">
+                                      {(Object.keys(patternNames) as HapticPattern[]).map((pat) => (
+                                        <button
+                                          key={pat}
+                                          className="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-fuchsia-500/10 text-foreground transition-colors"
+                                          onClick={() => handleFillPattern(track.id, pat)}
+                                        >
+                                          {patternNames[pat]}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                                {/* Import CSV */}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 text-muted-foreground hover:text-fuchsia-400 hover:bg-fuchsia-500/10"
+                                  title="Importar CSV"
+                                  onClick={() => {
+                                    setCsvImportTargetTrackId(track.id);
+                                    setTimeout(() => hapticCsvInputRef.current?.click(), 0);
+                                  }}
+                                >
+                                  <Upload className="w-2.5 h-2.5" />
+                                </Button>
+                                {/* Export CSV */}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 text-muted-foreground hover:text-fuchsia-400 hover:bg-fuchsia-500/10"
+                                  title="Exportar CSV"
+                                  onClick={() => handleExportHapticCsv(track.id)}
+                                >
+                                  <Download className="w-2.5 h-2.5" />
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5"
+                                onClick={() => handleUpdateTrack(track.id, { muted: !track.muted })}
+                              >
+                                {track.muted ? (
+                                  <VolumeX className="w-2.5 h-2.5 text-muted-foreground" />
+                                ) : (
+                                  <Volume2 className="w-2.5 h-2.5" />
+                                )}
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1560,60 +2323,274 @@ export function SpriteTimelineEditor() {
                               <Trash2 className="w-2.5 h-2.5" />
                             </Button>
                           </div>
-                        </div>
-                        
-                        {/* Track content - Keyframes area */}
-                        <div
-                          className="flex-1 relative min-h-[50px] bg-muted/10"
-                          style={{ width: `${timelineWidth}px` }}
-                          onDragOver={handleDragOver}
-                          onDrop={(e) => handleTrackDrop(e, track.id)}
-                        >
-                          {/* Keyframes */}
-                          {track.keyframes.map((keyframe) => (
-                            <div
-                              key={keyframe.id}
-                              className={cn(
-                                "absolute top-1/2 -translate-y-1/2 w-5 h-7 rounded cursor-grab active:cursor-grabbing group",
-                                editorState.selectedKeyframeId === keyframe.id 
-                                  ? "bg-amber-500 hover:bg-amber-400 border-2 border-amber-300" 
-                                  : "bg-blue-500 hover:bg-blue-400 border border-blue-300",
-                                draggingKeyframe?.keyframeId === keyframe.id && "scale-110 bg-amber-500 border-2 border-white"
-                              )}
-                              style={{ left: `${keyframe.time * pixelsPerMs - 10}px` }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                selectKeyframe(keyframe.id);
-                              }}
-                              onMouseDown={(e) => {
-                                e.stopPropagation();
-                                selectKeyframe(keyframe.id);
-                                setDraggingKeyframe({ trackId: track.id, keyframeId: keyframe.id });
-                              }}
-                            >
-                              <Move className="w-3 h-3 text-white m-auto opacity-70 group-hover:opacity-100" />
-                              {/* Keyframe info tooltip */}
-                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-black/80 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none z-30">
-                                {formatTime(keyframe.time)}
-                                {(keyframe.value as SoundKeyframeValue & { soundTriggerName?: string })?.soundTriggerName && (
-                                  <span className="block text-blue-300">
-                                    {(keyframe.value as SoundKeyframeValue & { soundTriggerName?: string }).soundTriggerName}
-                                  </span>
-                                )}
-                              </div>
-                              {/* Delete button */}
-                              <button
-                                className="absolute -top-1 -right-1 w-3 h-3 bg-destructive rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteKeyframe(track.id, keyframe.id);
-                                }}
-                              >
-                                <span className="text-[8px] text-white">×</span>
-                              </button>
+                          {isHaptic && track.keyframes.length > 0 && (
+                            <div className="mt-1">
+                              {/* Mini waveform preview */}
+                              <svg viewBox="0 0 160 20" className="w-full h-4 opacity-60" preserveAspectRatio="none">
+                                <polyline
+                                  fill="none"
+                                  stroke="rgb(217 70 239)"
+                                  strokeWidth="1.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  points={
+                                    track.keyframes
+                                      .sort((a, b) => a.time - b.time)
+                                      .map((kf) => {
+                                        const hv = kf.value as HapticKeyframeValue;
+                                        const x = (kf.time / selectedSprite.timeline.duration) * 160;
+                                        const y = 20 - (hv.position / 100) * 20;
+                                        return `${x},${y}`;
+                                      })
+                                      .join(' ')
+                                  }
+                                />
+                              </svg>
                             </div>
-                          ))}
-                          
+                          )}
+                        </div>
+
+                        {/* Track content - Keyframes area / Drop zone for sounds */}
+                        <div
+                          className={cn(
+                            "flex-1 relative bg-muted/10 transition-colors duration-150",
+                            isHaptic && "bg-fuchsia-950/5",
+                            !isHaptic && dragOverTrackId === track.id && "bg-blue-100 dark:bg-blue-950/40 ring-1 ring-blue-400 dark:ring-blue-600 ring-inset"
+                          )}
+                          data-track-content
+                          style={{ width: `${timelineWidth}px`, minHeight: `${trackHeight}px` }}
+                          onDragOver={!isHaptic ? (e) => handleDragOver(e, track.id) : undefined}
+                          onDragLeave={!isHaptic ? handleDragLeave : undefined}
+                          onDrop={!isHaptic ? (e) => handleTrackDrop(e, track.id) : undefined}
+                          onClick={(e) => {
+                            if (!isHaptic) return;
+                            // Create haptic keyframe on click
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const scrollLeft = timelineScrollRef.current?.scrollLeft || 0;
+                            const trackHeaderWidth = 180;
+                            const mouseX = e.clientX - rect.left + scrollLeft - trackHeaderWidth;
+                            let time = mouseX / editorState.zoom;
+                            if (editorState.snapEnabled && editorState.snapInterval > 0) {
+                              time = Math.round(time / editorState.snapInterval) * editorState.snapInterval;
+                            }
+                            time = Math.max(0, Math.min(time, selectedSprite.timeline.duration));
+
+                            // Check if clicking near an existing keyframe (within 8px)
+                            const nearKeyframe = track.keyframes.find(kf => Math.abs(kf.time * pixelsPerMs - mouseX) < 8);
+                            if (nearKeyframe) return;
+
+                            // Calculate Y position from click location (top=100, bottom=0)
+                            const mouseY = e.clientY - rect.top;
+                            const rawPosition = 100 - (mouseY / 120 * 100);
+                            const position = Math.max(0, Math.min(100, Math.round(rawPosition)));
+
+                            const kfId = crypto.randomUUID ? crypto.randomUUID() : `kf_${Date.now()}`;
+                            const newKf: TimelineKeyframe = {
+                              id: kfId,
+                              time,
+                              value: {
+                                type: 'haptic',
+                                position,
+                                velocity: 1.0,
+                                stopOnTarget: false,
+                              } as HapticKeyframeValue,
+                              interpolation: 'linear',
+                            };
+                            setTimelineCollections(prev => prev.map(col => ({
+                              ...col,
+                              sprites: col.sprites.map(s =>
+                                s.id === selectedSprite.id
+                                  ? {
+                                      ...s,
+                                      timeline: {
+                                        ...s.timeline,
+                                        tracks: s.timeline.tracks.map(t =>
+                                          t.id === track.id
+                                            ? { ...t, keyframes: [...t.keyframes, newKf].sort((a, b) => a.time - b.time) }
+                                            : t
+                                        ),
+                                      },
+                                    }
+                                  : s
+                              ),
+                            })));
+                            selectKeyframe(kfId);
+                          }}
+                        >
+                          {isHaptic ? (
+                            <>
+                              {/* Haptic track: Grid lines for position reference */}
+                              {[0, 25, 50, 75, 100].map((pos) => (
+                                <div
+                                  key={`grid-${pos}`}
+                                  className="absolute left-0 right-0 border-t border-dashed pointer-events-none"
+                                  style={{
+                                    top: `${100 - pos}%`,
+                                    borderColor: pos === 50 ? 'rgb(217 70 239 / 0.3)' : 'rgb(217 70 239 / 0.1)',
+                                  }}
+                                >
+                                  <span className="absolute right-1 -top-2.5 text-[8px] text-fuchsia-400/40 font-mono">{pos}</span>
+                                </div>
+                              ))}
+
+                              {/* Wave line SVG connecting haptic keyframes */}
+                              {track.keyframes.length > 1 && (
+                                <svg
+                                  className="absolute inset-0 w-full h-full pointer-events-none"
+                                  preserveAspectRatio="none"
+                                >
+                                  <polyline
+                                    fill="none"
+                                    stroke="rgb(217 70 239)"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    opacity="0.6"
+                                    points={
+                                      track.keyframes
+                                        .sort((a, b) => a.time - b.time)
+                                        .map((kf) => {
+                                          const hv = kf.value as HapticKeyframeValue;
+                                          const x = kf.time * pixelsPerMs;
+                                          const y = ((100 - hv.position) / 100) * trackHeight;
+                                          return `${x},${y}`;
+                                        })
+                                        .join(' ')
+                                    }
+                                  />
+                                </svg>
+                              )}
+
+                              {/* Haptic keyframes as diamond shapes */}
+                              {track.keyframes.map((keyframe) => {
+                                const hv = keyframe.value as HapticKeyframeValue;
+                                const kfX = keyframe.time * pixelsPerMs;
+                                const kfY = ((100 - hv.position) / 100) * trackHeight;
+                                const isSelected = editorState.selectedKeyframeId === keyframe.id;
+                                const isDragging = draggingKeyframe?.keyframeId === keyframe.id;
+
+                                return (
+                                  <Fragment key={keyframe.id}>
+                                    {/* Position line from bottom to keyframe */}
+                                    <div
+                                      className="absolute bottom-0 w-px pointer-events-none"
+                                      style={{
+                                        left: `${kfX}px`,
+                                        height: `${kfY}px`,
+                                        backgroundColor: isSelected ? 'rgb(217 70 239 / 0.5)' : 'rgb(217 70 239 / 0.15)',
+                                      }}
+                                    />
+                                    {/* Diamond keyframe */}
+                                    <div
+                                      className={cn(
+                                        "absolute w-4 h-4 cursor-grab active:cursor-grabbing group z-20",
+                                        "transition-transform",
+                                        isDragging && "scale-125"
+                                      )}
+                                      style={{
+                                        left: `${kfX - 8}px`,
+                                        top: `${kfY - 8}px`,
+                                      }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        selectKeyframe(keyframe.id);
+                                      }}
+                                      onMouseDown={(e) => {
+                                        e.stopPropagation();
+                                        selectKeyframe(keyframe.id);
+                                        // Capture track content element for haptic Y-axis dragging
+                                        const trackContentEl = (e.currentTarget as HTMLElement).closest('[data-track-content]') as HTMLElement | null;
+                                        hapticDragTrackElRef.current = trackContentEl;
+                                        setDraggingKeyframe({
+                                          trackId: track.id,
+                                          keyframeId: keyframe.id,
+                                          isHaptic: true,
+                                        });
+                                      }}
+                                    >
+                                      <div
+                                        className={cn(
+                                          "w-full h-full rotate-45 rounded-sm border-2 transition-colors",
+                                          isSelected
+                                            ? "bg-fuchsia-500 border-fuchsia-300 shadow-lg shadow-fuchsia-500/30"
+                                            : "bg-fuchsia-600 border-fuchsia-400 group-hover:bg-fuchsia-400",
+                                          isDragging && "bg-fuchsia-300 border-fuchsia-200"
+                                        )}
+                                      />
+                                      {/* Tooltip - shows live position during drag */}
+                                      <div className={cn(
+                                        "absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-black/80 text-white text-[10px] rounded whitespace-nowrap pointer-events-none z-30",
+                                        isDragging ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                                      )}>
+                                        {isDragging && hapticDragInfo
+                                          ? `Pos: ${hapticDragInfo.position}`
+                                          : `${formatTime(keyframe.time)} · Pos: ${hv.position}`
+                                        }
+                                      </div>
+                                      {/* Delete button */}
+                                      <button
+                                        className="absolute -top-2 -right-2 w-3 h-3 bg-destructive rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center z-40"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteKeyframe(track.id, keyframe.id);
+                                        }}
+                                      >
+                                        <span className="text-[8px] text-white">×</span>
+                                      </button>
+                                    </div>
+                                  </Fragment>
+                                );
+                              })}
+                            </>
+                          ) : (
+                            <>
+                              {/* Sound keyframes (original rendering) */}
+                              {track.keyframes.map((keyframe) => (
+                                <div
+                                  key={keyframe.id}
+                                  className={cn(
+                                    "absolute top-1/2 -translate-y-1/2 w-5 h-7 rounded cursor-grab active:cursor-grabbing group",
+                                    editorState.selectedKeyframeId === keyframe.id
+                                      ? "bg-amber-500 hover:bg-amber-400 border-2 border-amber-300"
+                                      : "bg-blue-500 hover:bg-blue-400 border border-blue-300",
+                                    draggingKeyframe?.keyframeId === keyframe.id && "scale-110 bg-amber-500 border-2 border-white"
+                                  )}
+                                  style={{ left: `${keyframe.time * pixelsPerMs - 10}px` }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    selectKeyframe(keyframe.id);
+                                  }}
+                                  onMouseDown={(e) => {
+                                    e.stopPropagation();
+                                    selectKeyframe(keyframe.id);
+                                    setDraggingKeyframe({ trackId: track.id, keyframeId: keyframe.id });
+                                  }}
+                                >
+                                  <Move className="w-3 h-3 text-white m-auto opacity-70 group-hover:opacity-100" />
+                                  {/* Keyframe info tooltip */}
+                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-black/80 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none z-30">
+                                    {formatTime(keyframe.time)}
+                                    {(keyframe.value as SoundKeyframeValue & { soundTriggerName?: string })?.soundTriggerName && (
+                                      <span className="block text-blue-300">
+                                        {(keyframe.value as SoundKeyframeValue & { soundTriggerName?: string }).soundTriggerName}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {/* Delete button */}
+                                  <button
+                                    className="absolute -top-1 -right-1 w-3 h-3 bg-destructive rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteKeyframe(track.id, keyframe.id);
+                                    }}
+                                  >
+                                    <span className="text-[8px] text-white">×</span>
+                                  </button>
+                                </div>
+                              ))}
+                            </>
+                          )}
+
                           {/* Playhead indicator for this track */}
                           <div
                             className="absolute top-0 bottom-0 w-0.5 bg-red-500/50 pointer-events-none"
@@ -1621,19 +2598,20 @@ export function SpriteTimelineEditor() {
                           />
                         </div>
                       </div>
-                    ))}
-                    
+                      );
+                    })}
+
                     {/* Empty state for tracks */}
                     {selectedSprite.timeline.tracks.length === 0 && (
                       <div className="flex border-b min-h-[100px]">
                         <div className="w-44 flex-shrink-0 p-2 border-r bg-muted/30 flex items-center justify-center sticky left-0 z-10">
                           <span className="text-xs text-muted-foreground">Sin tracks</span>
                         </div>
-                        <div 
+                        <div
                           className="flex-1 flex items-center justify-center text-muted-foreground text-sm"
                           style={{ width: `${timelineWidth}px` }}
                         >
-                          Haz clic en "Añadir Track" para crear un track de sonido
+                          Haz clic en "Añadir Track" para crear un track
                         </div>
                       </div>
                     )}
@@ -1705,6 +2683,94 @@ export function SpriteTimelineEditor() {
                             </span>
                           </div>
                         )}
+                      </>
+                    )}
+
+                    {(selectedKeyframe.value as HapticKeyframeValue).type === 'haptic' && (
+                      <>
+                        <div className="p-2 bg-fuchsia-500/10 rounded border border-fuchsia-500/30 flex items-center gap-2">
+                          <Vibrate className="w-3 h-3 text-fuchsia-400" />
+                          <span className="text-xs font-medium text-fuchsia-400">Keyframe Háptico</span>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs">Posición</Label>
+                            <span className="text-xs font-mono text-fuchsia-400">{(selectedKeyframe.value as HapticKeyframeValue).position}</span>
+                          </div>
+                          <Slider
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={[(selectedKeyframe.value as HapticKeyframeValue).position]}
+                            onValueChange={([val]) => handleUpdateKeyframe(selectedTrack!.id, selectedKeyframe.id, {
+                              value: { ...selectedKeyframe.value, position: val }
+                            })}
+                            className="w-full"
+                          />
+                          <Input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value={(selectedKeyframe.value as HapticKeyframeValue).position}
+                            onChange={(e) => {
+                              const pos = Math.max(0, Math.min(100, parseInt(e.target.value) || 50));
+                              handleUpdateKeyframe(selectedTrack!.id, selectedKeyframe.id, {
+                                value: { ...selectedKeyframe.value, position: pos }
+                              });
+                            }}
+                            className="w-full h-7 text-xs font-mono"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs">Velocidad</Label>
+                            <span className="text-xs font-mono text-fuchsia-400">{(selectedKeyframe.value as HapticKeyframeValue).velocity ?? 1.0}</span>
+                          </div>
+                          <Slider
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            value={[(selectedKeyframe.value as HapticKeyframeValue).velocity ?? 1.0]}
+                            onValueChange={([val]) => handleUpdateKeyframe(selectedTrack!.id, selectedKeyframe.id, {
+                              value: { ...selectedKeyframe.value, velocity: val }
+                            })}
+                            className="w-full"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={(selectedKeyframe.value as HapticKeyframeValue).stopOnTarget ?? false}
+                            onCheckedChange={(checked) => handleUpdateKeyframe(selectedTrack!.id, selectedKeyframe.id, {
+                              value: { ...selectedKeyframe.value, stopOnTarget: checked }
+                            })}
+                          />
+                          <Label className="text-xs">Parar en Objetivo</Label>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className="text-xs">Interpolación</Label>
+                          <Select
+                            value={selectedKeyframe.interpolation}
+                            onValueChange={(val) => handleUpdateKeyframe(selectedTrack!.id, selectedKeyframe.id, {
+                              interpolation: val as TimelineKeyframe['interpolation']
+                            })}
+                          >
+                            <SelectTrigger size="sm" className="w-full h-7 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="linear">Lineal</SelectItem>
+                              <SelectItem value="ease-in">Ease In</SelectItem>
+                              <SelectItem value="ease-out">Ease Out</SelectItem>
+                              <SelectItem value="ease-in-out">Ease In-Out</SelectItem>
+                              <SelectItem value="hold">Mantener (Hold)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </>
                     )}
                     
@@ -1779,23 +2845,40 @@ export function SpriteTimelineEditor() {
                 <div className="space-y-2">
                   <Label className="text-xs font-medium flex items-center gap-2">
                     <Music className="w-3 h-3" />
-                    Sound Triggers (arrastrar al timeline)
+                    Sound Triggers
                   </Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    Arrastra al timeline o usa el botón + para agregar donde está el cabezal ({formatTime(playbackTime)})
+                  </p>
                   
                   {soundTriggers && soundTriggers.length > 0 ? (
                     <div className="space-y-1">
                       {soundTriggers.map((trigger: SoundTrigger) => (
                         <div
                           key={trigger.id}
-                          className="flex items-center gap-2 p-2 bg-muted/30 rounded cursor-grab active:cursor-grabbing hover:bg-muted/50 transition-colors"
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, trigger)}
+                          className="flex items-center gap-1.5 p-1.5 bg-muted/30 rounded hover:bg-muted/50 transition-colors"
                         >
-                          <Volume2 className="w-3 h-3 text-blue-400" />
-                          <span className="text-xs truncate flex-1">{trigger.name}</span>
-                          <Badge variant="secondary" className="text-[10px]">
-                            {trigger.sounds?.length || 0}
-                          </Badge>
+                          <div
+                            className="flex-1 flex items-center gap-2 min-w-0 cursor-grab active:cursor-grabbing"
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, trigger)}
+                          >
+                            <Volume2 className="w-3 h-3 text-blue-400 shrink-0" />
+                            <span className="text-xs truncate">{trigger.name}</span>
+                            <Badge variant="secondary" className="text-[9px] shrink-0">
+                              {trigger.sounds?.length || 0}
+                            </Badge>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 shrink-0 text-blue-500 hover:text-blue-400 hover:bg-blue-500/10"
+                            title={`Agregar "${trigger.name}" en ${formatTime(playbackTime)}`}
+                            disabled={!selectedSprite}
+                            onClick={() => handleAddSoundAtPlayhead(trigger)}
+                          >
+                            <Plus className="w-3 h-3" />
+                          </Button>
                         </div>
                       ))}
                     </div>

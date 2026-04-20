@@ -56,7 +56,7 @@ function isVideoUrl(url: string): boolean {
 
 // Check if URL is an animated image
 function isAnimatedImage(url: string): boolean {
-  return /\.(gif|apng)(\?.*)?$/i.test(url);
+  return /\.(gif|apng|webp)(\?.*)?$/i.test(url);
 }
 
 interface SpritePackEditorV2Props {

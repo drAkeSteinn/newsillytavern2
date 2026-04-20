@@ -18,9 +18,9 @@ function isVideoUrl(url: string): boolean {
   return /\.(webm|mp4|mov|avi)(\?.*)?$/i.test(url);
 }
 
-// Check if URL is an animated image (gif, apng)
+// Check if URL is an animated image (gif, apng, webp)
 function isAnimatedImage(url: string): boolean {
-  return /\.(gif|apng)(\?.*)?$/i.test(url);
+  return /\.(gif|apng|webp)(\?.*)?$/i.test(url);
 }
 
 export function SpritePreview({
@@ -114,12 +114,15 @@ export function SpriteTypeBadge({ url, className }: SpriteTypeBadgeProps) {
   }
 
   if (isAnimatedImage(url)) {
+    // Determine badge text based on extension
+    const ext = url.split('.').pop()?.toLowerCase() || '';
+    const badgeText = ext === 'webp' ? 'WEBP' : ext === 'apng' ? 'APNG' : 'GIF';
     return (
       <span className={cn(
         'px-1.5 py-0.5 text-[10px] bg-purple-500/80 text-white rounded font-medium',
         className
       )}>
-        GIF
+        {badgeText}
       </span>
     );
   }
