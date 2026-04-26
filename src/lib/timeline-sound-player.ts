@@ -17,6 +17,7 @@ import type {
   SoundTrigger,
   SoundCollection,
 } from '@/types';
+import { isGloballyMuted } from '@/lib/global-audio-mute';
 
 // ============================================
 // Types
@@ -104,6 +105,7 @@ async function playSoundFromTrigger(
   collections: SoundCollection[],
   volume: number = 1
 ): Promise<HTMLAudioElement | null> {
+  if (isGloballyMuted()) return null;
   try {
     // Get the collection for this trigger
     const collection = collections.find(c => c.name === trigger.collection);
@@ -152,6 +154,7 @@ async function playSoundFromUrl(
   url: string,
   volume: number = 1
 ): Promise<HTMLAudioElement | null> {
+  if (isGloballyMuted()) return null;
   try {
     const baseAudio = getAudio(url);
     if (!baseAudio) return null;

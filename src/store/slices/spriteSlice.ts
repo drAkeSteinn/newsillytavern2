@@ -229,6 +229,10 @@ export interface CharacterSpriteState {
     startedAt: number;
     interruptible: boolean;
   } | null;
+
+  // Runtime: actual displayed sprite URL (set by CharacterSprite/GroupSprites)
+  // Used by useTimelineSpriteSounds hook to know which timeline to play
+  displayedSpriteUrl: string | null;
 }
 
 // Default state for a character
@@ -252,6 +256,7 @@ export const createDefaultCharacterState = (): CharacterSpriteState => ({
   // NEW V2 fields
   triggerQueue: createDefaultTriggerQueueState(),
   chainProgress: null,
+  displayedSpriteUrl: null,
 });
 
 // ============================================
@@ -320,6 +325,9 @@ export interface SpriteSlice {
   
   // Set sprite state for a character
   setSpriteStateForCharacter: (characterId: string, state: SpriteState) => void;
+
+  // Set the displayed sprite URL for a character (called by CharacterSprite/GroupSprites)
+  setDisplaySpriteUrl: (characterId: string, url: string | null) => void;
 
   // ============================================
   // NEW V2 ACTIONS - Trigger Queue System
@@ -903,6 +911,26 @@ export const createSpriteSlice = (set: any, get: any): SpriteSlice => ({
           [characterId]: {
             ...currentCharState,
             spriteState,
+          },
+        },
+      };
+    });
+  },
+
+  setDisplaySpriteUrl: (characterId: string, url: string | null) => {
+    set((state: any) => {
+      const currentCharState = state.characterSpriteStates[characterId];
+      if (!currentCharState) return state;
+
+      // Only update if URL actually changed (avoid unnecessary re-renders)
+      if (currentCharState.displayedSpriteUrl === url) return state;
+
+      return {
+        characterSpriteStates: {
+          ...state.characterSpriteStates,
+          [characterId]: {
+            ...currentCharState,
+            displayedSpriteUrl: url,
           },
         },
       };

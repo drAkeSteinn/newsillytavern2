@@ -16,10 +16,36 @@
         "swipes": [
           "\"Sí, sí, adelante. Haz tu pregunta. Sorpréndeme. O decepcióname, que estadísticamente es lo más probable.\""
         ]
+      },
+      {
+        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
+        "role": "user",
+        "content": ".",
+        "isDeleted": false,
+        "swipeId": "8db281ae-b629-4e3d-8b1b-0b725667930f",
+        "swipeIndex": 0,
+        "id": "ee82e156-9aae-45d5-ab74-d15fc327f266",
+        "timestamp": "2026-04-23T16:17:59.351Z",
+        "swipes": [
+          "."
+        ]
+      },
+      {
+        "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
+        "role": "system",
+        "content": "⚠️ No hay configuración LLM activa. Por favor, configura una conexión LLM en los ajustes.",
+        "isDeleted": false,
+        "swipeId": "3f55d5ae-df75-4f8d-b878-db91c4847d1a",
+        "swipeIndex": 0,
+        "id": "34301ecc-6a31-4ccc-a11c-96f65460d4b0",
+        "timestamp": "2026-04-23T16:17:59.360Z",
+        "swipes": [
+          "⚠️ No hay configuración LLM activa. Por favor, configura una conexión LLM en los ajustes."
+        ]
       }
     ],
     "createdAt": "2026-04-04T08:17:17.841Z",
-    "updatedAt": "2026-04-09T03:55:19.172Z",
+    "updatedAt": "2026-04-23T16:17:59.360Z",
     "sessionStats": {
       "characterStats": {
         "7e6b6d7b-905e-4199-a15a-797f2efac746": {

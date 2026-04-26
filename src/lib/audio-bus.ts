@@ -6,6 +6,7 @@
 
 import type { AudioTask, AudioBusState } from '@/types/triggers';
 import { generateId } from '@/lib/utils';
+import { isGloballyMuted } from '@/lib/global-audio-mute';
 
 // Singleton audio bus
 const GLOBAL_KEY = '__TAVERNFLOW_AUDIO_BUS__';
@@ -95,6 +96,29 @@ export function cancelAllAudio(): void {
     bus.audioElement.pause();
     bus.audioElement.currentTime = 0;
     bus.audioElement.src = '';
+  }
+
+  notifyListeners(bus);
+}
+
+/**
+ * Immediately mute/unmute the audio bus and cancel pending tasks
+ */
+export function setAudioBusMuted(muted: boolean): void {
+  const bus = getAudioBus();
+
+  if (muted) {
+    // Cancel everything
+    bus.state.token++;
+    bus.state.queue = [];
+    bus.state.currentTask = null;
+    bus.state.isPlaying = false;
+
+    if (bus.audioElement) {
+      bus.audioElement.pause();
+      bus.audioElement.currentTime = 0;
+      bus.audioElement.src = '';
+    }
   }
 
   notifyListeners(bus);
@@ -200,6 +224,12 @@ async function playAudioTask(
     // Check for cancellation
     if (token !== bus.state.token) {
       reject(new Error('Cancelled'));
+      return;
+    }
+
+    // Check global mute
+    if (isGloballyMuted()) {
+      resolve();
       return;
     }
 

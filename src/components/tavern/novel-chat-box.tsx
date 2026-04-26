@@ -49,6 +49,7 @@ import {
   Ear,
   Radio,
   VolumeX,
+  Volume2,
   Brain,
   Trash2,
   Plus,
@@ -79,6 +80,9 @@ import { DEFAULT_CHATBOX_APPEARANCE, THEME_COLOR_PRESETS } from '@/types';
 import { t } from '@/lib/i18n';
 import { QuickPetitions } from './user-solicitudes';
 import { ThemeEffects, getThemeColors as getThemeColorsUtil } from './theme-effects';
+import { setGlobalMute } from '@/lib/global-audio-mute';
+import { setAudioBusMuted } from '@/lib/audio-bus';
+import { stopAllTimelineSounds } from '@/lib/timeline-sound-player';
 import { useAudioRecorder, useAudioTranscription } from '@/hooks/use-audio-recorder';
 import { useWakeWordDetection } from '@/hooks/use-wake-word-detection';
 
@@ -380,6 +384,16 @@ export function NovelChatBox({
 
   // Derive KWS active state: true when listening or paused by TTS
   const kwsActive = kwsListening || kwsPausedByTTS;
+
+  // Sync global audio mute state to all non-React audio modules
+  useEffect(() => {
+    const muted = settings.sound?.globalMute ?? false;
+    setGlobalMute(muted);
+    if (muted) {
+      setAudioBusMuted(true);
+      stopAllTimelineSounds();
+    }
+  }, [settings.sound?.globalMute]);
 
   // Load ASR/KWS config on mount
   useEffect(() => {
@@ -1755,6 +1769,21 @@ export function NovelChatBox({
                       <Radio className="w-4 h-4" />
                     ) : (
                       <Ear className="w-4 h-4" />
+                    )}
+                  </Button>
+                  {/* Global Audio Mute Toggle */}
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant={settings.sound?.globalMute ? "destructive" : "outline"}
+                    className="h-8 w-8 flex-shrink-0 transition-all"
+                    onClick={() => updateSettings({ sound: { ...settings.sound, globalMute: !settings.sound?.globalMute } })}
+                    title={settings.sound?.globalMute ? 'Activar audio' : 'Silenciar audio'}
+                  >
+                    {settings.sound?.globalMute ? (
+                      <VolumeX className="w-4 h-4" />
+                    ) : (
+                      <Volume2 className="w-4 h-4" />
                     )}
                   </Button>
                   {/* Recording Duration Indicator */}

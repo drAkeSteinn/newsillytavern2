@@ -441,3 +441,106 @@ Stage Summary:
 - WEBP sprites work identically to WebM
 - useTimelineSounds flag on triggers still works
 - When all timelines stop, Handy returns to center position
+
+---
+Task ID: 6
+Agent: main
+Task: Fix runtime sprite timeline playback - sounds and haptics not triggering on stage
+
+Work Log:
+- Investigated why timeline sounds/haptics don't fire when sprites play on the chat stage (idle, talk, trigger)
+- Found 4 root causes in `useTimelineSpriteSounds` hook:
+  1. **No inline V2 timeline support**: Hook only read from filesystem `metadata.json`, ignored `SpritePackEntryV2.timeline` field
+  2. **URL format mismatch**: `extractCollectionFromUrl()` required `/sprites/{collection}/` pattern — V2 pack URLs can be any format
+  3. **Independent URL computation**: Hook computed idle URLs independently via `computeIdleSpriteUrl()` which didn't match actual displayed sprite in random/list modes
+  4. **Same URL no restart**: Returning to same idle URL after trigger didn't restart timeline
+- Added `displayedSpriteUrl: string | null` field to `CharacterSpriteState` in spriteSlice
+- Added `setDisplaySpriteUrl(characterId, url)` action to store (with no-change optimization)
+- Updated `CharacterSprite` to report actual displayed sprite URL via `setDisplaySpriteUrl` in useEffect
+- Updated `GroupSprites` to report displayed URLs for all visible characters via useEffect
+- Rewrote `useTimelineSpriteSounds` hook:
+  - Reads `displayedSpriteUrl` from store (actual URL being rendered)
+  - Falls back to `computeIdleSpriteUrl()` if `displayedSpriteUrl` not yet set
+  - Searches V2 sprite packs for inline `timeline` data first (`findTimelineInV2Packs()`)
+  - Falls back to `metadata.json` filesystem approach if no inline data found
+  - Added `urlMatches()` helper for robust URL comparison (handles query params, hashes)
+- ESLint passed clean, dev server compiled successfully
+
+Stage Summary:
+- Added `displayedSpriteUrl` to character sprite state — CharacterSprite and GroupSprites report their actual rendered URL
+- Hook now finds timeline data from V2 packs (inline) or metadata.json (filesystem)
+- WEBP sprites reproduce tracks identically — the system is format-agnostic (URL-based)
+- Random/list mode sprites now correctly trigger their timeline (previously always used first sprite's data)
+- All changes backward compatible — existing trigger sprite timeline playback unchanged
+
+---
+Task ID: 7
+Agent: main
+Task: Add "Primer Mensaje" (First Message) field to group chat configuration
+
+Work Log:
+- Added `firstMes?: string` field to `CharacterGroup` interface in `src/types/index.ts`
+- Added default `firstMes: group.firstMes ?? ''` in `addGroup` action in `groupSlice.ts`
+- Added `firstMes` state, initial values, and save logic in `group-editor.tsx`
+- Added full-width "Mensaje Inicial del Grupo" textarea in the Prompts tab of group editor
+  - Green-themed card with MessageSquare icon
+  - Tooltip explaining the behavior
+  - Helper text: "Si este campo está vacío, se usará el primer mensaje de cada personaje miembro"
+- Updated `createSession` in `sessionSlice.ts`: Priority is Group firstMes > Character firstMes
+  - Uses `firstMesSenderId` (first non-narrator member) for group messages
+- Updated `clearChat` in `sessionSlice.ts`: Same priority logic applied
+- Both functions use `processMessageTemplate()` with group name for template variable resolution
+- ESLint passed clean, dev server compiled successfully
+
+Stage Summary:
+- Groups can now have a custom "Primer Mensaje" that replaces individual character first messages
+- When group's firstMes is empty, falls back to individual character first messages (original behavior)
+- The field appears in the Prompts tab of the group editor
+- Templates like {{user}}, {{char}} are resolved with the group name and active persona
+- Works for both new session creation and chat clearing
+---
+Task ID: 1
+Agent: main
+Task: Fix template key resolution ({{user}}, {{char}}) in actions block objectives and solicitudes
+
+Work Log:
+- Investigated `buildSkillsBlock()` in `src/lib/stats/stats-resolver.ts`
+- Found that `name`, `description`, and `injectFormat` fields were correctly resolved via `resolveTemplateKeys()`
+- Discovered that objective names (from quest templates) and solicitud names in the "Puede completar" section were NOT being resolved
+- Lines 305 and 307 pushed raw text containing potential `{{user}}`/`{{char}}` without resolution
+- Applied `resolveTemplateKeys()` to both `objectiveName` and `solicitudName` before pushing to arrays
+- Verified other block builders (intentions, invitations, solicitudes) already handle resolution correctly
+- Lint passes cleanly
+
+Stage Summary:
+- Fixed `buildSkillsBlock()` in `src/lib/stats/stats-resolver.ts` lines 302-311
+- Objective names from `findObjectiveNameByKey()` now pass through `resolveTemplateKeys()`
+- Solicitud names from `reward.solicitud.solicitudName` now pass through `resolveTemplateKeys()`
+- `{{user}}`, `{{char}}`, `{{solicitante}}`, `{{solicitado}}` keys in objectives/solicitudes text will now be properly resolved
+---
+Task ID: 1
+Agent: main
+Task: Add global audio mute button to chatbox
+
+Work Log:
+- Investigated all audio systems: Sound Triggers (use-sound-triggers.ts), AudioBus (audio-bus.ts), Timeline Sound Player (timeline-sound-player.ts), Timeline Sprite Sounds hook (use-timeline-sprite-sounds.ts), Sound Key Handler, Sound Handler (legacy)
+- Added `globalMute: boolean` field to `SoundSettings` type in `src/types/index.ts`
+- Added `globalMute: false` default in `src/store/defaults.ts`
+- Created `src/lib/global-audio-mute.ts` — lightweight mutable state module for non-React audio modules
+- Added mute toggle button in `novel-chat-box.tsx` after KWS button with Volume2/VolumeX icons
+- Added `useEffect` in chatbox that syncs settings.globalMute to all audio modules
+- Added `setAudioBusMuted()` function to audio-bus.ts that cancels all queued audio on mute
+- Added `isGloballyMuted()` checks in:
+  - `use-sound-triggers.ts` (scanStreamingContent, scanCompleteMessage)
+  - `audio-bus.ts` (playAudioTask)
+  - `timeline-sound-player.ts` (playSoundFromTrigger, playSoundFromUrl)
+  - `use-timeline-sprite-sounds.ts` (playSoundFromTrigger, playSoundFromUrl)
+  - `sound-key-handler.ts` (processAudioQueue)
+  - `sound-handler.ts` (processAudioQueue - legacy)
+- Lint passes cleanly
+
+Stage Summary:
+- Global mute button added to chatbox between KWS and recording indicator
+- Button shows Volume2 icon (unmuted) or VolumeX icon (muted, red/destructive variant)
+- Muting immediately cancels AudioBus queue, stops timeline sounds, prevents new sound triggers
+- Mute state persists via `settings.sound.globalMute` in the store

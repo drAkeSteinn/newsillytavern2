@@ -603,6 +603,7 @@ export interface CharacterGroup {
   members: GroupMember[];     // Enhanced: detailed member info
   avatar: string;
   systemPrompt: string;
+  firstMes?: string;            // Custom first message for group (replaces individual character first messages)
   activationStrategy: GroupActivationStrategy;
   minResponsesPerTurn: number;  // Minimum responses per turn (for reactive/random/smart)
   maxResponsesPerTurn: number;  // Limit responses per turn (except 'all' strategy)
@@ -936,6 +937,7 @@ export interface SoundSettings {
   maxSoundsPerMessage: number;
   globalCooldown: number;
   realtimeEnabled: boolean;
+  globalMute: boolean;              // Mute all audio (SFX, TTS, timeline sounds)
   // Template for {{sonidos}} key resolution
   soundListPrefix?: string;         // Text before the sound list
   soundListSuffix?: string;         // Text after the sound list

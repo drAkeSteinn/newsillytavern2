@@ -262,7 +262,7 @@ export function buildSkillsBlock(
 
   const charName = characterName || '{{char}}';
   const introText = header.includes('ACCIONES')
-    ? `${charName} puede realizar las siguientes acciones cuando la situación lo requiera.\nCuando una acción tenga "Puede completar", USA LA TOOL "manage_quest" o "manage_solicitud" con la key correspondiente para marcar como completado:\n`
+    ? `${charName} puede realizar las siguientes acciones cuando la situación lo requiera.\nCuando una acción tenga "Puede completar" o si ella cree conveniente activar una de sus acciones, USA LA TOOL "manage_quest", "manage_solicitud" con la key correspondiente para marcar como completado o si ${charName} considera activar una accion usa "manage_action":\n`
     : '';
 
   const lines: string[] = [header];
@@ -302,9 +302,11 @@ export function buildSkillsBlock(
       for (const reward of skill.activationRewards || []) {
         if (reward.type === 'objective' && reward.objective?.objectiveKey) {
           const objectiveName = findObjectiveNameByKey(reward.objective.objectiveKey, questTemplates);
-          objectives.push(objectiveName || reward.objective.objectiveKey);
+          const resolvedObjName = resolveTemplateKeys(objectiveName || reward.objective.objectiveKey, userName, characterName);
+          objectives.push(resolvedObjName);
         } else if (reward.type === 'solicitud' && reward.solicitud?.solicitudKey) {
-          solicitudes.push(reward.solicitud.solicitudName || reward.solicitud.solicitudKey);
+          const resolvedSolName = resolveTemplateKeys(reward.solicitud.solicitudName || reward.solicitud.solicitudKey, userName, characterName);
+          solicitudes.push(resolvedSolName);
         }
       }
 

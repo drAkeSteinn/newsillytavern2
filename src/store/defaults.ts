@@ -67,7 +67,8 @@ export const defaultSettings: AppSettings = {
     globalVolume: 0.85,
     maxSoundsPerMessage: 10,
     globalCooldown: 0, // 0 = no cooldown, allows all sounds in same message to play
-    realtimeEnabled: true
+    realtimeEnabled: true,
+    globalMute: false
   },
   backgroundTriggers: {
     enabled: true,

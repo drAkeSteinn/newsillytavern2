@@ -209,6 +209,7 @@ export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
         description: existingGroup.description || '',
         avatar: existingGroup.avatar || '',
         systemPrompt: existingGroup.systemPrompt || '',
+        firstMes: existingGroup.firstMes || '',
         activationStrategy: existingGroup.activationStrategy || 'all' as GroupActivationStrategy,
         minResponsesPerTurn: existingGroup.minResponsesPerTurn ?? 1,
         maxResponsesPerTurn: existingGroup.maxResponsesPerTurn ?? 3,
@@ -227,6 +228,7 @@ export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
       description: '',
       avatar: '',
       systemPrompt: '',
+      firstMes: '',
       activationStrategy: 'all' as GroupActivationStrategy,
       minResponsesPerTurn: 1,
       maxResponsesPerTurn: 3,
@@ -248,6 +250,7 @@ export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
   const [name, setName] = useState(initialValues.name);
   const [description, setDescription] = useState(initialValues.description);
   const [systemPrompt, setSystemPrompt] = useState(initialValues.systemPrompt);
+  const [firstMes, setFirstMes] = useState(initialValues.firstMes);
   const [activationStrategy, setActivationStrategy] = useState<GroupActivationStrategy>(initialValues.activationStrategy);
   const [minResponsesPerTurn, setMinResponsesPerTurn] = useState(initialValues.minResponsesPerTurn);
   const [maxResponsesPerTurn, setMaxResponsesPerTurn] = useState(initialValues.maxResponsesPerTurn);
@@ -425,6 +428,7 @@ export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
       name: name.trim(),
       description,
       systemPrompt,
+      firstMes: firstMes.trim() || undefined,  // Only save if non-empty
       activationStrategy,
       minResponsesPerTurn,
       maxResponsesPerTurn,
@@ -1125,6 +1129,39 @@ export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* First Message - Full width section above the grid */}
+        <div className="space-y-3 lg:col-span-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <MessageSquare className="w-4 h-4 text-green-500" />
+            <span className="font-medium">Primer Mensaje</span>
+          </div>
+
+          <div className="p-4 bg-green-500/5 rounded-lg border border-green-500/20 space-y-3">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-sm font-medium">Mensaje Inicial del Grupo</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>Mensaje inicial cuando se crea una nueva conversación con este grupo. Si está vacío, se usarán los mensajes iniciales individuales de cada personaje.</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <Textarea
+              id="firstMes"
+              value={firstMes}
+              onChange={(e) => setFirstMes(e.target.value)}
+              placeholder="Escribe el primer mensaje del grupo aquí... (opcional, si está vacío se usarán los mensajes iniciales de cada personaje)"
+              rows={6}
+              className="text-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              Si este campo está vacío, se usará el primer mensaje de cada personaje miembro. Si se configura, reemplazará todos los mensajes iniciales individuales.
+            </p>
+          </div>
+        </div>
+
         {/* Left: System Prompt */}
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">

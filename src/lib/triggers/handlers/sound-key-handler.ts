@@ -16,6 +16,7 @@ import type { DetectedKey } from '../key-detector';
 import type { KeyHandler, TriggerMatch, TriggerMatchResult, RegisteredKey } from '../types';
 import type { TriggerContext } from '../trigger-bus';
 import type { SoundTrigger, SoundCollection, SoundSequenceTrigger } from '@/types';
+import { isGloballyMuted } from '@/lib/global-audio-mute';
 import { 
   normalizeKey,
   keyMatches,
@@ -105,6 +106,9 @@ async function processAudioQueue(
   playSound?: (url: string, volume: number) => void,
   characterId?: string
 ): Promise<void> {
+  // Skip if globally muted
+  if (isGloballyMuted()) return;
+
   const { queue, isPlaying, isGlobal } = getCharacterQueue(characterId);
   
   if (isPlaying || queue.length === 0) return;

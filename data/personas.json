@@ -6,7 +6,7 @@
     "avatar": "",
     "isActive": true,
     "createdAt": "2026-03-01T21:37:31.485Z",
-    "updatedAt": "2026-04-12T08:57:23.746Z",
+    "updatedAt": "2026-04-21T10:06:57.391Z",
     "statsConfig": {
       "enabled": true,
       "attributes": [
@@ -57,8 +57,8 @@
           "name": "Analisis psyquiatrico",
           "requirements": [],
           "objetivo": {
-            "characterId": "fbbdc8e8-12e1-421b-8a38-d4a37231de2a",
-            "solicitudId": "sol-1773397776153"
+            "characterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
+            "solicitudId": "sol-1776765098515"
           }
         }
       ],

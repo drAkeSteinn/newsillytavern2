@@ -222,8 +222,8 @@ export function useSoundTriggers() {
    * Scan FULL content for keywords and trigger sounds
    */
   const scanStreamingContent = useCallback((fullContent: string, messageKey?: string) => {
-    // Check if enabled
-    if (!settings.sound?.enabled) {
+    // Check if enabled or muted
+    if (!settings.sound?.enabled || settings.sound?.globalMute) {
       return;
     }
     
@@ -343,10 +343,10 @@ export function useSoundTriggers() {
    * Scan a complete message (non-streaming)
    */
   const scanCompleteMessage = useCallback((content: string) => {
-    if (!settings.sound?.enabled) return;
+    if (!settings.sound?.enabled || settings.sound?.globalMute) return;
     resetDetection();
     scanStreamingContent(content);
-  }, [settings.sound?.enabled, resetDetection, scanStreamingContent]);
+  }, [settings.sound?.enabled, settings.sound?.globalMute, resetDetection, scanStreamingContent]);
   
   return {
     scanStreamingContent,

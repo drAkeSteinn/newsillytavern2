@@ -130,8 +130,88 @@
         "globalVolume": 1
       },
       "updatedAt": "2026-04-19T22:22:59.998Z"
+    },
+    "1772240847644-utywc8.webm": {
+      "label": "1772240847644-utywc8",
+      "filename": "1772240847644-utywc8.webm",
+      "duration": 3000,
+      "timeline": {
+        "duration": 3000,
+        "tracks": [
+          {
+            "id": "c9044b7b-adc2-4f50-aa0c-696478512ef2",
+            "type": "sprite",
+            "name": "Sprite",
+            "keyframes": [],
+            "enabled": true,
+            "locked": false,
+            "muted": false,
+            "volume": 1
+          },
+          {
+            "id": "afb49623-be26-4fb3-aa48-e152b06f982b",
+            "type": "haptic",
+            "name": "Haptic Track 1",
+            "keyframes": [
+              {
+                "id": "efd3f60a-9708-427c-a14c-202d201a64f1",
+                "time": 0,
+                "value": {
+                  "type": "haptic",
+                  "position": 62,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "db98f76e-cd50-4466-8c64-7ca095434b7b",
+                "time": 1000,
+                "value": {
+                  "type": "haptic",
+                  "position": 53,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "65c85346-45ca-4cd6-a2c6-61492f62764f",
+                "time": 1900,
+                "value": {
+                  "type": "haptic",
+                  "position": 71,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "7e0e5fec-436a-4375-bfb5-9d3a65edf5df",
+                "time": 2700,
+                "value": {
+                  "type": "haptic",
+                  "position": 42,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              }
+            ],
+            "enabled": true,
+            "locked": false,
+            "muted": false,
+            "volume": 1
+          }
+        ],
+        "markers": [],
+        "loop": false,
+        "autoPlaySounds": true,
+        "globalVolume": 1
+      },
+      "updatedAt": "2026-04-21T09:47:41.685Z"
     }
   },
   "createdAt": "2026-04-19T19:40:05.390Z",
-  "updatedAt": "2026-04-19T22:22:59.998Z"
+  "updatedAt": "2026-04-21T09:47:41.685Z"
 }

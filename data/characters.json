@@ -117,6 +117,41 @@
     ],
     "id": "7e6b6d7b-905e-4199-a15a-797f2efac746",
     "createdAt": "2026-04-03T05:25:26.420Z",
-    "updatedAt": "2026-04-03T09:21:33.556Z"
+    "updatedAt": "2026-04-23T16:02:55.145Z",
+    "statsConfig": {
+      "enabled": true,
+      "attributes": [],
+      "skills": [
+        {
+          "id": "skill-1776765070624",
+          "name": "hola",
+          "description": "realiza test",
+          "key": "asd",
+          "requirements": [],
+          "type": "ejecucion",
+          "activationKey": "asdasd"
+        }
+      ],
+      "intentions": [],
+      "invitations": [],
+      "solicitudDefinitions": [
+        {
+          "id": "sol-1776765098515",
+          "name": "gsdasd",
+          "peticionKey": "",
+          "solicitudKey": "",
+          "peticionDescription": "asddd",
+          "solicitudDescription": "asda",
+          "requirements": [],
+          "completionDescription": "asda"
+        }
+      ],
+      "blockHeaders": {
+        "skills": "[ACCIONES DISPONIBLES]",
+        "intentions": "Intenciones disponibles:",
+        "invitations": "[PETICIONES POSIBLES]",
+        "solicitudesRecibidas": "[SOLICITUDES RECIBIDAS]"
+      }
+    }
   }
 ]

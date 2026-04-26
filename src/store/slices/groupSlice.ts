@@ -52,6 +52,7 @@ export const createGroupSlice = (set: any, _get: any): GroupSlice => ({
       allowMentions: group.allowMentions ?? true,
       mentionTriggers: group.mentionTriggers ?? [],
       conversationStyle: group.conversationStyle ?? 'sequential',
+      firstMes: group.firstMes ?? '',
       createdAt: group.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }]

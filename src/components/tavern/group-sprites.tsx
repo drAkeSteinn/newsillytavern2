@@ -245,6 +245,7 @@ export function GroupSprites({
   // UNIFIED SYSTEM: Use store for per-character sprite state
   // ============================================
   const store = useTavernStore();
+  const setDisplaySpriteUrl = useTavernStore((state) => state.setDisplaySpriteUrl);
 
   // Save to localStorage
   useEffect(() => {
@@ -440,6 +441,34 @@ export function GroupSprites({
       }
     }
   }, [isStreaming, activeCharacterId, characters]);
+
+  // ============================================
+  // Report displayed sprite URLs to store (for useTimelineSpriteSounds hook)
+  // ============================================
+  useEffect(() => {
+    visibleCharacters.forEach(character => {
+      const charSpriteState = store.getCharacterSpriteState(character.id);
+      const hasTriggerSprite = charSpriteState.triggerSpriteUrl;
+      let spriteUrl: string;
+
+      if (hasTriggerSprite) {
+        spriteUrl = charSpriteState.triggerSpriteUrl!;
+      } else {
+        let spriteState: SpriteState;
+        if (isTTSPlaying) {
+          spriteState = 'talk';
+        } else if (isStreaming && character.id === activeCharacterId) {
+          spriteState = 'thinking';
+        } else {
+          spriteState = charSpriteState.spriteState || 'idle';
+        }
+        const spriteResult = getSpriteUrl(spriteState, character, character.id);
+        spriteUrl = spriteResult.url;
+      }
+
+      setDisplaySpriteUrl(character.id, spriteUrl || null);
+    });
+  }, [visibleCharacters, isStreaming, isTTSPlaying, activeCharacterId, store, setDisplaySpriteUrl]);
 
   return (
     <div ref={containerRef} className="absolute inset-0 z-5">
