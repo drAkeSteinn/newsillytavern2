@@ -6,7 +6,7 @@
       "label": "01",
       "filename": "1772240870166-656lst.webm",
       "createdAt": "2026-03-01T00:08:23.741Z",
-      "updatedAt": "2026-04-23T16:04:41.693Z",
+      "updatedAt": "2026-04-19T22:05:07.589Z",
       "duration": 5000,
       "timeline": {
         "duration": 5000,
@@ -16,23 +16,7 @@
             "id": "a5eebd09-d595-468f-85d0-61064b264046",
             "type": "sound",
             "name": "Sound Track 1",
-            "keyframes": [
-              {
-                "id": "03de95af-2256-4f27-b48f-61c68a9d2b72",
-                "time": 2400,
-                "value": {
-                  "type": "sound",
-                  "soundUrl": "",
-                  "soundTriggerId": "8ff06560-33da-41ff-8a5b-4867936e8786",
-                  "soundTriggerName": "asd",
-                  "volume": 1,
-                  "pan": 0,
-                  "play": true,
-                  "stop": false
-                },
-                "interpolation": "hold"
-              }
-            ],
+            "keyframes": [],
             "enabled": true,
             "locked": false,
             "muted": false,
@@ -42,7 +26,23 @@
             "id": "000227f7-7645-451e-8dcc-cf5014d776c4",
             "type": "sound",
             "name": "Sound Track 2",
-            "keyframes": [],
+            "keyframes": [
+              {
+                "id": "592d964c-b4df-4c8b-a138-48fe35649d3a",
+                "time": 2100,
+                "value": {
+                  "type": "sound",
+                  "soundUrl": "",
+                  "soundTriggerId": "7435a464-45d4-4bb4-bbff-d86215394558",
+                  "soundTriggerName": "gluck",
+                  "volume": 0.8,
+                  "pan": 0,
+                  "play": true,
+                  "stop": false
+                },
+                "interpolation": "hold"
+              }
+            ],
             "enabled": true,
             "locked": false,
             "muted": false,
@@ -76,5 +76,5 @@
     }
   },
   "createdAt": "2026-03-01T00:08:23.740Z",
-  "updatedAt": "2026-04-23T16:04:41.693Z"
+  "updatedAt": "2026-04-19T22:05:07.589Z"
 }

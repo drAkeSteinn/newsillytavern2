@@ -1220,7 +1220,7 @@ export function filterSkillsByRequirements(
   attributeValues: Record<string, number | string>,
   sessionStats?: SessionStats | null
 ): SkillDefinition[] {
-  return skills.filter(skill => evaluateRequirements(skill.requirements, attributeValues, sessionStats));
+  return (skills || []).filter(skill => evaluateRequirements(skill.requirements, attributeValues, sessionStats));
 }
 
 /**
@@ -1231,7 +1231,7 @@ export function filterIntentionsByRequirements(
   attributeValues: Record<string, number | string>,
   sessionStats?: SessionStats | null
 ): IntentionDefinition[] {
-  return intentions.filter(intention => evaluateRequirements(intention.requirements, attributeValues, sessionStats));
+  return (intentions || []).filter(intention => evaluateRequirements(intention.requirements, attributeValues, sessionStats));
 }
 
 /**
@@ -1242,5 +1242,5 @@ export function filterInvitationsByRequirements(
   attributeValues: Record<string, number | string>,
   sessionStats?: SessionStats | null
 ): InvitationDefinition[] {
-  return invitations.filter(invitation => evaluateRequirements(invitation.requirements, attributeValues, sessionStats));
+  return (invitations || []).filter(invitation => evaluateRequirements(invitation.requirements, attributeValues, sessionStats));
 }

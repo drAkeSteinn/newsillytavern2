@@ -32,6 +32,10 @@ import {
   filterIntentionsByRequirements,
   filterInvitationsByRequirements,
 } from '@/store/slices/statsSlice';
+import {
+  resolveAllKeys,
+  buildKeyResolutionContext,
+} from '@/lib/key-resolver';
 
 // ============================================
 // Types
@@ -48,6 +52,9 @@ export interface StatsResolutionContext {
   characterName?: string;
   // For resolving objective names in skill rewards
   questTemplates?: QuestTemplate[];
+  // For comprehensive key resolution ({{userpersona}}, {{eventos}}, stat keys, etc.)
+  personaDescription?: string;
+  personaResolvedStats?: ResolvedStats | null;
 }
 
 export interface ResolvedAttribute {
@@ -173,23 +180,50 @@ export function resolveAllAttributes(
 }
 
 /**
- * Resolve template keys in text ({{user}}, {{char}}, {{solicitante}}, {{solicitado}})
- * Used to resolve placeholders in descriptions before storing or displaying
+ * Resolve template keys in text using the full key resolution pipeline
+ * Now handles ALL key types: {{user}}, {{char}}, {{userpersona}}, {{eventos}},
+ * {{solicitante}}, {{solicitado}}, stat attribute keys, etc.
  *
- * Key resolution:
- * - {{user}} - The user's name
- * - {{char}} - The current character's name
- * - {{solicitante}} - Who is making the request (the asker)
- * - {{solicitado}} - Who receives the request (the asked)
+ * Falls back to basic regex replacement when full context is not available.
  */
 function resolveTemplateKeys(
   text: string,
   userName?: string,
   characterName?: string,
   solicitanteName?: string,
-  solicitadoName?: string
+  solicitadoName?: string,
+  fullContext?: {
+    characterName: string;
+    userName: string;
+    personaDescription?: string;
+    sessionStats?: SessionStats;
+    characterId?: string;
+    resolvedStats?: import('@/types').ResolvedStats | null;
+    personaResolvedStats?: import('@/types').ResolvedStats | null;
+  }
 ): string {
   if (!text) return text;
+
+  // If full context is available, use the comprehensive resolver
+  if (fullContext) {
+    const keyContext = buildKeyResolutionContext(
+      { id: '', name: fullContext.characterName } as import('@/types').CharacterCard,
+      fullContext.userName,
+      fullContext.personaDescription
+        ? { name: fullContext.userName, description: fullContext.personaDescription } as import('@/types').Persona
+        : undefined,
+      fullContext.resolvedStats,
+      fullContext.sessionStats,
+      undefined, // soundTriggers
+      undefined, // soundSettings
+      fullContext.personaResolvedStats
+    );
+    // Override characterId for event keys
+    (keyContext as Record<string, unknown>).characterId = fullContext.characterId;
+    return resolveAllKeys(text, keyContext);
+  }
+
+  // Fallback: basic regex replacement for common keys
   let result = text;
   if (userName) {
     result = result.replace(/\{\{user\}\}/gi, userName);
@@ -252,7 +286,13 @@ export function buildSkillsBlock(
   questTemplates: { objectives?: { completion?: { key?: string; keys?: string[] }; description?: string }[] }[] = [],
   characterName?: string,
   sessionStats?: SessionStats,
-  userName?: string
+  userName?: string,
+  fullContext?: {
+    characterId?: string;
+    personaDescription?: string;
+    resolvedStats?: import('@/types').ResolvedStats | null;
+    personaResolvedStats?: import('@/types').ResolvedStats | null;
+  }
 ): string {
   const availableSkills = filterSkillsByRequirements(skills, attributeValues, sessionStats);
 
@@ -262,7 +302,7 @@ export function buildSkillsBlock(
 
   const charName = characterName || '{{char}}';
   const introText = header.includes('ACCIONES')
-    ? `${charName} puede realizar las siguientes acciones cuando la situación lo requiera.\nCuando una acción tenga "Puede completar" o si ella cree conveniente activar una de sus acciones, USA LA TOOL "manage_quest", "manage_solicitud" con la key correspondiente para marcar como completado o si ${charName} considera activar una accion usa "manage_action":\n`
+    ? `${charName} puede realizar las siguientes acciones cuando la situación lo requiera.\nCuando una acción tenga "Puede completar", USA LA TOOL "manage_quest" o "manage_solicitud" con la key correspondiente para marcar como completado:\n`
     : '';
 
   const lines: string[] = [header];
@@ -270,14 +310,25 @@ export function buildSkillsBlock(
     lines.push(introText);
   }
 
+  // Build full context for comprehensive key resolution if data is available
+  const keyFullContext = (userName && characterName) ? {
+    characterName,
+    userName,
+    personaDescription: fullContext?.personaDescription,
+    sessionStats,
+    characterId: fullContext?.characterId,
+    resolvedStats: fullContext?.resolvedStats,
+    personaResolvedStats: fullContext?.personaResolvedStats,
+  } : undefined;
+
   availableSkills.forEach((skill) => {
-    // Resolve template keys in skill text fields
-    const resolvedName = resolveTemplateKeys(skill.name, userName, characterName);
-    const resolvedDescription = resolveTemplateKeys(skill.description, userName, characterName);
+    // Resolve template keys in skill text fields using full key resolution
+    const resolvedName = resolveTemplateKeys(skill.name, userName, characterName, undefined, undefined, keyFullContext);
+    const resolvedDescription = resolveTemplateKeys(skill.description, userName, characterName, undefined, undefined, keyFullContext);
 
     // Check for custom inject format first
     if (skill.injectFormat) {
-      const resolvedInjectFormat = resolveTemplateKeys(skill.injectFormat, userName, characterName);
+      const resolvedInjectFormat = resolveTemplateKeys(skill.injectFormat, userName, characterName, undefined, undefined, keyFullContext);
       const formatted = resolvedInjectFormat
         .replace('{name}', resolvedName)
         .replace('{description}', resolvedDescription)
@@ -302,11 +353,9 @@ export function buildSkillsBlock(
       for (const reward of skill.activationRewards || []) {
         if (reward.type === 'objective' && reward.objective?.objectiveKey) {
           const objectiveName = findObjectiveNameByKey(reward.objective.objectiveKey, questTemplates);
-          const resolvedObjName = resolveTemplateKeys(objectiveName || reward.objective.objectiveKey, userName, characterName);
-          objectives.push(resolvedObjName);
+          objectives.push(objectiveName || reward.objective.objectiveKey);
         } else if (reward.type === 'solicitud' && reward.solicitud?.solicitudKey) {
-          const resolvedSolName = resolveTemplateKeys(reward.solicitud.solicitudName || reward.solicitud.solicitudKey, userName, characterName);
-          solicitudes.push(resolvedSolName);
+          solicitudes.push(reward.solicitud.solicitudName || reward.solicitud.solicitudKey);
         }
       }
 
@@ -629,7 +678,7 @@ export function resolveStats(
   const attributes = resolveAllAttributes(statsConfig, charStats);
   const attributeValues = charStats?.attributeValues || 
     Object.fromEntries(
-      statsConfig.attributes.map(a => [a.key, a.defaultValue])
+      (statsConfig.attributes || []).map(a => [a.key, a.defaultValue])
     );
   
   // Build attribute map for template resolution
@@ -638,7 +687,13 @@ export function resolveStats(
     attributesMap[attr.key] = attr.formatted;
   }
   
-  // Build blocks
+  // Build blocks with full key resolution context
+  const keyFullContext = {
+    characterId,
+    personaDescription: context.personaDescription,
+    personaResolvedStats: context.personaResolvedStats,
+  };
+
   const skillsBlock = buildSkillsBlock(
     statsConfig.skills,
     attributeValues,
@@ -646,7 +701,8 @@ export function resolveStats(
     context.questTemplates || [],
     context.characterName,
     sessionStats,
-    context.userName
+    context.userName,
+    keyFullContext
   );
   
   const intentionsBlock = buildIntentionsBlock(

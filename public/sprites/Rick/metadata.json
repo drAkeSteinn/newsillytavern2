@@ -26,64 +26,8 @@
         "globalVolume": 1
       },
       "updatedAt": "2026-04-19T22:04:44.479Z"
-    },
-    "1775208036781-gixtfl.webp": {
-      "label": "1775208036781-gixtfl",
-      "filename": "1775208036781-gixtfl.webp",
-      "duration": 3000,
-      "timeline": {
-        "duration": 3000,
-        "tracks": [
-          {
-            "id": "5fd1c537-b507-48e2-9b69-bae157b1ab58",
-            "type": "sprite",
-            "name": "Sprite",
-            "keyframes": [
-              {
-                "id": "1a5ea39e-3d6a-4652-b9c2-ba60d1c01900",
-                "time": 0,
-                "value": {
-                  "type": "sound",
-                  "soundUrl": "",
-                  "soundTriggerId": "8ff06560-33da-41ff-8a5b-4867936e8786",
-                  "soundTriggerName": "asd",
-                  "volume": 1,
-                  "pan": 0,
-                  "play": true,
-                  "stop": false
-                },
-                "interpolation": "hold"
-              },
-              {
-                "id": "47533762-9309-4851-8e98-af15c0912874",
-                "time": 1800,
-                "value": {
-                  "type": "sound",
-                  "soundUrl": "",
-                  "soundTriggerId": "8ff06560-33da-41ff-8a5b-4867936e8786",
-                  "soundTriggerName": "asd",
-                  "volume": 1,
-                  "pan": 0,
-                  "play": true,
-                  "stop": false
-                },
-                "interpolation": "hold"
-              }
-            ],
-            "enabled": true,
-            "locked": false,
-            "muted": false,
-            "volume": 1
-          }
-        ],
-        "markers": [],
-        "loop": false,
-        "autoPlaySounds": true,
-        "globalVolume": 1
-      },
-      "updatedAt": "2026-04-23T16:02:24.039Z"
     }
   },
   "createdAt": "2026-04-03T09:20:16.826Z",
-  "updatedAt": "2026-04-23T16:02:24.039Z"
+  "updatedAt": "2026-04-19T22:04:44.479Z"
 }

@@ -250,7 +250,6 @@ export function CharacterSprite({
   const executeReturnToIdleForCharacter = useTavernStore((state) => state.executeReturnToIdleForCharacter);
   const clearSpriteLock = useTavernStore((state) => state.clearSpriteLock);
   const setSpriteStateForCharacter = useTavernStore((state) => state.setSpriteStateForCharacter);
-  const setDisplaySpriteUrl = useTavernStore((state) => state.setDisplaySpriteUrl);
   
   // Get per-character sprite state from the unified store
   // This is now reactive because characterSpriteStates is a proper selector
@@ -367,11 +366,6 @@ export function CharacterSprite({
       );
   const currentSpriteUrl = spriteResult.url;
   const currentSpriteLabel = spriteResult.label;
-
-  // Report actual displayed sprite URL to store (for useTimelineSpriteSounds hook)
-  useEffect(() => {
-    setDisplaySpriteUrl(characterId, currentSpriteUrl || null);
-  }, [characterId, currentSpriteUrl, setDisplaySpriteUrl]);
 
   // Debug: Log when sprite data changes
   useEffect(() => {

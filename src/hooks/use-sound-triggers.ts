@@ -3,6 +3,7 @@
 import { useRef, useCallback, useEffect } from 'react';
 import { useTavernStore } from '@/store/tavern-store';
 import type { SoundTrigger, SoundCollection } from '@/types';
+import { isGlobalMuted } from '@/lib/audio/audio-mute-store';
 
 // ============ Audio Queue System ============
 
@@ -17,6 +18,7 @@ const audioQueue: QueueItem[] = [];
 let isPlaying = false;
 
 async function processAudioQueue() {
+  if (isGlobalMuted()) return;
   if (isPlaying || audioQueue.length === 0) return;
   
   isPlaying = true;
@@ -222,11 +224,14 @@ export function useSoundTriggers() {
    * Scan FULL content for keywords and trigger sounds
    */
   const scanStreamingContent = useCallback((fullContent: string, messageKey?: string) => {
-    // Check if enabled or muted
-    if (!settings.sound?.enabled || settings.sound?.globalMute) {
+    // Check if enabled
+    if (!settings.sound?.enabled) {
       return;
     }
-    
+
+    // Check global mute
+    if (isGlobalMuted()) return;
+
     const msgKey = messageKey || `msg_${Date.now()}`;
     
     // New message?
@@ -343,10 +348,10 @@ export function useSoundTriggers() {
    * Scan a complete message (non-streaming)
    */
   const scanCompleteMessage = useCallback((content: string) => {
-    if (!settings.sound?.enabled || settings.sound?.globalMute) return;
+    if (!settings.sound?.enabled) return;
     resetDetection();
     scanStreamingContent(content);
-  }, [settings.sound?.enabled, settings.sound?.globalMute, resetDetection, scanStreamingContent]);
+  }, [settings.sound?.enabled, resetDetection, scanStreamingContent]);
   
   return {
     scanStreamingContent,

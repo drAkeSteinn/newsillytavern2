@@ -3,7 +3,8 @@
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import type { CharacterCard, Lorebook, SessionStats, HUDContextConfig } from '@/types';
+import type { CharacterCard, Lorebook, SessionStats, HUDContextConfig, QuestTemplate, SessionQuestInstance, QuestSettings } from '@/types';
+import { DEFAULT_QUEST_SETTINGS } from '@/types';
 import {
   DEFAULT_CHARACTER,
   buildSystemPrompt,
@@ -21,8 +22,9 @@ import {
   GenerateResponse,
   buildLorebookSectionForPrompt,
   buildHUDContextSection,
-  injectHUDContextIntoMessages
+  injectHUDContextIntoMessages,
 } from '@/lib/llm';
+
 import {
   validateRequest,
   sanitizeInput
@@ -66,6 +68,14 @@ export async function POST(request: NextRequest) {
     // Extract HUD context from body
     const hudContext: HUDContextConfig | undefined = body.hudContext;
 
+    // Extract Quest data for prompt injection
+    const questTemplates: QuestTemplate[] = body.questTemplates || [];
+    const sessionQuests: SessionQuestInstance[] = body.sessionQuests || [];
+    const questSettings: QuestSettings = {
+      ...DEFAULT_QUEST_SETTINGS,
+      ...(body.questSettings || {})
+    };
+
     // Extract embeddings chat settings
     const embeddingsChat: Partial<EmbeddingsChatSettings> = body.embeddingsChat || {};
     const sessionId: string | undefined = body.sessionId;
@@ -91,7 +101,7 @@ export async function POST(request: NextRequest) {
     const effectiveUserName = getEffectiveUserName(persona, userName);
 
     // Process character template variables ({{user}}, {{char}}, etc.)
-    const processedCharacter = processCharacter(effectiveCharacter, effectiveUserName, persona, typedSessionStats, allCharacters);
+    const processedCharacter = processCharacter(effectiveCharacter, effectiveUserName, persona, typedSessionStats, allCharacters, questTemplates);
 
     // Build context configuration from request or use defaults
     const contextConfig: Partial<ContextConfig> = body.contextConfig || {};
@@ -116,7 +126,12 @@ export async function POST(request: NextRequest) {
       persona,
       lorebookSection,
       typedSessionStats,  // Pass session stats for attribute values
-      allCharacters       // Pass all characters for peticiones/solicitudes resolution
+      allCharacters,      // Pass all characters for peticiones/solicitudes resolution
+      undefined,          // soundTriggers
+      undefined,          // soundSettings
+      questTemplates,     // Pass quest templates for {{activeQuests}} key resolution
+      sessionQuests,      // Pass session quests for {{activeQuests}} key resolution
+      questSettings       // Pass quest settings for {{activeQuests}} key resolution
     );
 
     // Retrieve embeddings context
@@ -138,8 +153,8 @@ export async function POST(request: NextRequest) {
     }
     const embeddingsContext = contextParts.length > 0 ? contextParts.join('\n\n') : undefined;
 
-    // Build final system prompt (no embeddings appended)
-    const finalSystemPrompt = systemPrompt;
+    // Quest content is resolved via {{activeQuests}} key in buildSystemPrompt
+    let finalSystemPrompt = systemPrompt;
 
     // Build HUD context section if enabled
     const hudContextSection = hudContext ? buildHUDContextSection(hudContext) : null;
@@ -283,6 +298,10 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to generate response';
+    console.error('[Generate Route] ERROR:', errorMessage);
+    if (error instanceof Error) {
+      console.error('[Generate Route] Stack:', error.stack);
+    }
 
     return NextResponse.json(
       { error: errorMessage },

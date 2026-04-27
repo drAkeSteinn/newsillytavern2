@@ -3,7 +3,7 @@
 // ============================================
 
 import { NextRequest } from 'next/server';
-import type { CharacterCard, PromptSection, Lorebook, SessionStats, HUDContextConfig, EmbeddingsChatSettings } from '@/types';
+import type { CharacterCard, PromptSection, Lorebook, SessionStats, HUDContextConfig, EmbeddingsChatSettings, QuestTemplate, SessionQuestInstance } from '@/types';
 import {
   DEFAULT_CHARACTER,
   createSSEJSON,
@@ -26,7 +26,7 @@ import {
   buildLorebookSectionForPrompt,
   buildHUDContextSection,
   injectHUDContextIntoMessages,
-  injectHUDContextIntoSections
+  injectHUDContextIntoSections,
 } from '@/lib/llm';
 import {
   sanitizeInput
@@ -40,6 +40,7 @@ import {
   selectContextMessages,
   type ContextConfig
 } from '@/lib/context-manager';
+
 
 // Validate regenerate request manually
 function validateRegenerateRequest(data: unknown) {
@@ -80,7 +81,10 @@ function validateRegenerateRequest(data: unknown) {
       hudContext: obj.hudContext as HUDContextConfig | undefined,
       allCharacters: Array.isArray(obj.allCharacters) ? obj.allCharacters : [],
       embeddingsChat: obj.embeddingsChat as Partial<EmbeddingsChatSettings> | undefined,
-      summary: obj.summary as Record<string, unknown> | undefined
+      summary: obj.summary as Record<string, unknown> | undefined,
+      sessionQuests: Array.isArray(obj.sessionQuests) ? obj.sessionQuests : [],
+      questTemplates: Array.isArray(obj.questTemplates) ? obj.questTemplates : [],
+      questSettings: obj.questSettings as Record<string, unknown> | undefined
     }
   } as const;
 }
@@ -110,7 +114,10 @@ export async function POST(request: NextRequest) {
       hudContext,
       allCharacters = [],
       embeddingsChat,
-      summary
+      summary,
+      sessionQuests = [],
+      questTemplates = [],
+      questSettings
     } = validation.data;
 
     // Extract lorebooks for processing
@@ -141,7 +148,7 @@ export async function POST(request: NextRequest) {
     const effectiveUserName = getEffectiveUserName(persona, userName);
 
     // Process character template variables ({{user}}, {{char}}, etc.)
-    const processedCharacter = processCharacter(effectiveCharacter, effectiveUserName, persona, typedSessionStats, allCharacters);
+    const processedCharacter = processCharacter(effectiveCharacter, effectiveUserName, persona, typedSessionStats, allCharacters, questTemplates);
 
     // Get messages before the one to regenerate
     const messageIndex = messages.findIndex((m: { id: string }) => m.id === messageId);
@@ -188,7 +195,12 @@ export async function POST(request: NextRequest) {
       persona,
       lorebookSection,
       typedSessionStats,  // Pass session stats for attribute values
-      allCharacters       // Pass all characters for peticiones/solicitudes resolution
+      allCharacters,      // Pass all characters for peticiones/solicitudes resolution
+      undefined,          // soundTriggers
+      undefined,          // soundSettings
+      questTemplates,     // Pass quest templates for {{activeQuests}} key resolution
+      sessionQuests,      // Pass session quests for {{activeQuests}} key resolution
+      questSettings       // Pass quest settings for {{activeQuests}} key resolution
     );
 
     // Build HUD context section if enabled
@@ -229,8 +241,8 @@ export async function POST(request: NextRequest) {
     }
     const embeddingsContext = contextParts.length > 0 ? contextParts.join('\n\n') : undefined;
 
-    // Build the final system prompt (no embeddings appended)
-    const finalSystemPrompt = systemPrompt;
+    // Quest content is resolved via {{activeQuests}} key in buildSystemPrompt
+    let finalSystemPrompt = systemPrompt;
 
     // Create a TransformStream for SSE
     const stream = new ReadableStream({

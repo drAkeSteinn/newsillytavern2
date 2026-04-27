@@ -19,7 +19,6 @@ import type { TriggerContext } from '../trigger-bus';
 import type { SoundTrigger, SoundCollection, SoundSequenceTrigger } from '@/types';
 import { getCooldownManager } from '../cooldown-manager';
 import { normalizeKey } from '../key-detector';
-import { isGloballyMuted } from '@/lib/global-audio-mute';
 
 // ============================================
 // Audio Queue System
@@ -36,7 +35,7 @@ const audioQueue: QueueItem[] = [];
 let isPlaying = false;
 
 async function processAudioQueue(): Promise<void> {
-  if (isGloballyMuted() || isPlaying || audioQueue.length === 0) return;
+  if (isPlaying || audioQueue.length === 0) return;
   
   isPlaying = true;
   

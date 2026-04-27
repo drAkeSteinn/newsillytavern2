@@ -9,6 +9,38 @@
 
 import type { ToolDefinition, ToolContext, ToolExecutionResult } from '../types';
 import type { InvitationDefinition, SolicitudDefinition, SolicitudInstance } from '@/types';
+import { resolveAllKeys, buildKeyResolutionContext } from '@/lib/key-resolver';
+
+/**
+ * Resolve ALL template keys in text, with optional solicitante/solicitado overrides.
+ * Uses the comprehensive key resolver for {{user}}, {{char}}, stats, events, etc.
+ * Then overrides {{solicitante}} and {{solicitado}} with context-specific values if provided
+ * (since these vary per solicitud call, unlike the fixed context in resolveEventKeys).
+ */
+function resolveToolKeysWithContext(
+  text: string,
+  context: ToolContext,
+  solicitanteName?: string,
+  solicitadoName?: string
+): string {
+  if (!text) return text;
+  const keyContext = buildKeyResolutionContext(
+    { id: context.characterId, name: context.characterName } as import('@/types').CharacterCard,
+    context.userName,
+    undefined, // persona
+    undefined, // resolvedStats
+    context.sessionStats,
+  );
+  let result = resolveAllKeys(text, keyContext);
+  // Override solicitante/solicitado with call-specific values
+  if (solicitanteName) {
+    result = result.replace(/\{\{solicitante\}\}/gi, solicitanteName);
+  }
+  if (solicitadoName) {
+    result = result.replace(/\{\{solicitado\}\}/gi, solicitadoName);
+  }
+  return result;
+}
 
 export const manageSolicitudTool: ToolDefinition = {
   id: 'manage_solicitud',
@@ -129,7 +161,8 @@ export async function manageSolicitudExecutor(
         if (resolvedPeticiones.length > 0) {
           lines.push('**Peticiones disponibles** (puedes hacer estas solicitudes a otros):');
           for (const { solicitud, targetCharacterName } of resolvedPeticiones) {
-            lines.push(`- key: "${solicitud.peticionKey}" → ${targetCharacterName}: ${solicitud.peticionDescription}`);
+            const desc = resolveToolKeysWithContext(solicitud.peticionDescription, context, characterName, targetCharacterName);
+            lines.push(`- key: "${solicitud.peticionKey}" → ${targetCharacterName}: ${desc}`);
           }
           lines.push('');
         }
@@ -137,7 +170,8 @@ export async function manageSolicitudExecutor(
         if (pendingSolicitudes.length > 0) {
           lines.push('**Solicitudes pendientes** (te han hecho estas solicitudes):');
           for (const sol of pendingSolicitudes) {
-            lines.push(`- key: "${sol.key}" de ${sol.fromCharacterName}: ${sol.description}`);
+            const desc = resolveToolKeysWithContext(sol.description, context, sol.fromCharacterName, characterName);
+            lines.push(`- key: "${sol.key}" de ${sol.fromCharacterName}: ${desc}`);
           }
           lines.push('');
         }
@@ -205,11 +239,12 @@ export async function manageSolicitudExecutor(
           };
         }
 
+        const resolvedDesc = resolveToolKeysWithContext(match.solicitud.peticionDescription, context, characterName, match.targetCharacterName);
         const lines = [
           `📬 **Petición realizada**`,
           `Peticion: ${match.solicitud.peticionKey}`,
           `Para: ${match.targetCharacterName}`,
-          `Descripción: ${match.solicitud.peticionDescription}`,
+          `Descripción: ${resolvedDesc}`,
         ];
 
         return {
@@ -265,11 +300,12 @@ export async function manageSolicitudExecutor(
           };
         }
 
+        const resolvedDesc = resolveToolKeysWithContext(match.description, context, match.fromCharacterName, characterName);
         const lines = [
           `✅ **Solicitud completada**`,
           `Solicitud: ${match.key}`,
           `De: ${match.fromCharacterName}`,
-          `Descripción: ${match.description}`,
+          `Descripción: ${resolvedDesc}`,
         ];
 
         return {

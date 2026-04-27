@@ -8,6 +8,20 @@
 
 import type { ToolDefinition, ToolContext, ToolExecutionResult } from '../types';
 import type { SessionQuestInstance, QuestTemplate } from '@/types';
+import { resolveAllKeys, buildKeyResolutionContext } from '@/lib/key-resolver';
+
+/** Resolve ALL template keys ({{user}}, {{char}}, stats, events, etc.) in text */
+function resolveToolKeysComprehensive(text: string, context: ToolContext): string {
+  if (!text) return text;
+  const keyContext = buildKeyResolutionContext(
+    { id: context.characterId, name: context.characterName } as import('@/types').CharacterCard,
+    context.userName,
+    undefined, // persona
+    undefined, // resolvedStats
+    context.sessionStats,
+  );
+  return resolveAllKeys(text, keyContext);
+}
 
 export const manageQuestTool: ToolDefinition = {
   id: 'manage_quest',
@@ -128,6 +142,9 @@ export async function manageQuestExecutor(
 
     const { quest, objective, template } = foundObjective;
 
+    // Resolve template keys in objective description
+    const resolvedObjDesc = resolveToolKeysComprehensive(objective.description || '', context);
+
     // Check if already completed
     const sessionObj = quest.objectives.find(o => o.templateId === objective.id);
     if (sessionObj?.isCompleted) {
@@ -135,7 +152,7 @@ export async function manageQuestExecutor(
         success: true,
         toolName: 'manage_quest',
         result: { objectiveKey, alreadyCompleted: true },
-        displayMessage: `El objetivo "${objective.description}" ya estaba completado anteriormente.`,
+        displayMessage: `El objetivo "${resolvedObjDesc}" ya estaba completado anteriormente.`,
         questActivation: {
           type: 'complete_objective',
           key: objectiveKey,
@@ -146,7 +163,7 @@ export async function manageQuestExecutor(
             objectiveKey,
             characterId,
             questName: template.name,
-            objectiveName: objective.description,
+            objectiveName: resolvedObjDesc,
           },
         },
       };
@@ -167,7 +184,7 @@ export async function manageQuestExecutor(
 
     // Build display message
     const lines: string[] = [];
-    lines.push(`✓ Objetivo completado: ${objective.description}`);
+    lines.push(`✓ Objetivo completado: ${resolvedObjDesc}`);
 
     if (narrative) {
       lines.push('');
@@ -179,7 +196,7 @@ export async function manageQuestExecutor(
       toolName: 'manage_quest',
       result: {
         objectiveKey,
-        objectiveName: objective.description,
+        objectiveName: resolvedObjDesc,
         questName: template.name,
         narrative,
       },
@@ -195,7 +212,7 @@ export async function manageQuestExecutor(
           objectiveKey,
           characterId,
           questName: template.name,
-          objectiveName: objective.description,
+          objectiveName: resolvedObjDesc,
         },
       },
     };

@@ -441,106 +441,211 @@ Stage Summary:
 - WEBP sprites work identically to WebM
 - useTimelineSounds flag on triggers still works
 - When all timelines stop, Handy returns to center position
+---
+Task ID: 1
+Agent: main
+Task: Review and fix quest block injection in all chat routes
+
+Work Log:
+- Investigated the full quest system: activation (auto/manual/turn/chain/keyword), session initialization, prompt building, and all injection paths
+- Reviewed `stream/route.ts` (normal chat) — quest block IS correctly added when conditions met
+- Reviewed `group-stream/route.ts` (group chat) — quest block IS correctly added per-responder with narrator support
+- Reviewed `buildQuestPromptSection()` in `quest-handler.ts` — filters active quests, resolves objectives by character, handles narrator format
+- Found BUG #1 (CRITICAL): `generate/route.ts` had ZERO quest integration — quests were sent by frontend but completely ignored by backend
+- Found BUG #2 (CRITICAL): `regenerate/route.ts` had ZERO quest integration — same issue
+- Found BUG #3 (MEDIUM): Race condition in `chat-panel.tsx` where `loadQuestTemplates()` is async in useEffect but `handleSend` reads `questTemplates` synchronously. If user sends first message very quickly after session creation, templates may not be loaded, causing the 4th condition (`questTemplates.length > 0`) to fail silently
+- Fixed `generate/route.ts`: Added imports for quest types, `DEFAULT_QUEST_SETTINGS`, `buildQuestPromptSection`; Added quest data extraction from request body; Added quest section building before system prompt finalization
+- Fixed `regenerate/route.ts`: Same fixes as generate; Also updated `validateRegenerateRequest` to extract `sessionQuests`, `questTemplates`, `questSettings` from body
+- Fixed race condition in `chat-panel.tsx`: Added `await loadQuestTemplates()` guard at the top of `handleSend` when `questTemplates.length === 0`, ensuring templates are loaded before the prompt is built
+
+Stage Summary:
+- All 4 chat routes now properly integrate quest blocks: `stream`, `group-stream`, `generate`, `regenerate`
+- The race condition on first message is prevented by awaiting template loading
+- Lint passes cleanly on all modified files
+- Files modified: `generate/route.ts`, `regenerate/route.ts`, `chat-panel.tsx`
+
+---
+Task ID: 5
+Agent: main
+Task: Fix SyntaxError: Unexpected token '<' when sending messages (generate route 500 errors)
+
+Work Log:
+- User reported 3 errors: 2x SyntaxError from JSON parsing, 1x Generation error log
+- Investigated dev logs: found `POST /api/chat/generate 500` errors (500 Internal Server Error)
+- The HTML error page response caused `response.json()` to fail with "Unexpected token '<'"
+- Added debug logging to generate/route.ts to pinpoint the crash location
+- Found crash occurs inside `processCharacter()` function
+- Root cause: `character.alternateGreetings.map(...)` crashes when `alternateGreetings` is undefined
+- The character object comes from the request body (raw JSON) and may not have all CharacterCard fields
+- Fixed `processCharacter()` in `prompt-builder.ts`: added `(character.alternateGreetings || []).map(...)` safety check
+- Also found similar potential crash in `resolveStats()`: `statsConfig.attributes.map(...)` when `attributes` is undefined — added `(statsConfig.attributes || [])` safety check
+- Also found potential crashes in `filterSkillsByRequirements`, `filterIntentionsByRequirements`, `filterInvitationsByRequirements` in `statsSlice.ts` — added `|| []` safety checks on array inputs
+- Cleaned up debug logs from generate/route.ts
+- Updated generate/route.ts to pass `questTemplates` to both `processCharacter()` and `buildSystemPrompt()` for consistency
+- Updated regenerate/route.ts to pass `questTemplates` to both `processCharacter()` and `buildSystemPrompt()` for consistency
+- Verified fix: generate endpoint no longer crashes on `alternateGreetings.map()` — now correctly proceeds to provider call
+- Lint passes cleanly
+
+Stage Summary:
+- Root cause: `processCharacter()` called `.map()` on `character.alternateGreetings` which was undefined for characters from request body
+- Fixed with null-safe fallback: `(character.alternateGreetings || []).map(...)`
+- Also added 4 additional defensive `|| []` checks to prevent similar crashes
+- Both `generate/route.ts` and `regenerate/route.ts` now properly pass `questTemplates` to all processing functions
+- Files modified: `prompt-builder.ts`, `stats-resolver.ts`, `statsSlice.ts`, `generate/route.ts`, `regenerate/route.ts`
 
 ---
 Task ID: 6
 Agent: main
-Task: Fix runtime sprite timeline playback - sounds and haptics not triggering on stage
+Task: Add global audio mute button to chatbox + fix prompt viewer for tool call rounds
 
 Work Log:
-- Investigated why timeline sounds/haptics don't fire when sprites play on the chat stage (idle, talk, trigger)
-- Found 4 root causes in `useTimelineSpriteSounds` hook:
-  1. **No inline V2 timeline support**: Hook only read from filesystem `metadata.json`, ignored `SpritePackEntryV2.timeline` field
-  2. **URL format mismatch**: `extractCollectionFromUrl()` required `/sprites/{collection}/` pattern — V2 pack URLs can be any format
-  3. **Independent URL computation**: Hook computed idle URLs independently via `computeIdleSpriteUrl()` which didn't match actual displayed sprite in random/list modes
-  4. **Same URL no restart**: Returning to same idle URL after trigger didn't restart timeline
-- Added `displayedSpriteUrl: string | null` field to `CharacterSpriteState` in spriteSlice
-- Added `setDisplaySpriteUrl(characterId, url)` action to store (with no-change optimization)
-- Updated `CharacterSprite` to report actual displayed sprite URL via `setDisplaySpriteUrl` in useEffect
-- Updated `GroupSprites` to report displayed URLs for all visible characters via useEffect
-- Rewrote `useTimelineSpriteSounds` hook:
-  - Reads `displayedSpriteUrl` from store (actual URL being rendered)
-  - Falls back to `computeIdleSpriteUrl()` if `displayedSpriteUrl` not yet set
-  - Searches V2 sprite packs for inline `timeline` data first (`findTimelineInV2Packs()`)
-  - Falls back to `metadata.json` filesystem approach if no inline data found
-  - Added `urlMatches()` helper for robust URL comparison (handles query params, hashes)
-- ESLint passed clean, dev server compiled successfully
+- **Global Mute Button**: Created `src/lib/audio/audio-mute-store.ts` with module-level mutable state (`isGlobalMuted()`, `setGlobalMuted()`) accessible from both React and non-React code
+- Added mute button to `novel-chat-box.tsx` input area between KWS and Send buttons: Volume2 (unmuted) / VolumeX (muted), red destructive variant when active
+- On mute toggle ON: immediately stops any playing TTS via `ttsService.stop()`
+- Integrated `isGlobalMuted()` checks into ALL audio systems:
+  - `use-sound-triggers.ts`: Early return in `processAudioQueue()` and `scanStreamingContent()`
+  - `use-timeline-sprite-sounds.ts`: Early return in `playSoundFromTrigger()`, `playSoundFromUrl()`, `playSoundsAtTime()`
+  - `timeline-sound-player.ts`: Early return in `playSoundFromTrigger()`, `playSoundFromUrl()`, `playSoundsAtTime()`
+- **Prompt Viewer Fix**: In `stream/route.ts`, added logic to send updated `prompt_data` SSE event during tool call follow-up rounds. When `isToolRound` is true and tool context messages exist, builds a `followUpSections` array containing all original prompt sections PLUS a new `[Tool Follow-up — Round N]` section with amber color showing the tool context messages. Frontend already captures latest `promptSections` from any `prompt_data` event.
+- Lint passes cleanly, dev server compiles without errors
 
 Stage Summary:
-- Added `displayedSpriteUrl` to character sprite state — CharacterSprite and GroupSprites report their actual rendered URL
-- Hook now finds timeline data from V2 packs (inline) or metadata.json (filesystem)
-- WEBP sprites reproduce tracks identically — the system is format-agnostic (URL-based)
-- Random/list mode sprites now correctly trigger their timeline (previously always used first sprite's data)
-- All changes backward compatible — existing trigger sprite timeline playback unchanged
+- Global mute button added to chatbox input area near send/recording buttons
+- Muting stops: sound triggers, timeline sprite sounds, and TTS playback immediately
+- Unmuting allows all future audio to play normally
+- Prompt viewer now shows the complete prompt including tool follow-up rounds
+- When tool calling completes objectives, the prompt viewer shows the updated prompt data
+- Files created: `src/lib/audio/audio-mute-store.ts`
+- Files modified: `novel-chat-box.tsx`, `use-sound-triggers.ts`, `use-timeline-sprite-sounds.ts`, `timeline-sound-player.ts`, `stream/route.ts`
 
 ---
-Task ID: 7
+Task ID: 10
 Agent: main
-Task: Add "Primer Mensaje" (First Message) field to group chat configuration
+Task: Add global audio mute button + fix prompt viewer for tool call follow-ups
 
 Work Log:
-- Added `firstMes?: string` field to `CharacterGroup` interface in `src/types/index.ts`
-- Added default `firstMes: group.firstMes ?? ''` in `addGroup` action in `groupSlice.ts`
-- Added `firstMes` state, initial values, and save logic in `group-editor.tsx`
-- Added full-width "Mensaje Inicial del Grupo" textarea in the Prompts tab of group editor
-  - Green-themed card with MessageSquare icon
-  - Tooltip explaining the behavior
-  - Helper text: "Si este campo está vacío, se usará el primer mensaje de cada personaje miembro"
-- Updated `createSession` in `sessionSlice.ts`: Priority is Group firstMes > Character firstMes
-  - Uses `firstMesSenderId` (first non-narrator member) for group messages
-- Updated `clearChat` in `sessionSlice.ts`: Same priority logic applied
-- Both functions use `processMessageTemplate()` with group name for template variable resolution
-- ESLint passed clean, dev server compiled successfully
+
+**Task 1 — Global Audio Mute System:**
+- Created `src/lib/audio/audio-mute-store.ts`: simple module-level mutable store with `isGlobalMuted()` and `setGlobalMuted()` — NOT React state, works in both React and non-React code
+- Added mute button to `src/components/tavern/novel-chat-box.tsx` in input area, between KWS button and Send button:
+  - Uses `useState(false)` for UI + syncs with `setGlobalMuted()` from the mute store
+  - Shows Volume2 icon when unmuted, VolumeX icon when muted
+  - Red/amber tint when muted (`bg-red-600/80 border-red-500`)
+  - Stops currently playing TTS via `ttsService.stop()` when muting
+  - Imported `ttsService` from `@/lib/tts` for TTS integration
+- Added `isGlobalMuted()` checks to all audio playback systems:
+  - `src/hooks/use-sound-triggers.ts`: in `processAudioQueue()` (returns early if muted) and `scanStreamingContent()` (returns early if muted)
+  - `src/hooks/use-timeline-sprite-sounds.ts`: in `playSoundFromTrigger()`, `playSoundFromUrl()`, `playSoundsAtTime()` — all return null/void if muted
+  - `src/lib/timeline-sound-player.ts`: in `playSoundFromTrigger()`, `playSoundFromUrl()`, `playSoundsAtTime()` — all return null/void if muted
+
+**Task 2 — Fix Prompt Viewer for Tool Call Follow-ups:**
+- Identified the issue: when tool calling triggers follow-up LLM calls, the `prompt_data` SSE event was only sent once at the start (with the initial prompt). The follow-up call uses `toolContextMessages` (base messages + tool results) but never sends updated prompt sections.
+- In `src/app/api/chat/stream/route.ts`, before the follow-up response streaming block (`if (isToolRound)`), added code to:
+  - Build a tool context section from `toolContextMessages` (serializing each message's role + content)
+  - Truncate very long tool results (>2000 chars) for readability
+  - Create `followUpSections` that includes all original `allPromptSections` PLUS a new `[Tool Follow-up — Round N]` section with amber color
+  - Send as `prompt_data` SSE event — frontend already captures the latest `promptSections` from any `prompt_data` event
+
+- All lint checks pass cleanly, dev server compiles successfully
 
 Stage Summary:
-- Groups can now have a custom "Primer Mensaje" that replaces individual character first messages
-- When group's firstMes is empty, falls back to individual character first messages (original behavior)
-- The field appears in the Prompts tab of the group editor
-- Templates like {{user}}, {{char}} are resolved with the group name and active persona
-- Works for both new session creation and chat clearing
+- Global audio mute system implemented with simple module-level store (works in non-React code)
+- Mute button placed between KWS and Send buttons in chatbox input area
+- All audio systems (sound triggers, timeline sprite sounds, timeline sound player, TTS) respect the mute flag
+- TTS playback is immediately stopped when muting
+- Prompt viewer now shows the complete follow-up prompt during tool call rounds
+- Files modified: `audio-mute-store.ts` (new), `novel-chat-box.tsx`, `use-sound-triggers.ts`, `use-timeline-sprite-sounds.ts`, `timeline-sound-player.ts`, `stream/route.ts`
+
 ---
-Task ID: 1
+Task ID: 1-a
 Agent: main
-Task: Fix template key resolution ({{user}}, {{char}}) in actions block objectives and solicitudes
+Task: Fix template key resolution in actions/skills block and quest block injection
 
 Work Log:
-- Investigated `buildSkillsBlock()` in `src/lib/stats/stats-resolver.ts`
-- Found that `name`, `description`, and `injectFormat` fields were correctly resolved via `resolveTemplateKeys()`
-- Discovered that objective names (from quest templates) and solicitud names in the "Puede completar" section were NOT being resolved
-- Lines 305 and 307 pushed raw text containing potential `{{user}}`/`{{char}}` without resolution
-- Applied `resolveTemplateKeys()` to both `objectiveName` and `solicitudName` before pushing to arrays
-- Verified other block builders (intentions, invitations, solicitudes) already handle resolution correctly
+- Investigated two reported issues: (1) actions not resolving {{user}}, {{char}} etc. keys, (2) quest block not being injected into PRE-LLM prompt
+- Found that `resolveTemplateKeys` in `stats-resolver.ts` only handled 4 basic keys ({{user}}, {{char}}, {{solicitante}}, {{solicitado}}) but not comprehensive keys like {{userpersona}}, {{eventos}}, or stat attribute keys
+- Enhanced `resolveTemplateKeys` to accept an optional `fullContext` parameter that uses `resolveAllKeys` + `buildKeyResolutionContext` for comprehensive resolution
+- Added `personaDescription` and `personaResolvedStats` fields to `StatsResolutionContext` interface
+- Updated `buildSkillsBlock` to pass full context for key resolution using the new `fullContext` parameter
+- Fixed ordering in `resolveStats` callers: persona stats are now resolved FIRST so they're available when character stats (which includes skills block) are resolved
+- Updated all 3 `buildSystemPrompt` call sites to resolve persona stats before character stats
+- Updated `processCharacter` in prompt-builder.ts with the same ordering fix
+- Updated the stream route's separate `resolveStats` call to include persona fields
+
+Quest block injection fixes:
+- Added `resolveAllKeys` + `buildKeyResolutionContext` import to generate route for quest content key resolution
+- Added quest content key resolution in generate route (was missing before - quest text was injected raw)
+- Added same quest content key resolution in regenerate route
+- Added diagnostic logging to all 3 routes (generate, regenerate, stream) to log quest check conditions
+- Fixed chat-panel.tsx to send `allCharacters` to the generate endpoint (was missing, causing empty peticiones/solicitudes resolution)
+- Verified the global audio mute button IS properly present in novel-chat-box.tsx (lines 1849-1866) - it was NOT missing
+- All lint checks pass cleanly
+
+Stage Summary:
+- Actions/skills block now resolves ALL key types: {{user}}, {{char}}, {{userpersona}}, {{eventos}}, stat attribute keys, etc.
+- Quest block content is now properly resolved with all template keys in generate, regenerate, and stream routes
+- Added comprehensive diagnostic logging for quest block injection to help diagnose future issues
+- Chat panel now sends allCharacters to generate endpoint for proper peticiones/solicitudes resolution
+- Files modified: stats-resolver.ts, prompt-builder.ts, generate/route.ts, regenerate/route.ts, stream/route.ts, chat-panel.tsx
+---
+Task ID: 11
+Agent: main
+Task: Fix template key resolution in tool executor displayMessages + fix quest block stale closure bug
+
+Work Log:
+- **Issue 1: Template keys not resolved in tool results**
+  - User reported that when a tool executes (e.g., manage_action), the displayMessage contains raw `{{user}}`, `{{char}}` instead of resolved values
+  - Root cause: `manage-action.ts` built `displayMessage` using `matchedSkill.description` directly without resolving template keys
+  - The `ToolContext` already has `userName` and `characterName` available
+  - Added `resolveToolKeys()` helper function to `manage-action.ts`, `manage-solicitud.ts`, and `manage-quest.ts`
+  - In `manage-action.ts`: resolves `{{user}}`, `{{char}}` in skill name, description, cost descriptions, and result metadata
+  - In `manage-solicitud.ts`: resolves `{{user}}`, `{{char}}`, `{{solicitante}}`, `{{solicitado}}` in all description fields (get_info, make_request, complete_request)
+  - In `manage-quest.ts`: resolves `{{user}}`, `{{char}}` in objective description in display messages and result metadata
+
+- **Issue 2: Quest block not injected into PRE-LLM prompt**
+  - Dev log confirmed: `sessionQuests=0, questTemplates=0` — both empty when reaching backend
+  - Root cause: **Stale closure bug** in `chat-panel.tsx`
+    - `questTemplates` captured from React hook selector (`useTavernStore(state => state.questTemplates)`) at render time
+    - `handleSend` is async — by the time the fetch body is constructed, the component may have re-rendered but the local `questTemplates` const still holds the stale value
+    - Even after `await loadQuestTemplates()`, the local variable doesn't update because it's a const from the closure
+    - Same issue with `currentSession?.sessionQuests` — read once at start, but quests may have been activated after
+  - Fix: Added `latestQuestTemplates` and `latestQuestSettings` read via `useTavernStore.getState()` AFTER the load guard
+  - Added `currentSessionQuests` read directly from session at the same point
+  - Replaced ALL 4 occurrences of stale references in fetch bodies with fresh values
+
+Stage Summary:
+- Tool executor displayMessages now properly resolve template keys ({{user}}, {{char}}, {{solicitante}}, {{solicitado}})
+- Quest block injection fixed: all fetch requests now use fresh store values instead of stale closure values
+- Files modified: `manage-action.ts`, `manage-solicitud.ts`, `manage-quest.ts`, `chat-panel.tsx`
 - Lint passes cleanly
 
-Stage Summary:
-- Fixed `buildSkillsBlock()` in `src/lib/stats/stats-resolver.ts` lines 302-311
-- Objective names from `findObjectiveNameByKey()` now pass through `resolveTemplateKeys()`
-- Solicitud names from `reward.solicitud.solicitudName` now pass through `resolveTemplateKeys()`
-- `{{user}}`, `{{char}}`, `{{solicitante}}`, `{{solicitado}}` keys in objectives/solicitudes text will now be properly resolved
 ---
-Task ID: 1
+Task ID: 2
 Agent: main
-Task: Add global audio mute button to chatbox
+Task: Refactor quest system from hardcoded section to {{activeQuests}} key + fix template keys in tool results
 
 Work Log:
-- Investigated all audio systems: Sound Triggers (use-sound-triggers.ts), AudioBus (audio-bus.ts), Timeline Sound Player (timeline-sound-player.ts), Timeline Sprite Sounds hook (use-timeline-sprite-sounds.ts), Sound Key Handler, Sound Handler (legacy)
-- Added `globalMute: boolean` field to `SoundSettings` type in `src/types/index.ts`
-- Added `globalMute: false` default in `src/store/defaults.ts`
-- Created `src/lib/global-audio-mute.ts` — lightweight mutable state module for non-React audio modules
-- Added mute toggle button in `novel-chat-box.tsx` after KWS button with Volume2/VolumeX icons
-- Added `useEffect` in chatbox that syncs settings.globalMute to all audio modules
-- Added `setAudioBusMuted()` function to audio-bus.ts that cancels all queued audio on mute
-- Added `isGloballyMuted()` checks in:
-  - `use-sound-triggers.ts` (scanStreamingContent, scanCompleteMessage)
-  - `audio-bus.ts` (playAudioTask)
-  - `timeline-sound-player.ts` (playSoundFromTrigger, playSoundFromUrl)
-  - `use-timeline-sprite-sounds.ts` (playSoundFromTrigger, playSoundFromUrl)
-  - `sound-key-handler.ts` (processAudioQueue)
-  - `sound-handler.ts` (processAudioQueue - legacy)
-- Lint passes cleanly
+- Analyzed full quest data flow: session JSON → frontend → API routes → prompt builder → LLM
+- Added `{{activeQuests}}` as Phase 5 in `key-resolver.ts` (resolveQuestKeys function)
+- Added quest data fields (questTemplates, sessionQuests, questSettings) to KeyResolutionContext
+- Updated buildKeyResolutionContext to accept quest data params
+- Updated buildGroupKeyResolutionContext to accept quest data params
+- Updated buildSystemPrompt signature to accept sessionQuests and questSettings
+- Updated buildGroupSystemPrompt signature to accept sessionQuests and questSettings
+- Added QuestSettings to prompt-builder.ts imports
+- Removed hardcoded quest section building from all 4 routes (stream, generate, regenerate, group-stream)
+- Removed buildQuestPromptSection imports from all 4 routes (restored DEFAULT_QUEST_SETTINGS where needed)
+- Updated buildSystemPrompt calls to pass sessionQuests and questSettings in all routes
+- Updated buildGroupSystemPrompt call in group-stream to pass sessionQuests and questSettings
+- Restored questSettings construction in group-stream route
+- Fixed Issue 1: Replaced local resolveToolKeys in manage-action.ts with comprehensive resolver (resolveToolKeysComprehensive using resolveAllKeys)
+- Fixed Issue 1: Same fix applied to manage-quest.ts
+- Fixed Issue 1: manage-solicitud.ts now uses resolveToolKeysWithContext with comprehensive resolver + solicitante/solicitado overrides
+- All changes pass ESLint cleanly
 
 Stage Summary:
-- Global mute button added to chatbox between KWS and recording indicator
-- Button shows Volume2 icon (unmuted) or VolumeX icon (muted, red/destructive variant)
-- Muting immediately cancels AudioBus queue, stops timeline sounds, prevents new sound triggers
-- Mute state persists via `settings.sound.globalMute` in the store
+- {{activeQuests}} is now a resolvable key in ANY character section (description, scenario, systemPrompt, characterNote, authorNote, postHistoryInstructions, etc.)
+- Quest data flows through key-resolver: buildKeyResolutionContext → resolveAllKeys → resolveQuestKeys (Phase 5)
+- Inner keys in quest content ({{user}}, {{char}}, stats, events, sounds) are properly resolved via recursion-safe inner context
+- Tool results (manage_action, manage_quest, manage_solicitud) now use comprehensive key resolver instead of basic regex
+- Files modified: `key-resolver.ts`, `prompt-builder.ts`, `stream/route.ts`, `generate/route.ts`, `regenerate/route.ts`, `group-stream/route.ts`, `manage-action.ts`, `manage-quest.ts`, `manage-solicitud.ts`

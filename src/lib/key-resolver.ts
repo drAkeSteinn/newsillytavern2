@@ -14,9 +14,11 @@
 // This ensures that lorebooks injected after template processing
 // still get their keys resolved properly.
 
-import type { CharacterCard, Persona, SessionStats, SoundTrigger, AppSettings } from '@/types';
+import type { CharacterCard, Persona, SessionStats, SoundTrigger, AppSettings, QuestTemplate, SessionQuestInstance, QuestSettings } from '@/types';
 import type { ResolvedStats } from '@/types';
 import { resolveStatsInText } from '@/lib/stats/stats-resolver';
+import { buildQuestPromptSection } from '@/lib/triggers/handlers/quest-handler';
+import { DEFAULT_QUEST_SETTINGS } from '@/types';
 
 // ============================================
 // Types
@@ -49,6 +51,11 @@ export interface KeyResolutionContext {
   // Sound triggers for {{sonidos}} key
   soundTriggers?: SoundTrigger[];
   soundSettings?: AppSettings['sound'];
+
+  // Quest data for {{activeQuests}} key
+  questTemplates?: QuestTemplate[];
+  sessionQuests?: SessionQuestInstance[];
+  questSettings?: QuestSettings;
 }
 
 // ============================================
@@ -391,6 +398,76 @@ function buildSonidosBlock(
 }
 
 // ============================================
+// Phase 5: Quest Key Resolution
+// ============================================
+
+/**
+ * Resolve {{activeQuests}} key in text
+ * Replaces with a formatted block of active quests and their objectives.
+ * Inner keys in quest content ({{user}}, {{char}}, stats, etc.) are also resolved.
+ *
+ * The key can be placed in ANY character section (description, scenario,
+ * systemPrompt, characterNote, authorNote, postHistoryInstructions, etc.)
+ *
+ * Example usage in character description:
+ *   {{char}} es un aventurero.
+ *   [MISIONES ACTIVAS]
+ *   {{activeQuests}}
+ */
+export function resolveQuestKeys(
+  text: string,
+  context: KeyResolutionContext
+): string {
+  if (!text) return text;
+
+  // Early exit if no {{activeQuests}} key present
+  if (!/\{\{activeQuests\}\}/gi.test(text)) {
+    return text;
+  }
+
+  const { questTemplates, sessionQuests, questSettings, characterId } = context;
+
+  // No quest data available - remove the key
+  if (!questTemplates?.length || !sessionQuests?.length) {
+    return text.replace(/\{\{activeQuests\}\}/gi, '');
+  }
+
+  // Check if there are any active quests
+  const activeQuests = sessionQuests.filter(q => q.status === 'active');
+  if (activeQuests.length === 0) {
+    return text.replace(/\{\{activeQuests\}\}/gi, '');
+  }
+
+  // Build raw quest content using buildQuestPromptSection with a simple template
+  // This gives us just the quest list items without any wrapping template
+  const rawQuestContent = buildQuestPromptSection(
+    questTemplates,
+    sessionQuests,
+    '{{activeQuests}}',  // Simple template — result is just the quest list
+    characterId,
+    false,  // not for narrator
+    questSettings
+  );
+
+  if (!rawQuestContent) {
+    return text.replace(/\{\{activeQuests\}\}/gi, '');
+  }
+
+  // Resolve inner keys in quest content ({{user}}, {{char}}, stats, events, sounds)
+  // Use a context WITHOUT quest data to prevent recursion
+  const innerContext: KeyResolutionContext = {
+    ...context,
+    questTemplates: undefined,
+    sessionQuests: undefined,
+  };
+
+  const resolvedQuestContent = resolveAllKeys(rawQuestContent, innerContext);
+
+  // Replace all occurrences of {{activeQuests}} with the resolved content
+  return text.replace(/\{\{activeQuests\}\}/gi, resolvedQuestContent);
+}
+
+// ============================================
 // Unified Resolution
 // ============================================
 
@@ -401,6 +478,7 @@ function buildSonidosBlock(
  * Phase 2: Stats keys ({{resistencia}}, {{habilidades}}, etc.)
  * Phase 3: Event keys ({{solicitante}}, {{solicitado}}, {{eventos}})
  * Phase 4: Sound keys ({{sonidos}})
+ * Phase 5: Quest keys ({{activeQuests}})
  *
  * This is the main function to use for resolving all keys
  */
@@ -421,6 +499,9 @@ export function resolveAllKeys(
 
   // Phase 4: Resolve sound keys
   result = resolveSoundKeys(result, context);
+
+  // Phase 5: Resolve quest keys ({{activeQuests}})
+  result = resolveQuestKeys(result, context);
 
   return result;
 }
@@ -474,7 +555,10 @@ export function buildKeyResolutionContext(
   sessionStats?: SessionStats | null,
   soundTriggers?: SoundTrigger[],
   soundSettings?: AppSettings['sound'],
-  personaResolvedStats?: ResolvedStats | null
+  personaResolvedStats?: ResolvedStats | null,
+  questTemplates?: QuestTemplate[],
+  sessionQuests?: SessionQuestInstance[],
+  questSettings?: QuestSettings
 ): KeyResolutionContext {
   return {
     user: persona?.name || userName,
@@ -488,6 +572,9 @@ export function buildKeyResolutionContext(
     characterId: character.id,
     soundTriggers,
     soundSettings,
+    questTemplates,
+    sessionQuests,
+    questSettings,
   };
 }
 
@@ -501,9 +588,12 @@ export function buildGroupKeyResolutionContext(
   persona?: Persona,
   resolvedStats?: ResolvedStats | null,
   sessionStats?: SessionStats | null,
-  personaResolvedStats?: ResolvedStats | null
+  personaResolvedStats?: ResolvedStats | null,
+  questTemplates?: QuestTemplate[],
+  sessionQuests?: SessionQuestInstance[],
+  questSettings?: QuestSettings
 ): KeyResolutionContext {
-  return buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, undefined, undefined, personaResolvedStats);
+  return buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, undefined, undefined, personaResolvedStats, questTemplates, sessionQuests, questSettings);
 }
 
 // ============================================

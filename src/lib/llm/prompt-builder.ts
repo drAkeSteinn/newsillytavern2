@@ -18,6 +18,7 @@ import type {
   SoundTrigger,
   AppSettings,
   ResolvedStats,
+  QuestSettings,
 } from '@/types';
 import type { ChatApiMessage, CompletionPromptConfig, GroupPromptBuildResult } from './types';
 import { processExampleDialogue } from '@/lib/prompt-template';
@@ -333,7 +334,7 @@ export interface PromptBuildOptions {
   hudContext?: HUDContextConfig;
   questTemplates?: QuestTemplate[];
   sessionQuests?: SessionQuestInstance[];
-  questSettings?: { enabled: boolean; promptInclude: boolean; promptTemplate: string };
+  questSettings?: QuestSettings;
 }
 
 // ============================================
@@ -357,22 +358,14 @@ export function buildSystemPrompt(
   allCharacters?: CharacterCard[],
   soundTriggers?: SoundTrigger[],
   soundSettings?: AppSettings['sound'],
-  questTemplates?: QuestTemplate[]
+  questTemplates?: QuestTemplate[],
+  sessionQuests?: SessionQuestInstance[],
+  questSettings?: QuestSettings
 ): { prompt: string; sections: PromptSection[] } {
   const sections: PromptSection[] = [];
 
-  // Resolve stats for this character
-  const resolvedStats = resolveStats({
-    characterId: character.id,
-    statsConfig: character.statsConfig,
-    sessionStats,
-    allCharacters,
-    userName,
-    characterName: character.name,
-    questTemplates,
-  });
-
-  // Resolve stats for the persona (user attributes like {{resistencia}})
+  // Resolve stats for the persona FIRST (user attributes like {{resistencia}})
+  // This must be done before character stats so personaResolvedStats is available
   let personaResolvedStats: ResolvedStats | null = null;
   if (persona?.statsConfig?.enabled && sessionStats) {
     personaResolvedStats = resolveStats({
@@ -382,8 +375,21 @@ export function buildSystemPrompt(
     });
   }
 
-  // Build unified key resolution context
-  const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, soundTriggers, soundSettings, personaResolvedStats);
+  // Resolve stats for this character (includes skills block with full key resolution)
+  const resolvedStats = resolveStats({
+    characterId: character.id,
+    statsConfig: character.statsConfig,
+    sessionStats,
+    allCharacters,
+    userName,
+    characterName: character.name,
+    questTemplates,
+    personaDescription: persona?.description,
+    personaResolvedStats,
+  });
+
+  // Build unified key resolution context (includes quest data for {{activeQuests}})
+  const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, soundTriggers, soundSettings, personaResolvedStats, questTemplates, sessionQuests, questSettings);
 
   // Main system instruction
   // If character has a custom system prompt, use it instead of the default
@@ -764,22 +770,13 @@ export function buildGroupSystemPrompt(
   sessionStats?: SessionStats,
   postHistoryInstructions?: string,
   allCharacters?: CharacterCard[],
-  questTemplates?: QuestTemplate[]
+  questTemplates?: QuestTemplate[],
+  sessionQuests?: SessionQuestInstance[],
+  questSettings?: QuestSettings
 ): { prompt: string; sections: PromptSection[] } {
   const sections: PromptSection[] = [];
 
-  // Resolve stats for this character in the group
-  const resolvedStats = resolveStats({
-    characterId: character.id,
-    statsConfig: character.statsConfig,
-    sessionStats,
-    allCharacters,
-    userName,
-    characterName: character.name,
-    questTemplates,
-  });
-
-  // Resolve stats for the persona (user attributes like {{resistencia}})
+  // Resolve stats for the persona FIRST (user attributes like {{resistencia}})
   let personaResolvedStats: ResolvedStats | null = null;
   if (persona?.statsConfig?.enabled && sessionStats) {
     personaResolvedStats = resolveStats({
@@ -789,8 +786,21 @@ export function buildGroupSystemPrompt(
     });
   }
 
-  // Build unified key resolution context
-  const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, undefined, undefined, personaResolvedStats);
+  // Resolve stats for this character in the group (includes skills block with full key resolution)
+  const resolvedStats = resolveStats({
+    characterId: character.id,
+    statsConfig: character.statsConfig,
+    sessionStats,
+    allCharacters,
+    userName,
+    characterName: character.name,
+    questTemplates,
+    personaDescription: persona?.description,
+    personaResolvedStats,
+  });
+
+  // Build unified key resolution context (includes quest data for {{activeQuests}})
+  const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, undefined, undefined, personaResolvedStats, questTemplates, sessionQuests, questSettings);
 
   // System Prompt Priority: Group > Character > Default
   let systemContent: string;
@@ -1055,7 +1065,17 @@ export function processCharacter(
   allCharacters?: CharacterCard[],
   questTemplates?: QuestTemplate[]
 ): CharacterCard {
-  // Resolve stats for this character
+  // Resolve stats for the persona FIRST
+  let personaResolvedStats: ResolvedStats | null = null;
+  if (persona?.statsConfig?.enabled && sessionStats) {
+    personaResolvedStats = resolveStats({
+      characterId: '__user__',
+      statsConfig: persona.statsConfig,
+      sessionStats,
+    });
+  }
+
+  // Resolve stats for this character (includes skills block with full key resolution)
   const resolvedStats = resolveStats({
     characterId: character.id,
     statsConfig: character.statsConfig,
@@ -1064,10 +1084,12 @@ export function processCharacter(
     userName,
     characterName: character.name,
     questTemplates,
+    personaDescription: persona?.description,
+    personaResolvedStats,
   });
 
   // Build key resolution context
-  const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats);
+  const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, undefined, undefined, personaResolvedStats);
 
   // Process all text fields
   return {
@@ -1081,7 +1103,7 @@ export function processCharacter(
     postHistoryInstructions: resolveAllKeys(character.postHistoryInstructions, keyContext),
     characterNote: resolveAllKeys(character.characterNote, keyContext),
     authorNote: resolveAllKeys(character.authorNote, keyContext),
-    alternateGreetings: character.alternateGreetings.map(greeting =>
+    alternateGreetings: (character.alternateGreetings || []).map(greeting =>
       resolveAllKeys(greeting, keyContext)
     )
   };

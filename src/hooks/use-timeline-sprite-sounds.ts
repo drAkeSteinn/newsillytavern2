@@ -6,9 +6,9 @@
 // with timeline sound AND haptic playback.
 //
 // When a sprite is displayed in the chat scene, it:
-// 1. Gets the actual displayed sprite URL from the store (set by CharacterSprite/GroupSprites)
-// 2. Tries to find inline timeline data from V2 sprite packs
-// 3. Falls back to metadata.json from filesystem
+// 1. Extracts the collection name from the sprite URL
+// 2. Loads the metadata.json from that collection
+// 3. Finds the sprite's timeline configuration
 // 4. Plays sounds at keyframe times
 // 5. Sends haptic positions to Handy device
 //
@@ -17,7 +17,6 @@
 
 import { useEffect, useRef } from 'react';
 import { useTavernStore } from '@/store';
-import { isGloballyMuted } from '@/lib/global-audio-mute';
 import type {
   SpriteTimelineData,
   TimelineTrack,
@@ -26,7 +25,9 @@ import type {
   SoundCollection,
   CharacterCard,
   SpritePackV2,
+  StateCollectionV2,
 } from '@/types';
+import { isGlobalMuted } from '@/lib/audio/audio-mute-store';
 
 // ============================================
 // Types
@@ -261,7 +262,7 @@ function processHapticTracks(
 }
 
 // ============================================
-// Collection Metadata Loader (filesystem fallback)
+// Collection Metadata Loader
 // ============================================
 
 async function loadCollectionMetadata(collectionName: string): Promise<CollectionMetadata | null> {
@@ -296,49 +297,6 @@ function extractFilenameFromUrl(spriteUrl: string): string | null {
 }
 
 // ============================================
-// V2 Pack Timeline Lookup
-// ============================================
-
-/**
- * Search for inline timeline data in a character's V2 sprite packs.
- * Iterates through all packs and tries to match the sprite URL.
- */
-function findTimelineInV2Packs(
-  spriteUrl: string,
-  character: CharacterCard | undefined,
-): SpriteTimelineData | null {
-  if (!character?.spritePacksV2 || !character.stateCollectionsV2) return null;
-
-  for (const pack of character.spritePacksV2) {
-    for (const sprite of pack.sprites) {
-      // Match by URL - compare last path segments for reliability
-      if (urlMatches(sprite.url, spriteUrl) && sprite.timeline) {
-        return sprite.timeline;
-      }
-    }
-  }
-
-  return null;
-}
-
-/**
- * Compare two URLs for sprite matching.
- * Handles cases where URLs might have different query params or slight path differences.
- */
-function urlMatches(a: string, b: string): boolean {
-  if (a === b) return true;
-  // Compare just the pathname (strip query params and hash)
-  try {
-    const urlA = new URL(a, window.location.origin);
-    const urlB = new URL(b, window.location.origin);
-    return urlA.pathname === urlB.pathname;
-  } catch {
-    // Fallback: simple string comparison
-    return a.split('?')[0].split('#')[0] === b.split('?')[0].split('#')[0];
-  }
-}
-
-// ============================================
 // Sound Playback Functions
 // ============================================
 
@@ -347,7 +305,7 @@ async function playSoundFromTrigger(
   collections: SoundCollection[],
   volume: number = 1
 ): Promise<HTMLAudioElement | null> {
-  if (isGloballyMuted()) return null;
+  if (isGlobalMuted()) return null;
   const collection = collections.find(c => c.name === trigger.collection);
   if (!collection || !collection.files || collection.files.length === 0) return null;
 
@@ -375,7 +333,7 @@ async function playSoundFromUrl(
   url: string,
   volume: number = 1
 ): Promise<HTMLAudioElement | null> {
-  if (isGloballyMuted()) return null;
+  if (isGlobalMuted()) return null;
   try {
     const baseAudio = getAudio(url);
     const audioClone = baseAudio.cloneNode() as HTMLAudioElement;
@@ -400,6 +358,7 @@ function playSoundsAtTime(
   active: ActiveTimeline,
   toleranceMs: number = 150
 ): void {
+  if (isGlobalMuted()) return;
   const globalVolume = timeline.globalVolume ?? 1;
 
   for (const track of timeline.tracks) {
@@ -569,7 +528,6 @@ function startTimeline(
     sounds: hasSoundTracks,
     haptic: hasHapticTracks,
     url: spriteUrl.split('/').pop(),
-    source: 'runtime',
   });
 
   // Start the loop checker if not already running
@@ -583,6 +541,58 @@ function startTimeline(
   // Send initial haptic position
   if (hasHapticTracks) {
     processHapticTracks(timeline, 0);
+  }
+}
+
+// ============================================
+// Idle Sprite URL Resolver
+// ============================================
+
+// Replicate the same logic as CharacterSprite.getSpriteUrl / getSpriteFromStateCollectionV2
+// to compute the displayed sprite URL for idle/talk/thinking states.
+// This requires character data (spritePacksV2, stateCollectionsV2).
+
+function computeIdleSpriteUrl(
+  spriteState: string,
+  character: CharacterCard | undefined,
+  characterId: string,
+): string | null {
+  if (!character) return null;
+
+  const hasV2Collections = !!(character.stateCollectionsV2 && character.stateCollectionsV2.length > 0);
+  const hasV2Packs = !!(character.spritePacksV2 && character.spritePacksV2.length > 0);
+
+  if (!hasV2Collections || !hasV2Packs) return null;
+
+  // Find state collection matching the current sprite state
+  const stateCollection = character.stateCollectionsV2!.find(
+    (c: StateCollectionV2) => c.state === spriteState
+  );
+  if (!stateCollection) return null;
+
+  const pack = character.spritePacksV2!.find(
+    (p: SpritePackV2) => p.id === stateCollection.packId
+  );
+  if (!pack || pack.sprites.length === 0) return null;
+
+  switch (stateCollection.behavior) {
+    case 'principal': {
+      if (stateCollection.principalSpriteId) {
+        const principal = pack.sprites.find(s => s.id === stateCollection.principalSpriteId);
+        if (principal) return principal.url;
+      }
+      return pack.sprites[0]?.url || null;
+    }
+    case 'random':
+    case 'list': {
+      // For random/list, we can't easily predict the URL from here
+      // since random uses Math.random() and list uses a rotation index.
+      // Return first sprite URL as fallback — the actual displayed sprite
+      // may differ, but this ensures we at least try to load timeline data.
+      return pack.sprites[0]?.url || null;
+    }
+    default:
+      return pack.sprites[0]?.url || null;
   }
 }
 
@@ -604,17 +614,17 @@ export function useTimelineSpriteSounds() {
 
   const prevSpriteUrlsRef = useRef<Record<string, string>>({});
 
-  // Start/stop timeline when displayed sprite changes (trigger OR idle)
+  // Start/stop timeline when sprite changes (trigger OR idle)
   useEffect(() => {
     const currentSpriteUrls: Record<string, string> = {};
 
     for (const [characterId, charState] of Object.entries(characterSpriteStates)) {
-      // Use the displayedSpriteUrl reported by CharacterSprite/GroupSprites
-      // This is the ACTUAL URL being shown (handles random/list modes correctly)
-      let effectiveUrl = charState.displayedSpriteUrl || charState.triggerSpriteUrl || '';
+      // Determine effective sprite URL:
+      // Priority: trigger > idle from state collections
+      let effectiveUrl = charState.triggerSpriteUrl || '';
 
-      // If no displayedSpriteUrl yet, fall back to computing idle URL
       if (!effectiveUrl) {
+        // No trigger active — compute idle sprite URL
         const character = characterMap.current.get(characterId);
         effectiveUrl = computeIdleSpriteUrl(
           charState.spriteState,
@@ -635,41 +645,28 @@ export function useTimelineSpriteSounds() {
           continue;
         }
 
-        const character = characterMap.current.get(characterId);
+        // Extract collection name and filename from URL
+        const collectionName = extractCollectionFromUrl(effectiveUrl);
+        const filename = extractFilenameFromUrl(effectiveUrl);
 
-        // Try to find timeline data - V2 packs first, then filesystem metadata.json
+        if (!collectionName || !filename) continue;
+
+        // Load collection metadata and find sprite timeline
         (async () => {
-          let timeline: SpriteTimelineData | null = null;
+          const metadata = await loadCollectionMetadata(collectionName);
+          if (!metadata) return;
 
-          // 1. Try inline timeline from V2 sprite packs
-          timeline = findTimelineInV2Packs(effectiveUrl, character);
+          const spriteMeta = metadata.sprites[filename];
+          if (!spriteMeta?.timeline?.tracks) return;
 
-          // 2. Fall back to filesystem metadata.json
-          if (!timeline) {
-            const collectionName = extractCollectionFromUrl(effectiveUrl);
-            const filename = extractFilenameFromUrl(effectiveUrl);
-
-            if (collectionName && filename) {
-              const metadata = await loadCollectionMetadata(collectionName);
-              if (metadata) {
-                const spriteMeta = metadata.sprites[filename];
-                if (spriteMeta?.timeline?.tracks) {
-                  timeline = spriteMeta.timeline;
-                }
-              }
-            }
-          }
-
-          // If we found timeline data, start the timeline
-          if (timeline && timeline.tracks && timeline.tracks.length > 0) {
-            startTimeline(
-              characterId,
-              effectiveUrl,
-              timeline,
-              soundTriggers,
-              soundCollections
-            );
-          }
+          // Start timeline (handles both sound and haptic tracks)
+          startTimeline(
+            characterId,
+            effectiveUrl,
+            spriteMeta.timeline,
+            soundTriggers,
+            soundCollections
+          );
         })();
       }
 
@@ -701,56 +698,4 @@ export function useTimelineSpriteSounds() {
     stopTimeline,
     clearMetadataCache: () => collectionMetadataCache.clear(),
   };
-}
-
-// ============================================
-// Idle Sprite URL Resolver (fallback)
-// ============================================
-
-// Replicate the same logic as CharacterSprite.getSpriteUrl / getSpriteFromStateCollectionV2
-// to compute the displayed sprite URL for idle/talk/thinking states.
-// This is only used as a FALLBACK when displayedSpriteUrl is not yet set.
-
-function computeIdleSpriteUrl(
-  spriteState: string,
-  character: CharacterCard | undefined,
-  characterId: string,
-): string | null {
-  if (!character) return null;
-
-  const hasV2Collections = !!(character.stateCollectionsV2 && character.stateCollectionsV2.length > 0);
-  const hasV2Packs = !!(character.spritePacksV2 && character.spritePacksV2.length > 0);
-
-  if (!hasV2Collections || !hasV2Packs) return null;
-
-  // Find state collection matching the current sprite state
-  const stateCollection = character.stateCollectionsV2!.find(
-    (c) => c.state === spriteState
-  );
-  if (!stateCollection) return null;
-
-  const pack = character.spritePacksV2!.find(
-    (p: SpritePackV2) => p.id === stateCollection.packId
-  );
-  if (!pack || pack.sprites.length === 0) return null;
-
-  switch (stateCollection.behavior) {
-    case 'principal': {
-      if (stateCollection.principalSpriteId) {
-        const principal = pack.sprites.find(s => s.id === stateCollection.principalSpriteId);
-        if (principal) return principal.url;
-      }
-      return pack.sprites[0]?.url || null;
-    }
-    case 'random':
-    case 'list': {
-      // For random/list, we can't easily predict the URL from here
-      // since random uses Math.random() and list uses a rotation index.
-      // Return first sprite URL as fallback — the actual displayed sprite
-      // may differ, but this ensures we at least try to load timeline data.
-      return pack.sprites[0]?.url || null;
-    }
-    default:
-      return pack.sprites[0]?.url || null;
-  }
 }

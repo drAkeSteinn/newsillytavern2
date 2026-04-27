@@ -439,6 +439,18 @@ export function ChatPanel() {
     // For group mode, we don't need activeCharacter
     if (!isGroupMode && !activeCharacter) return;
 
+    // Ensure quest templates are loaded before building the prompt
+    // This prevents race condition where templates aren't available on first message
+    if (questTemplates.length === 0) {
+      try {
+        await loadQuestTemplates();
+      } catch {}
+    }
+    // CRITICAL: Always re-read quest data from the store to avoid stale closures
+    // The React hook selector captures values at render time, but handleSend is async
+    const latestQuestTemplates = useTavernStore.getState().questTemplates;
+    const latestQuestSettings = useTavernStore.getState().questSettings;
+
     // Generate a unique ID for this generation
     const generationId = `gen_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     generationIdRef.current = generationId;
@@ -485,9 +497,10 @@ export function ChatPanel() {
         throw new Error(t('chat.noLLM'));
       }
 
-      // Get current session messages (before adding the user message, since we just added it)
+      // Get current session data (re-read to get latest quest instances)
       const currentSession = useTavernStore.getState().sessions.find(s => s.id === activeSessionId);
       const currentMessages = currentSession?.messages || [];
+      const currentSessionQuests = currentSession?.sessionQuests || [];
 
       // Check if streaming is enabled
       const useStreaming = activeLLMConfig.parameters.stream;
@@ -540,9 +553,9 @@ export function ChatPanel() {
             // Pass per-character lorebooks when group has no lorebooks
             characterLorebooksMap: characterLorebooksMap,
             sessionStats,  // Pass session stats for attribute values
-            sessionQuests: currentSession?.sessionQuests,  // Pass session quests
-            questTemplates,  // Pass quest templates
-            questSettings,  // Pass quest settings
+            sessionQuests: currentSessionQuests,  // Pass session quests (freshly read)
+            questTemplates: latestQuestTemplates,  // Pass quest templates (freshly read)
+            questSettings: latestQuestSettings,  // Pass quest settings (freshly read)
             hudContext: activeHUDContext,  // Pass HUD context for prompt injection
             allCharacters: allCharactersWithPersona,  // Pass all characters + persona for peticiones/solicitudes
             toolsSettings: settings.tools,  // Pass tools settings for group chat tool-calling
@@ -556,7 +569,7 @@ export function ChatPanel() {
         });
 
         if (!response.ok) {
-          const errorData = await response.json();
+          const errorData = await response.json().catch(() => ({ error: response.statusText || t('chat.error.streaming') }));
           throw new Error(errorData.error || t('chat.error.streaming'));
         }
 
@@ -870,9 +883,9 @@ export function ChatPanel() {
             contextConfig,
             lorebooks: activeLorebooks,
             sessionStats,  // Pass session stats for attribute values
-            sessionQuests: currentSession?.sessionQuests,  // Pass session quests
-            questTemplates,  // Pass quest templates
-            questSettings,  // Pass quest settings
+            sessionQuests: currentSessionQuests,  // Pass session quests (freshly read)
+            questTemplates: latestQuestTemplates,  // Pass quest templates (freshly read)
+            questSettings: latestQuestSettings,  // Pass quest settings (freshly read)
             hudContext: activeHUDContext,  // Pass HUD context for prompt injection
             summary: activeSession?.summary,  // Pass session summary (single, not array)
             allCharacters: allCharactersWithPersona,  // Pass all characters + persona for peticiones/solicitudes
@@ -887,7 +900,7 @@ export function ChatPanel() {
         });
 
         if (!response.ok) {
-          const errorData = await response.json();
+          const errorData = await response.json().catch(() => ({ error: response.statusText || t('chat.error.streaming') }));
           throw new Error(errorData.error || t('chat.error.streaming'));
         }
 
@@ -1126,14 +1139,15 @@ export function ChatPanel() {
             contextConfig,
             lorebooks: activeLorebooks,
             sessionStats,  // Pass session stats for attribute values
-            sessionQuests: currentSession?.sessionQuests,  // Pass session quests
-            questTemplates,  // Pass quest templates
-            questSettings,  // Pass quest settings
+            allCharacters: allCharactersWithPersona,  // Pass all characters for peticiones/solicitudes resolution
+            sessionQuests: currentSessionQuests,  // Pass session quests (freshly read)
+            questTemplates: latestQuestTemplates,  // Pass quest templates (freshly read)
+            questSettings: latestQuestSettings,  // Pass quest settings (freshly read)
             hudContext: activeHUDContext  // Pass HUD context for prompt injection
           })
         });
 
-        const data = await response.json();
+        const data = await response.json().catch(() => ({ error: t('chat.error.generation') }));
 
         if (!response.ok) {
           throw new Error(data.error || t('chat.error.generation'));
@@ -1292,7 +1306,7 @@ export function ChatPanel() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({ error: response.statusText || t('chat.error.regeneration') }));
         throw new Error(errorData.error || t('chat.error.regeneration'));
       }
 

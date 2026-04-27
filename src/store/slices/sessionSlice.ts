@@ -535,28 +535,12 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     const activePersona = get().getActivePersona?.();
     const userName = activePersona?.name || 'User';
 
-    // Determine the first message to use
-    // Priority: Group firstMes > Character firstMes
-    let initialContent = '';
-    let firstMesSenderId = characterId;  // Who "sent" the first message
+    // Process the first message with template variables
+    const processedFirstMes = character
+      ? processMessageTemplate(character.firstMes, character.name, userName)
+      : '';
 
-    if (groupId) {
-      const group = get().getGroupById?.(groupId);
-      if (group?.firstMes && group.firstMes.trim()) {
-        // Group has a custom first message — use it
-        initialContent = processMessageTemplate(group.firstMes, group.name, userName);
-        // For group first messages, use the first non-narrator member as sender
-        const firstNonNarrator = group.members?.find((m: any) => !m.isNarrator);
-        if (firstNonNarrator) {
-          firstMesSenderId = firstNonNarrator.characterId;
-        }
-      }
-    }
-
-    // Fallback to character's first message if group firstMes is empty
-    if (!initialContent && character) {
-      initialContent = processMessageTemplate(character.firstMes, character.name, userName);
-    }
+    const initialContent = processedFirstMes || '';
     
     // Initialize session stats
     let sessionStats: SessionStats | undefined;
@@ -629,10 +613,10 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
         id,
         characterId,
         groupId,
-        name: character ? `Chat with ${character.name}` : (groupId ? 'Group Chat' : 'New Chat'),
-        messages: (character || initialContent) ? [{
+        name: character ? `Chat with ${character.name}` : 'New Chat',
+        messages: character ? [{
           id: uuidv4(),
-          characterId: firstMesSenderId,
+          characterId,
           role: 'assistant' as const,
           content: initialContent,
           timestamp: new Date().toISOString(),
@@ -828,27 +812,10 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     const activePersona = get().getActivePersona?.();
     const userName = activePersona?.name || 'User';
     
-    // Determine the first message to use
-    // Priority: Group firstMes > Character firstMes
-    let initialContent = '';
-    let firstMesSenderId = session.characterId;
-
-    if (session.groupId) {
-      const group = get().getGroupById?.(session.groupId);
-      if (group?.firstMes && group.firstMes.trim()) {
-        // Group has a custom first message — use it
-        initialContent = processMessageTemplate(group.firstMes, group.name, userName);
-        const firstNonNarrator = group.members?.find((m: any) => !m.isNarrator);
-        if (firstNonNarrator) {
-          firstMesSenderId = firstNonNarrator.characterId;
-        }
-      }
-    }
-
-    // Fallback to character's first message if group firstMes is empty
-    if (!initialContent && character) {
-      initialContent = processMessageTemplate(character.firstMes, character.name, userName);
-    }
+    // Process the first message with template variables
+    const processedFirstMes = character
+      ? processMessageTemplate(character.firstMes, character.name, userName)
+      : '';
     
     // Get characters for stats reset
     let characters: Array<{ id: string; statsConfig?: any }> = [];
@@ -902,15 +869,15 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     }
     
     // Reset messages to only the first message
-    // (initialContent already set above from group or character firstMes)
+    const initialContent = processedFirstMes || '';
     
     set((state: any) => ({
       sessions: state.sessions.map((s: ChatSession) =>
         s.id === sessionId ? {
           ...s,
-          messages: (character || initialContent) ? [{
+          messages: character ? [{
             id: uuidv4(),
-            characterId: firstMesSenderId,
+            characterId: session.characterId,
             role: 'assistant' as const,
             content: initialContent,
             timestamp: new Date().toISOString(),

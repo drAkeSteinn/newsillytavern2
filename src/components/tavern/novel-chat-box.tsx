@@ -48,8 +48,8 @@ import {
   Square,
   Ear,
   Radio,
-  VolumeX,
   Volume2,
+  VolumeX,
   Brain,
   Trash2,
   Plus,
@@ -80,11 +80,10 @@ import { DEFAULT_CHATBOX_APPEARANCE, THEME_COLOR_PRESETS } from '@/types';
 import { t } from '@/lib/i18n';
 import { QuickPetitions } from './user-solicitudes';
 import { ThemeEffects, getThemeColors as getThemeColorsUtil } from './theme-effects';
-import { setGlobalMute } from '@/lib/global-audio-mute';
-import { setAudioBusMuted } from '@/lib/audio-bus';
-import { stopAllTimelineSounds } from '@/lib/timeline-sound-player';
 import { useAudioRecorder, useAudioTranscription } from '@/hooks/use-audio-recorder';
 import { useWakeWordDetection } from '@/hooks/use-wake-word-detection';
+import { isGlobalMuted, setGlobalMuted } from '@/lib/audio/audio-mute-store';
+import { ttsService } from '@/lib/tts';
 
 // Tab type for the chatbox
 type ChatboxTab = 'chat' | 'solicitudes' | 'misiones' | 'memorias';
@@ -216,6 +215,9 @@ export function NovelChatBox({
   sessionId,
 }: NovelChatBoxProps) {
   const [input, setInput] = useState('');
+  // Global audio mute state
+  const [globalMuted, setGlobalMutedState] = useState(false);
+
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -384,16 +386,6 @@ export function NovelChatBox({
 
   // Derive KWS active state: true when listening or paused by TTS
   const kwsActive = kwsListening || kwsPausedByTTS;
-
-  // Sync global audio mute state to all non-React audio modules
-  useEffect(() => {
-    const muted = settings.sound?.globalMute ?? false;
-    setGlobalMute(muted);
-    if (muted) {
-      setAudioBusMuted(true);
-      stopAllTimelineSounds();
-    }
-  }, [settings.sound?.globalMute]);
 
   // Load ASR/KWS config on mount
   useEffect(() => {
@@ -676,6 +668,17 @@ export function NovelChatBox({
       document.removeEventListener('mouseup', handleResizeEnd);
     };
   }, [isResizing, updateLayout]);
+
+  // Toggle global audio mute
+  const handleGlobalMuteToggle = useCallback(() => {
+    const newMuted = !globalMuted;
+    setGlobalMutedState(newMuted);
+    setGlobalMuted(newMuted);
+    if (newMuted) {
+      // Stop any currently playing TTS when muting
+      try { ttsService.stop(); } catch { /* ignore */ }
+    }
+  }, [globalMuted]);
 
   const handleSend = () => {
     if (!input.trim() || isGenerating) return;
@@ -1771,21 +1774,6 @@ export function NovelChatBox({
                       <Ear className="w-4 h-4" />
                     )}
                   </Button>
-                  {/* Global Audio Mute Toggle */}
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant={settings.sound?.globalMute ? "destructive" : "outline"}
-                    className="h-8 w-8 flex-shrink-0 transition-all"
-                    onClick={() => updateSettings({ sound: { ...settings.sound, globalMute: !settings.sound?.globalMute } })}
-                    title={settings.sound?.globalMute ? 'Activar audio' : 'Silenciar audio'}
-                  >
-                    {settings.sound?.globalMute ? (
-                      <VolumeX className="w-4 h-4" />
-                    ) : (
-                      <Volume2 className="w-4 h-4" />
-                    )}
-                  </Button>
                   {/* Recording Duration Indicator */}
                   {isRecording && (
                     <span className="text-xs text-red-500 font-mono min-w-[40px] animate-pulse">
@@ -1858,6 +1846,24 @@ export function NovelChatBox({
                       </div>
                     </div>
                   )}
+                  {/* Global Audio Mute Button */}
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant={globalMuted ? "destructive" : "outline"}
+                    className={cn(
+                      "h-8 w-8 flex-shrink-0 transition-all",
+                      globalMuted && "bg-red-600/80 hover:bg-red-700 border-red-500"
+                    )}
+                    onClick={handleGlobalMuteToggle}
+                    title={globalMuted ? 'Desactivar silencio global' : 'Silenciar todo el audio'}
+                  >
+                    {globalMuted ? (
+                      <VolumeX className="w-4 h-4" />
+                    ) : (
+                      <Volume2 className="w-4 h-4" />
+                    )}
+                  </Button>
                   {/* Permission denied warning - now clickable */}
                   {permissionStatus === 'denied' && !isRecording && !isTranscribing && (
                     <button 

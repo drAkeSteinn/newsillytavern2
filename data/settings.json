@@ -42,8 +42,7 @@
     "maxSoundsPerMessage": 50,
     "globalCooldown": 0,
     "realtimeEnabled": true,
-    "soundListSuffix": "- reglas",
-    "globalMute": false
+    "soundListSuffix": "- reglas"
   },
   "backgroundTriggers": {
     "enabled": true,

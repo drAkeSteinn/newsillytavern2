@@ -45,7 +45,6 @@ import {
   getContextStats,
   type ContextConfig
 } from '@/lib/context-manager';
-import { buildQuestPromptSection } from '@/lib/triggers/handlers/quest-handler';
 import { retrieveEmbeddingsContext, formatEmbeddingsForSSE } from '@/lib/embeddings/chat-context';
 import { processResponseAndReinforceMemories, isReinforcementEnabled } from '@/lib/embeddings/memory-reinforcement';
 import type { EmbeddingsChatSettings, ToolsSettings } from '@/types';
@@ -403,10 +402,21 @@ export async function POST(request: NextRequest) {
       allCharacters, // Pass all characters for peticiones/solicitudes resolution
       soundTriggers, // Pass soundTriggers for {{sonidos}} resolution
       soundSettings,  // Pass sound settings for {{sonidos}} template
-      questTemplates  // Pass quest templates for objective names in actions
+      questTemplates,  // Pass quest templates for {{activeQuests}} key resolution
+      sessionQuests,   // Pass session quests for {{activeQuests}} key resolution
+      questSettings    // Pass quest settings for {{activeQuests}} key resolution
     );
 
     // Build key resolution context for HUD context and quest sections
+    // Resolve persona stats first for comprehensive key resolution
+    let streamPersonaResolvedStats: import('@/types').ResolvedStats | null = null;
+    if (persona?.statsConfig?.enabled && sessionStats) {
+      streamPersonaResolvedStats = resolveStats({
+        characterId: '__user__',
+        statsConfig: persona.statsConfig,
+        sessionStats,
+      });
+    }
     const resolvedStats = resolveStats({
       characterId: effectiveCharacter.id,
       statsConfig: effectiveCharacter.statsConfig,
@@ -415,6 +425,8 @@ export async function POST(request: NextRequest) {
       userName: effectiveUserName,
       characterName: effectiveCharacter.name,
       questTemplates,
+      personaDescription: persona?.description,
+      personaResolvedStats: streamPersonaResolvedStats,
     });
     const keyContext = buildKeyResolutionContext(
       effectiveCharacter,
@@ -429,34 +441,6 @@ export async function POST(request: NextRequest) {
     // Build HUD context section if enabled (now resolves keys!)
     const hudContextSection = hudContext ? buildHUDContextSection(hudContext, keyContext) : null;
 
-    // Build quest section if enabled (pre-LLM integration)
-    // Pass characterId to filter objectives for this character
-    let questSection: PromptSection | null = null;
-    console.log(`[Stream Quest] enabled=${questSettings.enabled}, promptInclude=${questSettings.promptInclude}, sessionQuests=${sessionQuests.length}, questTemplates=${questTemplates.length}`);
-    if (questSettings.enabled && questSettings.promptInclude && sessionQuests.length > 0 && questTemplates.length > 0) {
-      console.log(`[Stream Quest] Building quest section. Active quests: ${sessionQuests.filter(q => q.status === 'active').length}`);
-      const questPromptContent = buildQuestPromptSection(
-        questTemplates,
-        sessionQuests,
-        questSettings.promptTemplate || DEFAULT_QUEST_SETTINGS.promptTemplate,
-        effectiveCharacter.id  // Filter objectives for this character
-      );
-      if (questPromptContent) {
-        const resolvedQuestContent = resolveAllKeys(questPromptContent, keyContext);
-
-        questSection = {
-          type: 'quest',
-          label: 'Active Quests',
-          content: resolvedQuestContent,
-          color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-        };
-        console.log(`[Stream Quest] Quest section built successfully, content length: ${resolvedQuestContent.length}`);
-      } else {
-        console.log(`[Stream Quest] buildQuestPromptSection returned empty content`);
-      }
-    } else {
-      console.log(`[Stream Quest] Quest section skipped. Conditions not met.`);
-    }
 
     // Build chat history sections (for prompt viewer)
     const chatHistorySections = buildChatHistorySections(
@@ -505,7 +489,6 @@ export async function POST(request: NextRequest) {
       ...prePersonaSections,
       ...postPersonaSections,
       ...(summarySection ? [summarySection] : []),
-      ...(questSection ? [questSection] : []),
       ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []),  // Non-memory: before chat
       ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []),  // Memory: before chat
       ...chatHistorySections,
@@ -528,11 +511,8 @@ export async function POST(request: NextRequest) {
     }
     const embeddingsContext = contextParts.length > 0 ? contextParts.join('\n\n') : undefined;
 
-    // Build the final system prompt (quest section + tools only)
+    // Build the final system prompt (tools only, quest content resolved via {{activeQuests}} key)
     let finalSystemPrompt = systemPrompt;
-    if (questSection) {
-      finalSystemPrompt += `\n\n[${questSection.label}]\n${questSection.content}`;
-    }
 
     // ===== TOOL/ACTION SYSTEM (Native + Prompt-Based Tool Calling) =====
     // Build available tools for this character
@@ -1353,6 +1333,39 @@ Y cambiar mi expresión:
                 generator = streamTextGenerationWebUI(prompt, llmConfig);
                 break;
               }
+            }
+
+            // Send updated prompt_data for tool call follow-up rounds
+            // so the prompt viewer shows the complete prompt sent to the LLM
+            if (isToolRound && toolContextMessages.length > 0) {
+              // Build a tool follow-up section from the tool context messages
+              const toolContextContent = toolContextMessages
+                .map((msg) => {
+                  const role = (msg.role as string) || 'unknown';
+                  const content = typeof msg.content === 'string'
+                    ? msg.content
+                    : JSON.stringify(msg.content, null, 2);
+                  // Truncate very long tool results for readability
+                  const truncated = content.length > 2000
+                    ? content.slice(0, 2000) + '\n... [truncated]'
+                    : content;
+                  return `[${role}]: ${truncated}`;
+                })
+                .join('\n\n');
+
+              const followUpSections: PromptSection[] = [
+                ...allPromptSections,
+                {
+                  type: 'instructions' as const,
+                  label: `[Tool Follow-up — Round ${toolRound}]`,
+                  content: toolContextContent,
+                  color: 'text-amber-400',
+                },
+              ];
+              controller.enqueue(createSSEJSON({
+                type: 'prompt_data',
+                promptSections: followUpSections,
+              }));
             }
 
             // Stream the response

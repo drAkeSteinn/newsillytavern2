@@ -8,7 +8,7 @@
 // - All sections are processed consistently
 
 import { NextRequest } from 'next/server';
-import type { ChatMessage, CharacterCard, CharacterGroup, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestSettings, QuestTemplate, SessionQuestInstance, SessionSummary, SolicitudInstance, CharacterStatsConfig } from '@/types';
+import type { ChatMessage, CharacterCard, CharacterGroup, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestTemplate, SessionQuestInstance, SessionSummary, SolicitudInstance, CharacterStatsConfig } from '@/types';
 import { DEFAULT_QUEST_SETTINGS } from '@/types';
 import {
   createSSEJSON,
@@ -43,7 +43,6 @@ import {
   type ContextConfig
 } from '@/lib/context-manager';
 import { detectMentions } from '@/lib/mention-detector';
-import { buildQuestPromptSection } from '@/lib/triggers/handlers/quest-handler';
 import { retrieveEmbeddingsContext, formatEmbeddingsForSSE } from '@/lib/embeddings/chat-context';
 import type { EmbeddingsChatSettings, ToolsSettings } from '@/types';
 import {
@@ -507,13 +506,10 @@ export async function POST(request: NextRequest) {
       } as CharacterCard);
     }
 
-    // Extract Quest data for pre-LLM integration (NEW FORMAT)
+    // Quest data still needed for buildGroupSystemPrompt {{activeQuests}} key resolution
     const questTemplates: QuestTemplate[] = body.questTemplates || [];
     const sessionQuests: SessionQuestInstance[] = body.sessionQuests || [];
-    const questSettings: QuestSettings = {
-      ...DEFAULT_QUEST_SETTINGS,
-      ...(body.questSettings || {})
-    };
+    const questSettings = { ...DEFAULT_QUEST_SETTINGS, ...(body.questSettings || {}) };
 
     // Extract summaries for memory/context compression
     const summary: SessionSummary | undefined = body.summary;
@@ -643,9 +639,6 @@ export async function POST(request: NextRequest) {
     // Note: HUD context section is built inside the character loop
     // so it can resolve keys for each specific character
 
-    // Note: Quest section is built inside the character loop
-    // so each character sees only their relevant objectives
-
     // ========================================
     // Narrator Integration
     // ========================================
@@ -766,7 +759,9 @@ export async function POST(request: NextRequest) {
               typedSessionStats,
               undefined, // postHistoryInstructions
               allCharacters, // allCharacters - needed for peticiones/solicitudes resolution (includes persona)
-              questTemplates // Pass quest templates for objective names in actions
+              questTemplates, // Pass quest templates for {{activeQuests}} key resolution
+              sessionQuests,  // Pass session quests for {{activeQuests}} key resolution
+              questSettings   // Pass quest settings for {{activeQuests}} key resolution
             );
 
             // Build key resolution context for this character
@@ -800,31 +795,9 @@ export async function POST(request: NextRequest) {
               }));
             }
 
-            // Check if this responder is a narrator in the group (MUST be before buildQuestPromptSection)
+            // Check if this responder is a narrator in the group
             const responderMember = group.members?.find(m => m.characterId === responder.id);
             const isResponderNarrator = responderMember?.isNarrator || false;
-
-            // Build quest section for this character (filters objectives by characterId)
-            // For narrator, show both active and available quests with different format
-            let resolvedQuestSection: PromptSection | null = null;
-            if (questSettings.enabled && questSettings.promptInclude && sessionQuests.length > 0 && questTemplates.length > 0) {
-              const questSectionContent = buildQuestPromptSection(
-                questTemplates,
-                sessionQuests,
-                questSettings.promptTemplate || DEFAULT_QUEST_SETTINGS.promptTemplate,
-                responder.id,  // Filter objectives for this character
-                isResponderNarrator  // Pass narrator flag for different format
-              );
-              if (questSectionContent) {
-                const resolvedQuestContent = resolveAllKeys(questSectionContent, keyContext);
-                resolvedQuestSection = {
-                  type: 'quest',
-                  label: 'Active Quests',
-                  content: resolvedQuestContent,
-                  color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-                };
-              }
-            }
 
             // Build combined embeddings context: [CONTEXTO RELEVANTE] then [MEMORIA RELEVANTE]
             // Both injected before chat history (not in system prompt)
@@ -837,11 +810,8 @@ export async function POST(request: NextRequest) {
             }
             const embeddingsContext = contextParts.length > 0 ? contextParts.join('\n\n') : undefined;
 
-            // Build the final system prompt (quest section only, no embeddings)
+            // Build the final system prompt (quest content resolved via {{activeQuests}} key)
             let finalSystemPrompt = systemPrompt;
-            if (resolvedQuestSection) {
-              finalSystemPrompt += `\n\n[${resolvedQuestSection.label}]\n${resolvedQuestSection.content}`;
-            }
 
             // ===== TOOL/ACTION SYSTEM (Native + Prompt-Based Tool Calling) =====
             const charToolConfig = toolsSettings.characterConfigs.find(
@@ -916,7 +886,7 @@ export async function POST(request: NextRequest) {
               keyContext
             );
 
-            // Note: isResponderNarrator is already defined above before buildQuestPromptSection
+            // Note: isResponderNarrator is already defined above
 
             const { chatMessages, chatHistorySection } = buildGroupChatMessages(
               finalSystemPrompt,
@@ -932,14 +902,14 @@ export async function POST(request: NextRequest) {
             );
 
             // Combine prompt sections with chat history for the viewer
-            // Order: System -> Quest -> [CONTEXTO] non-memory -> [MEMORIA] memory -> Chat History -> Post-History
+            // Order: System -> [CONTEXTO] non-memory -> [MEMORIA] memory -> Chat History -> Post-History
             const personaIndex = promptSections.findIndex(s => s.type === 'persona');
             const prePersonaSections = personaIndex >= 0 ? promptSections.slice(0, personaIndex + 1) : promptSections;
             const postPersonaSections = personaIndex >= 0 ? promptSections.slice(personaIndex + 1) : [];
 
             let allPromptSections: PromptSection[] = chatHistorySection
-              ? [...prePersonaSections, ...postPersonaSections, ...(resolvedQuestSection ? [resolvedQuestSection] : []), ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []), ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []), chatHistorySection, ...(postHistorySection ? [postHistorySection] : [])]
-              : [...prePersonaSections, ...postPersonaSections, ...(resolvedQuestSection ? [resolvedQuestSection] : []), ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []), ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []), ...(postHistorySection ? [postHistorySection] : [])];
+              ? [...prePersonaSections, ...postPersonaSections, ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []), ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []), chatHistorySection, ...(postHistorySection ? [postHistorySection] : [])]
+              : [...prePersonaSections, ...postPersonaSections, ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []), ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []), ...(postHistorySection ? [postHistorySection] : [])];
 
             // Inject HUD context into sections if enabled
             if (hudContextSection && typedHUDContext) {

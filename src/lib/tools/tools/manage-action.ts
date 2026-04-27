@@ -13,6 +13,22 @@
 import type { ToolDefinition, ToolContext, ToolExecutionResult } from '../types';
 import type { SkillDefinition } from '@/types';
 import { checkAllRequirements } from '@/lib/triggers/handlers/skill-activation-handler';
+import { resolveAllKeys, buildKeyResolutionContext } from '@/lib/key-resolver';
+
+/** Resolve ALL template keys ({{user}}, {{char}}, {{userpersona}}, stats, events, etc.) in text */
+function resolveToolKeysComprehensive(text: string, context: ToolContext): string {
+  if (!text) return text;
+  const keyContext = buildKeyResolutionContext(
+    { id: context.characterId, name: context.characterName } as import('@/types').CharacterCard,
+    context.userName,
+    undefined, // persona
+    undefined, // resolvedStats
+    context.sessionStats,
+    undefined, // soundTriggers
+    undefined, // soundSettings
+  );
+  return resolveAllKeys(text, keyContext);
+}
 
 export const manageActionTool: ToolDefinition = {
   id: 'manage_action',
@@ -148,17 +164,22 @@ export async function manageActionExecutor(
       }
     }
 
-    // Build display message
-    const lines: string[] = [];
-    lines.push(`⚔️ Acción ejecutada: ${matchedSkill.name}`);
+    // Build display message with resolved template keys (comprehensive resolution)
+    const resolvedName = resolveToolKeysComprehensive(matchedSkill.name, context);
+    const resolvedDescription = resolveToolKeysComprehensive(matchedSkill.description || '', context);
+    const resolvedSkillName = resolvedName;
+    const resolvedSkillDescription = resolvedDescription;
 
-    if (matchedSkill.description) {
-      lines.push(`   ${matchedSkill.description}`);
+    const lines: string[] = [];
+    lines.push(`⚔️ Acción ejecutada: ${resolvedName}`);
+
+    if (resolvedDescription) {
+      lines.push(`   ${resolvedDescription}`);
     }
 
     if (matchedSkill.activationCosts && matchedSkill.activationCosts.length > 0) {
       const costDescs = matchedSkill.activationCosts
-        .map(c => `${c.description || `${c.attributeKey} ${c.operator}${c.value}`}`)
+        .map(c => resolveToolKeysComprehensive(c.description || `${c.attributeKey} ${c.operator}${c.value}`, context))
         .join(', ');
       lines.push(`   Costos: ${costDescs}`);
     }
@@ -173,8 +194,8 @@ export async function manageActionExecutor(
       toolName: 'manage_action',
       result: {
         skillId: matchedSkill.id,
-        skillName: matchedSkill.name,
-        skillDescription: matchedSkill.description,
+        skillName: resolvedSkillName,
+        skillDescription: resolvedSkillDescription,
         narrative,
         hasCosts: (matchedSkill.activationCosts || []).length > 0,
         hasRewards: (matchedSkill.activationRewards || []).length > 0,
@@ -182,8 +203,8 @@ export async function manageActionExecutor(
       displayMessage: lines.join('\n'),
       actionActivation: {
         skillId: matchedSkill.id,
-        skillName: matchedSkill.name,
-        skillDescription: matchedSkill.description,
+        skillName: resolvedSkillName,
+        skillDescription: resolvedSkillDescription,
         activationCosts: matchedSkill.activationCosts || [],
         activationRewards: matchedSkill.activationRewards || [],
         characterId,
