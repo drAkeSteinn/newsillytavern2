@@ -10,10 +10,12 @@ export {
   getEntriesByOutlet,
   groupEntries,
   groupByOutlet,
+  groupByPosition,
   estimateTokens,
   applyTokenBudget,
   isRegexKey,
   parseRegexKey,
+  formatEntriesWithComments,
   DEFAULT_SCAN_OPTIONS,
   type LorebookScanResult,
   type ScanOptions
@@ -21,6 +23,7 @@ export {
 
 // Injector exports
 export {
+  buildLorebookInjectionPlan,
   buildLorebookSection,
   createLorebookPromptSection,
   processLorebooks,
@@ -31,5 +34,7 @@ export {
   getTotalEntryCount,
   DEFAULT_INJECT_OPTIONS,
   type LorebookInjectOptions,
-  type LorebookInjectResult
+  type LorebookInjectResult,
+  type LorebookInjectionPlan,
+  type LorebookChatInjection
 } from './injector';

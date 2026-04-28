@@ -23,9 +23,10 @@ import type {
 import type { ChatApiMessage, CompletionPromptConfig, GroupPromptBuildResult } from './types';
 import { processExampleDialogue } from '@/lib/prompt-template';
 import {
-  processLorebooks,
+  buildLorebookInjectionPlan,
   type LorebookInjectOptions,
-  type LorebookInjectResult
+  type LorebookInjectionPlan,
+  type LorebookChatInjection,
 } from '@/lib/lorebook';
 import {
   resolveStats,
@@ -353,7 +354,7 @@ export function buildSystemPrompt(
   character: CharacterCard,
   userName: string = 'User',
   persona?: Persona,
-  lorebookSection?: PromptSection | null,
+  lorebookPlan?: LorebookInjectionPlan | null,
   sessionStats?: SessionStats,
   allCharacters?: CharacterCard[],
   soundTriggers?: SoundTrigger[],
@@ -361,7 +362,7 @@ export function buildSystemPrompt(
   questTemplates?: QuestTemplate[],
   sessionQuests?: SessionQuestInstance[],
   questSettings?: QuestSettings
-): { prompt: string; sections: PromptSection[] } {
+): { prompt: string; sections: PromptSection[]; lorebookChatInjections: LorebookChatInjection[] } {
   const sections: PromptSection[] = [];
 
   // Resolve stats for the persona FIRST (user attributes like {{resistencia}})
@@ -403,6 +404,11 @@ export function buildSystemPrompt(
     content: systemContent,
     color: SECTION_COLORS.system
   });
+
+  // Lorebook position 0: After system prompt
+  if (lorebookPlan?.position0Section) {
+    sections.push(lorebookPlan.position0Section);
+  }
 
   // Add user's persona description if available
   if (persona && persona.description) {
@@ -472,9 +478,19 @@ export function buildSystemPrompt(
     });
   }
 
-  // Add lorebook section if provided
-  if (lorebookSection) {
-    sections.push(lorebookSection);
+  // Lorebook position 5: At top of chat (before chat history)
+  if (lorebookPlan?.position5Section) {
+    sections.push(lorebookPlan.position5Section);
+  }
+
+  // Lorebook position 7: Outlets (custom positions)
+  if (lorebookPlan?.outletSections.length) {
+    sections.push(...lorebookPlan.outletSections);
+  }
+
+  // Lorebook position 6: At bottom of chat (appended at end of system sections)
+  if (lorebookPlan?.position6Section) {
+    sections.push(lorebookPlan.position6Section);
   }
 
   // Note: postHistoryInstructions should NOT be in system prompt
@@ -492,23 +508,38 @@ export function buildSystemPrompt(
   // Build the prompt string from processed sections
   const prompt = processedSections.map(s => `[${s.label}]\n${s.content}`).join('\n\n');
 
-  return { prompt, sections: processedSections };
+  return { prompt, sections: processedSections, lorebookChatInjections: lorebookPlan?.chatInjections || [] };
 }
 
 /**
- * Build lorebook section from active lorebooks and chat messages
+ * Build complete lorebook injection plan from active lorebooks and chat messages.
+ * This replaces the old single-section approach with position-aware injection.
  */
 export function buildLorebookSectionForPrompt(
   messages: ChatMessage[],
   lorebooks: Lorebook[],
   options?: LorebookInjectOptions
-): { section: PromptSection | null; result: LorebookInjectResult } {
-  const result = processLorebooks(messages, lorebooks, options);
+): { section: PromptSection | null; plan: LorebookInjectionPlan } {
+  const plan = buildLorebookInjectionPlan(messages, lorebooks, options);
 
-  return {
-    section: result.lorebookSection,
-    result
-  };
+  // Combine all system-level sections into one for backward compat with callers that only need a single section
+  const allSystemSections = [
+    plan.position0Section,
+    plan.position5Section,
+    plan.position6Section,
+    ...plan.outletSections
+  ].filter((s): s is PromptSection => s !== null);
+
+  const section = allSystemSections.length > 0
+    ? {
+        type: 'lorebook' as const,
+        label: 'World Information',
+        content: allSystemSections.map(s => s.content).join('\n\n'),
+        color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
+      }
+    : null;
+
+  return { section, plan };
 }
 
 /**
@@ -603,6 +634,68 @@ export function buildChatHistorySections(
 }
 
 /**
+ * Inject lorebook content at chat-level positions (1-4).
+ * Merges content into existing messages to avoid breaking message alternation.
+ *
+ * Position mapping:
+ * 1 = After last user message
+ * 2 = Before last user message
+ * 3 = After last assistant message
+ * 4 = Before last assistant message
+ */
+function applyChatInjections(
+  messages: ChatApiMessage[],
+  injections: LorebookChatInjection[]
+): void {
+  for (const injection of injections) {
+    const content = `\n\n[${injection.label}]\n${injection.content}`;
+
+    switch (injection.position) {
+      case 1: { // After last user message
+        const lastUserIdx = messages.map((m, i) => m.role === 'user' ? i : -1).filter(i => i >= 0).pop();
+        if (lastUserIdx !== undefined && lastUserIdx >= 0) {
+          messages[lastUserIdx] = {
+            ...messages[lastUserIdx],
+            content: messages[lastUserIdx].content + content
+          };
+        }
+        break;
+      }
+      case 2: { // Before last user message
+        const lastUserIdx2 = messages.map((m, i) => m.role === 'user' ? i : -1).filter(i => i >= 0).pop();
+        if (lastUserIdx2 !== undefined && lastUserIdx2 >= 0) {
+          messages[lastUserIdx2] = {
+            ...messages[lastUserIdx2],
+            content: content + messages[lastUserIdx2].content
+          };
+        }
+        break;
+      }
+      case 3: { // After last assistant message
+        const lastAsstIdx = messages.map((m, i) => m.role === 'assistant' ? i : -1).filter(i => i >= 0).pop();
+        if (lastAsstIdx !== undefined && lastAsstIdx >= 0) {
+          messages[lastAsstIdx] = {
+            ...messages[lastAsstIdx],
+            content: messages[lastAsstIdx].content + content
+          };
+        }
+        break;
+      }
+      case 4: { // Before last assistant message
+        const lastAsstIdx4 = messages.map((m, i) => m.role === 'assistant' ? i : -1).filter(i => i >= 0).pop();
+        if (lastAsstIdx4 !== undefined && lastAsstIdx4 >= 0) {
+          messages[lastAsstIdx4] = {
+            ...messages[lastAsstIdx4],
+            content: content + messages[lastAsstIdx4].content
+          };
+        }
+        break;
+      }
+    }
+  }
+}
+
+/**
  * Build messages array for chat models
  * 
  * Order (SillyTavern style):
@@ -619,7 +712,8 @@ export function buildChatMessages(
   postHistoryInstructions?: string,
   authorNote?: string,
   useSystemRole: boolean = false,
-  embeddingsContext?: string  // embeddings injected before chat history
+  embeddingsContext?: string,  // embeddings injected before chat history
+  lorebookChatInjections?: LorebookChatInjection[]  // positions 1-4: inject into specific messages
 ): ChatApiMessage[] {
   // =============================================
   // Step 1: Build all system content as ONE message
@@ -700,6 +794,13 @@ export function buildChatMessages(
 
   chatMessages.push(...finalHistory);
 
+  // =============================================
+  // Step 3: Inject lorebook chat-level content (positions 1-4)
+  // =============================================
+  if (lorebookChatInjections?.length) {
+    applyChatInjections(chatMessages, lorebookChatInjections);
+  }
+
   return chatMessages;
 }
 
@@ -766,14 +867,14 @@ export function buildGroupSystemPrompt(
   group: CharacterGroup,
   userName: string = 'User',
   persona?: Persona,
-  lorebookSection?: PromptSection | null,
+  lorebookPlan?: LorebookInjectionPlan | null,
   sessionStats?: SessionStats,
   postHistoryInstructions?: string,
   allCharacters?: CharacterCard[],
   questTemplates?: QuestTemplate[],
   sessionQuests?: SessionQuestInstance[],
   questSettings?: QuestSettings
-): { prompt: string; sections: PromptSection[] } {
+): { prompt: string; sections: PromptSection[]; lorebookChatInjections: LorebookChatInjection[] } {
   const sections: PromptSection[] = [];
 
   // Resolve stats for the persona FIRST (user attributes like {{resistencia}})
@@ -826,6 +927,11 @@ export function buildGroupSystemPrompt(
     content: systemContent,
     color: SECTION_COLORS.system
   });
+
+  // Lorebook position 0: After system prompt
+  if (lorebookPlan?.position0Section) {
+    sections.push(lorebookPlan.position0Section);
+  }
 
   // Add user's persona description if available
   if (persona && persona.description) {
@@ -900,9 +1006,19 @@ export function buildGroupSystemPrompt(
     });
   }
 
-  // Add lorebook section if provided
-  if (lorebookSection) {
-    sections.push(lorebookSection);
+  // Lorebook position 5: At top of chat (before chat history)
+  if (lorebookPlan?.position5Section) {
+    sections.push(lorebookPlan.position5Section);
+  }
+
+  // Lorebook position 7: Outlets (custom positions)
+  if (lorebookPlan?.outletSections.length) {
+    sections.push(...lorebookPlan.outletSections);
+  }
+
+  // Lorebook position 6: At bottom of chat (appended at end of system sections)
+  if (lorebookPlan?.position6Section) {
+    sections.push(lorebookPlan.position6Section);
   }
 
   // Note: postHistoryInstructions should NOT be in system prompt
@@ -916,7 +1032,7 @@ export function buildGroupSystemPrompt(
   // Build the prompt string from processed sections
   const prompt = processedSections.map(s => `[${s.label}]\n${s.content}`).join('\n\n');
 
-  return { prompt, sections: processedSections };
+  return { prompt, sections: processedSections, lorebookChatInjections: lorebookPlan?.chatInjections || [] };
 }
 
 /**
@@ -941,7 +1057,8 @@ export function buildGroupChatMessages(
   postHistoryInstructions?: string,
   authorNote?: string,
   isForNarrator: boolean = false,
-  embeddingsContext?: string  // embeddings injected before chat history
+  embeddingsContext?: string,  // embeddings injected before chat history
+  lorebookChatInjections?: LorebookChatInjection[]  // positions 1-4: inject into specific messages
 ): GroupPromptBuildResult {
   // =============================================
   // Step 1: Build all system content as ONE message
@@ -1029,6 +1146,11 @@ export function buildGroupChatMessages(
   }
 
   chatMessages.push(...finalHistory);
+
+  // Inject lorebook chat-level content (positions 1-4)
+  if (lorebookChatInjections?.length) {
+    applyChatInjections(chatMessages, lorebookChatInjections);
+  }
 
   // Build chat history section for prompt viewer
   let chatHistorySection: PromptSection | undefined;

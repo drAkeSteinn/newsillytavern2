@@ -19,7 +19,7 @@ export interface LorebookScanResult {
  * Options for scanning
  */
 export interface ScanOptions {
-  scanDepth?: number;           // Number of messages to scan back
+  scanDepth?: number;           // Number of messages to scan back (default from lorebook settings)
   caseSensitive?: boolean;      // Case sensitive matching
   matchWholeWords?: boolean;    // Match whole words only
   includeConstants?: boolean;   // Include constant entries
@@ -29,9 +29,9 @@ export interface ScanOptions {
  * Default scan options
  */
 export const DEFAULT_SCAN_OPTIONS: ScanOptions = {
-  scanDepth: 5,
-  caseSensitive: false,
-  matchWholeWords: false,
+  scanDepth: undefined, // undefined = use lorebook/entry settings
+  caseSensitive: undefined,  // undefined = use lorebook/entry settings
+  matchWholeWords: undefined, // undefined = use lorebook/entry settings
   includeConstants: true,
 };
 
@@ -104,9 +104,14 @@ function checkRegexMatch(regex: RegExp, content: string): boolean {
 
 /**
  * Scan messages for lorebook entries
+ * 
+ * Supports per-entry overrides for scanDepth, caseSensitive, and matchWholeWords.
+ * When an entry has a non-null override value, it takes precedence over the lorebook
+ * global settings and the scan options.
+ * 
  * @param messages Chat messages to scan
  * @param lorebooks Active lorebooks to check
- * @param options Scan options
+ * @param options Scan options (used as fallback when entry/lorebook don't specify)
  * @returns Array of scan results with matched entries
  */
 export function scanForLorebookEntries(
@@ -118,28 +123,35 @@ export function scanForLorebookEntries(
   const results: LorebookScanResult[] = [];
   const processedEntries = new Set<string>(); // Avoid duplicates
 
-  // Get visible messages up to scan depth
-  const visibleMessages = messages
-    .filter(m => !m.isDeleted)
-    .slice(-opts.scanDepth!);
+  // Cache scan texts by depth to avoid recomputing for different entries
+  const scanTextCache = new Map<number, { content: string; lastUserMessage: string }>();
 
-  // Combine message content for scanning
-  const messageContent = visibleMessages
-    .map(m => m.content)
-    .join('\n');
+  /**
+   * Get combined message content and last user message for a given scan depth.
+   * Results are cached to avoid re-scanning for entries with the same depth.
+   */
+  function getScanTextForDepth(depth: number): { content: string; lastUserMessage: string } {
+    if (scanTextCache.has(depth)) return scanTextCache.get(depth)!;
 
-  // Also scan the last user message separately for better matching
-  const lastUserMessage = visibleMessages
-    .filter(m => m.role === 'user')
-    .pop()?.content || '';
+    const visibleMessages = messages
+      .filter(m => !m.isDeleted)
+      .slice(-depth);
+
+    const content = visibleMessages.map(m => m.content).join('\n');
+    const lastUserMessage = visibleMessages
+      .filter(m => m.role === 'user')
+      .pop()?.content || '';
+
+    const result = { content, lastUserMessage };
+    scanTextCache.set(depth, result);
+    return result;
+  }
 
   for (const lorebook of lorebooks) {
     if (!lorebook.active) continue;
 
-    // Get settings from lorebook or use defaults
+    // Get global settings from lorebook
     const settings = lorebook.settings;
-    const effectiveCaseSensitive = opts.caseSensitive ?? settings.caseSensitive;
-    const effectiveMatchWholeWords = opts.matchWholeWords ?? settings.matchWholeWords;
 
     for (const entry of lorebook.entries) {
       // Skip disabled entries
@@ -149,7 +161,7 @@ export function scanForLorebookEntries(
       const entryKey = `${lorebook.id}:${entry.uid}`;
       if (processedEntries.has(entryKey)) continue;
 
-      // Handle constant entries
+      // Handle constant entries (always active, no scanning needed)
       if (entry.constant && opts.includeConstants) {
         processedEntries.add(entryKey);
         results.push({
@@ -161,6 +173,23 @@ export function scanForLorebookEntries(
         });
         continue;
       }
+
+      // === Per-entry overrides ===
+      // Priority: entry override > lorebook settings > scan options > defaults
+
+      // Scan depth: entry.scanDepth ?? lorebook settings ?? options ?? default(5)
+      const entryScanDepth = entry.scanDepth ?? settings.scanDepth ?? opts.scanDepth ?? 5;
+
+      // Case sensitivity: entry.caseSensitive ?? lorebook settings ?? options ?? false
+      const effectiveCaseSensitive = entry.caseSensitive
+        ?? (opts.caseSensitive !== undefined ? opts.caseSensitive : settings.caseSensitive);
+
+      // Match whole words: entry.matchWholeWords ?? lorebook settings ?? options ?? false
+      const effectiveMatchWholeWords = entry.matchWholeWords
+        ?? (opts.matchWholeWords !== undefined ? opts.matchWholeWords : settings.matchWholeWords);
+
+      // Get scan text for this entry's effective depth
+      const { content: messageContent, lastUserMessage } = getScanTextForDepth(entryScanDepth);
 
       // Check primary keys
       const primaryMatch = checkKeyMatch(
@@ -208,7 +237,7 @@ export function scanForLorebookEntries(
     }
   }
 
-  // Sort by order (higher = later in prompt)
+  // Sort by order (lower = earlier in prompt)
   return results.sort((a, b) => a.entry.order - b.entry.order);
 }
 
@@ -352,6 +381,25 @@ export function groupByOutlet(
 }
 
 /**
+ * Group entries by position number
+ */
+export function groupByPosition(
+  results: LorebookScanResult[]
+): Map<number, LorebookScanResult[]> {
+  const groups = new Map<number, LorebookScanResult[]>();
+  
+  for (const result of results) {
+    const pos = result.entry.position ?? 0;
+    if (!groups.has(pos)) {
+      groups.set(pos, []);
+    }
+    groups.get(pos)!.push(result);
+  }
+  
+  return groups;
+}
+
+/**
  * Group entries by their group name
  */
 export function groupEntries(
@@ -401,4 +449,38 @@ export function applyTokenBudget(
   }
 
   return filtered;
+}
+
+/**
+ * Format lorebook entries with their comment headers and optional role prefixes.
+ * This is used when building the final content to inject into the prompt.
+ */
+export function formatEntriesWithComments(
+  results: LorebookScanResult[]
+): string {
+  const ROLE_LABELS: Record<number, string> = {
+    0: 'System',
+    1: 'User',
+    2: 'Assistant',
+  };
+
+  return results
+    .map(r => {
+      const parts: string[] = [];
+
+      // Role prefix (if set)
+      if (r.entry.role != null && ROLE_LABELS[r.entry.role]) {
+        parts.push(`[${ROLE_LABELS[r.entry.role]}]`);
+      }
+
+      // Comment header (SillyTavern style)
+      if (r.entry.comment) {
+        parts.push(`[${r.entry.comment}]`);
+      }
+
+      const header = parts.length > 0 ? parts.join(' ') + '\n' : '';
+      return header + r.entry.content;
+    })
+    .filter(content => content.trim())
+    .join('\n\n');
 }

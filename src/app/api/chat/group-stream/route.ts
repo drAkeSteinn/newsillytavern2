@@ -9,6 +9,7 @@
 
 import { NextRequest } from 'next/server';
 import type { ChatMessage, CharacterCard, CharacterGroup, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestTemplate, SessionQuestInstance, SessionSummary, SolicitudInstance, CharacterStatsConfig } from '@/types';
+import type { LorebookInjectionPlan, LorebookChatInjection } from '@/lib/lorebook';
 import { DEFAULT_QUEST_SETTINGS } from '@/types';
 import {
   createSSEJSON,
@@ -622,10 +623,10 @@ export async function POST(request: NextRequest) {
     // Apply sliding window to messages
     const contextWindow = selectContextMessages(messages, llmConfig, contextConfig);
 
-    // Build group-level lorebook section if group has lorebooks
-    let groupLorebookSection: PromptSection | null = null;
+    // Build group-level lorebook injection plan if group has lorebooks
+    let groupLorebookPlan: LorebookInjectionPlan | null = null;
     if (useGroupLorebooks && lorebooks.length > 0) {
-      const result = buildLorebookSectionForPrompt(
+      const { plan } = buildLorebookSectionForPrompt(
         messages,
         lorebooks,
         {
@@ -633,7 +634,7 @@ export async function POST(request: NextRequest) {
           tokenBudget: 2048
         }
       );
-      groupLorebookSection = result.section;
+      groupLorebookPlan = plan;
     }
 
     // Note: HUD context section is built inside the character loop
@@ -677,8 +678,8 @@ export async function POST(request: NextRequest) {
               totalResponses: responders.length
             }));
 
-            // Determine lorebook section for this character
-            let lorebookSectionForCharacter: PromptSection | null = groupLorebookSection;
+            // Determine lorebook plan for this character
+            let lorebookSectionForCharacter: LorebookInjectionPlan | null = groupLorebookPlan;
 
             // ========================================
             // Embeddings Context Retrieval (per-character)
@@ -728,7 +729,7 @@ export async function POST(request: NextRequest) {
                 );
 
                 if (characterLorebooksFiltered.length > 0) {
-                  const result = buildLorebookSectionForPrompt(
+                  const { plan } = buildLorebookSectionForPrompt(
                     messages,
                     characterLorebooksFiltered,
                     {
@@ -736,7 +737,7 @@ export async function POST(request: NextRequest) {
                       tokenBudget: 2048
                     }
                   );
-                  lorebookSectionForCharacter = result.section;
+                  lorebookSectionForCharacter = plan;
                 }
               } else {
                 lorebookSectionForCharacter = null;
@@ -750,7 +751,7 @@ export async function POST(request: NextRequest) {
             // - Template variables: {{user}}, {{char}}, {{userpersona}}
             // - Stats keys: {{resistencia}}, {{habilidades}}, etc.
             // - All sections including post-history instructions
-            const { prompt: systemPrompt, sections: promptSections } = buildGroupSystemPrompt(
+            const { prompt: systemPrompt, sections: promptSections, lorebookChatInjections } = buildGroupSystemPrompt(
               responder,
               group,
               effectiveUserName,
@@ -898,7 +899,8 @@ export async function POST(request: NextRequest) {
               resolvedPostHistoryInstructions,  // Post-history instructions AFTER chat (with keys resolved)
               undefined,  // authorNote
               isResponderNarrator,  // If responder is narrator, they see all messages
-              embeddingsContext  // Memory embeddings before chat history
+              embeddingsContext,  // Memory embeddings before chat history
+              lorebookChatInjections  // Lorebook chat-level injections (positions 1-4)
             );
 
             // Combine prompt sections with chat history for the viewer

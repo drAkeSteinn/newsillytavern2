@@ -161,7 +161,7 @@ export async function POST(request: NextRequest) {
     const contextWindow = selectContextMessages(messagesBeforeRegenerate, llmConfig, ctxConfig);
 
     // Process lorebooks and get matched entries
-    const { section: lorebookSection } = buildLorebookSectionForPrompt(
+    const { plan: lorebookPlan } = buildLorebookSectionForPrompt(
       messagesBeforeRegenerate,
       typedLorebooks,
       {
@@ -189,11 +189,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Build system prompt with persona and lorebook (using processed character)
-    const { prompt: systemPrompt, sections: systemSections } = buildSystemPrompt(
+    const { prompt: systemPrompt, sections: systemSections, lorebookChatInjections } = buildSystemPrompt(
       processedCharacter,
       effectiveUserName,
       persona,
-      lorebookSection,
+      lorebookPlan,
       typedSessionStats,  // Pass session stats for attribute values
       allCharacters,      // Pass all characters for peticiones/solicitudes resolution
       undefined,          // soundTriggers
@@ -275,7 +275,8 @@ export async function POST(request: NextRequest) {
                 processedCharacter.postHistoryInstructions,
                 undefined,  // authorNote
                 false,      // useSystemRole
-                embeddingsContext  // Combined embeddings context before chat history
+                embeddingsContext,  // Combined embeddings context before chat history
+                lorebookChatInjections
               );
               // Inject HUD context into chat messages if enabled
               if (hudContextSection && hudContext) {
@@ -300,7 +301,8 @@ export async function POST(request: NextRequest) {
                 processedCharacter.postHistoryInstructions,
                 undefined,  // authorNote
                 true,       // useSystemRole
-                embeddingsContext  // Combined embeddings context before chat history
+                embeddingsContext,  // Combined embeddings context before chat history
+                lorebookChatInjections
               );
               // Inject HUD context into chat messages if enabled
               if (hudContextSection && hudContext) {
@@ -322,7 +324,8 @@ export async function POST(request: NextRequest) {
                 processedCharacter.postHistoryInstructions,
                 undefined,  // authorNote
                 true,       // useSystemRole
-                embeddingsContext  // Combined embeddings context before chat history
+                embeddingsContext,  // Combined embeddings context before chat history
+                lorebookChatInjections
               );
               // Inject HUD context into chat messages if enabled
               if (hudContextSection && hudContext) {
@@ -354,7 +357,8 @@ export async function POST(request: NextRequest) {
                 processedCharacter.postHistoryInstructions,
                 undefined,
                 true,
-                embeddingsContext
+                embeddingsContext,
+                lorebookChatInjections
               );
               if (hudContextSection && hudContext) {
                 chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);

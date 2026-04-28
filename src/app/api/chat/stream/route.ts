@@ -344,7 +344,7 @@ export async function POST(request: NextRequest) {
     const stats = getContextStats(messages);
 
     // Process lorebooks and get matched entries
-    const { section: lorebookSection } = buildLorebookSectionForPrompt(
+    const { plan: lorebookPlan } = buildLorebookSectionForPrompt(
       messages,
       lorebooks,
       {
@@ -393,11 +393,11 @@ export async function POST(request: NextRequest) {
     // - Stats keys: {{resistencia}}, {{habilidades}}, etc.
     // - Sound keys: {{sonidos}}
     // - All sections including post-history instructions
-    const { prompt: systemPrompt, sections: systemSections } = buildSystemPrompt(
+    const { prompt: systemPrompt, sections: systemSections, lorebookChatInjections } = buildSystemPrompt(
       effectiveCharacter,
       effectiveUserName,
       persona,
-      lorebookSection,
+      lorebookPlan,
       sessionStats,
       allCharacters, // Pass all characters for peticiones/solicitudes resolution
       soundTriggers, // Pass soundTriggers for {{sonidos}} resolution
@@ -664,7 +664,8 @@ Y cambiar mi expresión:
                   effectiveCharacter,
                   effectiveUserName,
                   effectiveCharacter.postHistoryInstructions?.trim(),
-                  undefined, true, embeddingsContext
+                  undefined, true, embeddingsContext,
+                  lorebookChatInjections
                 );
                 if (hudContextSection && hudContext) {
                   chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
@@ -780,7 +781,8 @@ Y cambiar mi expresión:
                   effectiveCharacter,
                   effectiveUserName,
                   effectiveCharacter.postHistoryInstructions?.trim(),
-                  undefined, true, embeddingsContext
+                  undefined, true, embeddingsContext,
+                  lorebookChatInjections
                 );
                 if (hudContextSection && hudContext) {
                   chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
@@ -916,7 +918,8 @@ Y cambiar mi expresión:
                   effectiveCharacter,
                   effectiveUserName,
                   effectiveCharacter.postHistoryInstructions?.trim(),
-                  undefined, true, embeddingsContext
+                  undefined, true, embeddingsContext,
+                  lorebookChatInjections
                 );
                 if (hudContextSection && hudContext) {
                   chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
@@ -1030,7 +1033,8 @@ Y cambiar mi expresión:
                     effectiveCharacter,
                     effectiveUserName,
                     effectiveCharacter.postHistoryInstructions?.trim(),
-                    undefined, true, embeddingsContext
+                    undefined, true, embeddingsContext,
+                    lorebookChatInjections
                   );
                   if (hudContextSection && hudContext) {
                     chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
@@ -1149,7 +1153,8 @@ Y cambiar mi expresión:
                   effectiveCharacter,
                   effectiveUserName,
                   effectiveCharacter.postHistoryInstructions?.trim(),
-                  undefined, true, embeddingsContext
+                  undefined, true, embeddingsContext,
+                  lorebookChatInjections
                 );
                 if (hudContextSection && hudContext) {
                   chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
@@ -1250,7 +1255,8 @@ Y cambiar mi expresión:
                     effectiveCharacter,
                     effectiveUserName,
                     effectiveCharacter.postHistoryInstructions?.trim(),
-                    undefined, true, embeddingsContext
+                    undefined, true, embeddingsContext,
+                    lorebookChatInjections
                   );
                   if (hudContextSection && hudContext) {
                     chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);

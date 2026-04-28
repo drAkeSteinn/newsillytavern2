@@ -649,3 +649,35 @@ Stage Summary:
 - Inner keys in quest content ({{user}}, {{char}}, stats, events, sounds) are properly resolved via recursion-safe inner context
 - Tool results (manage_action, manage_quest, manage_solicitud) now use comprehensive key resolver instead of basic regex
 - Files modified: `key-resolver.ts`, `prompt-builder.ts`, `stream/route.ts`, `generate/route.ts`, `regenerate/route.ts`, `group-stream/route.ts`, `manage-action.ts`, `manage-quest.ts`, `manage-solicitud.ts`
+---
+Task ID: 7-14
+Agent: main
+Task: Review and fix lorebook system - position-based injection, per-entry overrides, comments, tokenBudget
+
+Work Log:
+- Reviewed complete lorebook system: data models (types/index.ts), scanner (scanner.ts), injector (injector.ts), prompt builder (prompt-builder.ts), 4 chat routes, store (lorebookSlice.ts), UI (lorebook-panel.tsx), pre-llm handler
+- Identified 7 issues: position field ignored, per-entry overrides ignored, token budget hardcoded, comment field not included, role field not handled, duplicate modules, recursion not supported
+- Fixed scanner.ts: added per-entry scanDepth/caseSensitive/matchWholeWords overrides with scan text caching by depth
+- Fixed scanner.ts: added `groupByPosition()` helper function for position-based grouping
+- Fixed scanner.ts: added `formatEntriesWithComments()` that includes comment headers and role prefixes
+- Refactored injector.ts: new `LorebookInjectionPlan` type with position0Section, position5Section, position6Section, outletSections, chatInjections
+- Refactored injector.ts: new `LorebookChatInjection` type for positions 1-4
+- Refactored injector.ts: `buildLorebookInjectionPlan()` uses lorebook's settings.tokenBudget instead of hardcoded 2048
+- Refactored injector.ts: position 7 entries grouped by outletName into separate sections
+- Refactored injector.ts: legacy `processLorebooks()` still works via backward-compat wrapper
+- Updated prompt-builder.ts: `buildSystemPrompt()` accepts `lorebookPlan` instead of `lorebookSection`, returns `lorebookChatInjections`
+- Updated prompt-builder.ts: position 0 → after system prompt, position 5 → after examples, position 7 → outlets, position 6 → bottom
+- Updated prompt-builder.ts: `buildChatMessages()` accepts `lorebookChatInjections` and merges into chat messages via `applyChatInjections()`
+- Updated prompt-builder.ts: `buildGroupSystemPrompt()` and `buildGroupChatMessages()` same changes
+- Updated all 4 routes (stream, generate, regenerate, group-stream) to use new API
+- Updated lorebook/index.ts exports for new types
+- All lint checks pass, no new type errors introduced
+
+Stage Summary:
+- Position field now fully respected: entries inject at correct positions (0-7)
+- Per-entry overrides (scanDepth, caseSensitive, matchWholeWords) now work
+- Token budget uses lorebook's settings instead of hardcoded 2048
+- Comment field included as header in output (SillyTavern style)
+- Role field shown as prefix ([System], [User], [Assistant])
+- Chat-level positions (1-4) merge into specific messages without breaking alternation
+- Backward compatibility maintained for legacy API consumers
