@@ -326,6 +326,19 @@ export const useTavernStore = create<TavernState>()(
           ...(persistedQuest || {})
         };
 
+        // Fix lorebooks with missing/undefined active property
+        const persistedLorebooks = persisted.lorebooks as Array<Record<string, unknown>> | undefined;
+        const mergedLorebooks = persistedLorebooks
+          ? persistedLorebooks.map(lb => ({
+              ...lb,
+              active: lb.active ?? (persisted.activeLorebookIds as string[] || []).includes(lb.id),
+            }))
+          : currentState.lorebooks;
+
+        // Sync activeLorebookIds with lorebook active states
+        const finalActiveLorebookIds = persisted.activeLorebookIds as string[] | undefined
+          ?? mergedLorebooks.filter(lb => lb.active).map(lb => lb.id as string);
+
         // Return merged state
         return {
           ...currentState,
@@ -338,6 +351,8 @@ export const useTavernStore = create<TavernState>()(
           dialogueSettings: mergedDialogue,
           summarySettings: mergedSummary,
           questSettings: mergedQuest,
+          lorebooks: mergedLorebooks,
+          activeLorebookIds: finalActiveLorebookIds,
         };
       },
     }

@@ -43,6 +43,7 @@ export const createLorebookSlice = (set: any, get: any): LorebookSlice => ({
     lorebooks: [...state.lorebooks, {
       ...lorebook,
       id: uuidv4(),
+      active: lorebook.active ?? true,
       settings: lorebook.settings || defaultLorebookSettings,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -117,7 +118,9 @@ export const createLorebookSlice = (set: any, get: any): LorebookSlice => ({
       role: entry.role ?? null,
       vectorized: entry.vectorized ?? false,
       displayIndex: entry.displayIndex ?? lorebook.entries.length,
-      extensions: entry.extensions ?? {}
+      extensions: entry.extensions ?? {},
+      entryType: entry.entryType ?? 'traditional',
+      attributeConfig: entry.attributeConfig ?? undefined
     };
 
     return {
@@ -218,7 +221,9 @@ export const createLorebookSlice = (set: any, get: any): LorebookSlice => ({
       role: entry.role ?? null,
       vectorized: entry.vectorized ?? false,
       displayIndex: entry.displayIndex ?? index,
-      extensions: entry.extensions ?? {}
+      extensions: entry.extensions ?? {},
+      entryType: entry.entryType ?? 'traditional',
+      attributeConfig: entry.attributeConfig ?? undefined,
     }));
 
     const lorebook: Lorebook = {

@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://www.reddit.com/r/SillyTavernAI/comments/1rk17ey/spill_your_secrets_what_are_the_extensions_you",
+    "name": "what are the extensions you literally can't live without? : r/SillyTavernAI",
+    "snippet": "Vector storage, as I explained above; WorldInfo Info helps me know if my inputs are being injected correctly and control how many of them are ... What TTS and Image Generation do you guys use? : r/SillyTavernAI What is vector storage and how do you use it? : r/SillyTavernAI - Reddit More results from www.reddit.com Missing: ecosystem | Show results with: ecosystem",
+    "host_name": "www.reddit.com",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/extensions",
+    "name": "Extensions | docs.ST.app - SillyTavern Documentation",
+    "snippet": "SillyTavern comes with many extensions that can be enabled or disabled in the Extensions panel. Extensions can add new features, change the behavior of. Missing: ecosystem vector storage",
+    "host_name": "docs.sillytavern.app",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern-extras",
+    "name": "SillyTavern-Extras - GitHub",
+    "snippet": "Stable Diffusion image generation (remote A1111 server by default) ... This is a vectorization source (text embedding provider) for the Vector Storage built-in ... Missing: ecosystem | Show results with: ecosystem",
+    "host_name": "github.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/usage/core-concepts/data-bank",
+    "name": "Data Bank (RAG) | docs.ST.app - SillyTavern Documentation",
+    "snippet": "Vector Storage extension uses the Vectra library to keep track of file embeddings. They are stored in JSON files in the /vectors folder of your user data ... Missing: ecosystem | Show results with: ecosystem",
+    "host_name": "docs.sillytavern.app",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/erew123/alltalk_tts/wiki/SillyTavern-Extension",
+    "name": "SillyTavern Extension · erew123/alltalk_tts Wiki - GitHub",
+    "snippet": "The new SillyTavern extension will work with both AllTalk V1 and AllTalk V2. You just need to select the correct AllTalk server version in the SillyTavern ...",
+    "host_name": "github.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://newreleases.io/project/github/SillyTavern/SillyTavern/release/1.13.1",
+    "name": "SillyTavern 1.13.1 - NewReleases.io",
+    "snippet": "Image Generation: Added Google Imagen and AI/ML API as image generation sources. ... Vector Storage: Allow chunk overlap when forced chunking on a custom ...",
+    "host_name": "newreleases.io",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://codesandbox.io/p/github/QingyeSC/SillyTavern-Extras",
+    "name": "SillyTavern-Extras - Codesandbox",
+    "snippet": "Open the Extensions panel (via the 'Stacked Blocks' icon at the top of the page), paste the API URL into the input box, and click \"Connect\" to ...",
+    "host_name": "codesandbox.io",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/extensions/chat-vectorization",
+    "name": "Chat Vectorization | docs.ST.app - SillyTavern Documentation",
+    "snippet": "To enable Chat vectorization, select \"Extensions\" > \"Vector Storage\" > \"Enabled for chat messages\". Configure a vectorization source and vectorization model. Missing: ecosystem | Show results with: ecosystem",
+    "host_name": "docs.sillytavern.app",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/releases",
+    "name": "Releases · SillyTavern/SillyTavern - GitHub",
+    "snippet": "Vector Storage: Added Workers AI source; added a toggle to keep vectors for hidden messages; added retry logic to summary generation. Image Generation: Added ...",
+    "host_name": "github.com",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.facebook.com/0xSojalSec/posts/run-local-ai-models-in-your-browserfor-chat-audio-transcription-text-to-speech-a/1422422519412147",
+    "name": "Run local AI models in your browser, for chat, audio transcription",
+    "snippet": "Run local AI models in your browser, for chat, audio transcription, text to speech and background removal -/github.com/khromov/nook.",
+    "host_name": "www.facebook.com",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

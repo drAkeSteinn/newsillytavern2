@@ -18,6 +18,7 @@ import type { CharacterCard, Persona, SessionStats, SoundTrigger, AppSettings, Q
 import type { ResolvedStats } from '@/types';
 import { resolveStatsInText } from '@/lib/stats/stats-resolver';
 import { buildQuestPromptSection } from '@/lib/triggers/handlers/quest-handler';
+import { getExampleKey } from '@/lib/quest/quest-detector';
 import { DEFAULT_QUEST_SETTINGS } from '@/types';
 
 // ============================================
@@ -56,6 +57,14 @@ export interface KeyResolutionContext {
   questTemplates?: QuestTemplate[];
   sessionQuests?: SessionQuestInstance[];
   questSettings?: QuestSettings;
+
+  // Lorebook outlet sections for {{outlet::name}} macro resolution
+  // Map of outlet name → formatted content string
+  outletSections?: Record<string, string>;
+
+  // Lorebook attribute keys resolved from attribute-type entries
+  // Map of injectionKey → resolved content (resolved server-side by attribute-resolver)
+  lorebookAttributeKeys?: Record<string, string>;
 }
 
 // ============================================
@@ -78,6 +87,18 @@ export function resolveTemplateVariables(
   // Basic variable replacements
   result = result.replace(/\{\{user\}\}/gi, context.user);
   result = result.replace(/\{\{char\}\}/gi, context.char);
+
+  // Current date and time: {{time}} → DD/MM/YYYY, HH:MMam/pm
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, '0');
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const year = now.getFullYear();
+  let hours = now.getHours();
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  hours = hours % 12 || 12;
+  const timeStr = `${day}/${month}/${year}, ${hours}:${minutes}${ampm}`;
+  result = result.replace(/\{\{time\}\}/gi, timeStr);
 
   // User persona (if available)
   if (context.userpersona) {
@@ -105,6 +126,13 @@ export function resolveTemplateVariables(
     result = result.replace(/\{\{description\}\}/gi, context.character.description || '');
     result = result.replace(/\{\{personality\}\}/gi, context.character.personality || '');
     result = result.replace(/\{\{scenario\}\}/gi, context.character.scenario || '');
+  }
+
+  // Lorebook outlet macro: {{outlet::name}}
+  if (context.outletSections && Object.keys(context.outletSections).length > 0) {
+    result = result.replace(/\{\{outlet::([^}]+)\}\}/gi, (_, outletName) => {
+      return context.outletSections![outletName.trim()] || '';
+    });
   }
 
   return result;
@@ -402,6 +430,74 @@ function buildSonidosBlock(
 // ============================================
 
 /**
+ * Resolve {{availableQuests}} key in text
+ * Replaces with a formatted block of AVAILABLE (not yet active) quests.
+ * Inner keys in quest content ({{user}}, {{char}}, stats, etc.) are also resolved.
+ *
+ * Use {{activeQuests}} for active quests only, or {{availableQuests}} for available quests only.
+ */
+export function resolveAvailableQuestsKey(
+  text: string,
+  context: KeyResolutionContext
+): string {
+  if (!text) return text;
+
+  // Early exit if no {{availableQuests}} key present
+  if (!/\{\{availableQuests\}\}/gi.test(text)) {
+    return text;
+  }
+
+  const { questTemplates, sessionQuests, questSettings, characterId } = context;
+
+  // No quest data available - remove the key
+  if (!questTemplates?.length || !sessionQuests?.length) {
+    return text.replace(/\{\{availableQuests\}\}/gi, '');
+  }
+
+  // Only AVAILABLE quests (not active)
+  const availableQuests = sessionQuests.filter(q => q.status === 'available');
+  if (availableQuests.length === 0) {
+    return text.replace(/\{\{availableQuests\}\}/gi, '');
+  }
+
+  // Build available quests block
+  const availableLines: string[] = [];
+  availableQuests.forEach((q, index) => {
+    const questTemplate = questTemplates.find(t => t.id === q.templateId);
+    if (!questTemplate) return;
+
+    availableLines.push(`${index + 1}) ${questTemplate.name}`);
+    availableLines.push(`   - descripción: ${questTemplate.description}`);
+
+    // Add activation key
+    const activation = questTemplate.activation || {};
+    const baseKey = activation.key || (activation.keys && activation.keys[0]);
+    if (baseKey) {
+      const activationKey = getExampleKey(questSettings?.questActivationPrefix, baseKey);
+      availableLines.push(`   - key de activación: ${activationKey}`);
+    }
+  });
+
+  if (availableLines.length === 0) {
+    return text.replace(/\{\{availableQuests\}\}/gi, '');
+  }
+
+  const block = `[MISIONES DISPONIBLES]\n${availableLines.join('\n')}`;
+
+  // Resolve inner keys in the block ({{user}}, {{char}}, stats, events, sounds)
+  // Use a context WITHOUT quest data to prevent recursion
+  const innerContext: KeyResolutionContext = {
+    ...context,
+    questTemplates: undefined,
+    sessionQuests: undefined,
+  };
+
+  const resolvedBlock = resolveAllKeys(block, innerContext);
+
+  return text.replace(/\{\{availableQuests\}\}/gi, resolvedBlock);
+}
+
+/**
  * Resolve {{activeQuests}} key in text
  * Replaces with a formatted block of active quests and their objectives.
  * Inner keys in quest content ({{user}}, {{char}}, stats, etc.) are also resolved.
@@ -468,6 +564,125 @@ export function resolveQuestKeys(
 }
 
 // ============================================
+// Phase 6: Lorebook Attribute Key Resolution
+// ============================================
+
+/**
+ * Resolve lorebook attribute keys in text.
+ *
+ * Replaces {{injectionKey}} patterns with the resolved content from
+ * attribute-type lorebook entries. These keys are pre-resolved server-side
+ * by the attribute-resolver module and passed through the context.
+ *
+ * After replacement, the injected content itself may contain template keys
+ * (e.g., {{char}}, {{user}}, {{time}}), so we re-resolve template variables
+ * on the result.
+ *
+ * Example: if lorebookAttributeKeys = { 'estadoHeroe': '{{char}} está herido' },
+ * then {{estadoHeroe}} in text becomes "Aitana está herido".
+ */
+export function resolveLorebookAttributeKeys(
+  text: string,
+  context: KeyResolutionContext
+): string {
+  if (!text) return text;
+
+  const keysCount = context.lorebookAttributeKeys ? Object.keys(context.lorebookAttributeKeys).length : 0;
+
+  if (!context.lorebookAttributeKeys || keysCount === 0) {
+    return text;
+  }
+
+  let result = text;
+
+  // Sort keys by length descending to avoid partial replacements
+  // (e.g., 'estadoHeroe' before 'estado')
+  const sortedKeys = Object.keys(context.lorebookAttributeKeys).sort(
+    (a, b) => b.length - a.length
+  );
+
+  for (const key of sortedKeys) {
+    const content = context.lorebookAttributeKeys![key];
+    if (content === undefined) continue;
+
+    // Replace all occurrences of {{key}} (case-insensitive)
+    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\{\\{${escapedKey}\\}\\}`, 'gi');
+    const regexMatched = regex.test(result);
+
+    if (!regexMatched) {
+      continue;
+    }
+
+    // Reset regex lastIndex after test() with global flag
+    regex.lastIndex = 0;
+    result = result.replace(regex, content);
+  }
+
+  // After injecting attribute content, re-resolve template variables and stats keys
+  // because the injected content may contain {{char}}, {{user}}, {{time}}, {{vida}}, etc.
+  if (result !== text) {
+    result = resolveTemplateVariables(result, context);
+    // Also re-resolve stats keys that may be in the injected content
+    result = resolveStatsKeys(result, context.resolvedStats, context.personaResolvedStats);
+  }
+
+  return result;
+}
+
+/**
+ * Phase 7: Cleanup remaining unresolved {{key}} patterns
+ *
+ * After all resolution phases, any {{key}} still remaining is an unresolved key.
+ * This can happen when:
+ * - A lorebook attribute entry's injectionKey is used but the lorebook is not assigned to the character
+ * - A custom key was added to text but has no resolver
+ * - A stats key references an attribute that doesn't exist in the current config
+ *
+ * Strategy:
+ * - Keys that match known attribute names in the character or persona statsConfig are KEPT as-is
+ *   (user may want to see them for debugging or they might be added later)
+ * - Keys that look like lorebook injection keys (lowercaseCamelCase, underscores) are replaced with empty
+ * - All other remaining {{key}} patterns are replaced with empty string
+ *
+ * This ensures the LLM never sees raw {{key}} text in the prompt.
+ */
+function resolveRemainingKeys(
+  text: string,
+  context: KeyResolutionContext
+): string {
+  if (!text || !text.includes('{{')) return text;
+
+  // Collect all known stat attribute keys from character and persona configs
+  const knownStatKeys = new Set<string>();
+  if (context.character?.statsConfig?.attributes) {
+    for (const attr of context.character.statsConfig.attributes) {
+      knownStatKeys.add(attr.key);
+    }
+  }
+  if (context.persona?.statsConfig?.attributes) {
+    for (const attr of context.persona.statsConfig.attributes) {
+      knownStatKeys.add(attr.key);
+    }
+  }
+
+  const pattern = /\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g;
+
+  return text.replace(pattern, (match, key) => {
+    // Keep known character/persona stat keys as-is (user might want to see them)
+    if (knownStatKeys.has(key)) {
+      return match;
+    }
+
+    // Replace all other unresolved keys with empty string
+    // This includes lorebook injection keys from unassigned lorebooks,
+    // typo keys, and any other unrecognized patterns
+    console.log(`[KeyResolver Phase 7] Cleaning unresolved key: {{${key}}}`);
+    return '';
+  });
+}
+
+// ============================================
 // Unified Resolution
 // ============================================
 
@@ -478,7 +693,8 @@ export function resolveQuestKeys(
  * Phase 2: Stats keys ({{resistencia}}, {{habilidades}}, etc.)
  * Phase 3: Event keys ({{solicitante}}, {{solicitado}}, {{eventos}})
  * Phase 4: Sound keys ({{sonidos}})
- * Phase 5: Quest keys ({{activeQuests}})
+ * Phase 5: Quest keys ({{activeQuests}}, {{availableQuests}})
+ * Phase 6: Lorebook attribute keys ({{injectionKey}} from attribute-type entries)
  *
  * This is the main function to use for resolving all keys
  */
@@ -500,8 +716,19 @@ export function resolveAllKeys(
   // Phase 4: Resolve sound keys
   result = resolveSoundKeys(result, context);
 
-  // Phase 5: Resolve quest keys ({{activeQuests}})
+  // Phase 5: Resolve quest keys ({{activeQuests}}, {{availableQuests}})
   result = resolveQuestKeys(result, context);
+  result = resolveAvailableQuestsKey(result, context);
+
+  // Phase 6: Resolve lorebook attribute keys
+  result = resolveLorebookAttributeKeys(result, context);
+
+  // Phase 7: Cleanup — replace any remaining unresolved {{key}} with empty string
+  // This prevents literal {{key}} text from reaching the LLM prompt.
+  // Known keys (like stats defined in config) are already handled in Phase 2,
+  // which returns the match as-is so the user sees them for debugging.
+  // But lorebook attribute keys from unassigned lorebooks should be silently cleaned.
+  result = resolveRemainingKeys(result, context);
 
   return result;
 }
@@ -558,7 +785,9 @@ export function buildKeyResolutionContext(
   personaResolvedStats?: ResolvedStats | null,
   questTemplates?: QuestTemplate[],
   sessionQuests?: SessionQuestInstance[],
-  questSettings?: QuestSettings
+  questSettings?: QuestSettings,
+  outletSections?: Record<string, string>,
+  lorebookAttributeKeys?: Record<string, string>
 ): KeyResolutionContext {
   return {
     user: persona?.name || userName,
@@ -575,6 +804,8 @@ export function buildKeyResolutionContext(
     questTemplates,
     sessionQuests,
     questSettings,
+    outletSections,
+    lorebookAttributeKeys,
   };
 }
 
@@ -591,9 +822,10 @@ export function buildGroupKeyResolutionContext(
   personaResolvedStats?: ResolvedStats | null,
   questTemplates?: QuestTemplate[],
   sessionQuests?: SessionQuestInstance[],
-  questSettings?: QuestSettings
+  questSettings?: QuestSettings,
+  lorebookAttributeKeys?: Record<string, string>
 ): KeyResolutionContext {
-  return buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, undefined, undefined, personaResolvedStats, questTemplates, sessionQuests, questSettings);
+  return buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, undefined, undefined, personaResolvedStats, questTemplates, sessionQuests, questSettings, undefined, lorebookAttributeKeys);
 }
 
 // ============================================

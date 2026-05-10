@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://www.reddit.com/r/SillyTavernAI/comments/1qd803u/ui_overhaul",
+    "name": "UI overhaul : r/SillyTavernAI",
+    "snippet": "a good start is downloading the moonlit echoes extension, which revamps your whole ui . once you familiarize yourself, i'd recommend ... Read more",
+    "host_name": "www.reddit.com",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://stackoverflow.com/questions/69165313/how-to-change-or-add-dark-theme-to-codeblocks",
+    "name": "How to change or add dark theme to CodeBlocks?",
+    "snippet": "Open CodeBlock , go to Settings > Editor... > Syntax highlighting. Select default > click OK. Now open your code. You will notice you can't see your cursor, let's ... Read more",
+    "host_name": "stackoverflow.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/usage/core-concepts/uicustomization",
+    "name": "UI Customization | docs.ST.app",
+    "snippet": "Theme files allow you to save, share, and reuse your UI customizations . You can maintain multiple themes for different moods or purposes, and switch.",
+    "host_name": "docs.sillytavern.app",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://zeabur.com/templates",
+    "name": "Templates",
+    "snippet": "The ultimate sandbox for AI storytelling and roleplaying , SillyTavern is a powerful, free, and open-source user interface for chatting with AI characters. Read more",
+    "host_name": "zeabur.com",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/Thomashighbaugh/stars",
+    "name": "Thomashighbaugh/stars: A curated list of my",
+    "snippet": "It comes with three built-in core themes , with dark mode support for all themes and components. FrenzyExists/dotfiles - My chaotic dotfiles, it ain't much, but ... Read more",
+    "host_name": "github.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.scribd.com/document/874786907/SillyTavern-All-Compressed",
+    "name": "SillyTavern User Guide and Features | PDF",
+    "snippet": "Jun 11, 2025 — SillyTavern is a free, open-source user interface for interacting with text generation LLMs, image generation engines, and TTS voice models, ... Read more",
+    "host_name": "www.scribd.com",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://lite.koboldai.net",
+    "name": "KoboldAI Lite",
+    "snippet": "KoboldAI Lite - A powerful tool for interacting with AI directly in your browser. Chat with AI assistants, roleplay , write stories and play interactive text ...",
+    "host_name": "lite.koboldai.net",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://aitoolscan.com",
+    "name": "AIToolScan - Discover and Access a Wide Range of AI Tools",
+    "snippet": "AIToolScan is a leading platform that provides a simple and intuitive interface for discovering and accessing various AI tools. Easily search and connect ...",
+    "host_name": "aitoolscan.com",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://openrouter.ai/models",
+    "name": "Models",
+    "snippet": "It also handles mature and darker themes with more nuance and depth. by aion ... and graphical user interface ( GUI ) interactions. With its robust code ... Read more",
+    "host_name": "openrouter.ai",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.reddit.com/r/SillyTavernAI/comments/1ouhhsk/issue_with_theme_colors",
+    "name": "Issue With Theme Colors : r/SillyTavernAI",
+    "snippet": "Replace the color code with the hex code you pick in the \" Theme Colors\" UI . Then put these inside \" Custom CSS\". They will override the theme ...",
+    "host_name": "www.reddit.com",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

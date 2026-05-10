@@ -168,14 +168,27 @@ function parseMetadata(metadata: any): Record<string, any> {
   return metadata;
 }
 
+/**
+ * Escape a value for safe use in LanceDB filter expressions.
+ * Prevents injection by escaping single quotes which are used as string delimiters.
+ */
+function escapeFilterValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 function normalizeVector(vector: number[]): number[] {
   const magnitude = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
   if (magnitude === 0) return vector;
   return vector.map(val => val / magnitude);
 }
 
-function l2ToCosineSimilarity(l2Distance: number): number {
-  return 1 - (l2Distance * l2Distance) / 2;
+/**
+ * Convert LanceDB's L2-squared distance to cosine similarity.
+ * LanceDB vectorSearch returns _distance = L2² (squared Euclidean distance).
+ * For unit-normalized vectors: L2² = 2 - 2·cos(θ), so cos(θ) = 1 - L2²/2.
+ */
+function l2SquaredToCosineSimilarity(l2SquaredDistance: number): number {
+  return 1 - l2SquaredDistance / 2;
 }
 
 async function tableToArray(table: any): Promise<any[]> {
@@ -470,7 +483,7 @@ export class LanceDBWrapper {
     results = allResults
       .map((row: any) => ({
         ...row,
-        similarity: l2ToCosineSimilarity(row._distance || 0),
+        similarity: l2SquaredToCosineSimilarity(row._distance || 0),
       }))
       .filter((r: any) => {
         if (!namespace || namespace === 'all') return r.similarity >= threshold;
@@ -491,7 +504,7 @@ export class LanceDBWrapper {
 
   static async getEmbeddingById(id: string): Promise<Embedding | null> {
     const table = await getEmbeddingsTable();
-    const results = await tableFilter(table, `id = '${id}'`);
+    const results = await tableFilter(table, `id = '${escapeFilterValue(id)}'`);
     if (results.length === 0) return null;
 
     const row = results[0];
@@ -510,14 +523,19 @@ export class LanceDBWrapper {
 
   static async deleteEmbedding(id: string): Promise<boolean> {
     const table = await getEmbeddingsTable();
-    await table.delete(`id = '${id}'`);
+    await table.delete(`id = '${escapeFilterValue(id)}'`);
     return true;
   }
 
   static async deleteBySource(source_type: string, source_id: string): Promise<number> {
     const table = await getEmbeddingsTable();
-    await table.delete(`source_type = '${source_type}' AND source_id = '${source_id}'`);
-    return 1;
+    // Count matching records before deletion
+    const matching = await tableFilter(table, `source_type = '${escapeFilterValue(source_type)}' AND source_id = '${escapeFilterValue(source_id)}'`);
+    const count = matching.length;
+    if (count > 0) {
+      await table.delete(`source_type = '${escapeFilterValue(source_type)}' AND source_id = '${escapeFilterValue(source_id)}'`);
+    }
+    return count;
   }
 
   static async upsertNamespace(params: {
@@ -528,7 +546,7 @@ export class LanceDBWrapper {
     const { v4: uuidv4 } = await import('uuid');
     const { namespace, description, metadata = {} } = params;
     const table = await getNamespacesTable();
-    const existing = await tableFilter(table, `namespace = '${namespace}'`);
+    const existing = await tableFilter(table, `namespace = '${escapeFilterValue(namespace)}'`);
 
     const nsRecord = {
       id: uuidv4(),
@@ -540,7 +558,7 @@ export class LanceDBWrapper {
     };
 
     if (existing.length > 0) {
-      await table.delete(`namespace = '${namespace}'`);
+      await table.delete(`namespace = '${escapeFilterValue(namespace)}'`);
     }
     await table.add([nsRecord]);
 
@@ -577,7 +595,7 @@ export class LanceDBWrapper {
     
     try {
       const table = await getNamespacesTable();
-      await table.delete(`namespace = '${namespace}'`);
+      await table.delete(`namespace = '${escapeFilterValue(namespace)}'`);
       console.log(`[LanceDB] Deleted namespace record: "${namespace}"`);
     } catch (err) {
       console.warn(`[LanceDB] Failed to delete namespace record "${namespace}":`, err);
@@ -589,17 +607,17 @@ export class LanceDBWrapper {
 
   static async addEmbeddingToNamespace(namespace: string, embeddingId: string): Promise<void> {
     const table = await getEmbeddingsTable();
-    const results = await tableFilter(table, `id = '${embeddingId}'`);
+    const results = await tableFilter(table, `id = '${escapeFilterValue(embeddingId)}'`);
     if (results.length === 0) throw new Error(`Embedding ${embeddingId} not found`);
 
     const embedding = results[0];
-    await table.delete(`id = '${embeddingId}'`);
+    await table.delete(`id = '${escapeFilterValue(embeddingId)}'`);
     await table.add([{ ...embedding, namespace, updated_at: new Date().toISOString() }]);
   }
 
   static async getNamespaceEmbeddings(namespace: string, limit: number = 100): Promise<Embedding[]> {
     const table = await getEmbeddingsTable();
-    const results = await tableFilter(table, `namespace = '${namespace}'`);
+    const results = await tableFilter(table, `namespace = '${escapeFilterValue(namespace)}'`);
     return results.slice(0, limit).map((row: any) => ({
       id: row.id,
       content: row.content,
@@ -637,7 +655,7 @@ export class LanceDBWrapper {
         namespace: row.namespace || 'default',
         source_type: row.source_type,
         source_id: row.source_id,
-        similarity: l2ToCosineSimilarity(row._distance || 0),
+        similarity: l2SquaredToCosineSimilarity(row._distance || 0),
       }))
       .filter((r: any) => r.similarity >= threshold)
       .slice(0, limit);
@@ -661,22 +679,48 @@ export class LanceDBWrapper {
 
   static async getStats(): Promise<EmbeddingStats> {
     const table = await getEmbeddingsTable();
-    const allEmbeddings = await tableToArray(table);
     const namespaces = await this.getAllNamespaces();
 
     const embeddingsByNamespace: Record<string, number> = {};
     const embeddingsBySourceType: Record<string, number> = {};
+    let totalEmbeddings = 0;
 
-    allEmbeddings.forEach((row: any) => {
-      const ns = row.namespace || 'default';
-      embeddingsByNamespace[ns] = (embeddingsByNamespace[ns] || 0) + 1;
-      if (row.source_type) {
-        embeddingsBySourceType[row.source_type] = (embeddingsBySourceType[row.source_type] || 0) + 1;
-      }
-    });
+    // Count per-namespace to avoid loading all vectors into memory at once
+    for (const ns of namespaces) {
+      try {
+        const count = await this.countByNamespace(ns.namespace);
+        if (count > 0) {
+          embeddingsByNamespace[ns.namespace] = count;
+          totalEmbeddings += count;
+        }
+      } catch { /* skip */ }
+    }
+
+    // Also count 'default' namespace if not listed
+    if (!embeddingsByNamespace['default']) {
+      try {
+        const defaultCount = await this.countByNamespace('default');
+        if (defaultCount > 0) {
+          embeddingsByNamespace['default'] = defaultCount;
+          totalEmbeddings += defaultCount;
+        }
+      } catch { /* skip */ }
+    }
+
+    // For source_type breakdown, we need to scan but we can use lightweight queries
+    // Only load id + source_type (not full vectors) via filter
+    const sourceTypes = ['character', 'world', 'lorebook', 'session', 'memory', 'custom', 'system'];
+    for (const st of sourceTypes) {
+      try {
+        const matching = await tableFilter(table, `source_type = '${st}'`);
+        if (matching.length > 0) {
+          embeddingsBySourceType[st] = matching.length;
+        }
+      } catch { /* skip */ }
+    }
 
     return {
-      totalEmbeddings: allEmbeddings.length,
+      totalEmbeddings,
       totalNamespaces: namespaces.length,
       embeddingsByNamespace,
       embeddingsBySourceType,
@@ -684,24 +728,40 @@ export class LanceDBWrapper {
   }
 
   static async resetAll(): Promise<{ deletedEmbeddings: number; deletedNamespaces: number }> {
-    const embTable = await getEmbeddingsTable();
-    const nsTable = await getNamespacesTable();
+    // Count before dropping to report accurate numbers
+    let deletedEmbeddings = 0;
+    let deletedNamespaces = 0;
 
-    const allEmbeddings = await tableToArray(embTable);
-    const allNamespaces = await tableToArray(nsTable);
+    try {
+      const allEmbeddings = await tableToArray(await getEmbeddingsTable());
+      deletedEmbeddings = allEmbeddings.length;
+    } catch { /* table may not exist */ }
 
-    // Delete all embeddings one by one (LanceDB doesn't have truncate)
-    for (const emb of allEmbeddings) {
-      try { await embTable.delete(`id = '${emb.id}'`); } catch { /* skip */ }
+    try {
+      const allNamespaces = await tableToArray(await getNamespacesTable());
+      deletedNamespaces = allNamespaces.length;
+    } catch { /* table may not exist */ }
+
+    // Drop and recreate the embeddings table (much faster than individual deletes)
+    if (db) {
+      try { await db.dropTable(EMBEDDINGS_TABLE); } catch { /* ignore */ }
+      try { await db.dropTable(NAMESPACES_TABLE); } catch { /* ignore */ }
+
+      // Drop any extra tables
+      try {
+        const tables = await db.tableNames();
+        for (const tableName of tables) {
+          if (tableName !== EMBEDDINGS_TABLE && tableName !== NAMESPACES_TABLE) {
+            try { await db.dropTable(tableName); } catch { /* ignore */ }
+          }
+        }
+      } catch { /* ignore */ }
+
+      // Reinitialize with fresh tables
+      await initializeTables();
     }
-    for (const ns of allNamespaces) {
-      try { await nsTable.delete(`namespace = '${ns.namespace}'`); } catch { /* skip */ }
-    }
 
-    return {
-      deletedEmbeddings: allEmbeddings.length,
-      deletedNamespaces: allNamespaces.length,
-    };
+    return { deletedEmbeddings, deletedNamespaces };
   }
 
   /**
@@ -713,7 +773,7 @@ export class LanceDBWrapper {
     let deleted = 0;
     for (const id of ids) {
       try {
-        await table.delete(`id = '${id}'`);
+        await table.delete(`id = '${escapeFilterValue(id)}'`);
         deleted++;
       } catch { /* skip */ }
     }
@@ -726,9 +786,9 @@ export class LanceDBWrapper {
    */
   static async deleteAllByNamespace(namespace: string): Promise<number> {
     const table = await getEmbeddingsTable();
-    const embeddings = await tableFilter(table, `namespace = '${namespace}'`);
+    const embeddings = await tableFilter(table, `namespace = '${escapeFilterValue(namespace)}'`);
     for (const emb of embeddings) {
-      try { await table.delete(`id = '${emb.id}'`); } catch { /* skip */ }
+      try { await table.delete(`id = '${escapeFilterValue(emb.id)}'`); } catch { /* skip */ }
     }
     return embeddings.length;
   }
@@ -739,7 +799,7 @@ export class LanceDBWrapper {
    */
   static async countByNamespace(namespace: string): Promise<number> {
     const table = await getEmbeddingsTable();
-    const results = await tableFilter(table, `namespace = '${namespace}'`);
+    const results = await tableFilter(table, `namespace = '${escapeFilterValue(namespace)}'`);
     return results.length;
   }
 }

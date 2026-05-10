@@ -45,10 +45,12 @@ import {
 } from '@/lib/context-manager';
 import { detectMentions } from '@/lib/mention-detector';
 import { retrieveEmbeddingsContext, formatEmbeddingsForSSE } from '@/lib/embeddings/chat-context';
+import { processResponseAndReinforceMemories, isReinforcementEnabled } from '@/lib/embeddings/memory-reinforcement';
 import type { EmbeddingsChatSettings, ToolsSettings } from '@/types';
 import {
   getAllToolDefinitions,
   getToolDefinitionsByIds,
+  resolveToolDefinitionsKeys,
   executeTool,
   createToolCallAccumulator,
   hasToolCalls,
@@ -626,13 +628,14 @@ export async function POST(request: NextRequest) {
     // Build group-level lorebook injection plan if group has lorebooks
     let groupLorebookPlan: LorebookInjectionPlan | null = null;
     if (useGroupLorebooks && lorebooks.length > 0) {
-      const { plan } = buildLorebookSectionForPrompt(
+      const { plan, lorebookAttributeKeys: groupLorebookAttributeKeys } = buildLorebookSectionForPrompt(
         messages,
         lorebooks,
         {
           scanDepth: contextConfig.scanDepth,
-          tokenBudget: 2048
-        }
+          // tokenBudget: let the injector use the lorebook's own setting
+        },
+        { sessionStats: typedSessionStats, characters: allCharacters }
       );
       groupLorebookPlan = plan;
     }
@@ -729,13 +732,14 @@ export async function POST(request: NextRequest) {
                 );
 
                 if (characterLorebooksFiltered.length > 0) {
-                  const { plan } = buildLorebookSectionForPrompt(
+                  const { plan, lorebookAttributeKeys } = buildLorebookSectionForPrompt(
                     messages,
                     characterLorebooksFiltered,
                     {
                       scanDepth: contextConfig.scanDepth,
-                      tokenBudget: 2048
-                    }
+                      // tokenBudget: let the injector use the lorebook's own setting
+                    },
+                    { sessionStats: typedSessionStats, characterId: responder.id, characters: allCharacters }
                   );
                   lorebookSectionForCharacter = plan;
                 }
@@ -762,10 +766,20 @@ export async function POST(request: NextRequest) {
               allCharacters, // allCharacters - needed for peticiones/solicitudes resolution (includes persona)
               questTemplates, // Pass quest templates for {{activeQuests}} key resolution
               sessionQuests,  // Pass session quests for {{activeQuests}} key resolution
-              questSettings   // Pass quest settings for {{activeQuests}} key resolution
+              questSettings,   // Pass quest settings for {{activeQuests}} key resolution
+              lorebookAttributeKeys
             );
 
             // Build key resolution context for this character
+            // Includes lorebookAttributeKeys so {{injectionKey}} resolves in HUD, post-history, etc.
+            let groupPersonaResolvedStats: import('@/types').ResolvedStats | null = null;
+            if (persona?.statsConfig?.enabled && typedSessionStats) {
+              groupPersonaResolvedStats = resolveStats({
+                characterId: '__user__',
+                statsConfig: persona.statsConfig,
+                sessionStats: typedSessionStats,
+              });
+            }
             const resolvedStats = resolveStats({
               characterId: responder.id,
               statsConfig: responder.statsConfig,
@@ -774,13 +788,34 @@ export async function POST(request: NextRequest) {
               userName: effectiveUserName,
               characterName: responder.name,
               questTemplates,
+              personaDescription: persona?.description,
+              personaResolvedStats: groupPersonaResolvedStats,
             });
+
+            // Build outlet sections map from lorebook plan for {{outlet::name}} macro resolution
+            const outletSections: Record<string, string> = {};
+            if (lorebookSectionForCharacter?.outletSections.length) {
+              for (const outletSection of lorebookSectionForCharacter.outletSections) {
+                const match = outletSection.label.match(/^World Info \((.+)\)$/);
+                const outletName = match ? match[1] : outletSection.label;
+                outletSections[outletName] = outletSection.content;
+              }
+            }
+
             const keyContext = buildKeyResolutionContext(
               responder,
               effectiveUserName,
               persona,
               resolvedStats,
-              typedSessionStats  // Pass sessionStats for {{eventos}} key resolution
+              typedSessionStats,  // sessionStats for {{eventos}} key resolution
+              undefined,          // soundTriggers
+              undefined,          // soundSettings
+              groupPersonaResolvedStats,  // persona resolved stats
+              questTemplates,     // quest templates for {{activeQuests}}
+              sessionQuests,      // session quests for {{activeQuests}}
+              questSettings,      // quest settings
+              outletSections,     // outlet sections for {{outlet::name}}
+              lorebookAttributeKeys  // lorebook attribute keys for {{injectionKey}}
             );
 
             // Build HUD context section for this character (resolves keys!)
@@ -828,6 +863,14 @@ export async function POST(request: NextRequest) {
               charAvailableTools = charAvailableTools.filter(t => !charGlobalDisabled.includes(t.id));
             }
             const charToolsEnabled = toolsSettings.enabled && charAvailableTools.length > 0;
+
+            // Resolve {{keys}} in tool descriptions and parameter descriptions
+            // This ensures {{user}}, {{char}}, {{userpersona}}, stats keys, etc.
+            // are properly replaced before tools are sent to the LLM
+            if (charToolsEnabled && charAvailableTools.length > 0) {
+              charAvailableTools = resolveToolDefinitionsKeys(charAvailableTools, keyContext);
+            }
+
             const charSupportsTools = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama', 'z-ai', 'grok', 'text-generation-webui', 'koboldcpp'].includes(llmConfig.provider);
             // If usePromptBasedFallback is true, disable native tools so prompt-based injection is used instead
             const charShouldUseTools = charToolsEnabled && charSupportsTools && !toolsSettings.usePromptBasedFallback;
@@ -1655,6 +1698,50 @@ export async function POST(request: NextRequest) {
                 characterName: responder.name,
                 error: charError instanceof Error ? charError.message : 'Unknown error'
               }));
+            }
+          }
+
+          // ========================================
+          // Memory Reinforcement
+          // Check if responders referenced any existing memories and boost their importance
+          // ========================================
+          if (responsesThisTurn.length > 0) {
+            const reinforcementEnabled = isReinforcementEnabled(effectiveEmbeddingsChat);
+            if (reinforcementEnabled) {
+              // Build memory namespaces from session context
+              const memoryNamespaces: string[] = [];
+              if (sessionId) {
+                if (characterId) memoryNamespaces.push(`memory-character-${characterId}-${sessionId}`);
+                if (group.id) memoryNamespaces.push(`memory-group-${group.id}-${sessionId}`);
+              }
+
+              if (memoryNamespaces.length > 0) {
+                // Combine all responses this turn for reinforcement check
+                const allResponseContent = responsesThisTurn
+                  .map(r => r.content)
+                  .filter(c => c && c.length > 50)
+                  .join('\n');
+
+                if (allResponseContent.length > 50) {
+                  // Fire and forget - don't block the response
+                  setTimeout(async () => {
+                    try {
+                      const threshold = effectiveEmbeddingsChat.memoryReinforcementThreshold || 0.7;
+                      const result = await processResponseAndReinforceMemories(
+                        allResponseContent,
+                        memoryNamespaces,
+                        true,
+                        threshold
+                      );
+                      if (result.reinforced > 0) {
+                        console.log(`[MemoryReinforcement] Group: Reinforced ${result.reinforced} memories`);
+                      }
+                    } catch (err) {
+                      console.warn('[MemoryReinforcement] Group failed:', err);
+                    }
+                  }, 0);
+                }
+              }
             }
           }
 

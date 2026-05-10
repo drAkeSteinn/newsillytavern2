@@ -12,6 +12,8 @@ import type {
   ToolContext,
   ToolCategory,
 } from './types';
+import type { KeyResolutionContext } from '@/lib/key-resolver';
+import { resolveAllKeys } from '@/lib/key-resolver';
 
 // Executor function signature
 export type ToolExecutorFn = (
@@ -64,6 +66,41 @@ export function getToolDefinitionsByIds(ids: string[]): ToolDefinition[] {
 /** Get tools by category */
 export function getToolsByCategory(category: ToolCategory): ToolDefinition[] {
   return getAllToolDefinitions().filter(t => t.category === category);
+}
+
+/**
+ * Resolve all {{keys}} in tool definitions (descriptions and parameter descriptions).
+ * Returns NEW tool definition objects with resolved descriptions.
+ * This should be called ONCE after filtering tools, before passing them to the LLM.
+ */
+export function resolveToolDefinitionsKeys(
+  tools: ToolDefinition[],
+  keyContext: KeyResolutionContext,
+): ToolDefinition[] {
+  if (!tools.length) return tools;
+
+  return tools.map(t => {
+    // Resolve main tool description
+    const resolvedDescription = resolveAllKeys(t.description, keyContext);
+
+    // Resolve parameter descriptions
+    const resolvedProperties: typeof t.parameters.properties = {};
+    for (const [key, param] of Object.entries(t.parameters.properties)) {
+      resolvedProperties[key] = {
+        ...param,
+        description: resolveAllKeys(param.description, keyContext),
+      };
+    }
+
+    return {
+      ...t,
+      description: resolvedDescription,
+      parameters: {
+        ...t.parameters,
+        properties: resolvedProperties,
+      },
+    };
+  });
 }
 
 /** Convert tool definitions to OpenAI tools format */

@@ -145,9 +145,8 @@ export function processLorebooks(
 
   const activatedEntries: LorebookEntry[] = [];
   
-  // Process each active lorebook
+  // Process each lorebook (frontend already filters active ones)
   for (const lorebook of lorebooks) {
-    if (!lorebook.active) continue;
     
     const globalScanDepth = lorebook.settings.scanDepth;
     const globalCaseSensitive = lorebook.settings.caseSensitive;

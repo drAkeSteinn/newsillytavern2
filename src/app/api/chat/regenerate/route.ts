@@ -3,7 +3,8 @@
 // ============================================
 
 import { NextRequest } from 'next/server';
-import type { CharacterCard, PromptSection, Lorebook, SessionStats, HUDContextConfig, EmbeddingsChatSettings, QuestTemplate, SessionQuestInstance } from '@/types';
+import type { CharacterCard, PromptSection, Lorebook, SessionStats, HUDContextConfig, EmbeddingsChatSettings, QuestTemplate, SessionQuestInstance, QuestSettings } from '@/types';
+import { DEFAULT_QUEST_SETTINGS } from '@/types';
 import {
   DEFAULT_CHARACTER,
   createSSEJSON,
@@ -27,6 +28,8 @@ import {
   buildHUDContextSection,
   injectHUDContextIntoMessages,
   injectHUDContextIntoSections,
+  buildKeyResolutionContext,
+  resolveStats,
 } from '@/lib/llm';
 import {
   sanitizeInput
@@ -161,13 +164,14 @@ export async function POST(request: NextRequest) {
     const contextWindow = selectContextMessages(messagesBeforeRegenerate, llmConfig, ctxConfig);
 
     // Process lorebooks and get matched entries
-    const { plan: lorebookPlan } = buildLorebookSectionForPrompt(
+    const { plan: lorebookPlan, lorebookAttributeKeys } = buildLorebookSectionForPrompt(
       messagesBeforeRegenerate,
       typedLorebooks,
       {
         scanDepth: ctxConfig.scanDepth,
-        tokenBudget: 2048
-      }
+        // tokenBudget: let the injector use the lorebook's own setting
+      },
+      { sessionStats: typedSessionStats, characterId: effectiveCharacter?.id, characters: allCharacters }
     );
 
     // ========================================
@@ -200,15 +204,66 @@ export async function POST(request: NextRequest) {
       undefined,          // soundSettings
       questTemplates,     // Pass quest templates for {{activeQuests}} key resolution
       sessionQuests,      // Pass session quests for {{activeQuests}} key resolution
-      questSettings       // Pass quest settings for {{activeQuests}} key resolution
+      questSettings,       // Pass quest settings for {{activeQuests}} key resolution
+      lorebookAttributeKeys
     );
 
-    // Build HUD context section if enabled
-    const hudContextSection = hudContext ? buildHUDContextSection(hudContext) : null;
+    // Build key resolution context for all sections outside buildSystemPrompt
+    // Includes lorebookAttributeKeys so {{injectionKey}} resolves in post-history, HUD, etc.
+    let regenPersonaResolvedStats: import('@/types').ResolvedStats | null = null;
+    if (persona?.statsConfig?.enabled && typedSessionStats) {
+      regenPersonaResolvedStats = resolveStats({
+        characterId: '__user__',
+        statsConfig: persona.statsConfig,
+        sessionStats: typedSessionStats,
+      });
+    }
+    const regenResolvedStats = resolveStats({
+      characterId: effectiveCharacter.id,
+      statsConfig: effectiveCharacter.statsConfig,
+      sessionStats: typedSessionStats,
+      allCharacters,
+      userName: effectiveUserName,
+      characterName: effectiveCharacter.name,
+      questTemplates,
+      personaDescription: persona?.description,
+      personaResolvedStats: regenPersonaResolvedStats,
+    });
+
+    // Build outlet sections map from lorebook plan for {{outlet::name}} macro resolution
+    const outletSections: Record<string, string> = {};
+    if (lorebookPlan?.outletSections.length) {
+      for (const outletSection of lorebookPlan.outletSections) {
+        const match = outletSection.label.match(/^World Info \((.+)\)$/);
+        const outletName = match ? match[1] : outletSection.label;
+        outletSections[outletName] = outletSection.content;
+      }
+    }
+
+    const typedQuestSettings: QuestSettings = { ...DEFAULT_QUEST_SETTINGS, ...(questSettings || {}) };
+
+    const keyContext = buildKeyResolutionContext(
+      processedCharacter,
+      effectiveUserName,
+      persona,
+      regenResolvedStats,
+      typedSessionStats,  // sessionStats for {{eventos}}
+      undefined,          // soundTriggers
+      undefined,          // soundSettings
+      regenPersonaResolvedStats,  // persona resolved stats
+      questTemplates,     // quest templates for {{activeQuests}}
+      sessionQuests,      // session quests for {{activeQuests}}
+      typedQuestSettings, // quest settings
+      outletSections,     // outlet sections for {{outlet::name}}
+      lorebookAttributeKeys  // lorebook attribute keys for {{injectionKey}}
+    );
+
+    // Build HUD context section if enabled (resolves {{keys}} in HUD content)
+    const hudContextSection = hudContext ? buildHUDContextSection(hudContext, keyContext) : null;
 
     // Build all prompt sections for storage
     const chatHistorySections = buildChatHistorySections(contextWindow.messages, processedCharacter.name, effectiveUserName);
-    const postHistorySection = buildPostHistorySection(processedCharacter.postHistoryInstructions);
+    const postHistorySection = buildPostHistorySection(processedCharacter.postHistoryInstructions, keyContext);
 
     // Combine all sections in order
     // Order: System -> [CONTEXTO] non-memory -> [MEMORIA] memory -> Chat History -> Post-History

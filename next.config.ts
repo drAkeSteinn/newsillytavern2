@@ -2,32 +2,16 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  /* config options here */
   typescript: {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
-  allowedDevOrigins: [
-    'preview-chat-0874b2c1-f82e-468f-93c9-02daabc4ba05.space.z.ai',
-    'preview-chat-27e4e197-62c7-4b1a-9264-f4ba5d69a857.space.z.ai',
-    '.space.z.ai',
-    '*.space.z.ai',
-    'localhost',
-    '127.0.0.1',
-  ],
-
-  // Externalize native modules so they are loaded at runtime, not bundled.
-  // Without this, Turbopack/Webpack tries to bundle .node native files,
-  // which breaks with "Cannot find native binding".
-  // Works for both Turbopack (default in Next 16) and Webpack.
+  // Externalize native packages so Turbopack doesn't try to bundle platform-specific bindings
+  // This prevents "could not resolve @lancedb/lancedb-win32-x64-msvc" errors on any platform
   serverExternalPackages: [
-    '@lancedb/lancedb',
-    '@lancedb/lancedb-linux-x64-gnu',
-    '@lancedb/lancedb-linux-x64-musl',
-    '@lancedb/lancedb-linux-arm64-gnu',
-    '@lancedb/lancedb-linux-arm64-musl',
-    '@lancedb/lancedb-darwin-arm64',
-    '@lancedb/lancedb-win32-x64-msvc',
-    '@lancedb/lancedb-win32-arm64-msvc',
+    "@lancedb/lancedb",
+    "apache-arrow",
   ],
 };
 

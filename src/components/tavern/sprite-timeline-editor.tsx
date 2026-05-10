@@ -35,6 +35,7 @@ import type {
   HapticKeyframeValue,
   SpriteAnimationFormat,
   SoundTrigger,
+  SpriteTimelineData,
   TimelineData,
 } from '@/types';
 import {
@@ -1211,6 +1212,119 @@ export function SpriteTimelineEditor() {
     if (hapticCsvInputRef.current) hapticCsvInputRef.current.value = '';
   }, [selectedSprite, csvImportTargetTrackId, toast]);
 
+  // ============================================
+  // TIMELINE EXPORT / IMPORT
+  // ============================================
+
+  const timelineImportInputRef = useRef<HTMLInputElement>(null);
+
+  /** Export the current sprite's timeline data as a standalone .timeline.json file */
+  const handleExportTimeline = useCallback(() => {
+    if (!selectedSprite) return;
+
+    const exportData = {
+      _format: 'tavernflow-timeline-v1',
+      _exportedAt: new Date().toISOString(),
+      _sourceSprite: selectedSprite.label,
+      _sourceDuration: selectedSprite.duration,
+      timeline: selectedSprite.timeline,
+    };
+
+    const jsonStr = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${selectedSprite.label.replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ_\-]/g, '_')}.timeline.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: 'Timeline Exportada',
+      description: `Timeline de "${selectedSprite.label}" exportada correctamente`,
+    });
+  }, [selectedSprite, toast]);
+
+  /** Import a timeline from a .timeline.json file and apply to the current sprite */
+  const handleImportTimeline = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedSprite) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const raw = JSON.parse(evt.target?.result as string);
+
+        // Support both wrapped format ({timeline: ...}) and raw SpriteTimelineData
+        let timelineData = null;
+        if (raw._format === 'tavernflow-timeline-v1' && raw.timeline) {
+          timelineData = raw.timeline;
+        } else if (raw.tracks && Array.isArray(raw.tracks)) {
+          // Raw SpriteTimelineData (has tracks array)
+          timelineData = raw;
+        }
+
+        if (!timelineData) {
+          toast({
+            title: 'Error',
+            description: 'Formato de archivo no reconocido. Se espera un archivo .timeline.json exportado desde TavernFlow.',
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        // Validate required fields
+        if (typeof timelineData.duration !== 'number' || timelineData.duration < 0) {
+          timelineData.duration = timelineData.duration || 3000;
+        }
+        if (!Array.isArray(timelineData.tracks)) {
+          timelineData.tracks = [];
+        }
+
+        // Regenerate IDs for tracks and keyframes to avoid collisions
+        const importedTracks = timelineData.tracks.map((track: TimelineTrack) => ({
+          ...track,
+          id: crypto.randomUUID ? crypto.randomUUID() : `track_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+          keyframes: (track.keyframes || []).map((kf: TimelineKeyframe) => ({
+            ...kf,
+            id: crypto.randomUUID ? crypto.randomUUID() : `kf_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+          })),
+        }));
+
+        const importedTimeline: SpriteTimelineData = {
+          duration: timelineData.duration,
+          tracks: importedTracks,
+          markers: timelineData.markers || [],
+          loop: timelineData.loop ?? true,
+          autoPlaySounds: timelineData.autoPlaySounds ?? true,
+          globalVolume: timelineData.globalVolume ?? 1,
+        };
+
+        handleUpdateSprite(selectedSprite.id, {
+          timeline: importedTimeline,
+          duration: importedTimeline.duration,
+        });
+
+        toast({
+          title: 'Timeline Importada',
+          description: `Timeline aplicada a "${selectedSprite.label}" (${importedTracks.length} tracks, ${importedTracks.reduce((acc: number, t: TimelineTrack) => acc + t.keyframes.length, 0)} keyframes)`,
+        });
+      } catch (error) {
+        console.error('Failed to import timeline:', error);
+        toast({
+          title: 'Error',
+          description: 'No se pudo importar la timeline. Verifica que el archivo sea JSON válido.',
+          variant: 'destructive',
+        });
+      }
+    };
+    reader.readAsText(file);
+    // Reset file input
+    if (timelineImportInputRef.current) timelineImportInputRef.current.value = '';
+  }, [selectedSprite, handleUpdateSprite, toast]);
+
   // Handle add track
   const handleAddTrack = (type: 'sound' | 'haptic' = 'sound') => {
     if (!selectedSprite) return;
@@ -1731,6 +1845,15 @@ export function SpriteTimelineEditor() {
         onChange={handleImportHapticCsv}
       />
       
+      {/* Hidden file input for timeline import */}
+      <input
+        type="file"
+        ref={timelineImportInputRef}
+        className="hidden"
+        accept=".json,.timeline.json"
+        onChange={handleImportTimeline}
+      />
+      
       {/* Header */}
       <div className="flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -2124,6 +2247,30 @@ export function SpriteTimelineEditor() {
                       <Save className="w-3 h-3 mr-1" />
                     )}
                     Guardar
+                  </Button>
+
+                  {/* Export Timeline */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1"
+                    onClick={handleExportTimeline}
+                    title="Exportar timeline como archivo .timeline.json"
+                  >
+                    <Download className="w-3 h-3" />
+                    <span className="hidden sm:inline">Exportar</span>
+                  </Button>
+
+                  {/* Import Timeline */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1"
+                    onClick={() => timelineImportInputRef.current?.click()}
+                    title="Importar timeline desde un archivo .timeline.json"
+                  >
+                    <Upload className="w-3 h-3" />
+                    <span className="hidden sm:inline">Importar</span>
                   </Button>
 
                   <DropdownMenu>

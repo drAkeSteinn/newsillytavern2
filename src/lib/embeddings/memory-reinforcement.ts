@@ -150,49 +150,21 @@ async function reinforceMemories(
       const similarityBoost = match.similarity ? match.similarity * boostAmount : boostAmount * 0.5;
       const newImportance = Math.min(5, currentImportance + similarityBoost);
       
-      // Update the memory metadata
-      // Note: We can't directly update, so we would need to delete and recreate
-      // For now, we'll just log the reinforcement
+      // Update the memory via delete + recreate (preserving namespace and source)
+      // This actually updates the importance in the stored embedding
+      const updatedMetadata = {
+        ...memory.metadata,
+        importance: newImportance,
+        last_reinforced_at: new Date().toISOString(),
+      };
+      
+      await client.updateEmbedding(match.memoryId, memory.content, updatedMetadata);
+      
       console.log(`[MemoryReinforcement] Memory "${memory.content.slice(0, 50)}..." referenced - importance: ${currentImportance.toFixed(1)} → ${newImportance.toFixed(1)}`);
       
       // Track that this memory was reinforced
       result.reinforced++;
       result.updated.push(match.memoryId);
-      
-      // TODO: Implement actual importance update when LanceDB supports updates
-      // For now, we just track the reinforcement in a separate index
-      try {
-        // Try to update via namespace metadata or tracking
-        // This is a placeholder for actual implementation
-        const trackingNamespace = `__memory_reinforcement__`;
-        await client.upsertNamespace({
-          namespace: trackingNamespace,
-          description: 'Tracks memory reinforcements',
-          metadata: { type: 'system', purpose: 'reinforcement_tracking' },
-        });
-        
-        // Store reinforcement event
-        await client.createEmbedding({
-          content: JSON.stringify({
-            memoryId: match.memoryId,
-            memoryContent: memory.content,
-            originalImportance: currentImportance,
-            newImportance,
-            similarity: match.similarity,
-            reinforcedAt: new Date().toISOString(),
-          }),
-          namespace: trackingNamespace,
-          source_type: 'custom',
-          source_id: 'reinforcement',
-          metadata: {
-            event_type: 'reinforcement',
-            memory_id: match.memoryId,
-            importance_delta: newImportance - currentImportance,
-          },
-        });
-      } catch {
-        // Non-critical, just log
-      }
     } catch (err) {
       console.warn(`[MemoryReinforcement] Failed to reinforce memory ${match.memoryId}:`, err);
       result.skipped.push(match.memoryId);

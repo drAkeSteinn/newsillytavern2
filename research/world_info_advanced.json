@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://docs.sillytavern.app/usage/core-concepts/worldinfo",
+    "name": "World Info | docs.ST.app - SillyTavern Documentation",
+    "snippet": "To create rich and detailed world lore, entries can be interlinked and reference one another by using recursive activation. See more on Recursion below. Missing: 2024 2025",
+    "host_name": "docs.sillytavern.app",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.reddit.com/r/SillyTavernAI/comments/1q920pl/overall_whats_the_best_settings_for_lorebooks",
+    "name": "Overall, what's the best settings for Lorebooks? : r/SillyTavernAI",
+    "snippet": "So, for me in my use case, I would use Scan Depth 3, Max Recursion Steps 2, Recursive Scan on, remove match whole words, and importantly... How large should a lorebook be, and what's the right format ... - Reddit Question about Lorebook : r/SillyTavernAI - Reddit More results from www.reddit.com Missing: activation budget 2024 2025",
+    "host_name": "www.reddit.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.youtube.com/watch?v=mlf1PrMxh74",
+    "name": "Mastering Lorebooks in SillyTavern - YouTube",
+    "snippet": "thank you for this, I've been stumbling through this, I barely was starting to understand LoreBooks in Janitor Ai and then to move to ... Missing: recursive scanning activation budget depth 2024 2025",
+    "host_name": "www.youtube.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/aikohanasaki/SillyTavern-MemoryBooks",
+    "name": "Saves SillyTavern chat memories to lorebooks · GitHub",
+    "snippet": "A next-generation SillyTavern extension for automatic, structured, and reliable memory creation. Mark scenes in chat, generate JSON-based ...",
+    "host_name": "github.com",
+    "rank": 3,
+    "date": "May 3, 2026",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.scribd.com/document/948126287/World-Info-Encyclopedia",
+    "name": "World Info Guide for Character Creation | PDF | Computing - Scribd",
+    "snippet": "2. Lore · 3. Placement · 4. Scan depth · 5. Context Percent · 6. Token Budget · 7. Disable selector · 8. Specificity",
+    "host_name": "www.scribd.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.chub.ai/docs/advanced-setups/lorebooks",
+    "name": "Lorebooks - Chub AI Guide",
+    "snippet": "A lorebook is a series of defined keywords that, when activated, insert specific content into the prompt. They can be used to serve content to the AI.",
+    "host_name": "docs.chub.ai",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://wiki.wyvern.chat/Features/Lorebooks",
+    "name": "Lorebooks - WyvernWiki",
+    "snippet": "What are Lorebooks? Lorebooks are tools that allow users to define keywords or phrases, known as keys, that trigger specific entries to be added into a ...",
+    "host_name": "wiki.wyvern.chat",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/discussions/3466",
+    "name": "Dynamic World Building via Ai-driven persistent state and function",
+    "snippet": "I've got some ideas for enhancing the dynamic world-building capabilities. I'd love to see them implemented either in the main codebase or as an extension.",
+    "host_name": "github.com",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.scribd.com/document/874786907/SillyTavern-All-Compressed",
+    "name": "SillyTavern User Guide and Features | PDF - Scribd",
+    "snippet": "SillyTavern is a free, open-source user interface for interacting with text generation LLMs, image generation engines, and TTS voice models, ...",
+    "host_name": "www.scribd.com",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://realm.risuai.net/?q=tag%3Aanypov",
+    "name": "RisuRealm Standalone",
+    "snippet": "To ensure activation, a scan depth of approximately a thousand entries is required. ... **Note:** Add about 50-100 tokens to your token budget. **On models ...",
+    "host_name": "realm.risuai.net",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

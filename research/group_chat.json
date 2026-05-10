@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://www.reddit.com/r/SillyTavernAI/comments/17bpax8/question_about_group_chats_multiple_characters",
+    "name": "Question about group chats / multiple characters?",
+    "snippet": "\" Group chat\" is a group of individual characters sharing a common chat . Not a true \"group\". Only the active card will be used, the other cards ... Read more",
+    "host_name": "www.reddit.com",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/issues/5010",
+    "name": "[FEATURE_REQUEST] Group multiple chats by the same",
+    "snippet": "Jan 13, 2026 — Many users (including myself) create multiple ongoing chats with the same character — different story branches, alternate timelines, roleplay ... Read more",
+    "host_name": "github.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/usage/core-concepts/groupchats",
+    "name": "Group Chats | docs.ST.app",
+    "snippet": "Group Chat Scenario Override. All group members will use the entered scenario text instead of what is specified in their character cards. Branched chats ... Read more\nAll group members will use the entered scenario text instead of what is specified in their character cards. Branched chats inherit the scenario override from their parent and can be changed individually after that.",
+    "host_name": "docs.sillytavern.app",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://huggingface.co/Sukino/SillyTavern-Settings-and-Presets/blob/5023aa12df45981439faf85b777de8866947f06a/README.md",
+    "name": "README.md · Sukino/SillyTavern-Settings-and-Presets at",
+    "snippet": "Mar 1, 2025 — If you want to chat with multiple characters, your best bet is to make a new card that combines them or use the Group Chat feature with Join ... Read more",
+    "host_name": "huggingface.co",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://blog.nebulablock.com/how-to-use-sillytavern-with-nebula-block-for-free-private-ai-roleplay",
+    "name": "How to Use SillyTavern with Nebula Block for Free, Private",
+    "snippet": "Aug 13, 2025 — Multi-Character Support — Chat with multiple AI characters in group chats simultaneously . ... roleplay scenarios. Scalability: Easily ... Read more",
+    "host_name": "blog.nebulablock.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/issues/1211",
+    "name": "[FEATURE_REQUEST] {{char}} numeration. · Issue #1211",
+    "snippet": "Oct 2, 2023 — \"Story\" or \" roleplay \" - expect interaction with other characters more, so they work better in instructions for groups . Also, different local ... Read more",
+    "host_name": "github.com",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.lemon8-app.com/@wudis04/7520100370278842893?region=us",
+    "name": "SillyTavern AI Chat: My Journey to the Ultimate LLM",
+    "snippet": "Yes, sillytavern group chat with multiple characters is a thing, and it's incredible for collaborative storytelling or role-playing! You can set ... Read more",
+    "host_name": "www.lemon8-app.com",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://sider.ai/blog/ai-tools/sillytavern-vs-character_ai-which-ai-chat-platform-fits-your-style-in-2025",
+    "name": "SillyTavern vs Character.AI: Which AI Chat Platform Fits",
+    "snippet": "Sep 19, 2025 — In this guide, we'll break down how SillyTavern and Character .AI stack up across the metrics that actually matter: models, cost, privacy, NSFW/ ... Read more",
+    "host_name": "sider.ai",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.buildmvpfast.com/articles/best-llms-2026-guide/roleplay-ai",
+    "name": "Best AI for Roleplay 2026: Models, Chatbots, Tools &",
+    "snippet": "Compare the best AI for roleplay in 2026: SillyTavern , Character.AI, Janitor AI, RisuAI, roleplay chatbots, platforms, tools, and open-source model choices.",
+    "host_name": "www.buildmvpfast.com",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://deepwiki.com/SillyTavern/SillyTavern/9-group-chats-and-multi-character-interactions",
+    "name": "Group Chats and Multi-Character Interactions | SillyTavern",
+    "snippet": "The group chat system allows multiple characters to participate in a single conversation. Each group maintains its own set of members, activation strategy, generation settings, and chat history.",
+    "host_name": "deepwiki.com",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

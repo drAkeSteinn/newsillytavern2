@@ -134,6 +134,8 @@ export const MODEL_DIMENSIONS: Record<string, number> = {
   'all-minilm:latest': 384,
   'snowflake-arctic-embed': 1024,
   'snowflake-arctic-embed:latest': 1024,
+  'nomic-embed-text-v2-moe': 768,
+  'nomic-embed-text-v2-moe:latest': 768,
   'llama3.1:8b': 4096,
   'phi3:mini': 3072,
 };

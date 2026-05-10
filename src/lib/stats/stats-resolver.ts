@@ -292,6 +292,9 @@ export function buildSkillsBlock(
     personaDescription?: string;
     resolvedStats?: import('@/types').ResolvedStats | null;
     personaResolvedStats?: import('@/types').ResolvedStats | null;
+    userName?: string;
+    characterName?: string;
+    sessionStats?: SessionStats;
   }
 ): string {
   const availableSkills = filterSkillsByRequirements(skills, attributeValues, sessionStats);
@@ -391,7 +394,16 @@ export function buildIntentionsBlock(
   header: string,
   sessionStats?: SessionStats,
   userName?: string,
-  characterName?: string
+  characterName?: string,
+  fullContext?: {
+    characterId?: string;
+    personaDescription?: string;
+    resolvedStats?: import('@/types').ResolvedStats | null;
+    personaResolvedStats?: import('@/types').ResolvedStats | null;
+    userName?: string;
+    characterName?: string;
+    sessionStats?: SessionStats;
+  }
 ): string {
   const availableIntentions = filterIntentionsByRequirements(intentions, attributeValues, sessionStats);
 
@@ -401,16 +413,27 @@ export function buildIntentionsBlock(
 
   const lines: string[] = [header];
 
+  // Build full context for comprehensive key resolution if data is available
+  const keyFullContext = (userName && characterName) ? {
+    characterName,
+    userName,
+    personaDescription: fullContext?.personaDescription,
+    sessionStats,
+    characterId: fullContext?.characterId,
+    resolvedStats: fullContext?.resolvedStats,
+    personaResolvedStats: fullContext?.personaResolvedStats,
+  } : undefined;
+
   availableIntentions.forEach((intention, index) => {
     const intentionNumber = index + 1;
 
-    // Resolve template keys in intention text fields
-    const resolvedName = resolveTemplateKeys(intention.name, userName, characterName);
-    const resolvedDescription = resolveTemplateKeys(intention.description, userName, characterName);
+    // Resolve template keys in intention text fields using full key resolution
+    const resolvedName = resolveTemplateKeys(intention.name, userName, characterName, undefined, undefined, keyFullContext);
+    const resolvedDescription = resolveTemplateKeys(intention.description, userName, characterName, undefined, undefined, keyFullContext);
 
     // Check for custom inject format first
     if (intention.injectFormat) {
-      const resolvedInjectFormat = resolveTemplateKeys(intention.injectFormat, userName, characterName);
+      const resolvedInjectFormat = resolveTemplateKeys(intention.injectFormat, userName, characterName, undefined, undefined, keyFullContext);
       const formatted = resolvedInjectFormat
         .replace('{name}', resolvedName)
         .replace('{description}', resolvedDescription)
@@ -450,7 +473,16 @@ export function buildInvitationsBlock(
   allCharacters?: CharacterCard[],
   sessionStats?: SessionStats,
   userName?: string,
-  characterName?: string
+  characterName?: string,
+  fullContext?: {
+    characterId?: string;
+    personaDescription?: string;
+    resolvedStats?: import('@/types').ResolvedStats | null;
+    personaResolvedStats?: import('@/types').ResolvedStats | null;
+    userName?: string;
+    characterName?: string;
+    sessionStats?: SessionStats;
+  }
 ): string {
   const availableInvitations = filterInvitationsByRequirements(invitations, attributeValues, sessionStats);
 
@@ -490,6 +522,17 @@ export function buildInvitationsBlock(
       return;
     }
 
+    // Build full context for comprehensive key resolution
+    const invKeyFullContext = (userName && characterName) ? {
+      characterName,
+      userName,
+      personaDescription: fullContext?.personaDescription,
+      sessionStats,
+      characterId: fullContext?.characterId,
+      resolvedStats: fullContext?.resolvedStats,
+      personaResolvedStats: fullContext?.personaResolvedStats,
+    } : undefined;
+
     // Resolve keys in description:
     // - {{solicitante}} = characterName (who makes the request - current character)
     // - {{solicitado}} = targetCharacter.name (who receives the request)
@@ -498,7 +541,8 @@ export function buildInvitationsBlock(
       userName,
       characterName,
       characterName,       // solicitante = current character (who asks)
-      targetCharacter.name // solicitado = target (who is asked)
+      targetCharacter.name, // solicitado = target (who is asked)
+      invKeyFullContext
     );
 
     // Use custom inject format if available
@@ -688,10 +732,28 @@ export function resolveStats(
   }
   
   // Build blocks with full key resolution context
+  // Include a partial resolvedStats with just the attributes map so that
+  // stat attribute keys ({{vida}}, {{mana}}, etc.) in skill/intention descriptions get resolved
+  const partialResolvedStats: ResolvedStats = {
+    attributes: attributesMap,
+    availableSkills: [],
+    availableIntentions: [],
+    availableInvitations: [],
+    availableSolicitudes: [],
+    skillsBlock: '',
+    intentionsBlock: '',
+    invitationsBlock: '',
+    solicitudesBlock: '',
+  };
+
   const keyFullContext = {
     characterId,
     personaDescription: context.personaDescription,
     personaResolvedStats: context.personaResolvedStats,
+    resolvedStats: partialResolvedStats,
+    userName: context.userName,
+    characterName: context.characterName,
+    sessionStats,
   };
 
   const skillsBlock = buildSkillsBlock(
@@ -711,7 +773,8 @@ export function resolveStats(
     statsConfig.blockHeaders.intentions,
     sessionStats,
     context.userName,
-    context.characterName
+    context.characterName,
+    keyFullContext
   );
   
   const invitationsBlock = buildInvitationsBlock(
@@ -721,7 +784,8 @@ export function resolveStats(
     context.allCharacters,
     sessionStats,
     context.userName,
-    context.characterName
+    context.characterName,
+    keyFullContext
   );
 
   // Build solicitudes block (requests received from other characters)
@@ -759,7 +823,7 @@ export function resolveStats(
  * Regex pattern for stats keys
  * Matches {{key}} where key is alphanumeric with underscores
  */
-const STATS_KEY_PATTERN = /\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g;
+const STATS_KEY_PATTERN_SOURCE = '\\{\\{([a-zA-Z_][a-zA-Z0-9_]*)\\}\\}';
 
 /**
  * Check if a key is a block key (acciones, habilidades, intenciones, invitaciones, peticiones, solicitudes)
@@ -779,7 +843,8 @@ export function resolveStatsInText(
   text: string,
   resolvedStats: ResolvedStats | null
 ): string {
-  return text.replace(STATS_KEY_PATTERN, (match, key) => {
+  const pattern = new RegExp(STATS_KEY_PATTERN_SOURCE, 'g');
+  return text.replace(pattern, (match, key) => {
     // Block keys (acciones, habilidades, intenciones, invitaciones, peticiones, solicitudes)
     // Return empty string if stats disabled, empty, or no items available
     // Support both {{acciones}} (new) and {{habilidades}} (legacy)
@@ -817,7 +882,7 @@ export function extractStatsKeys(text: string): string[] {
   const keys: string[] = [];
   let match;
   
-  const pattern = new RegExp(STATS_KEY_PATTERN.source, 'g');
+  const pattern = new RegExp(STATS_KEY_PATTERN_SOURCE, 'g');
   
   while ((match = pattern.exec(text)) !== null) {
     if (!keys.includes(match[1])) {
@@ -832,8 +897,8 @@ export function extractStatsKeys(text: string): string[] {
  * Check if text contains stats keys
  */
 export function hasStatsKeys(text: string): boolean {
-  STATS_KEY_PATTERN.lastIndex = 0;
-  return STATS_KEY_PATTERN.test(text);
+  const pattern = new RegExp(STATS_KEY_PATTERN_SOURCE);
+  return pattern.test(text);
 }
 
 // ============================================

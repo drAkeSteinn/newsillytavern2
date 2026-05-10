@@ -10,6 +10,7 @@ import { useTriggerSystem } from '@/lib/triggers';
 import { useBackgroundTriggers } from '@/hooks/use-background-triggers';
 import { useTTS, useTTSAutoGeneration } from '@/hooks/use-tts';
 import { useTimelineSpriteSounds } from '@/hooks/use-timeline-sprite-sounds';
+import { useProactiveMessages } from '@/hooks/use-proactive-messages';
 import { GroupSprites } from './group-sprites';
 import { HUDDisplay } from './hud-display';
 import { QuestNotifications } from './quest-notifications';
@@ -65,7 +66,7 @@ export function ChatPanel() {
   const setActiveHUD = useTavernStore((state) => state.setActiveHUD);
   // Lorebooks for prompt injection
   const lorebooks = useTavernStore((state) => state.lorebooks);
-  const globalActiveLorebookIds = useTavernStore((state) => state.activeLorebookIds);
+  const activeLorebookIds = useTavernStore((state) => state.activeLorebookIds);
   
   // Quests for prompt injection
   const questTemplates = useTavernStore((state) => state.questTemplates);
@@ -268,6 +269,19 @@ export function ChatPanel() {
     ttsConfig,
     isPlaying: isTTSPlaying,
     isConnected: isTTSConnected,
+  });
+
+  // ============================================
+  // PROACTIVE MESSAGES SYSTEM
+  // Characters can send messages without user speaking first
+  // ============================================
+  const {
+    isActive: isProactiveActive,
+    nextIn: proactiveNextIn,
+    sessionCount: proactiveSessionCount,
+    isGeneratingProactive,
+  } = useProactiveMessages({
+    isGenerating,
   });
   
   // Track current streaming message key for triggers
@@ -519,7 +533,7 @@ export function ChatPanel() {
         }
 
         // Get active lorebooks for prompt injection
-        const activeLorebooks = lorebooks.filter(lb => effectiveLorebookIds.includes(lb.id) && lb.active);
+        const activeLorebooks = lorebooks.filter(lb => effectiveLorebookIds.includes(lb.id) && activeLorebookIds.includes(lb.id));
         
         // Get session stats for attribute values
         const sessionStats = currentSession?.sessionStats;
@@ -843,19 +857,10 @@ export function ChatPanel() {
       if (!activeCharacter) return;
 
       // Get active lorebooks for prompt injection
-      const activeLorebooks = lorebooks.filter(lb => effectiveLorebookIds.includes(lb.id) && lb.active);
+      const activeLorebooks = lorebooks.filter(lb => effectiveLorebookIds.includes(lb.id) && activeLorebookIds.includes(lb.id));
       
       // Get session stats for attribute values
       const sessionStats = currentSession?.sessionStats;
-      
-      // Debug: Log sessionStats event fields being sent to backend
-      console.log('[ChatPanel] Sending sessionStats to backend:', {
-        hasSessionStats: !!sessionStats,
-        ultimo_objetivo_completado: sessionStats?.ultimo_objetivo_completado,
-        ultima_solicitud_realizada: sessionStats?.ultima_solicitud_realizada,
-        ultima_solicitud_completada: sessionStats?.ultima_solicitud_completada,
-        ultima_accion_realizada: sessionStats?.ultima_accion_realizada,
-      });
 
       if (useStreaming) {
         // Build allCharacters array including persona as pseudo-character for peticiones/solicitudes
@@ -867,6 +872,66 @@ export function ChatPanel() {
             statsConfig: activePersona.statsConfig,
           }] as CharacterCard[] : []),
         ];
+
+        // ===== DEBUG: Lorebook Attribute Resolution Tracing =====
+        console.group('%c[Lorebook DEBUG] Frontend → Backend Data', 'color: #e65100; font-weight: bold');
+        console.log('%c--- Lorebook Selection Debug ---', 'color: #d32f2f; font-weight: bold', {
+          isGroupMode,
+          characterId: activeCharacter?.id,
+          characterName: activeCharacter?.name,
+          characterLorebookIds: activeCharacter?.lorebookIds,
+          effectiveLorebookIds,
+          activeLorebookIds,
+          allLorebookIds: lorebooks.map(lb => ({ id: lb.id, name: lb.name, active: lb.active })),
+          activeLorebooksCount: activeLorebooks.length,
+        });
+        console.log('%c--- Active Lorebooks ---', 'color: #1565c0; font-weight: bold', activeLorebooks.map(lb => ({
+
+          id: lb.id,
+          name: lb.name,
+          active: lb.active,
+          entries: lb.entries.filter(e => e.entryType === 'attribute').map(e => ({
+            entryType: e.entryType,
+            disable: e.disable,
+            attributeConfig: e.attributeConfig ? {
+              characterId: e.attributeConfig.characterId,
+              attributeKey: e.attributeConfig.attributeKey,
+              injectionKey: e.attributeConfig.injectionKey,
+              mode: e.attributeConfig.mode,
+              staticCondition: e.attributeConfig.staticCondition,
+              dynamicConditions: e.attributeConfig.dynamicConditions?.map(dc => ({
+                operator: dc.operator,
+                value: dc.value,
+                content: dc.content?.slice(0, 80),
+              })),
+            } : null,
+          })),
+        })));
+        console.log('%c--- Session Stats ---', 'color: #1565c0; font-weight: bold', {
+          hasSessionStats: !!sessionStats,
+          initialized: sessionStats?.initialized,
+          characterStatsKeys: sessionStats ? Object.keys(sessionStats.characterStats || {}) : [],
+          userStats: sessionStats?.characterStats?.['__user__']
+            ? {
+                hasAttrValues: !!sessionStats.characterStats['__user__'].attributeValues,
+                attributes: { ...sessionStats.characterStats['__user__'].attributeValues },
+              }
+            : '(no __user__ stats)',
+          charStats: sessionStats?.characterStats?.[activeCharacter?.id]
+            ? {
+                hasAttrValues: !!sessionStats.characterStats[activeCharacter!.id].attributeValues,
+                attributes: { ...sessionStats.characterStats[activeCharacter!.id].attributeValues },
+              }
+            : `(no stats for char ${activeCharacter?.id})`,
+        });
+        console.log('%c--- All Characters (with Persona) ---', 'color: #1565c0; font-weight: bold', allCharactersWithPersona.map(c => ({
+          id: c.id,
+          name: c.name,
+          hasStatsConfig: !!c.statsConfig,
+          attributes: c.statsConfig?.attributes?.map(a => ({ key: a.key, name: a.name })),
+        })));
+        console.groupEnd();
+        // ===== END DEBUG =====
 
         const response = await fetch('/api/chat/stream', {
           method: 'POST',
@@ -939,6 +1004,31 @@ export function ChatPanel() {
                 if (parsed.type === 'prompt_data' && parsed.promptSections) {
                   // Capture prompt sections for metadata
                   promptSections = parsed.promptSections;
+                } else if (parsed.type === 'lorebook_debug') {
+                  // DEBUG: Backend lorebook attribute resolution results
+                  console.group('%c[Lorebook DEBUG] Backend Resolution Results', 'color: #e65100; font-weight: bold');
+                  console.log('%c--- Final Keys ---', 'color: #2e7d32; font-weight: bold', parsed.lorebookAttributeKeys);
+                  console.log('%c--- Per-Entry Debug ---', 'color: #2e7d32; font-weight: bold', parsed.debugEntries);
+                  if (parsed.debugEntries) {
+                    for (const entry of parsed.debugEntries) {
+                      const statusColor = entry.finalResult === '(empty)' ? '#c62828' : '#2e7d32';
+                      console.log(
+                        `%c[${entry.attributeValue === null ? '⚠ NOT FOUND' : entry.conditionResults.some(c => c.matched) ? '✓ MATCHED' : '✗ NO MATCH'}] ` +
+                        `{{${entry.injectionKey}}} | char=${entry.characterId}→${entry.resolvedCharId} | ` +
+                        `attr=${entry.attributeKey} | value=${JSON.stringify(entry.attributeValue)} | ` +
+                        `mode=${entry.mode}`,
+                        `color: ${statusColor}; font-weight: bold`
+                      );
+                      if (entry.conditionResults.length > 0) {
+                        for (const cr of entry.conditionResults) {
+                          const cColor = cr.matched ? '#2e7d32' : '#c62828';
+                          console.log(`  %c  ${cr.evaluationDetail}  content: "${(cr.content || '').slice(0, 60)}"`, `color: ${cColor}`);
+                        }
+                      }
+                    }
+                  }
+                  console.log('%c--- Available Stats ---', 'color: #2e7d32; font-weight: bold', parsed.availableStats);
+                  console.groupEnd();
                 } else if (parsed.type === 'embeddings_context' && parsed.data) {
                   // Embeddings context was retrieved
                   setEmbeddingsContexts(prev => [...prev, parsed.data]);
@@ -1275,7 +1365,7 @@ export function ChatPanel() {
       const contextConfig = settings.context;
 
       // Get active lorebooks for prompt injection
-      const activeLorebooks = lorebooks.filter(lb => effectiveLorebookIds.includes(lb.id) && lb.active);
+      const activeLorebooks = lorebooks.filter(lb => effectiveLorebookIds.includes(lb.id) && activeLorebookIds.includes(lb.id));
       
       // Get session stats for attribute values
       const sessionStats = currentSession?.sessionStats;
@@ -1649,6 +1739,22 @@ export function ChatPanel() {
       
       {/* TTS Floating Indicator */}
       <TTSFloatingIndicator />
+      
+      {/* Proactive Messages Indicator */}
+      {isProactiveActive && (
+        <div className="fixed bottom-16 right-4 z-50 animate-in fade-in slide-in-from-right-2 duration-300">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 text-xs shadow-lg backdrop-blur-sm border border-amber-500/30">
+            <Sparkles className="h-3 w-3 animate-pulse" />
+            <span className="font-medium">Proactivo</span>
+            {proactiveNextIn !== null && proactiveNextIn > 0 && (
+              <span className="opacity-70">{proactiveNextIn}s</span>
+            )}
+            {isGeneratingProactive && (
+              <div className="w-3 h-3 border-2 border-amber-300/30 border-t-amber-300 rounded-full animate-spin" />
+            )}
+          </div>
+        </div>
+      )}
       
       {/* Embeddings Context Indicator */}
       {embeddingsContexts.length > 0 && (

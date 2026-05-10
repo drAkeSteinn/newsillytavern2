@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://docs.sillytavern.app/usage/prompts",
+    "name": "Prompts | docs.ST.app",
+    "snippet": "The Main Prompt (or System Prompt ) defines the general instructions for the model to follow. It sets the tone and context for the conversation. For example, it ... Read more",
+    "host_name": "docs.sillytavern.app",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.reddit.com/r/SillyTavernAI/comments/1g3bgvq/how_to_rp_in_story_mode",
+    "name": "How to rp in ”story mode“? : r/SillyTavernAI",
+    "snippet": "Hey guys,. So I was wondering how I could set up silly tavern to sort of immerse myself in my own story where I am control of my character, ... Read more",
+    "host_name": "www.reddit.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern-Docs/blob/main/Usage/Prompts/context-template.md",
+    "name": "SillyTavern-Docs/Usage/Prompts/context-template.md at",
+    "snippet": "Edit these settings in the \"Advanced Formatting\" panel. Story String. This field is a template for the prompt preamble (known internally as a story string). Read more",
+    "host_name": "github.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://huggingface.co/sphiratrioth666/SillyTavern-Presets-Sphiratrioth/blob/main/README.md",
+    "name": "sphiratrioth666/SillyTavern-Presets-Sphiratrioth at main",
+    "snippet": "19 Aug 2025 — Click on the \"Bind to Context \" button (ON/OFF - next to the name \"Instruct Template\"). Load up my System Prompt from the System Prompts list. Read more",
+    "host_name": "huggingface.co",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/usage/chatting",
+    "name": "Chatting | docs.ST.app",
+    "snippet": "When you are connected to an API, send messages to the AI by typing in the chat bar at the bottom of the screen. Then click Send or press Enter. Chat bar.",
+    "host_name": "docs.sillytavern.app",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/issues/479",
+    "name": "[Feature Request] Add the ability to gernerate a narrators",
+    "snippet": "11 Jun 2023 — Write /sys What is she wearing to send a message, then trigger the generation (it doesn't go automatically to let you act on your own accord). Read more",
+    "host_name": "github.com",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.scribd.com/document/874786907/SillyTavern-All-Compressed",
+    "name": "SillyTavern User Guide and Features | PDF",
+    "snippet": "11 Jun 2025 — Context comprises character information, system prompts , chat history, etc. A dotted line between messages denotes the context range for the ... Read more",
+    "host_name": "www.scribd.com",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://huggingface.co/sphiratrioth666/SillyTavern-Presets-Sphiratrioth/blob/a2d83ce0c1f865727a3fc2c70f9b4ec36a213878/README.md",
+    "name": "README.md · sphiratrioth666/SillyTavern-Presets-",
+    "snippet": "28 Sept 2024 — Switch between the 1st Person/3rd Person narration by switching the System Prompt Presets. Theoretically, it should re-evaluate the prompt but ... Read more",
+    "host_name": "huggingface.co",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/issues/235",
+    "name": "Have an OOC \"Narrator\" that can describe a scene #235",
+    "snippet": "5 May 2023 — When having a roleplay with a character, there is no way to have an OOC \" narrator \" that will describe and embellish on the current scene. Read more",
+    "host_name": "github.com",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/usage/prompts/prompt-manager",
+    "name": "Prompt Manager | docs.ST.app",
+    "snippet": "The Prompt Manager is a system that provides more control over the prompt-building strategy for Chat Completion APIs.",
+    "host_name": "docs.sillytavern.app",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

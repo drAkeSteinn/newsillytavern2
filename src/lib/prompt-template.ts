@@ -38,6 +38,18 @@ export function replaceTemplateVariables(
   // Basic variable replacements
   result = result.replace(/\{\{user\}\}/gi, context.user);
   result = result.replace(/\{\{char\}\}/gi, context.char);
+
+  // Current date and time: {{time}} → DD/MM/YYYY, HH:MMam/pm
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, '0');
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const year = now.getFullYear();
+  let hours = now.getHours();
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  hours = hours % 12 || 12;
+  const timeStr = `${day}/${month}/${year}, ${hours}:${minutes}${ampm}`;
+  result = result.replace(/\{\{time\}\}/gi, timeStr);
   
   // User persona (if available)
   if (context.userpersona) {

@@ -517,7 +517,8 @@ export function buildQuestPromptSection(
     return buildNarratorQuestSection(templates, sessionQuests, templateStr, questSettings);
   }
 
-  // Regular character format - only active quests
+  // Regular character format - shows ONLY active quests
+  // Available quests are handled separately via {{availableQuests}} key
   const activeQuests = sessionQuests.filter(q => q.status === 'active');
 
   if (activeQuests.length === 0) {
@@ -634,8 +635,9 @@ ${objectiveLines}`;
 
   if (!questList) return '';
 
-  // Replace placeholder with quest list (template already provides the header)
-  return templateStr.replace('{{activeQuests}}', questList);
+  // Only active quests — available quests are handled by {{availableQuests}} key
+  const fullContent = `[MISIONES ACTIVAS]\n${questList}`;
+  return templateStr.replace('{{activeQuests}}', fullContent);
 }
 
 /**

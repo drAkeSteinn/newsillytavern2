@@ -416,6 +416,7 @@ export interface CharacterCard {
   questTemplateIds?: string[];       // Quest templates to use for this character
   embeddingNamespaces?: string[];   // Embedding namespaces to search during chat (overrides strategy)
   statsConfig?: CharacterStatsConfig;  // Stats system configuration (attributes, skills, etc.)
+  proactiveMessages?: ProactiveMessagesConfig;  // Proactive message configuration
   createdAt: string;
   updatedAt: string;
 }
@@ -511,6 +512,7 @@ export interface MessageMetadata {
   finishReason?: string;
   promptData?: PromptSection[];  // Store the prompt sent to LLM
   toolsUsed?: ToolUsedInfo[];    // Tools used to generate this message
+  proactiveInfo?: ProactiveMessageInfo;  // Proactive message metadata
 }
 
 export interface ToolUsedInfo {
@@ -816,6 +818,40 @@ export const DEFAULT_CHARACTER_VOICE_SETTINGS: CharacterVoiceSettings = {
   generateNarrations: true,
   generatePlainText: true,
 };
+
+// ============================================
+// PROACTIVE MESSAGES SYSTEM
+// ============================================
+
+/**
+ * Configuration for proactive messages
+ * Characters can send messages without the user speaking first, based on timers
+ */
+export interface ProactiveMessagesConfig {
+  enabled: boolean;                   // Master toggle
+  intervalSeconds: number;            // How often (in seconds) to send a proactive message
+  minMessagesBeforeStart: number;     // Minimum messages in the chat before proactive starts
+  maxPerSession: number;              // Max proactive messages per session (0 = unlimited)
+  customPrompt?: string;              // Optional custom instruction for proactive message generation
+  allowedStates: ('idle' | 'user_away')[];  // When to trigger (idle = no user activity, user_away = tab not focused)
+}
+
+export const DEFAULT_PROACTIVE_MESSAGES_CONFIG: ProactiveMessagesConfig = {
+  enabled: false,
+  intervalSeconds: 300,               // 5 minutes default
+  minMessagesBeforeStart: 5,          // Wait for at least 5 messages
+  maxPerSession: 0,                   // Unlimited
+  customPrompt: '',
+  allowedStates: ['idle'],
+};
+
+// Metadata for proactive messages (stored in ChatMessage.metadata)
+export interface ProactiveMessageInfo {
+  isProactive: true;
+  triggeredAt: string;
+  reason: 'timer_idle' | 'timer_away';
+  characterName: string;
+}
 
 // ASR (Speech-to-Text) configuration
 export interface ASRConfig {
@@ -1569,6 +1605,10 @@ export interface EmbeddingsChatSettings {
   searchContextDepth?: number;
   /** Enable group dynamics extraction in group chats (extracts inter-character relationships) */
   groupDynamicsExtraction?: boolean;
+  /** Enable memory reinforcement when memories are referenced in LLM responses */
+  memoryReinforcementEnabled?: boolean;
+  /** Similarity threshold for memory reinforcement matching (default: 0.7) */
+  memoryReinforcementThreshold?: number;
 }
 
 // ============ Tools / Actions Settings ============
@@ -1730,11 +1770,83 @@ export type LorebookPosition =
   | 6   // At bottom of chat (newest messages)
   | 7;  // Outlet (custom position, use outletName field)
 
-export type LorebookLogic = 
-  | 'AND_ANY'    // Match ANY primary key AND ANY secondary key
-  | 'NOT_ALL'    // NOT match ALL primary keys
-  | 'NOT_ANY'    // NOT match ANY primary key
-  | 'AND_ALL';   // Match ALL primary keys
+/**
+ * Type of lorebook entry.
+ * - 'traditional': keyword-triggered (SillyTavern compatible)
+ * - 'attribute': triggered by character stat/attribute value conditions
+ */
+export type LorebookEntryType = 'traditional' | 'attribute';
+
+/**
+ * Operators for attribute comparison in lorebook entries.
+ */
+export type AttributeComparator = '<' | '<=' | '>' | '>=' | '==' | '!=' | 'contains' | 'not_contains';
+
+/**
+ * Mode for attribute entry evaluation.
+ * - 'static': single condition, inject entry.content if met
+ * - 'dynamic': multiple conditions, each with its own content
+ */
+export type AttributeEntryMode = 'static' | 'dynamic';
+
+/**
+ * Static condition for attribute lorebook entries.
+ * If the condition is met, the entry's `content` field is injected.
+ */
+export interface LorebookStaticCondition {
+  operator: AttributeComparator;
+  value: number | string;
+}
+
+/**
+ * Dynamic condition for attribute lorebook entries.
+ * Each condition has its own content that gets injected when met.
+ * Multiple conditions can match simultaneously (contents are concatenated).
+ */
+export interface LorebookDynamicCondition {
+  id: string;
+  operator: AttributeComparator;
+  value: number | string;
+  content: string;
+  /**
+   * Priority of this condition (higher = more important).
+   * Used in 'first-match' resolution mode: only the highest-priority matching condition wins.
+   * In 'concat-all' mode, conditions are concatenated in priority order (highest first).
+   * Default: 0
+   */
+  priority?: number;
+}
+
+/**
+ * Configuration for attribute-based lorebook entries.
+ */
+export interface LorebookAttributeConfig {
+  /** Target character ID: '__user__' for persona, '__char__' for current character, or specific character ID */
+  characterId: string;
+  /** Attribute key to check (e.g., 'vida', 'mana') */
+  attributeKey: string;
+  /** Evaluation mode */
+  mode: AttributeEntryMode;
+  /**
+   * Injection key for this attribute entry.
+   * When conditions are met, {{injectionKey}} in prompt text is replaced with the resolved content.
+   * Example: 'estadoHeroe' → {{estadoHeroe}} in character description resolves to the entry's content.
+   */
+  injectionKey: string;
+  /** Condition for static mode */
+  staticCondition?: LorebookStaticCondition;
+  /** Conditions for dynamic mode (multiple, each with own content) */
+  dynamicConditions?: LorebookDynamicCondition[];
+  /** Optional fallback content when no dynamic condition matches */
+  fallbackContent?: string;
+  /**
+   * Resolution mode for dynamic conditions:
+   * - 'concat-all': All matching conditions are concatenated (default). Ordered by priority (highest first).
+   * - 'first-match': Only the highest-priority matching condition wins. When multiple match, only the top one is used.
+   * Default: 'concat-all'
+   */
+  dynamicResolution?: 'concat-all' | 'first-match';
+}
 
 export interface LorebookEntry {
   uid: number;                    // Unique identifier
@@ -1767,6 +1879,10 @@ export interface LorebookEntry {
   vectorized: boolean;            // Vectorized for semantic search
   displayIndex: number;           // Display order in UI
   extensions: Record<string, unknown>; // Extension data
+  /** Entry type: traditional (keyword-triggered) or attribute (stat-based) */
+  entryType: LorebookEntryType;
+  /** Attribute configuration (only when entryType = 'attribute') */
+  attributeConfig?: LorebookAttributeConfig;
 }
 
 export interface LorebookSettings {

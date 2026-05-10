@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://www.reddit.com/r/SillyTavernAI/comments/1oh23tg/universal_quick_reply_creator_automate_anything",
+    "name": "Universal Quick Reply Creator - Automate Anything in",
+    "snippet": "I put together a prompt that lets Claude or the LLM of your choice generate SillyTavern Quick Reply scripts for you - no coding knowledge needed ...\nQuick Replies are SillyTavern's automation system . They let you add custom buttons (or auto-triggers) that can: Automatically summarize your ... Read more",
+    "host_name": "www.reddit.com",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/usage/st-script",
+    "name": "STscript Language Reference | docs.ST.app",
+    "snippet": "A /run command can call scripts defined in the Quick Replies by their label, basically providing the ability to define procedures and return results from them.\nQuick Replies : script library and auto-execution. Quick Replies is a built-in SillyTavern extension that provides an easy way to store and execute your scripts. Read more",
+    "host_name": "docs.sillytavern.app",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern-Docs/blob/main/extensions/Regex.md",
+    "name": "SillyTavern-Docs/extensions/Regex.md at main",
+    "snippet": "The Regex extension lets the user automatically detect specific patterns in a string of text (called 'sequences') and apply manipulations (replacements) to ...\nThe Regex extension lets the user automatically detect specific patterns in a string of text (called 'sequences') and apply manipulations (replacements) to ... Read more",
+    "host_name": "github.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/issues/2575",
+    "name": "[FEATURE_REQUEST] Quick Reply Slash-command for",
+    "snippet": "27 Jul 2024 — Implement a slash command for the Quick Replies extension to allow one to swap to a different tokenizer upon send.\n27 Jul 2024 — Implement a slash command for the Quick Replies extension to allow one to swap to a different tokenizer upon send. Read more",
+    "host_name": "github.com",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/usage/core-concepts/slashcommands",
+    "name": "Slash commands | docs.ST.app",
+    "snippet": "For the most up-to-date list of commands that will work in your instance, use the /help slash chat command in any SillyTavern chat . /help – displays the help ...\nFor the most up-to-date list of commands that will work in your instance, use the /help slash chat command in any SillyTavern chat . /help – displays the help ... Read more",
+    "host_name": "docs.sillytavern.app",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/issues/3376",
+    "name": "[FEATURE_REQUEST] Send Quick Reply Before Message",
+    "snippet": "28 Jan 2025 — Currently, it is only possible to generate quick replies after a message, but not before message generation.\n28 Jan 2025 — Currently, it is only possible to generate quick replies after a message, but not before message generation. Read more",
+    "host_name": "github.com",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/usage/hotkeys",
+    "name": "HotKeys | docs.ST.app",
+    "snippet": "For the most up-to-date list of HotKeys that will work in your SillyTavern instance, use the /help hotkeys slash command in any chat .",
+    "host_name": "docs.sillytavern.app",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/issues/3419",
+    "name": "[FEATURE_REQUEST] Automation ID to trigger Quick",
+    "snippet": "3 Feb 2025 — It's possible to use automation ID to trigger a quick reply that saves a value in a variable, like \"on\". Then have another quick reply be executed after each ...",
+    "host_name": "github.com",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://sillytavern.wiki/usage/st-script",
+    "name": "STscript 语言参考",
+    "snippet": "Quick Replies ：脚本库和自动执行. Quick Replies 是 SillyTavern 的内置扩展，提供了一种简单的方法来存储和执行您的脚本。 配置 Quick Replies . 要开始使用，请打开扩展 ...",
+    "host_name": "sillytavern.wiki",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/usage/prompts/prompt-manager",
+    "name": "Prompt Manager | docs.ST.app",
+    "snippet": "The Prompt Manager is a system that provides more control over the prompt-building strategy for Chat Completion APIs.",
+    "host_name": "docs.sillytavern.app",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

@@ -50,12 +50,7 @@
       },
       {
         "uid": 2,
-        "key": [
-          "guilt",
-          "responsible",
-          "emotion",
-          "problem"
-        ],
+        "key": [],
         "keysecondary": [],
         "comment": "Guilt-tripping",
         "content": "Manipulators use guilt to control others, often by making them feel responsible for the manipulator's emotions or problems.",
@@ -90,6 +85,40 @@
           "useProbability": true,
           "characterFilter": null,
           "excludeRecursion": false
+        },
+        "entryType": "attribute",
+        "attributeConfig": {
+          "characterId": "__user__",
+          "attributeKey": "",
+          "injectionKey": "",
+          "mode": "dynamic",
+          "dynamicConditions": [
+            {
+              "id": "djid0f3",
+              "operator": ">",
+              "value": 0,
+              "content": ""
+            },
+            {
+              "id": "kjj3aoy",
+              "operator": ">",
+              "value": 0,
+              "content": ""
+            },
+            {
+              "id": "excrspj",
+              "operator": ">",
+              "value": 0,
+              "content": ""
+            },
+            {
+              "id": "l65g0eb",
+              "operator": ">",
+              "value": 0,
+              "content": ""
+            }
+          ],
+          "fallbackContent": ""
         }
       },
       {
@@ -546,6 +575,6 @@
     "tags": [],
     "active": true,
     "createdAt": "2026-03-01T23:51:41.461Z",
-    "updatedAt": "2026-04-27T05:33:22.603Z"
+    "updatedAt": "2026-05-10T09:12:26.617Z"
   }
 ]

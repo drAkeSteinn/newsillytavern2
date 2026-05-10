@@ -23,6 +23,8 @@ import {
   buildLorebookSectionForPrompt,
   buildHUDContextSection,
   injectHUDContextIntoMessages,
+  buildKeyResolutionContext,
+  resolveStats,
 } from '@/lib/llm';
 
 import {
@@ -110,13 +112,14 @@ export async function POST(request: NextRequest) {
     const contextWindow = selectContextMessages(messages, llmConfig, contextConfig);
 
     // Process lorebooks and get matched entries
-    const { plan: lorebookPlan } = buildLorebookSectionForPrompt(
+    const { plan: lorebookPlan, lorebookAttributeKeys } = buildLorebookSectionForPrompt(
       messages,
       lorebooks,
       {
         scanDepth: contextConfig.scanDepth,
-        tokenBudget: 2048
-      }
+        // tokenBudget: let the injector use the lorebook's own setting
+      },
+      { sessionStats: typedSessionStats, characterId: effectiveCharacter?.id, characters: allCharacters }
     );
 
     // Build system prompt with persona and lorebook (using processed character)
@@ -131,7 +134,8 @@ export async function POST(request: NextRequest) {
       undefined,          // soundSettings
       questTemplates,     // Pass quest templates for {{activeQuests}} key resolution
       sessionQuests,      // Pass session quests for {{activeQuests}} key resolution
-      questSettings       // Pass quest settings for {{activeQuests}} key resolution
+      questSettings,       // Pass quest settings for {{activeQuests}} key resolution
+      lorebookAttributeKeys
     );
 
     // Retrieve embeddings context
@@ -156,11 +160,67 @@ export async function POST(request: NextRequest) {
     // Quest content is resolved via {{activeQuests}} key in buildSystemPrompt
     let finalSystemPrompt = systemPrompt;
 
-    // Build HUD context section if enabled
-    const hudContextSection = hudContext ? buildHUDContextSection(hudContext) : null;
+    // Build key resolution context for all sections outside buildSystemPrompt
+    // Includes lorebookAttributeKeys so {{injectionKey}} resolves in post-history, HUD, etc.
+    let generatePersonaResolvedStats: import('@/types').ResolvedStats | null = null;
+    if (persona?.statsConfig?.enabled && typedSessionStats) {
+      generatePersonaResolvedStats = resolveStats({
+        characterId: '__user__',
+        statsConfig: persona.statsConfig,
+        sessionStats: typedSessionStats,
+      });
+    }
+    const generateResolvedStats = resolveStats({
+      characterId: effectiveCharacter.id,
+      statsConfig: effectiveCharacter.statsConfig,
+      sessionStats: typedSessionStats,
+      allCharacters,
+      userName: effectiveUserName,
+      characterName: effectiveCharacter.name,
+      questTemplates,
+      personaDescription: persona?.description,
+      personaResolvedStats: generatePersonaResolvedStats,
+    });
+
+    // Build outlet sections map from lorebook plan for {{outlet::name}} macro resolution
+    const outletSections: Record<string, string> = {};
+    if (lorebookPlan?.outletSections.length) {
+      for (const outletSection of lorebookPlan.outletSections) {
+        const match = outletSection.label.match(/^World Info \((.+)\)$/);
+        const outletName = match ? match[1] : outletSection.label;
+        outletSections[outletName] = outletSection.content;
+      }
+    }
+
+    const keyContext = buildKeyResolutionContext(
+      processedCharacter,
+      effectiveUserName,
+      persona,
+      generateResolvedStats,
+      typedSessionStats,  // sessionStats for {{eventos}}
+      undefined,          // soundTriggers
+      undefined,          // soundSettings
+      generatePersonaResolvedStats,  // persona resolved stats
+      questTemplates,     // quest templates for {{activeQuests}}
+      sessionQuests,      // session quests for {{activeQuests}}
+      questSettings,      // quest settings
+      outletSections,     // outlet sections for {{outlet::name}}
+      lorebookAttributeKeys  // lorebook attribute keys for {{injectionKey}}
+    );
+
+    // Build HUD context section if enabled (resolves {{keys}} in HUD content)
+    const hudContextSection = hudContext ? buildHUDContextSection(hudContext, keyContext) : null;
 
     // Prepare messages with new user message (use context-windowed messages)
-    const allMessages = [...contextWindow.messages, createUserMessage(sanitizedMessage)];
+    // Check if the last message is already the user's current message to avoid duplicates.
+    // The frontend adds the message to the store BEFORE sending the request, so the
+    // messages array may already contain the user's message.
+    const lastCtxMessage = contextWindow.messages[contextWindow.messages.length - 1];
+    const isLastMessageCurrentUser = lastCtxMessage?.role === 'user' &&
+      lastCtxMessage?.content === sanitizedMessage;
+    const allMessages = isLastMessageCurrentUser
+      ? contextWindow.messages
+      : [...contextWindow.messages, createUserMessage(sanitizedMessage)];
 
     let response: GenerateResponse;
 

@@ -103,7 +103,10 @@ function checkRegexMatch(regex: RegExp, content: string): boolean {
 // ============================================
 
 /**
- * Scan messages for lorebook entries
+ * Scan messages for lorebook entries (traditional only).
+ * 
+ * Attribute-type entries are skipped — they use {{injectionKey}} resolution
+ * in the key-resolver phase instead of position-based injection.
  * 
  * Supports per-entry overrides for scanDepth, caseSensitive, and matchWholeWords.
  * When an entry has a non-null override value, it takes precedence over the lorebook
@@ -148,7 +151,7 @@ export function scanForLorebookEntries(
   }
 
   for (const lorebook of lorebooks) {
-    if (!lorebook.active) continue;
+    // Note: lorebook.active check removed — frontend already filters active lorebooks
 
     // Get global settings from lorebook
     const settings = lorebook.settings;
@@ -156,6 +159,9 @@ export function scanForLorebookEntries(
     for (const entry of lorebook.entries) {
       // Skip disabled entries
       if (entry.disable) continue;
+
+      // Skip attribute-type entries (they use {{injectionKey}} resolution)
+      if (entry.entryType === 'attribute') continue;
 
       // Skip if already processed
       const entryKey = `${lorebook.id}:${entry.uid}`;
@@ -316,9 +322,11 @@ function checkKeyMatch(
  * Check for whole word match
  */
 function checkWholeWord(content: string, word: string): boolean {
-  // Create regex pattern for whole word match
+  // Create regex pattern for whole word match with Unicode support
+  // Uses \p{L} (Unicode letter) and \p{N} (Unicode number) for proper
+  // word boundary detection in Spanish and other non-ASCII languages
   const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`(^|[^a-zA-Z0-9])${escapedWord}([^a-zA-Z0-9]|$)`, 'g');
+  const pattern = new RegExp(`(^|(?<!\\p{L}))${escapedWord}((?!\\p{L})|$)`, 'gu');
   return pattern.test(content);
 }
 
@@ -334,29 +342,6 @@ export function filterByProbability(results: LorebookScanResult[]): LorebookScan
     const probability = result.entry.probability ?? 100;
     return Math.random() * 100 <= probability;
   });
-}
-
-/**
- * Get entries by position for injection
- */
-export function getEntriesByPosition(
-  results: LorebookScanResult[],
-  position: number
-): LorebookScanResult[] {
-  return results.filter(r => r.entry.position === position);
-}
-
-/**
- * Get entries by outlet name
- */
-export function getEntriesByOutlet(
-  results: LorebookScanResult[],
-  outletName: string
-): LorebookScanResult[] {
-  return results.filter(r => 
-    r.entry.position === 7 && 
-    r.entry.outletName === outletName
-  );
 }
 
 /**
@@ -424,6 +409,55 @@ export function groupEntries(
 export function estimateTokens(text: string): number {
   // Rough estimate: ~4 characters per token on average
   return Math.ceil(text.length / 4);
+}
+
+/**
+ * Apply group scoring: within each group, select only one entry
+ * based on groupWeight (weighted random selection).
+ * Entries without a group are always included.
+ * 
+ * This mirrors SillyTavern's group behavior where multiple entries
+ * in the same group compete and only one is selected per activation.
+ */
+export function applyGroupScoring(
+  results: LorebookScanResult[]
+): LorebookScanResult[] {
+  const ungrouped: LorebookScanResult[] = [];
+  const grouped = new Map<string, LorebookScanResult[]>();
+
+  for (const result of results) {
+    const groupName = result.entry.group;
+    if (!groupName) {
+      ungrouped.push(result);
+    } else {
+      if (!grouped.has(groupName)) {
+        grouped.set(groupName, []);
+      }
+      grouped.get(groupName)!.push(result);
+    }
+  }
+
+  const finalResults: LorebookScanResult[] = [...ungrouped];
+
+  // For each group, select one entry based on groupWeight
+  for (const [, groupEntries] of grouped) {
+    // Sort by weight descending
+    groupEntries.sort((a, b) => (b.entry.groupWeight ?? 1) - (a.entry.groupWeight ?? 1));
+
+    // Weighted random selection
+    const totalWeight = groupEntries.reduce((sum, e) => sum + (e.entry.groupWeight ?? 1), 0);
+    let random = Math.random() * totalWeight;
+
+    for (const entry of groupEntries) {
+      random -= (entry.entry.groupWeight ?? 1);
+      if (random <= 0) {
+        finalResults.push(entry);
+        break;
+      }
+    }
+  }
+
+  return finalResults;
 }
 
 /**

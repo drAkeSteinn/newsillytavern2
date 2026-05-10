@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://github.com/malfoyslastname/character-card-spec-v2",
+    "name": "malfoyslastname/character-card-spec-v2",
+    "snippet": "4 Jun 2023 — The Character Card V2 Specification is a proposal for a new format for character cards containing new fields. It is aimed to be adopted by the ... Read more",
+    "host_name": "github.com",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/malfoyslastname/character-card-spec-v2/blob/main/spec_v1.md",
+    "name": "character-card-spec-v2/spec_v1.md at main",
+    "snippet": "In prompts sent to the AI , the fields description , personality , scenario , first_mes , and mes_example MUST replace the following magic strings, with a ... Read more",
+    "host_name": "github.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://lmsa.app/blog/unlock-advanced-ai-roleplay-how-to-generate-and-use-v2-character-cards-on-mobile",
+    "name": "Unlock Advanced AI Roleplay: How to Generate and Use V2",
+    "snippet": "21 Apr 2026 — Unlike simple prompts, V2 cards contain rich layers of data— personality traits, world lore, specific scenarios , and example dialogues—that ...",
+    "host_name": "lmsa.app",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://termo.ai/skills/sillytavern-cards-skill",
+    "name": "sillytavern-cards — AI Skill — Termo",
+    "snippet": "16 Mar 2026 — Hold the character persona in conversation context only. 4. Send first_mes and roleplay as the character . 5. All other skills still work if ... Read more",
+    "host_name": "termo.ai",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.reddit.com/r/ChatbotRefugees/comments/1sz8twt/ai_basics_day_6_what_are_character_cards_and_why",
+    "name": "AI Basics Day 6: What are character cards, and why does",
+    "snippet": "A Chara card is just a JSON object with the fields we covered above (name, description, personality , scenario , etc.), shipped either as a .json ... Read more",
+    "host_name": "www.reddit.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/malfoyslastname/character-card-spec-v2/blob/main/spec_v2.md",
+    "name": "character-card-spec-v2/spec_v2.md at main",
+    "snippet": "This document describes new JSON fields added to the embedded JSON of V1 character cards. V1 refers to the format currently in use across the character card ... Read more",
+    "host_name": "github.com",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://ollama.com/kubernetes_bad/chargen-v2",
+    "name": "kubernetes_bad/chargen-v2",
+    "snippet": "Fields are based on Tavern Character Card V2 spec . Following fields are supported: - Description - Scenario - Personality - First message - Dialogue examples . Read more",
+    "host_name": "ollama.com",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://openwebui.com/o/localai",
+    "name": "Local AI – AI Community",
+    "snippet": "You are a V2 Character Card Specification expert. Your ... ## YOUR FIRST MESSAGE (Output this immediately) \"Welcome to the V2 Character Card Generator ! Read more",
+    "host_name": "openwebui.com",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.scribd.com/document/829419673/alichat",
+    "name": "SillyTavern Character Card Guide | PDF | Memory",
+    "snippet": "A guide for creating character dialogues that express traits through conversation, emphasizing the importance of structured dialogue examples. Read more",
+    "host_name": "www.scribd.com",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/usage/characters",
+    "name": "Characters | docs.ST.app",
+    "snippet": "Characters are the AI identities that you can create and manage to shape the AI's role in the conversation. Each character has a name, personality, and.",
+    "host_name": "docs.sillytavern.app",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

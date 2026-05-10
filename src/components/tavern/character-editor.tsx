@@ -45,6 +45,7 @@ import { QuestSelector } from './quest-selector';
 import { NamespaceSelector } from './namespace-selector';
 import { StatsEditor } from './stats-editor';
 import { CharacterVoicePanel } from './character-voice-panel';
+import { ProactiveMessagesPanel } from './proactive-messages-panel';
 import { getLogger } from '@/lib/logger';
 
 const editorLogger = getLogger('editor');
@@ -63,6 +64,7 @@ const characterEditorTabs = [
   { value: 'sprites', label: 'Sprites', icon: Layers },
   { value: 'stats', label: 'Stats', icon: Activity },
   { value: 'voice', label: 'Voz', icon: Mic },
+  { value: 'proactive', label: 'Proactivo', icon: Sparkles },
 ];
 
 const defaultCharacter: Omit<CharacterCard, 'id' | 'createdAt' | 'updatedAt'> = {
@@ -83,6 +85,7 @@ const defaultCharacter: Omit<CharacterCard, 'id' | 'createdAt' | 'updatedAt'> = 
   voice: null,
   lorebookIds: [],
   questTemplateIds: [],
+  proactiveMessages: undefined,
 };
 
 export function CharacterEditor({ characterId, open, onClose }: CharacterEditorProps) {
@@ -765,6 +768,13 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
     />
   );
 
+  const renderProactiveTab = () => (
+    <ProactiveMessagesPanel
+      config={character.proactiveMessages}
+      onChange={(proactiveMessages) => setCharacter(prev => ({ ...prev, proactiveMessages }))}
+    />
+  );
+
   const renderTabContent = () => {
     switch (activeTab) {
       case 'info': return renderInfoTab();
@@ -774,6 +784,7 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
       case 'sprites': return renderSpritesTab();
       case 'stats': return renderStatsTab();
       case 'voice': return renderVoiceTab();
+      case 'proactive': return renderProactiveTab();
       default: return renderInfoTab();
     }
   };

@@ -77,6 +77,9 @@ export class EmbeddingClient {
   async createBatchEmbeddings(items: CreateEmbeddingParams[], namespace?: string): Promise<string[]> {
     if (items.length === 0) throw new Error('No items to process');
 
+    // Always ensure the Ollama client uses the latest persisted config
+    this.refreshOllamaClient();
+
     const texts = items.map(item => item.content);
     const vectors = await this.getActiveClient().embedBatch(texts);
     const embeddingIds: string[] = [];
@@ -175,12 +178,29 @@ export class EmbeddingClient {
   }
 
   async updateEmbedding(id: string, content: string, metadata?: Record<string, any>): Promise<void> {
+    // Fetch existing embedding first to preserve namespace and source info
+    const existing = await this.db.getEmbeddingById(id);
+    if (!existing) {
+      throw new Error(`Embedding ${id} not found`);
+    }
+
+    // Delete old and create new with preserved metadata
     await this.db.deleteEmbedding(id);
+
     const vector = await this.getActiveClient().embedText(content);
 
-    // We need the old embedding info, but we just deleted it...
-    // This is a known limitation - for full update, fetch before delete
-    throw new Error('Update not yet implemented. Delete and recreate instead.');
+    await this.db.insertEmbedding({
+      content,
+      vector,
+      namespace: existing.namespace,
+      source_type: existing.source_type,
+      source_id: existing.source_id,
+      metadata: {
+        ...existing.metadata,
+        ...(metadata || {}),
+        updated_at: new Date().toISOString(),
+      },
+    });
   }
 
   // ========== Namespace Methods ==========

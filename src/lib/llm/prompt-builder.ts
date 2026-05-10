@@ -24,9 +24,11 @@ import type { ChatApiMessage, CompletionPromptConfig, GroupPromptBuildResult } f
 import { processExampleDialogue } from '@/lib/prompt-template';
 import {
   buildLorebookInjectionPlan,
+  resolveLorebookAttributeKeys,
   type LorebookInjectOptions,
   type LorebookInjectionPlan,
   type LorebookChatInjection,
+  type LorebookAttributeContext,
 } from '@/lib/lorebook';
 import {
   resolveStats,
@@ -361,7 +363,8 @@ export function buildSystemPrompt(
   soundSettings?: AppSettings['sound'],
   questTemplates?: QuestTemplate[],
   sessionQuests?: SessionQuestInstance[],
-  questSettings?: QuestSettings
+  questSettings?: QuestSettings,
+  lorebookAttributeKeys?: Record<string, string>
 ): { prompt: string; sections: PromptSection[]; lorebookChatInjections: LorebookChatInjection[] } {
   const sections: PromptSection[] = [];
 
@@ -389,8 +392,19 @@ export function buildSystemPrompt(
     personaResolvedStats,
   });
 
-  // Build unified key resolution context (includes quest data for {{activeQuests}})
-  const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, soundTriggers, soundSettings, personaResolvedStats, questTemplates, sessionQuests, questSettings);
+  // Build outlet sections map from lorebook plan for {{outlet::name}} macro resolution
+  const outletSections: Record<string, string> = {};
+  if (lorebookPlan?.outletSections.length) {
+    for (const outletSection of lorebookPlan.outletSections) {
+      // Extract outlet name from label like "World Info (myOutlet)" → "myOutlet"
+      const match = outletSection.label.match(/^World Info \((.+)\)$/);
+      const outletName = match ? match[1] : outletSection.label;
+      outletSections[outletName] = outletSection.content;
+    }
+  }
+
+  // Build unified key resolution context (includes quest data for {{activeQuests}}, outlet sections, and lorebook attribute keys)
+  const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, soundTriggers, soundSettings, personaResolvedStats, questTemplates, sessionQuests, questSettings, outletSections, lorebookAttributeKeys);
 
   // Main system instruction
   // If character has a custom system prompt, use it instead of the default
@@ -514,12 +528,25 @@ export function buildSystemPrompt(
 /**
  * Build complete lorebook injection plan from active lorebooks and chat messages.
  * This replaces the old single-section approach with position-aware injection.
+ * Also resolves attribute-type lorebook entries to their injection keys.
  */
 export function buildLorebookSectionForPrompt(
   messages: ChatMessage[],
   lorebooks: Lorebook[],
-  options?: LorebookInjectOptions
-): { section: PromptSection | null; plan: LorebookInjectionPlan } {
+  options?: LorebookInjectOptions,
+  attributeContext?: LorebookAttributeContext
+): { section: PromptSection | null; plan: LorebookInjectionPlan; lorebookAttributeKeys: Record<string, string>; lorebookDebugEntries?: import('@/lib/lorebook/attribute-resolver').LorebookAttrDebugEntry[] } {
+  // Resolve attribute-type entries to key→content map
+  let lorebookAttributeKeys: Record<string, string> = {};
+  let lorebookDebugEntries: import('@/lib/lorebook/attribute-resolver').LorebookAttrDebugEntry[] | undefined;
+
+  if (attributeContext) {
+    const result = resolveLorebookAttributeKeys(lorebooks, attributeContext);
+    lorebookAttributeKeys = result.keys;
+    lorebookDebugEntries = result.debugEntries;
+  }
+
+  // Build injection plan for traditional entries only (attribute entries are skipped by scanner)
   const plan = buildLorebookInjectionPlan(messages, lorebooks, options);
 
   // Combine all system-level sections into one for backward compat with callers that only need a single section
@@ -539,7 +566,7 @@ export function buildLorebookSectionForPrompt(
       }
     : null;
 
-  return { section, plan };
+  return { section, plan, lorebookAttributeKeys, lorebookDebugEntries };
 }
 
 /**
@@ -873,7 +900,8 @@ export function buildGroupSystemPrompt(
   allCharacters?: CharacterCard[],
   questTemplates?: QuestTemplate[],
   sessionQuests?: SessionQuestInstance[],
-  questSettings?: QuestSettings
+  questSettings?: QuestSettings,
+  lorebookAttributeKeys?: Record<string, string>
 ): { prompt: string; sections: PromptSection[]; lorebookChatInjections: LorebookChatInjection[] } {
   const sections: PromptSection[] = [];
 
@@ -900,8 +928,8 @@ export function buildGroupSystemPrompt(
     personaResolvedStats,
   });
 
-  // Build unified key resolution context (includes quest data for {{activeQuests}})
-  const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, undefined, undefined, personaResolvedStats, questTemplates, sessionQuests, questSettings);
+  // Build unified key resolution context (includes quest data for {{activeQuests}} and lorebook attribute keys)
+  const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, undefined, undefined, personaResolvedStats, questTemplates, sessionQuests, questSettings, undefined, lorebookAttributeKeys);
 
   // System Prompt Priority: Group > Character > Default
   let systemContent: string;

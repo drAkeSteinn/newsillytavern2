@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://www.reddit.com/r/SillyTavernAI/comments/1oq2s8s/sillytavern_vector_storage_faq",
+    "name": "SillyTavern Vector Storage - FAQ : r/SillyTavernAI - Reddit",
+    "snippet": "Lorebook is a bad fit for vector search. It tries to force the unpredictable vector match into its rigid, rule-based system, which often makes ... Complete guide to setup and configure Vector Storage (rewritten ... Give Your Characters Memory - A Practical Step-by-Step Guide to ... More results from www.reddit.com Missing: 2024 2025",
+    "host_name": "www.reddit.com",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/usage/core-concepts/data-bank",
+    "name": "Data Bank (RAG) | docs.ST.app - SillyTavern Documentation",
+    "snippet": "It uses embeddings (also known as vectors) to search for documents that relate to your ongoing chats. Fun facts. Embeddings are arrays of numbers ... Missing: semantic 2024 2025",
+    "host_name": "docs.sillytavern.app",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.facebook.com/chaiaiism/posts/-%E0%B8%84%E0%B8%B9%E0%B9%88%E0%B8%A1%E0%B8%B7%E0%B8%AD-vector-databases-%E0%B8%89%E0%B8%9A%E0%B8%B1%E0%B8%9A-2025vector-database-%E0%B8%84%E0%B8%B7%E0%B8%AD%E0%B8%90%E0%B8%B2%E0%B8%99%E0%B8%82%E0%B9%89%E0%B8%AD%E0%B8%A1%E0%B8%B9%E0%B8%A5%E0%B8%97%E0%B8%B5%E0%B9%88%E0%B8%AD%E0%B8%AD%E0%B8%81%E0%B9%81%E0%B8%9A%E0%B8%9A%E0%B8%A1%E0%B8%B2%E0%B9%80%E0%B8%89%E0%B8%9E%E0%B8%B2%E0%B8%B0%E0%B8%AA%E0%B8%B3/3198909420267988",
+    "name": "คู่มือ Vector Databases ฉบับ 2025 Vector Database คือฐานข้อมูลที่",
+    "snippet": "คู่มือ Vector Databases ฉบับ 2025 Vector Database คือฐานข้อมูลที่ออกแบบมาเฉพาะสำหรับจัดเก็บและค้นหาข้อมูลแบบ “เวกเตอร์หลายมิติ” เช่น ข้อความ รูปภาพ... Missing: SillyTavern lorebook 2024",
+    "host_name": "www.facebook.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/bal-spec/sillytavern-character-memory",
+    "name": "CharMemory — SillyTavern Extension - GitHub",
+    "snippet": "SillyTavern's Vector Storage acts like a search engine for the memory file. It finds the memories most relevant to the current conversation ... Missing: RAG semantic 2024 2025",
+    "host_name": "github.com",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.linkedin.com/posts/pauliusztin_my-2025-prediction-on-rag-semantic-search-activity-7283430230906540032-Bfcn",
+    "name": "My 2025 prediction on RAG, semantic search, and retrieval systems",
+    "snippet": "Paul, this is a great approach to use a vector index like MongoDB Atlas for storing embeddings and we are doing something similar. How would ... Missing: SillyTavern lorebook 2024",
+    "host_name": "www.linkedin.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://dev.to/klement_gunndu_e16216829c/vector-databases-guide-rag-applications-2025-55oj",
+    "name": "Vector Databases Guide: RAG Applications 2025 - DEV Community",
+    "snippet": "Master vector databases for RAG apps. Compare Pinecone, Weaviate, Milvus & pgvector. Learn embeddings, semantic search & LLM integration ... Missing: SillyTavern lorebook",
+    "host_name": "dev.to",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://medium.com/@astha2798/mastering-vector-stores-in-rag-how-intelligent-embedding-storage-powers-semantic-search-838a94388d12",
+    "name": "Mastering Vector Stores in RAG: How Intelligent Embedding Storage",
+    "snippet": "These embeddings represent the semantic meaning of data such as sentences, documents, or images. Unlike traditional databases that focus on rows ... Missing: SillyTavern lorebook",
+    "host_name": "medium.com",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://community.n8n.io/t/building-rag-in-2025-vector-stores-as-tools-is-here/75166",
+    "name": "Building RAG in 2025: Vector Stores as Tools is here! - Tips & Tricks",
+    "snippet": "In n8n 1.74.0 released last month (Jan 2025), brought a long-awaited update to vector stores for AI agents - we can now finally use Vector Stores directly as ... Missing: SillyTavern storage lorebook semantic 2024",
+    "host_name": "community.n8n.io",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.researchgate.net/publication/390326215_Hybrid_Retrieval-Augmented_Generation_RAG_Systems_with_Embedding_Vector_Databases",
+    "name": "(PDF) Hybrid Retrieval-Augmented Generation (RAG) Systems with",
+    "snippet": "This article explores the integration of embedding vector databases into Retrieval-Augmented Generation (RAG) systems to enhance the capabilities of large ... Missing: SillyTavern lorebook",
+    "host_name": "www.researchgate.net",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/issues/1671",
+    "name": "RAG documentation · Issue #1671 - GitHub",
+    "snippet": "Basically, to use file embeddings you need to go into the \"Vector Storage\" extension settings and enable file querying, then use \"Attach files\" ... Missing: lorebook semantic",
+    "host_name": "github.com",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

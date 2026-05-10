@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://github.com/IAAR-Shanghai/Awesome-AI-Memory",
+    "name": "IAAR-Shanghai/Awesome-AI-Memory",
+    "snippet": "5 days ago — Memory Summary Injection: Dynamically inserting summaries of long-term memory into short-term context . Episodic Memory: Memory type recording ... Read more",
+    "host_name": "github.com",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://arxiv.org/html/2601.06037v1",
+    "name": "Building Long-Term and Multimodal Memory for Agentic AI",
+    "snippet": "12 Dec 2025 — TeleMem integrates text-based and multimodal memory into a unified long - term memory system . The text memory module includes profile memory , ... Read more",
+    "host_name": "arxiv.org",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.linkedin.com/pulse/vector-databases-leveling-up-ai-memory-game-shiva-raman-pandey-gnwjc",
+    "name": "Vector Databases: Leveling Up the AI Memory Game",
+    "snippet": "Compresses them into long-term memory (via clustering or summarization), and; Recalls contextually relevant memories when facing similar ... Read more",
+    "host_name": "www.linkedin.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://medium.com/@infiniflowai/from-rag-to-context-a-2025-year-end-review-of-rag-03740f1a0528",
+    "name": "From RAG to Context — A 2025 year-end review of RAG",
+    "snippet": "The hallmark of this release is the introduction of a new Memory module, empowering AI Agents with lasting memory . This core advancement ... Read more",
+    "host_name": "medium.com",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.researchgate.net/publication/384803161_Vector_Storage_Based_Long-term_Memory_Research_on_LLM",
+    "name": "Vector Storage Based Long-term Memory Research on LLM",
+    "snippet": "This research presents an innovative vector storage long - term memory mechanism model (VIMBank) to enhance the long - term context retention ability and task ... Read more",
+    "host_name": "www.researchgate.net",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.meta-intelligence.tech/en/insight-context-engineering",
+    "name": "RAG, Memory Systems & Dynamic Context for Production AI",
+    "snippet": "13 Dec 2025 — Context Engineering goes beyond prompt engineering — learn how to architect RAG pipelines, memory systems, and dynamic context windows for ...",
+    "host_name": "www.meta-intelligence.tech",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://jurnal.itscience.org/index.php/brilliance/article/download/6779/4964/33134",
+    "name": "Non-Playable Characters Based On Large Language Models",
+    "snippet": "19 Aug 2025 — This study aims to bridge that gap by designing and evaluating a prototype open-world RPG where NPCs generate dynamic, context -aware dialogue ... Read more",
+    "host_name": "jurnal.itscience.org",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.youtube.com/watch?v=Js6GTQrkbqg",
+    "name": "How to Give AI a Long-Term Memory (RAG & Vector",
+    "snippet": "Is your AI acting like a goldfish ? In this video, I show how to solve the biggest problem in artificial intelligence right now: AI Amnesia ...",
+    "host_name": "www.youtube.com",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.decodingai.com/p/your-first-production-ready-rag-agent",
+    "name": "Your first production-ready RAG Agent",
+    "snippet": "10 Apr 2025 — Summarize context node: It summarizes the retrieved factual data from the vector database . Distilling the context only to its essential ... Read more",
+    "host_name": "www.decodingai.com",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://dev.to/midas126/beyond-the-hype-building-a-practical-ai-memory-layer-with-vector-databases-4l26",
+    "name": "Beyond the Hype: Building a Practical AI Memory Layer",
+    "snippet": "28 Mar 2026 — In this guide, we'll move beyond the conceptual and build a practical, scalable memory system using vector databases , the de facto standard for ... Read more",
+    "host_name": "dev.to",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

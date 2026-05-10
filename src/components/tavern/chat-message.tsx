@@ -3,7 +3,7 @@
 import { cn } from '@/lib/utils';
 import type { ChatMessage as ChatMessageType, PromptSection, ChatboxAppearanceSettings, ToolUsedInfo } from '@/types';
 import { DEFAULT_CHATBOX_APPEARANCE } from '@/types';
-import { Copy, Check, Trash2, RefreshCw, ChevronLeft, ChevronRight, Volume2, Eye, Edit2, Play, X, Check as CheckIcon, Ghost, Wrench, Zap, Dices, Globe, CloudSun, Bell } from 'lucide-react';
+import { Copy, Check, Trash2, RefreshCw, ChevronLeft, ChevronRight, Volume2, Eye, Edit2, Play, X, Check as CheckIcon, Ghost, Wrench, Zap, Dices, Globe, CloudSun, Bell, Sparkles } from 'lucide-react';
 import { useState, memo, Fragment, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -341,6 +341,16 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               <span className="text-xs text-muted-foreground">
                 {formatDistanceToNow(new Date(message.timestamp), { addSuffix: true })}
               </span>
+            )}
+            {/* Proactive message indicator */}
+            {message.metadata?.proactiveInfo?.isProactive && (
+              <Badge 
+                variant="outline"
+                className="text-[10px] py-0 h-4 px-1.5 gap-0.5 border-amber-500/30 text-amber-400/70 bg-amber-500/5"
+              >
+                <Sparkles className="w-2.5 h-2.5" />
+                Proactivo
+              </Badge>
             )}
             {showTokens && message.metadata?.tokens && (
               <span className="text-xs text-muted-foreground/70">

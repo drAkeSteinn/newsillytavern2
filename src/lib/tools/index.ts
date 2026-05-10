@@ -11,6 +11,7 @@ export {
   getToolDefinitionsByIds,
   getToolsByCategory,
   toOpenAITools,
+  resolveToolDefinitionsKeys,
   executeTool,
   buildPromptBasedToolsSection,
 } from './tool-registry';

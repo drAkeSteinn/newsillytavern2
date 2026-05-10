@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://docs.sillytavern.app/usage/st-script",
+    "name": "STscript Language Reference | docs.ST.app",
+    "snippet": "Quick Replies management commands . Create Quick Reply. /qr-create (arguments, [message]) – creates a new Quick Reply, example: /qr-create set=MyPreset label ... Read more\nQuick Replies management commands. Create Quick Reply. /qr-create (arguments, [message]) – creates a new Quick Reply, example: /qr-create set=MyPreset label ...",
+    "host_name": "docs.sillytavern.app",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.reddit.com/r/SillyTavernAI/comments/1oja3pv/how_to_use_dice_rolls_rpg_companion_extension",
+    "name": "How to use 'Dice Rolls'? (RPG Companion Extension)",
+    "snippet": "The description of the extension says 'it passes the dice roll to the model', but how do I actually use this? It's not like the dice roll ...",
+    "host_name": "www.reddit.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/issues/2575",
+    "name": "[FEATURE_REQUEST] Quick Reply Slash-command for",
+    "snippet": "Jul 27, 2024 — Implement a slash command for the Quick Replies extension to allow one to swap to a different tokenizer upon send. Read more",
+    "host_name": "github.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/extensions",
+    "name": "Extensions | docs.ST.app",
+    "snippet": "SillyTavern comes with many extensions that can be enabled or disabled in the Extensions panel. Extensions can add new features, change the behavior of.",
+    "host_name": "docs.sillytavern.app",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/Samueras/Guided-Generations",
+    "name": "Guided Generations Quick Reply Set for SillyTavern",
+    "snippet": "This repository provides a specialized Quick Reply set for SillyTavern , designed to enhance and refine roleplay and chat interactions with language models. Read more\nThis repository provides a specialized Quick Reply set for SillyTavern, designed to enhance and refine roleplay and chat interactions with language models. Missing: commands macro dice",
+    "host_name": "github.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/usage/core-concepts/macros",
+    "name": "Macros | docs.ST.app",
+    "snippet": "Macros are dynamic placeholders that get replaced with actual values when text is processed. They are used throughout SillyTavern in prompts, ... Read more\nSlash command: Type /? macros in the chat input to display a list of all registered macros with their descriptions. Autocomplete: See Macro Autocomplete below ... Missing: roleplay | Show results with: roleplay",
+    "host_name": "docs.sillytavern.app",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/RedIceCider/SillyQR-Buttons",
+    "name": "RedIceCider/SillyQR-Buttons: Extension for SillyTavern.",
+    "snippet": "Extension for SillyTavern. Execute QuickReplies with HTML buttons in chat body . Usage. This extension does not insert any prompts. If you want ... Read more",
+    "host_name": "github.com",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://ja.sillytavern.wiki/usage/st-script",
+    "name": "STscript言語リファレンス | SillyTavern 日本語ドキュメント",
+    "snippet": "# Quick Replies 管理コマンド. #Quick Reply の作成. /qr-create (arguments, [message]) – 新しいQuick Reply を作成します。例: /qr-create set=MyPreset label=MyButton ... Read more",
+    "host_name": "ja.sillytavern.wiki",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/issues/5166",
+    "name": "[FEATURE_REQUEST] Add a useful slash command or",
+    "snippet": "Feb 15, 2026 — If so, please describe. I'm trying to construct a quick reply using some slash commands , macros , and variables but there doesn't appear to be a ... Read more\nIf so, please describe. I'm trying to construct a quick reply using some slash commands, macros, and variables but there doesn't appear to be a ... Missing: dice | Show results with: dice",
+    "host_name": "github.com",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/LenAnderson/SillyTavern-QuickRepliesDrawer",
+    "name": "LenAnderson/SillyTavern-QuickRepliesDrawer: Move QRs",
+    "snippet": "SillyTavern extension that moves the Quick Reply settings from the Extensions drawer into its own drawer with a button on the main navigation bar and ... Read more",
+    "host_name": "github.com",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

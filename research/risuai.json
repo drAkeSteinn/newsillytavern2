@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://risuai.net",
+    "name": "RisuAI",
+    "snippet": "RisuAI provides a platform for AI roleplay, where you can create your own AI character and interact with other AI characters. Missing: sprites expressions personality",
+    "host_name": "risuai.net",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.youtube.com/watch?v=ksBWKa_30Hc",
+    "name": "RisuAI Tutorial: The BEST AI Roleplay Chatbot? - YouTube",
+    "snippet": "RisuAI Tutorial: The BEST AI Roleplay Chatbot? In this short video I show you how to use RisuAI, a stunning AI Roleplay Website and cross ... Missing: features cards sprites expressions personality",
+    "host_name": "www.youtube.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/kwaroran/RisuAI/blob/main/README.md",
+    "name": "README.md - kwaroran/Risuai - GitHub",
+    "snippet": "Emotion Images: Display the image of the current character, according to his/her expressions! Group Chats: Multiple characters in one chat. Plugins: Add your ... Missing: cards sprites personality",
+    "host_name": "github.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.youtube.com/playlist?list=PL8mEL2NNTnXVvIecrKZ5P5Zk-vBki9naC",
+    "name": "RisuAI - YouTube",
+    "snippet": "New competitor to CharacterAI & SillyTavern - RisuAI · Share your character - RisuAI Update · Free AI models on OpenRouter - ...",
+    "host_name": "www.youtube.com",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://realm.risuai.net/character/3ee11ccb-7e10-425d-8424-51fd7fcb44b7",
+    "name": "Character Creator Bot - RisuRealm",
+    "snippet": "Create the character as you want. Click! Long, Short, Vague, Detailed, Fantasy, Realistic, SFW, NSFW, and anything. Be creative!",
+    "host_name": "realm.risuai.net",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/kwaroran/RisuAI/wiki/Additional-Character-Screen",
+    "name": "Additional Character Screen · kwaroran/Risuai Wiki - GitHub",
+    "snippet": "\"Additional Character Screen\" is a feature that allows bots to display images outside of chatbox dynamicly. Missing: cards roleplay sprites personality",
+    "host_name": "github.com",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://realm.risuai.net/?q=tag%3ARPG",
+    "name": "RisuRealm Standalone",
+    "snippet": "Escape the underground prison of Jiha Village, pilot legendary Gunmen like Gurren Lagann, and rally the most hot-blooded army in anime history: Team Dai-Gurren.",
+    "host_name": "realm.risuai.net",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.reddit.com/r/RisuAI",
+    "name": "r/RisuAI - Reddit",
+    "snippet": "Personality Traits: Laid-back and unbothered by most things; treats unusual situations with amusement rather than alarm. Sharp-eyed and ...",
+    "host_name": "www.reddit.com",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://medium.com/@mikudev/building-llm-gameplay-mechanics-with-guidance-0bc3d52e52e9",
+    "name": "Building LLM Gameplay mechanics with Guidance | by mikudev",
+    "snippet": "Most regular chatbot platforms that have character sprites related to emotions rely only on classifier models like nateraw/bert-base-uncased ...",
+    "host_name": "medium.com",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/extensions/expression-images",
+    "name": "Character Expressions | docs.ST.app - SillyTavern Documentation",
+    "snippet": "Character Expressions. What is it? Expression images are images (aka 'sprites') of your AI character which are shown next to (or behind) the chat window. Missing: RisuAI features roleplay personality",
+    "host_name": "docs.sillytavern.app",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

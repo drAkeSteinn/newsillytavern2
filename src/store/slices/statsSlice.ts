@@ -317,12 +317,22 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
     
     // Auto-initialize character stats if missing
     if (!sessionStats.characterStats[characterId]) {
-      const character = state.characters.find((c: any) => c.id === characterId);
+      let statsConfig: CharacterStatsConfig | undefined;
+      if (characterId === '__user__') {
+        // Look up active persona's statsConfig for __user__
+        const activePersonaId = (state as any).activePersonaId;
+        const personas: any[] = (state as any).personas || [];
+        const activePersona = personas.find((p: any) => p.id === activePersonaId);
+        statsConfig = activePersona?.statsConfig;
+      } else {
+        const character = state.characters.find((c: any) => c.id === characterId);
+        statsConfig = character?.statsConfig;
+      }
       sessionStats = {
         ...sessionStats,
         characterStats: {
           ...sessionStats.characterStats,
-          [characterId]: createDefaultCharacterStats(character?.statsConfig),
+          [characterId]: createDefaultCharacterStats(statsConfig),
         },
       };
     }
@@ -466,12 +476,22 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
       
       // Auto-initialize character stats if missing
       if (!sessionStats.characterStats[characterId]) {
-        const character = state.characters.find((c: any) => c.id === characterId);
+        let statsConfig: CharacterStatsConfig | undefined;
+        if (characterId === '__user__') {
+          // Look up active persona's statsConfig for __user__
+          const activePersonaId = (state as any).activePersonaId;
+          const personas: any[] = (state as any).personas || [];
+          const activePersona = personas.find((p: any) => p.id === activePersonaId);
+          statsConfig = activePersona?.statsConfig;
+        } else {
+          const character = state.characters.find((c: any) => c.id === characterId);
+          statsConfig = character?.statsConfig;
+        }
         sessionStats = {
           ...sessionStats,
           characterStats: {
             ...sessionStats.characterStats,
-            [characterId]: createDefaultCharacterStats(character?.statsConfig),
+            [characterId]: createDefaultCharacterStats(statsConfig),
           },
         };
       }

@@ -1,0 +1,92 @@
+[
+  {
+    "url": "https://www.reddit.com/r/SillyTavernAI/comments/1pjhtnj/dynamic_world_info_guide",
+    "name": "Dynamic World Info guide. : r/SillyTavernAI - Reddit",
+    "snippet": "This guide presents a systematic approach to creating dynamic, context-aware prompt injection systems in SillyTavern using World Info entries, ... Overall, what's the best settings for Lorebooks? : r/SillyTavernAI Lorebooks (world info) being added dynamically into prompts - Reddit More results from www.reddit.com",
+    "host_name": "www.reddit.com",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/discussions/3466",
+    "name": "Dynamic World Building via Ai-driven persistent state and function",
+    "snippet": "I've got some ideas for enhancing the dynamic world-building capabilities. I'd love to see them implemented either in the main codebase or as an extension.",
+    "host_name": "github.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://docs.sillytavern.app/usage/core-concepts/worldinfo",
+    "name": "World Info | docs.ST.app - SillyTavern Documentation",
+    "snippet": "World Info (also known as Lorebooks or Memory Books) is a powerful tool available in ST to insert prompts dynamically into your chat to help guide the AI ... Missing: practices | Show results with: practices",
+    "host_name": "docs.sillytavern.app",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://blog.meganova.ai/5-lorebook-entry-types-every-character-needs-complete-setup-guide",
+    "name": "5 Lorebook Entry Types Every Character Needs (Complete Setup",
+    "snippet": "Lorebook Entries: Dynamic (fires only when relevant); Can swap lorebooks for different scenarios; Easy to update without touching character card ...",
+    "host_name": "blog.meganova.ai",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.youtube.com/watch?v=mlf1PrMxh74",
+    "name": "Mastering Lorebooks in SillyTavern - YouTube",
+    "snippet": "thank you for this, I've been stumbling through this, I barely was starting to understand LoreBooks in Janitor Ai and then to move to ... Missing: attributes dynamic entries practices",
+    "host_name": "www.youtube.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SillyTavern/SillyTavern/issues/5193",
+    "name": "Allow World Info Entries to Support Stateful / Conditional Activation",
+    "snippet": "I would like to request support for stateful / mutually-exclusive activation logic in World Info (Lorebook) entries. World Info entries are ...",
+    "host_name": "github.com",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.arsturn.com/blog/sillytavernai-lorebooks-with-gemini-2-5-a-complete-guide",
+    "name": "SillyTavernAI Lorebooks Guide with Gemini 2.5 - Arsturn",
+    "snippet": "Unlock immersive AI roleplaying. Learn how to create dynamic SillyTavernAI Lorebooks with Gemini 2.5 for endless, creative storytelling.",
+    "host_name": "www.arsturn.com",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.scribd.com/document/874786907/SillyTavern-All-Compressed",
+    "name": "SillyTavern User Guide and Features | PDF - Scribd",
+    "snippet": "It functions like a dynamic dictionary that only inserts relevant information from World Info entries when keywords associated with the ...",
+    "host_name": "www.scribd.com",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://psychelicht.com/en/chub-ai-review",
+    "name": "Chub AI: Complete Guide to CharacterHub, Mars & Lorebooks",
+    "snippet": "Use the “Always Active” setting sparingly: Some Lorebook entries can be set to always inject regardless of keywords. Use this only for truly ...",
+    "host_name": "psychelicht.com",
+    "rank": 8,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://gitgud.io/pregmodfan/fc-pregmod/-/issues/4969",
+    "name": "Discussion: LLM (AI) Integration (#4969) - fc-pregmod - GitGud.io",
+    "snippet": "Use updated logic for family relationships, moving relationship information to Lorebook entries. This reduces default Description token ...",
+    "host_name": "gitgud.io",
+    "rank": 9,
+    "date": "",
+    "favicon": ""
+  }
+]

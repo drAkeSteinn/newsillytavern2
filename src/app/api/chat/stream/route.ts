@@ -51,6 +51,7 @@ import type { EmbeddingsChatSettings, ToolsSettings } from '@/types';
 import {
   getAllToolDefinitions,
   getToolDefinitionsByIds,
+  resolveToolDefinitionsKeys,
   executeTool,
   getSessionReminders,
   createToolCallAccumulator,
@@ -296,15 +297,6 @@ export async function POST(request: NextRequest) {
       usePromptBasedFallback: body.toolsSettings?.usePromptBasedFallback ?? false,
       disabledTools: body.toolsSettings?.disabledTools || [],
     };
-    
-    // Debug: Log sessionStats event fields
-    console.log(`[Stream Route] sessionStats event fields:`, {
-      hasSessionStats: !!sessionStats,
-      ultimo_objetivo_completado: sessionStats?.ultimo_objetivo_completado,
-      ultima_solicitud_realizada: sessionStats?.ultima_solicitud_realizada,
-      ultima_solicitud_completada: sessionStats?.ultima_solicitud_completada,
-      ultima_accion_realizada: sessionStats?.ultima_accion_realizada,
-    });
 
     if (!llmConfig) {
       return createErrorResponse('No LLM configuration provided', 400);
@@ -344,14 +336,30 @@ export async function POST(request: NextRequest) {
     const stats = getContextStats(messages);
 
     // Process lorebooks and get matched entries
-    const { plan: lorebookPlan } = buildLorebookSectionForPrompt(
+    const { plan: lorebookPlan, lorebookAttributeKeys, lorebookDebugEntries } = buildLorebookSectionForPrompt(
       messages,
       lorebooks,
       {
         scanDepth: contextConfig.scanDepth,
-        tokenBudget: 2048
-      }
+      },
+      { sessionStats, characterId: effectiveCharacter?.id, characters: allCharacters }
     );
+
+    // ========================================
+    // DEBUG: Build lorebook debug data for SSE event
+    // ========================================
+    const lorebookDebugData = {
+      lorebookAttributeKeys,
+      debugEntries: lorebookDebugEntries,
+      availableStats: sessionStats
+        ? Object.fromEntries(
+            Object.entries(sessionStats.characterStats || {}).map(([charId, cs]) => [
+              charId,
+              cs?.attributeValues ? { ...cs.attributeValues } : '(no values)',
+            ])
+          )
+        : '(no sessionStats)',
+    };
 
     // ========================================
     // Embeddings Context Retrieval
@@ -404,7 +412,8 @@ export async function POST(request: NextRequest) {
       soundSettings,  // Pass sound settings for {{sonidos}} template
       questTemplates,  // Pass quest templates for {{activeQuests}} key resolution
       sessionQuests,   // Pass session quests for {{activeQuests}} key resolution
-      questSettings    // Pass quest settings for {{activeQuests}} key resolution
+      questSettings,    // Pass quest settings for {{activeQuests}} key resolution
+      lorebookAttributeKeys
     );
 
     // Build key resolution context for HUD context and quest sections
@@ -428,6 +437,16 @@ export async function POST(request: NextRequest) {
       personaDescription: persona?.description,
       personaResolvedStats: streamPersonaResolvedStats,
     });
+    // Build outlet sections map from lorebook plan for {{outlet::name}} macro resolution
+    const outletSections: Record<string, string> = {};
+    if (lorebookPlan?.outletSections.length) {
+      for (const outletSection of lorebookPlan.outletSections) {
+        const match = outletSection.label.match(/^World Info \((.+)\)$/);
+        const outletName = match ? match[1] : outletSection.label;
+        outletSections[outletName] = outletSection.content;
+      }
+    }
+
     const keyContext = buildKeyResolutionContext(
       effectiveCharacter,
       effectiveUserName,
@@ -435,7 +454,13 @@ export async function POST(request: NextRequest) {
       resolvedStats,
       sessionStats,  // Pass sessionStats for {{eventos}} key resolution
       soundTriggers,   // Pass soundTriggers for {{sonidos}} key resolution
-      soundSettings  // Pass sound settings for {{sonidos}} template
+      soundSettings,  // Pass sound settings for {{sonidos}} template
+      streamPersonaResolvedStats,  // Pass persona resolved stats
+      questTemplates,  // Pass quest templates for {{activeQuests}}
+      sessionQuests,   // Pass session quests for {{activeQuests}}
+      questSettings,    // Pass quest settings
+      outletSections,   // Pass outlet sections for {{outlet::name}}
+      lorebookAttributeKeys  // Pass lorebook attribute keys for {{injectionKey}}
     );
 
     // Build HUD context section if enabled (now resolves keys!)
@@ -532,6 +557,13 @@ export async function POST(request: NextRequest) {
     
     const toolsEnabled = toolsSettings.enabled && availableTools.length > 0;
 
+    // Resolve {{keys}} in tool descriptions and parameter descriptions
+    // This ensures {{user}}, {{char}}, {{userpersona}}, stats keys, etc.
+    // are properly replaced before tools are sent to the LLM (both native and prompt-based)
+    if (toolsEnabled && availableTools.length > 0) {
+      availableTools = resolveToolDefinitionsKeys(availableTools, keyContext);
+    }
+
     // Determine if the current provider supports native tool calling
     const supportsNativeTools = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama', 'z-ai', 'grok', 'text-generation-webui', 'koboldcpp'].includes(llmConfig.provider);
     // If usePromptBasedFallback is true, disable native tools so prompt-based injection is used instead
@@ -560,11 +592,22 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare messages with new user message (use context-windowed messages)
+    // Check if the last message is already the user's current message to avoid duplicates.
+    // The frontend adds the message to the store BEFORE sending the request, so the
+    // messages array may already contain the user's message. Without this check, the
+    // message gets duplicated → buildChatMessages merges them → LLM sees "hola\nhola".
+    const lastCtxMessage = contextWindow.messages[contextWindow.messages.length - 1];
+    const isLastMessageCurrentUser = lastCtxMessage?.role === 'user' &&
+      lastCtxMessage?.content === sanitizedMessage;
+
     // Inject summary at the START of chat history if it exists
-    let allMessages = summaryMessage 
-      ? [summaryMessage, ...contextWindow.messages] 
+    let allMessages = summaryMessage
+      ? [summaryMessage, ...contextWindow.messages]
       : [...contextWindow.messages];
-    allMessages = [...allMessages, createUserMessage(sanitizedMessage)];
+
+    if (!isLastMessageCurrentUser) {
+      allMessages = [...allMessages, createUserMessage(sanitizedMessage)];
+    }
 
     // Create a TransformStream for SSE
     const stream = new ReadableStream({
@@ -575,6 +618,14 @@ export async function POST(request: NextRequest) {
             type: 'prompt_data',
             promptSections: allPromptSections
           }));
+
+          // DEBUG: Send lorebook attribute resolution debug data
+          if (lorebookDebugEntries && lorebookDebugEntries.length > 0) {
+            controller.enqueue(createSSEJSON({
+              type: 'lorebook_debug',
+              ...lorebookDebugData,
+            }));
+          }
           
           // Send embeddings context metadata to the client for UI display
           if (embeddingsResult.found) {
@@ -746,11 +797,14 @@ Y cambiar mi expresión:
                     }
                   }
 
-                  // No tool calls detected - stream the buffered content
+                  // No tool calls detected - stream the buffered content (clean artifacts)
                   console.log(`[Z.ai+Tools] No tool calls detected, streaming ${roundContent.length} chars`);
-                  for (const chunk of splitIntoChunks(roundContent)) {
+                  const cleanedZaiContent = cleanModelArtifacts(roundContent);
+                  for (const chunk of splitIntoChunks(cleanedZaiContent)) {
                     controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                   }
+                  // Fix: Update accumulatedContent to cleaned version
+                  accumulatedContent = cleanModelArtifacts(accumulatedContent);
                 } else if (isToolRound && toolContextMessages.length > 0) {
                   // Follow-up call after tool execution
                   console.log(`[Z.ai+Tools] Tool round ${toolRound}: sending ${toolContextMessages.length} messages (incl. tool results)`);
@@ -897,6 +951,9 @@ Y cambiar mi expresión:
                       controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                     }
                   }
+                  // Fix: Update accumulatedContent to cleaned version so memory extraction/reinforcement
+                  // operates on clean text (without model artifacts, tool syntax, etc.)
+                  accumulatedContent = cleanModelArtifacts(accumulatedContent);
                   toolRound = maxToolRounds + 1;
                   continue;
                 } else if (shouldUseTools && isToolRound) {
@@ -1123,6 +1180,8 @@ Y cambiar mi expresión:
                       controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                     }
                   }
+                  // Fix: Update accumulatedContent to cleaned version
+                  accumulatedContent = cleanModelArtifacts(accumulatedContent);
                   toolRound = maxToolRounds + 1;
                   continue;
                 } else if (shouldUseTools && isToolRound) {
@@ -1231,10 +1290,14 @@ Y cambiar mi expresión:
                     }
                   }
 
+                  // No tool calls detected - stream buffered content (clean artifacts)
                   console.log(`[Grok+Tools] No tool calls detected, streaming ${roundContent.length} chars`);
-                  for (const chunk of splitIntoChunks(roundContent)) {
+                  const cleanedGrokContent = cleanModelArtifacts(roundContent);
+                  for (const chunk of splitIntoChunks(cleanedGrokContent)) {
                     controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                   }
+                  // Fix: Update accumulatedContent to cleaned version
+                  accumulatedContent = cleanModelArtifacts(accumulatedContent);
                   toolRound = maxToolRounds + 1;
                   continue;
                 } else if (shouldUseTools && isToolRound) {
@@ -1307,10 +1370,14 @@ Y cambiar mi expresión:
                     }
                   }
 
+                  // No tool calls detected - stream buffered content (clean artifacts)
                   console.log(`[TextGenWebUI+Tools] No tool calls detected, streaming ${roundContent.length} chars`);
-                  for (const chunk of splitIntoChunks(roundContent)) {
+                  const cleanedTGWContent = cleanModelArtifacts(roundContent);
+                  for (const chunk of splitIntoChunks(cleanedTGWContent)) {
                     controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
                   }
+                  // Fix: Update accumulatedContent to cleaned version
+                  accumulatedContent = cleanModelArtifacts(accumulatedContent);
                   toolRound = maxToolRounds + 1;
                   continue;
                 } else {

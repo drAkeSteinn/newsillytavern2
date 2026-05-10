@@ -2,10 +2,10 @@
 // Lorebook Injector - Inject lorebook content into prompts
 // ============================================
 //
-// This module provides position-aware lorebook injection.
-// Lorebook entries have a `position` field (0-7) that determines
-// WHERE in the prompt the content is injected:
+// This module provides position-aware lorebook injection for TRADITIONAL entries.
+// Attribute-type entries are handled via {{injectionKey}} resolution in key-resolver.ts
 //
+// Position values for traditional entries:
 // 0 = After system prompt
 // 1 = After last user message
 // 2 = Before last user message
@@ -14,20 +14,16 @@
 // 5 = At top of chat (before chat history)
 // 6 = At bottom of chat (after all messages)
 // 7 = Outlet (custom position, uses outletName field)
-//
-// System-level positions (0, 5, 7) → injected into the system message
-// Chat-level positions (1-4) → injected into specific chat messages
-// Bottom position (6) → appended at the end of all content
 
-import type { LorebookEntry, PromptSection, ChatMessage, Lorebook } from '@/types';
+import type { PromptSection, ChatMessage, Lorebook } from '@/types';
 import { 
   scanForLorebookEntries, 
   filterByProbability, 
   applyTokenBudget,
+  applyGroupScoring,
   estimateTokens,
   groupByPosition,
   groupByOutlet,
-  getEntriesByPosition,
   formatEntriesWithComments,
   LorebookScanResult 
 } from './scanner';
@@ -83,26 +79,6 @@ export interface LorebookInjectOptions {
   includeConstants?: boolean;    // Include constant entries
 }
 
-/**
- * Default inject options
- */
-export const DEFAULT_INJECT_OPTIONS: LorebookInjectOptions = {
-  includeConstants: true,
-};
-
-// ============================================
-// Legacy types (kept for backward compatibility)
-// ============================================
-
-/**
- * @deprecated Use LorebookInjectionPlan instead
- */
-export interface LorebookInjectResult {
-  matchedEntries: LorebookScanResult[];
-  lorebookSection: PromptSection | null;
-  totalTokens: number;
-}
-
 // ============================================
 // Lorebook color for prompt viewer
 // ============================================
@@ -116,13 +92,9 @@ const LOREBOOK_COLOR = 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark
 /**
  * Build a complete lorebook injection plan with position-aware sections.
  * 
- * This replaces the old `processLorebooks()` function. It:
- * - Scans messages for matching entries (with per-entry overrides)
- * - Filters by probability
- * - Applies token budget from lorebook settings or options
- * - Groups entries by position
- * - Builds properly labeled sections for each position
- *
+ * Only processes TRADITIONAL entries. Attribute-type entries are resolved
+ * separately via resolveLorebookAttributeKeys() and injected via {{injectionKey}}.
+ * 
  * @param messages Chat messages to scan for keywords
  * @param lorebooks Active lorebooks to check
  * @param options Injection options (token budget overrides scan options)
@@ -146,7 +118,7 @@ export function buildLorebookInjectionPlan(
     };
   }
 
-  // Scan for matching entries (with per-entry overrides for scanDepth, etc.)
+  // Scan for matching traditional entries only (attribute entries are skipped by scanner)
   const scanResults = scanForLorebookEntries(messages, lorebooks, {
     scanDepth: options.scanDepth,
     caseSensitive: options.caseSensitive,
@@ -157,14 +129,25 @@ export function buildLorebookInjectionPlan(
   // Filter by probability
   const probabilityFiltered = filterByProbability(scanResults);
 
+  // Apply group scoring (select one entry per group based on weight)
+  const groupFiltered = applyGroupScoring(probabilityFiltered);
+
   // Determine effective token budget:
-  // Priority: options.tokenBudget > first active lorebook's settings > default 2048
-  const effectiveTokenBudget = options.tokenBudget
-    ?? lorebooks.find(lb => lb.active)?.settings.tokenBudget
-    ?? 2048;
+  // Priority: options.tokenBudget > minimum of all active lorebooks' budgets > default 2048
+  let effectiveTokenBudget: number;
+  if (options.tokenBudget != null && options.tokenBudget > 0) {
+    effectiveTokenBudget = options.tokenBudget;
+  } else {
+    const activeBudgets = lorebooks
+      .filter(lb => lb.settings.tokenBudget > 0)
+      .map(lb => lb.settings.tokenBudget);
+    effectiveTokenBudget = activeBudgets.length > 0
+      ? Math.min(...activeBudgets)
+      : 2048;
+  }
 
   // Apply token budget
-  const budgetFiltered = applyTokenBudget(probabilityFiltered, effectiveTokenBudget);
+  const budgetFiltered = applyTokenBudget(groupFiltered, effectiveTokenBudget);
 
   // Calculate total tokens
   const totalTokens = budgetFiltered.reduce(
@@ -261,143 +244,3 @@ function buildPromptSection(
     color: LOREBOOK_COLOR
   };
 }
-
-/**
- * Get lorebook entries for a specific position
- * This is useful for advanced positioning (before/after messages)
- */
-export function getLorebookForPosition(
-  messages: ChatMessage[],
-  lorebooks: Lorebook[],
-  position: number,
-  options: LorebookInjectOptions = {}
-): LorebookScanResult[] {
-  const opts = { ...DEFAULT_INJECT_OPTIONS, ...options };
-
-  const scanResults = scanForLorebookEntries(messages, lorebooks, {
-    scanDepth: opts.scanDepth,
-    caseSensitive: opts.caseSensitive,
-    matchWholeWords: opts.matchWholeWords,
-    includeConstants: opts.includeConstants
-  });
-
-  const probabilityFiltered = filterByProbability(scanResults);
-  const positionFiltered = getEntriesByPosition(probabilityFiltered, position);
-
-  return applyTokenBudget(positionFiltered, opts.tokenBudget ?? 2048);
-}
-
-// ============================================
-// Legacy API (backward compatibility)
-// ============================================
-
-/**
- * Build lorebook section content from entries
- * @deprecated Use buildLorebookInjectionPlan() instead
- */
-export function buildLorebookSection(
-  results: LorebookScanResult[]
-): string {
-  return formatEntriesWithComments(results);
-}
-
-/**
- * Create a prompt section for lorebook content
- * @deprecated Use buildLorebookInjectionPlan() instead
- */
-export function createLorebookPromptSection(
-  results: LorebookScanResult[]
-): PromptSection | null {
-  if (results.length === 0) return null;
-
-  const content = formatEntriesWithComments(results);
-  if (!content.trim()) return null;
-
-  return {
-    type: 'lorebook',
-    label: 'World Information',
-    content,
-    color: LOREBOOK_COLOR
-  };
-}
-
-/**
- * Process lorebooks for a chat context (legacy API)
- * @deprecated Use buildLorebookInjectionPlan() instead
- */
-export function processLorebooks(
-  messages: ChatMessage[],
-  lorebooks: Lorebook[],
-  options: LorebookInjectOptions = {}
-): LorebookInjectResult {
-  const plan = buildLorebookInjectionPlan(messages, lorebooks, options);
-
-  // Combine all system sections into a single section for backward compat
-  const allSections = [
-    plan.position0Section,
-    plan.position5Section,
-    plan.position6Section,
-    ...plan.outletSections
-  ].filter((s): s is PromptSection => s !== null);
-
-  const lorebookSection = allSections.length > 0
-    ? combineLorebookSections(allSections)
-    : null;
-
-  return {
-    matchedEntries: plan.allEntries,
-    lorebookSection,
-    totalTokens: plan.totalTokens
-  };
-}
-
-/**
- * Format lorebook entries as context string
- * @deprecated Use formatEntriesWithComments() from scanner instead
- */
-export function formatLorebookContext(
-  entries: LorebookScanResult[]
-): string {
-  return formatEntriesWithComments(entries);
-}
-
-/**
- * Combine multiple lorebook sections into one
- */
-export function combineLorebookSections(
-  sections: (PromptSection | null)[]
-): PromptSection | null {
-  const validSections = sections.filter((s): s is PromptSection => s !== null);
-  
-  if (validSections.length === 0) return null;
-
-  const combinedContent = validSections
-    .map(s => s.content)
-    .join('\n\n');
-
-  return {
-    type: 'lorebook',
-    label: 'World Information',
-    content: combinedContent,
-    color: LOREBOOK_COLOR
-  };
-}
-
-/**
- * Check if any lorebook has entries
- */
-export function hasActiveLorebookEntries(lorebooks: Lorebook[]): boolean {
-  return lorebooks.some(
-    lb => lb.active && lb.entries.some(e => !e.disable)
-  );
-}
-
-/**
- * Get total entry count across all active lorebooks
- */
-export function getTotalEntryCount(lorebooks: Lorebook[]): number {
-  return lorebooks
-    .filter(lb => lb.active)
-    .reduce((sum, lb) => sum + lb.entries.filter(e => !e.disable).length, 0);
-}
-
