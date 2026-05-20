@@ -59,7 +59,7 @@
       "stopStrings": [],
       "stream": true
     },
-    "isActive": true,
+    "isActive": false,
     "id": "2d7a0ecb-31f9-44df-b3e8-c2cc75789111",
     "mockResponse": "Accion=hab1 sd"
   },
@@ -81,7 +81,28 @@
       "stopStrings": [],
       "stream": true
     },
-    "isActive": false,
+    "isActive": true,
     "id": "14105a9e-cebd-4a80-b717-c4ed015edb67"
+  },
+  {
+    "name": "Grok",
+    "provider": "grok",
+    "endpoint": "https://api.x.ai/v1",
+    "apiKey": "",
+    "model": "grok-4-1-fast-non-reasoning",
+    "parameters": {
+      "temperature": 0.7,
+      "topP": 0.9,
+      "topK": 40,
+      "maxTokens": 4096,
+      "contextSize": 9000,
+      "repetitionPenalty": 1.1,
+      "frequencyPenalty": 0,
+      "presencePenalty": 0,
+      "stopStrings": [],
+      "stream": true
+    },
+    "isActive": false,
+    "id": "a4b0a767-3b3c-48fd-9439-231398d2139c"
   }
 ]

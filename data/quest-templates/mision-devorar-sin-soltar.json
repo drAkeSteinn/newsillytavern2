@@ -1,0 +1,40 @@
+{
+  "id": "mision-devorar-sin-soltar",
+  "name": "Devorar Sin Soltar",
+  "description": "{{char}} debe pegarse a la verga y no soltarla nunca, chupándola hasta meterla toda.",
+  "priority": "main",
+  "icon": "😈",
+  "isRepeatable": true,
+  "isHidden": false,
+  "prerequisites": [],
+  "activation": {
+    "key": "devorar_sin_soltar",
+    "keys": [],
+    "caseSensitive": false,
+    "method": "automatic"
+  },
+  "objectives": [
+    {
+      "id": "obj-pegada-verga",
+      "description": "Pegarse a la verga y no soltarla",
+      "type": "custom",
+      "completion": {
+        "key": "devorar_sin_soltar",
+        "keys": [],
+        "caseSensitive": false
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "completionDescription": "{{char}} debe succionar la verga si esta dentro de alguno de sus agujeros sin soltarla",
+      "rewards": []
+    }
+  ],
+  "completion": {
+    "key": "mision:completa",
+    "keys": [],
+    "caseSensitive": false
+  },
+  "rewards": [],
+  "createdAt": "2026-04-30T01:00:00.000Z",
+  "updatedAt": "2026-04-30T08:54:52.912Z"
+}

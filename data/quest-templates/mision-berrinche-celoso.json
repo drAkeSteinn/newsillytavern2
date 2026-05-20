@@ -1,0 +1,47 @@
+{
+  "id": "mision-berrinche-celoso",
+  "name": "Berrinche Celoso",
+  "description": "Aitana se pone berrinchuda y celosa tóxica porque siente que le quitan atención.",
+  "priority": "main",
+  "icon": "😡",
+  "isRepeatable": true,
+  "isHidden": false,
+  "prerequisites": [],
+  "activation": {
+    "key": "berrinche_celoso",
+    "keys": [],
+    "caseSensitive": false,
+    "method": "automatic"
+  },
+  "objectives": [
+    {
+      "id": "obj-berrinche",
+      "description": "Ponerse berrinchuda y celosa",
+      "type": "custom",
+      "completion": {
+        "key": "berrinche_celoso",
+        "keys": [],
+        "caseSensitive": false
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "completionDescription": "Aitana se puso toxica y celosa",
+      "rewards": [],
+      "characterFilter": {
+        "enabled": true,
+        "mode": "include",
+        "characterIds": [
+          "f162ea36-d5ef-4813-8642-8d7ca178e389"
+        ]
+      }
+    }
+  ],
+  "completion": {
+    "key": "mision:completa",
+    "keys": [],
+    "caseSensitive": false
+  },
+  "rewards": [],
+  "createdAt": "2026-04-30T01:00:00.000Z",
+  "updatedAt": "2026-04-30T08:44:05.251Z"
+}

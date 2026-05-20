@@ -88,54 +88,59 @@ export function resolveLorebookAttributeKeys(
     return { keys: result, debugEntries };
   }
 
-  for (const lorebook of lorebooks) {
-    // Note: lorebook.active check removed — frontend already filters active lorebooks
-    // via activeLorebookIds before sending to API. Trusting frontend selection.
+  // ============================================
+  // Phase 1: Collect ALL attribute entries across all lorebooks
+  // ============================================
+  // We need to gather them first so we can sort by priority (entry.order)
+  // and handle deduplication when multiple entries share the same injectionKey.
+  interface CollectedEntry {
+    entry: LorebookEntry;
+    lorebookId: string;
+    lorebookName: string;
+  }
 
+  const allAttributeEntries: CollectedEntry[] = [];
+
+  for (const lorebook of lorebooks) {
     for (const entry of lorebook.entries) {
-      // Only process attribute-type entries that are enabled and have an injectionKey
       if (entry.entryType !== 'attribute' || entry.disable) continue;
       if (!entry.attributeConfig?.injectionKey) continue;
 
-      const config = entry.attributeConfig;
+      allAttributeEntries.push({
+        entry,
+        lorebookId: lorebook.id,
+        lorebookName: lorebook.name,
+      });
+    }
+  }
+
+  // Sort by entry.order ascending — lower order = higher priority
+  // This ensures that when multiple entries share an injectionKey,
+  // the one with the lowest order (highest priority) is processed first.
+  allAttributeEntries.sort((a, b) => a.entry.order - b.entry.order);
+
+  // ============================================
+  // Phase 2: Resolve each entry and group by injectionKey
+  // ============================================
+  // For each injectionKey, only ONE entry wins — the highest priority
+  // (lowest entry.order) whose conditions match. If no conditions match
+  // across any entry for a given key, the key resolves to empty string.
+
+  // Track which injectionKeys have already been resolved with a match
+  const resolvedKeys = new Map<string, { content: string; entryOrder: number }>();
+
+  for (const { entry, lorebookId, lorebookName } of allAttributeEntries) {
+    const config = entry.attributeConfig!;
+    const injectionKey = config.injectionKey;
+
+    // If this injectionKey already has a resolved match from a higher-priority entry, skip
+    if (resolvedKeys.has(injectionKey)) {
+      // Still build debug entry to show it was skipped
       const effectiveCharId = resolveCharacterId(config.characterId, context);
       const attrVal = getAttributeValue(effectiveCharId, config.attributeKey, context);
 
-      // Evaluate conditions and collect debug info
-      const conditionResults: LorebookAttrDebugEntry['conditionResults'] = [];
-
-      if (attrVal !== null && attrVal !== undefined) {
-        // Static mode
-        if (config.mode === 'static' && config.staticCondition) {
-          const sc = config.staticCondition;
-          const matched = evaluateCondition(attrVal, sc.operator, sc.value);
-          conditionResults.push({
-            operator: sc.operator,
-            compareValue: sc.value,
-            matched,
-            content: entry.content || undefined,
-            evaluationDetail: formatEvalDetail(attrVal, sc.operator, sc.value, matched),
-          });
-        }
-        // Dynamic mode
-        if (config.mode === 'dynamic' && config.dynamicConditions) {
-          for (const dc of config.dynamicConditions) {
-            const matched = evaluateCondition(attrVal, dc.operator, dc.value);
-            conditionResults.push({
-              operator: dc.operator,
-              compareValue: dc.value,
-              matched,
-              content: dc.content?.slice(0, 100),
-              evaluationDetail: formatEvalDetail(attrVal, dc.operator, dc.value, matched),
-              priority: dc.priority ?? 0,
-            });
-          }
-        }
-      }
-
-      // Build debug entry
-      const debugEntry: LorebookAttrDebugEntry = {
-        injectionKey: config.injectionKey,
+      debugEntries.push({
+        injectionKey,
         characterId: config.characterId,
         resolvedCharId: effectiveCharId,
         attributeKey: config.attributeKey,
@@ -143,21 +148,104 @@ export function resolveLorebookAttributeKeys(
         attributeValueType: attrVal === null ? 'null' : typeof attrVal,
         mode: config.mode || 'unknown',
         dynamicResolution: config.dynamicResolution || 'concat-all',
-        conditionResults,
-        finalResult: '',
-      };
+        conditionResults: [{
+          operator: '(skipped)',
+          compareValue: '-',
+          matched: false,
+          evaluationDetail: `Omitido: ya resuelto por entrada con orden ${resolvedKeys.get(injectionKey)!.entryOrder} (mayor prioridad)`,
+        }],
+        finalResult: '(omitido — mayor prioridad ya resuelto)',
+      });
+      continue;
+    }
 
-      const resolved = resolveSingleAttributeEntry(entry, context);
+    const effectiveCharId = resolveCharacterId(config.characterId, context);
+    const attrVal = getAttributeValue(effectiveCharId, config.attributeKey, context);
 
-      debugEntry.finalResult = resolved || '(empty)';
+    // Evaluate conditions and collect debug info
+    const conditionResults: LorebookAttrDebugEntry['conditionResults'] = [];
 
-      // ALWAYS add the key to the map:
-      // - Condition met → resolved content (entry.content or dynamic content)
-      // - Condition not met or attribute not found → empty string (key resolves to nothing)
-      // This ensures {{injectionKey}} is ALWAYS replaced, never left as literal text
-      result[entry.attributeConfig.injectionKey] = resolved || '';
+    if (attrVal !== null && attrVal !== undefined) {
+      // Static mode
+      if (config.mode === 'static' && config.staticCondition) {
+        const sc = config.staticCondition;
+        const matched = evaluateCondition(attrVal, sc.operator, sc.value);
+        conditionResults.push({
+          operator: sc.operator,
+          compareValue: sc.value,
+          matched,
+          content: entry.content || undefined,
+          evaluationDetail: formatEvalDetail(attrVal, sc.operator, sc.value, matched),
+        });
+      }
+      // Dynamic mode
+      if (config.mode === 'dynamic' && config.dynamicConditions) {
+        for (const dc of config.dynamicConditions) {
+          const matched = evaluateCondition(attrVal, dc.operator, dc.value);
+          conditionResults.push({
+            operator: dc.operator,
+            compareValue: dc.value,
+            matched,
+            content: dc.content?.slice(0, 100),
+            evaluationDetail: formatEvalDetail(attrVal, dc.operator, dc.value, matched),
+            priority: dc.priority ?? 0,
+          });
+        }
+      }
+    }
 
-      debugEntries.push(debugEntry);
+    // Resolve the entry's content
+    const resolved = resolveSingleAttributeEntry(entry, context);
+
+    // Build debug entry
+    const debugEntry: LorebookAttrDebugEntry = {
+      injectionKey,
+      characterId: config.characterId,
+      resolvedCharId: effectiveCharId,
+      attributeKey: config.attributeKey,
+      attributeValue: attrVal,
+      attributeValueType: attrVal === null ? 'null' : typeof attrVal,
+      mode: config.mode || 'unknown',
+      dynamicResolution: config.dynamicResolution || 'concat-all',
+      conditionResults,
+      finalResult: resolved || '(empty)',
+    };
+
+    debugEntries.push(debugEntry);
+
+    // Mark this injectionKey as resolved
+    // If conditions matched → store the resolved content
+    // If conditions didn't match → mark as "resolved but empty" so lower-priority
+    // entries for the same key are still skipped. Only ONE entry per injectionKey
+    // should inject content — the highest priority match.
+    if (resolved) {
+      resolvedKeys.set(injectionKey, { content: resolved, entryOrder: entry.order });
+    } else {
+      // Even if this entry's conditions didn't match, we DON'T mark the key as
+      // resolved yet — a lower-priority entry might still match.
+      // The key is only "taken" when a match is found.
+    }
+  }
+
+  // ============================================
+  // Phase 3: Build the final result map
+  // ============================================
+  // For each injectionKey that appeared in ANY attribute entry:
+  // - If a match was found → use the highest-priority matched content
+  // - If no match across ANY entry → empty string ({{key}} resolves to nothing)
+
+  // Collect all injectionKeys that appeared
+  const allInjectionKeys = new Set<string>();
+  for (const { entry } of allAttributeEntries) {
+    allInjectionKeys.add(entry.attributeConfig!.injectionKey);
+  }
+
+  for (const key of allInjectionKeys) {
+    if (resolvedKeys.has(key)) {
+      result[key] = resolvedKeys.get(key)!.content;
+    } else {
+      // No entry matched for this key — resolve to empty string
+      result[key] = '';
     }
   }
 

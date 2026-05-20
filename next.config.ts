@@ -7,11 +7,8 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
-  // Externalize native packages so Turbopack doesn't try to bundle platform-specific bindings
-  // This prevents "could not resolve @lancedb/lancedb-win32-x64-msvc" errors on any platform
-  serverExternalPackages: [
-    "@lancedb/lancedb",
-    "apache-arrow",
+  allowedDevOrigins: [
+    "preview-chat-346996a9-c94c-4d4e-8696-5c557cf88d3e.space-z.ai",
   ],
 };
 

@@ -1,0 +1,40 @@
+{
+  "id": "mision-arcadas-violentas",
+  "name": "Facefuck delicioso",
+  "description": "Se requiere iniciar la penetracion de la boca con movimientos rapidos",
+  "priority": "main",
+  "icon": "😵‍💫",
+  "isRepeatable": true,
+  "isHidden": false,
+  "prerequisites": [],
+  "activation": {
+    "key": "arcadas_violentas",
+    "keys": [],
+    "caseSensitive": false,
+    "method": "automatic"
+  },
+  "objectives": [
+    {
+      "id": "obj-arcadas-violentas",
+      "description": "Hacer arcadas violentas de placer",
+      "type": "custom",
+      "completion": {
+        "key": "arcadas_violentas",
+        "keys": [],
+        "caseSensitive": false
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "completionDescription": "{{char}} esta siendo penetrada freneticamente la garganta mientras la agarran de la cabeza, contra la pared o en la cama boca arriba con la cabeza colgando",
+      "rewards": []
+    }
+  ],
+  "completion": {
+    "key": "mision:completa",
+    "keys": [],
+    "caseSensitive": false
+  },
+  "rewards": [],
+  "createdAt": "2026-04-30T01:00:00.000Z",
+  "updatedAt": "2026-04-30T08:43:09.303Z"
+}

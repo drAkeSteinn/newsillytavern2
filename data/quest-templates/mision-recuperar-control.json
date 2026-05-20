@@ -1,0 +1,57 @@
+{
+  "id": "mision-recuperar-control",
+  "name": "Recuperar un Poco de Control",
+  "description": "Después de una sesión extrema, {{char}} necesita bajar un poco la intensidad para recuperar algo de lucidez.",
+  "priority": "main",
+  "icon": "🧠",
+  "isRepeatable": true,
+  "isHidden": false,
+  "prerequisites": [
+    "mision-glory-hole-humana"
+  ],
+  "activation": {
+    "key": "recuperar_control",
+    "keys": [],
+    "caseSensitive": false,
+    "method": "turn",
+    "turnInterval": 9
+  },
+  "objectives": [
+    {
+      "id": "obj-bajar-estupidez",
+      "description": "Bajar un poco la estupidez",
+      "type": "custom",
+      "completion": {
+        "key": "bajar_estupidez",
+        "keys": [],
+        "caseSensitive": false
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "completionDescription": "{{char}} bajó un poco su estupidez",
+      "rewards": []
+    },
+    {
+      "id": "obj-bajar-adiccion",
+      "description": "Bajar un poco la adicción",
+      "type": "custom",
+      "completion": {
+        "key": "bajar_adiccion",
+        "keys": [],
+        "caseSensitive": false
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "completionDescription": "{{char}} bajó un poco su adicción",
+      "rewards": []
+    }
+  ],
+  "completion": {
+    "key": "mision:completa",
+    "keys": [],
+    "caseSensitive": false
+  },
+  "rewards": [],
+  "createdAt": "2026-04-30T01:00:00.000Z",
+  "updatedAt": "2026-04-30T09:00:55.114Z"
+}

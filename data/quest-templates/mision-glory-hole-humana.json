@@ -1,0 +1,71 @@
+{
+  "id": "mision-glory-hole-humana",
+  "name": "Glory Hole Humana",
+  "description": "{{char}} debe ser usada como glory hole personal: facefuck brutal, arcadas y tragar todo.",
+  "priority": "main",
+  "icon": "🕳️",
+  "isRepeatable": false,
+  "isHidden": false,
+  "prerequisites": [
+    "mision-modo-instinto"
+  ],
+  "activation": {
+    "key": "glory_hole",
+    "keys": [],
+    "caseSensitive": false,
+    "method": "turn",
+    "turnInterval": 5
+  },
+  "objectives": [
+    {
+      "id": "obj-facefuck-brutal",
+      "description": "Facefuck brutal con arcadas",
+      "type": "custom",
+      "completion": {
+        "key": "facefuck_brutal",
+        "keys": [],
+        "caseSensitive": false
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "completionDescription": "{{char}} recibió facefuck brutal",
+      "rewards": []
+    },
+    {
+      "id": "obj-arcadas-violentas",
+      "description": "Hacer arcadas violentas",
+      "type": "custom",
+      "completion": {
+        "key": "arcadas_violentas",
+        "keys": [],
+        "caseSensitive": false
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "completionDescription": "{{char}} recibio arcadas violentas debido a la penetración",
+      "rewards": []
+    },
+    {
+      "id": "obj-tragar-toda-leche",
+      "description": "Tragar toda la leche sin desperdiciar",
+      "type": "custom",
+      "completion": {
+        "key": "tragar_toda",
+        "keys": [],
+        "caseSensitive": false
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "completionDescription": "{{char}} tragó toda la leche mientras presume lo rico que se esta tragando todo",
+      "rewards": []
+    }
+  ],
+  "completion": {
+    "key": "mision:completa",
+    "keys": [],
+    "caseSensitive": false
+  },
+  "rewards": [],
+  "createdAt": "2026-04-30T01:00:00.000Z",
+  "updatedAt": "2026-04-30T08:56:49.652Z"
+}

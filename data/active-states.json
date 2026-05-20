@@ -1,12 +1,16 @@
 {
-  "activeSessionId": "c84400b3-3c56-4252-9098-f9f5fca8136e",
-  "activeCharacterId": "7e6b6d7b-905e-4199-a15a-797f2efac746",
+  "activeSessionId": "c48bd4e7-e9a2-4f5e-84c6-3e20ce331843",
+  "activeCharacterId": null,
   "activeGroupId": null,
-  "activeBackground": "/backgrounds/Room/1775203629528-psmcuu.jpg",
+  "activeBackground": "/backgrounds/Room/Room (3).png",
   "activeOverlayBack": "",
   "activeOverlayFront": "",
   "activePersonaId": "default",
   "activeLorebookIds": [
-    "970115d5-8ca4-45fe-996a-eb6d5daf93a2"
+    "bbb29d0b-45c2-4d0a-b65e-3031c3bd104a",
+    "c7313714-3b49-4976-b315-7b644bf70524",
+    "c0982fb3-2c52-4ead-82a6-c33654736338",
+    "5ae1c9fb-d149-4b08-8b44-9ac00917d1cc",
+    "b897f3a1-7348-482b-b2ca-7ea0213ecd59"
   ]
 }

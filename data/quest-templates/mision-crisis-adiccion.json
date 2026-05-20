@@ -1,0 +1,57 @@
+{
+  "id": "mision-crisis-adiccion",
+  "name": "Crisis de Adicción",
+  "description": "Satisfacer la adiccion",
+  "priority": "main",
+  "icon": "💉",
+  "isRepeatable": false,
+  "isHidden": false,
+  "prerequisites": [
+    "mision-devorar-sin-soltar"
+  ],
+  "activation": {
+    "key": "crisis_adiccion",
+    "keys": [],
+    "caseSensitive": false,
+    "method": "turn",
+    "turnInterval": 7
+  },
+  "objectives": [
+    {
+      "id": "obj-crisis-agresiva",
+      "description": "Lograr conseguir tu adiccion",
+      "type": "custom",
+      "completion": {
+        "key": "crisis_agresiva",
+        "keys": [],
+        "caseSensitive": false
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "completionDescription": "se logra satisfacer la adiccion de {{char}} ya sea parcial o total",
+      "rewards": []
+    },
+    {
+      "id": "obj-suplicar-amenazar",
+      "description": "Suplicar o amenazar si le quitan su adiccion",
+      "type": "custom",
+      "completion": {
+        "key": "suplicar_amenazar",
+        "keys": [],
+        "caseSensitive": false
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "completionDescription": "{{char}} se pone ansiosa si le quitan o niegan su adiccion",
+      "rewards": []
+    }
+  ],
+  "completion": {
+    "key": "mision:completa",
+    "keys": [],
+    "caseSensitive": false
+  },
+  "rewards": [],
+  "createdAt": "2026-04-30T01:00:00.000Z",
+  "updatedAt": "2026-04-30T08:51:02.903Z"
+}

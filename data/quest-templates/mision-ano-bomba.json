@@ -1,0 +1,50 @@
+{
+  "id": "mision-ano-bomba",
+  "name": "Sexo anal",
+  "description": "Se necesita iniciar el sexo anal",
+  "priority": "main",
+  "icon": "🍑",
+  "isRepeatable": true,
+  "isHidden": false,
+  "prerequisites": [
+    "mision-garganta-reflejo"
+  ],
+  "activation": {
+    "key": "ano_bomba",
+    "keys": [],
+    "caseSensitive": false,
+    "method": "automatic"
+  },
+  "objectives": [
+    {
+      "id": "obj-ano-bomba",
+      "description": "Meter la verga en el ano",
+      "type": "custom",
+      "completion": {
+        "key": "ano_bomba",
+        "keys": [],
+        "caseSensitive": false
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "completionDescription": "Se logra la penetración anal",
+      "rewards": [],
+      "characterFilter": {
+        "enabled": true,
+        "mode": "include",
+        "characterIds": [
+          "f162ea36-d5ef-4813-8642-8d7ca178e389",
+          "716adf13-3138-4e35-8075-093fd24a6d4c"
+        ]
+      }
+    }
+  ],
+  "completion": {
+    "key": "mision:completa",
+    "keys": [],
+    "caseSensitive": false
+  },
+  "rewards": [],
+  "createdAt": "2026-04-30T01:00:00.000Z",
+  "updatedAt": "2026-04-30T08:41:27.716Z"
+}

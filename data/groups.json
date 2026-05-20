@@ -1,1 +1,49 @@
-[]
+[
+  {
+    "name": "asd",
+    "description": "asdasd",
+    "systemPrompt": "",
+    "activationStrategy": "all",
+    "minResponsesPerTurn": 1,
+    "maxResponsesPerTurn": 3,
+    "allowMentions": true,
+    "mentionTriggers": [],
+    "conversationStyle": "sequential",
+    "characterIds": [
+      "fbdaee10-4eca-4d6d-b338-46b80cb19798",
+      "b4dffedd-c19b-4d9a-81bb-25d6c91bdefd",
+      "716adf13-3138-4e35-8075-093fd24a6d4c"
+    ],
+    "members": [
+      {
+        "characterId": "fbdaee10-4eca-4d6d-b338-46b80cb19798",
+        "isActive": true,
+        "isPresent": true,
+        "isNarrator": false,
+        "joinOrder": 0
+      },
+      {
+        "characterId": "b4dffedd-c19b-4d9a-81bb-25d6c91bdefd",
+        "isActive": true,
+        "isPresent": true,
+        "isNarrator": false,
+        "joinOrder": 1
+      },
+      {
+        "characterId": "716adf13-3138-4e35-8075-093fd24a6d4c",
+        "isActive": true,
+        "isPresent": true,
+        "isNarrator": false,
+        "joinOrder": 2
+      }
+    ],
+    "avatar": "",
+    "hudTemplateId": "41b36aa1-f1b7-4cf3-9593-dbd7640a08da",
+    "lorebookIds": [],
+    "questTemplateIds": [],
+    "embeddingNamespaces": [],
+    "id": "ca50ea86-429b-4434-a9f9-5be6c80b4ded",
+    "createdAt": "2026-04-23T19:17:28.039Z",
+    "updatedAt": "2026-04-23T19:17:28.039Z"
+  }
+]

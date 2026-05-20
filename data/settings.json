@@ -42,7 +42,8 @@
     "maxSoundsPerMessage": 50,
     "globalCooldown": 0,
     "realtimeEnabled": true,
-    "soundListSuffix": "- reglas"
+    "soundListSuffix": "- reglas",
+    "globalMute": true
   },
   "backgroundTriggers": {
     "enabled": true,
@@ -57,16 +58,16 @@
   },
   "chatLayout": {
     "novelMode": true,
-    "chatWidth": 85.28023244713665,
-    "chatHeight": 44.19753086419754,
-    "chatX": 45.60412044519458,
-    "chatY": 77.90123456790123,
+    "chatWidth": 51.97724458532525,
+    "chatHeight": 72.63374485596708,
+    "chatX": 60.59504841379601,
+    "chatY": 63.68312757201646,
     "chatOpacity": 0.95,
     "blurBackground": false,
     "showCharacterSprite": true
   },
   "context": {
-    "maxMessages": 50,
+    "maxMessages": 10,
     "maxTokens": 4096,
     "keepFirstN": 1,
     "keepLastN": 20,
@@ -162,17 +163,30 @@
     "namespaceStrategy": "character",
     "showInPromptViewer": true,
     "memoryExtractionEnabled": true,
-    "memoryExtractionFrequency": 5,
-    "memoryExtractionMinImportance": 2,
+    "memoryExtractionFrequency": 3,
+    "memoryExtractionMinImportance": 3,
     "memoryConsolidationEnabled": true,
     "memoryConsolidationThreshold": 50,
     "memoryConsolidationKeepRecent": 10,
     "memoryConsolidationKeepHighImportance": 4,
-    "groupDynamicsExtraction": true
+    "groupDynamicsExtraction": true,
+    "memoryReinforcementEnabled": true,
+    "memoryExtractionContextDepth": 3
   },
   "tools": {
     "enabled": true,
     "maxToolCallsPerTurn": 2,
-    "characterConfigs": []
+    "characterConfigs": [],
+    "usePromptBasedFallback": false,
+    "disabledTools": [
+      "roll_dice",
+      "get_weather",
+      "search_web",
+      "set_reminder",
+      "modify_stat",
+      "check_stat",
+      "manage_quest",
+      "manage_solicitud"
+    ]
   }
 }

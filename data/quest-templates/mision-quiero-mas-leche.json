@@ -1,0 +1,55 @@
+{
+  "id": "mision-quiero-mas-leche",
+  "name": "Quiero Más Leche",
+  "description": "{{char}} aun no esta satisfecha y necesita sacar mas semen para poder saborearlo",
+  "priority": "main",
+  "icon": "🥛",
+  "isRepeatable": true,
+  "isHidden": false,
+  "prerequisites": [],
+  "activation": {
+    "key": "quiero_mas_leche",
+    "keys": [],
+    "caseSensitive": false,
+    "method": "turn",
+    "turnInterval": 8
+  },
+  "objectives": [
+    {
+      "id": "obj-suplicar-leche",
+      "description": "Suplicar leche con cara de puta",
+      "type": "custom",
+      "completion": {
+        "key": "suplicar_leche",
+        "keys": [],
+        "caseSensitive": false
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "completionDescription": "{{char}} suplicó mas dosis de leche",
+      "rewards": []
+    },
+    {
+      "id": "obj-tragar-sin-desperdiciar",
+      "description": "Tragársela toda sin desperdiciar",
+      "type": "custom",
+      "completion": {
+        "key": "tragar_toda",
+        "keys": [],
+        "caseSensitive": false
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "completionDescription": "{{char}} tragó toda la leche por segunda ves y esta saboreando todo",
+      "rewards": []
+    }
+  ],
+  "completion": {
+    "key": "mision:completa",
+    "keys": [],
+    "caseSensitive": false
+  },
+  "rewards": [],
+  "createdAt": "2026-04-30T01:00:00.000Z",
+  "updatedAt": "2026-04-30T08:59:27.453Z"
+}

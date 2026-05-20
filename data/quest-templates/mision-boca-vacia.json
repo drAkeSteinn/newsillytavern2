@@ -1,0 +1,54 @@
+{
+  "id": "mision-boca-vacia",
+  "name": "Seduccion",
+  "description": "Se necesita iniciar la interaccion sexual",
+  "priority": "main",
+  "icon": "👄",
+  "isRepeatable": true,
+  "isHidden": false,
+  "prerequisites": [],
+  "activation": {
+    "key": "boca_vacia",
+    "keys": [],
+    "caseSensitive": false,
+    "method": "automatic"
+  },
+  "objectives": [
+    {
+      "id": "obj-sacar-verga",
+      "description": "Sacar la verga de {{user}} del pantalón",
+      "type": "custom",
+      "completion": {
+        "key": "sacar_verga",
+        "keys": [],
+        "caseSensitive": false
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "completionDescription": "{{char}} logró sacar la verga del pantalón pero despues necesitara ponerla erecta.",
+      "rewards": []
+    },
+    {
+      "id": "obj-poner-erecta",
+      "description": "Poner la verga erecta de {{user}}",
+      "type": "custom",
+      "completion": {
+        "key": "vergaerecta",
+        "keys": [],
+        "caseSensitive": false
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "completionDescription": "Aitana logró poner la verga erecta",
+      "rewards": []
+    }
+  ],
+  "completion": {
+    "key": "mision:completa",
+    "keys": [],
+    "caseSensitive": false
+  },
+  "rewards": [],
+  "createdAt": "2026-04-29T08:00:00.000Z",
+  "updatedAt": "2026-04-30T08:45:48.927Z"
+}

@@ -21,13 +21,13 @@
     "position": "top-left",
     "style": "minimal",
     "opacity": 1,
-    "compact": false,
+    "compact": true,
     "id": "41b36aa1-f1b7-4cf3-9593-dbd7640a08da",
     "createdAt": "2026-03-02T10:09:15.831Z",
-    "updatedAt": "2026-04-09T08:36:40.635Z",
+    "updatedAt": "2026-05-03T09:04:50.162Z",
     "context": {
       "enabled": true,
-      "content": "[HUD – FORMATO OBLIGATORIO]\nHUD [Lugar=<LUGAR o NONE>]\n\n[HUD – REGLAS]\n- El HUD va siempre en la última línea exacta.\n- No lo menciones dentro del diálogo.\n- Lugar debe ser una etiqueta breve y clara como BOSQUE, ASERRADERO, CAMPAMENTO, ZONA_DE_CORTE, TRONCO_GRANDE.",
+      "content": "",
       "position": 5,
       "scanDepth": 1
     }

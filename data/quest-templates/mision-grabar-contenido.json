@@ -1,0 +1,40 @@
+{
+  "id": "mision-grabar-contenido",
+  "name": "Grabar Contenido Exclusivo",
+  "description": "{{char}} debe grabar contenido muy degenerado solo para sus fans de OnlyFans.",
+  "priority": "main",
+  "icon": "📹",
+  "isRepeatable": true,
+  "isHidden": false,
+  "prerequisites": [],
+  "activation": {
+    "key": "grabar_contenido",
+    "keys": [],
+    "caseSensitive": false,
+    "method": "automatic"
+  },
+  "objectives": [
+    {
+      "id": "obj-grabar-degenerado",
+      "description": "Grabar contenido degenerado",
+      "type": "custom",
+      "completion": {
+        "key": "grabar_degenerado",
+        "keys": [],
+        "caseSensitive": false
+      },
+      "targetCount": 1,
+      "isOptional": false,
+      "completionDescription": "{{char}} grabó contenido para presumir a sus seguidores en directo de su onlyfans.",
+      "rewards": []
+    }
+  ],
+  "completion": {
+    "key": "mision:completa",
+    "keys": [],
+    "caseSensitive": false
+  },
+  "rewards": [],
+  "createdAt": "2026-04-30T01:00:00.000Z",
+  "updatedAt": "2026-04-30T08:57:45.462Z"
+}
