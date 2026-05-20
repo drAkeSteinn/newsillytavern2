@@ -116,6 +116,21 @@ export interface TimelineEditorSlice {
   // Select keyframe
   selectKeyframe: (keyframeId: string | null) => void;
   
+  // Select multiple keyframes (for multi-selection)
+  selectKeyframes: (keyframeIds: string[]) => void;
+  
+  // Toggle a keyframe in the multi-selection
+  toggleKeyframeSelection: (keyframeId: string) => void;
+  
+  // Add a keyframe to the multi-selection
+  addToKeyframeSelection: (keyframeId: string) => void;
+  
+  // Remove a keyframe from the multi-selection
+  removeFromKeyframeSelection: (keyframeId: string) => void;
+  
+  // Clear multi-selection
+  clearKeyframeSelection: () => void;
+  
   // Move keyframe (change time)
   moveKeyframe: (spriteId: string, trackId: string, keyframeId: string, newTime: number) => void;
   
@@ -256,6 +271,7 @@ export const createTimelineEditorSlice = (set: any, get: any): TimelineEditorSli
         selectedSpriteId: null,
         selectedTrackId: null,
         selectedKeyframeId: null,
+        selectedKeyframeIds: [],
       },
     }));
   },
@@ -326,6 +342,7 @@ export const createTimelineEditorSlice = (set: any, get: any): TimelineEditorSli
         selectedSpriteId: spriteId,
         selectedTrackId: null,
         selectedKeyframeId: null,
+        selectedKeyframeIds: [],
       },
     }));
   },
@@ -430,6 +447,7 @@ export const createTimelineEditorSlice = (set: any, get: any): TimelineEditorSli
         ...state.editorState,
         selectedTrackId: trackId,
         selectedKeyframeId: null,
+        selectedKeyframeIds: [],
       },
     }));
   },
@@ -552,6 +570,75 @@ export const createTimelineEditorSlice = (set: any, get: any): TimelineEditorSli
       editorState: {
         ...state.editorState,
         selectedKeyframeId: keyframeId,
+        selectedKeyframeIds: keyframeId ? [keyframeId] : [],
+      },
+    }));
+  },
+  
+  selectKeyframes: (keyframeIds: string[]) => {
+    set((state: any) => ({
+      editorState: {
+        ...state.editorState,
+        selectedKeyframeId: keyframeIds.length > 0 ? keyframeIds[keyframeIds.length - 1] : null,
+        selectedKeyframeIds: keyframeIds,
+      },
+    }));
+  },
+  
+  toggleKeyframeSelection: (keyframeId: string) => {
+    set((state: any) => {
+      const current = state.editorState.selectedKeyframeIds as string[];
+      const isSelected = current.includes(keyframeId);
+      const newIds = isSelected
+        ? current.filter((id: string) => id !== keyframeId)
+        : [...current, keyframeId];
+      return {
+        editorState: {
+          ...state.editorState,
+          selectedKeyframeId: newIds.length > 0 ? newIds[newIds.length - 1] : null,
+          selectedKeyframeIds: newIds,
+        },
+      };
+    });
+  },
+  
+  addToKeyframeSelection: (keyframeId: string) => {
+    set((state: any) => {
+      const current = state.editorState.selectedKeyframeIds as string[];
+      if (current.includes(keyframeId)) return state;
+      const newIds = [...current, keyframeId];
+      return {
+        editorState: {
+          ...state.editorState,
+          selectedKeyframeId: keyframeId,
+          selectedKeyframeIds: newIds,
+        },
+      };
+    });
+  },
+  
+  removeFromKeyframeSelection: (keyframeId: string) => {
+    set((state: any) => {
+      const current = state.editorState.selectedKeyframeIds as string[];
+      const newIds = current.filter((id: string) => id !== keyframeId);
+      return {
+        editorState: {
+          ...state.editorState,
+          selectedKeyframeId: state.editorState.selectedKeyframeId === keyframeId
+            ? (newIds.length > 0 ? newIds[newIds.length - 1] : null)
+            : state.editorState.selectedKeyframeId,
+          selectedKeyframeIds: newIds,
+        },
+      };
+    });
+  },
+  
+  clearKeyframeSelection: () => {
+    set((state: any) => ({
+      editorState: {
+        ...state.editorState,
+        selectedKeyframeId: null,
+        selectedKeyframeIds: [],
       },
     }));
   },

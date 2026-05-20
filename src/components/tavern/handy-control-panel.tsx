@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 import {
   Tooltip,
   TooltipContent,
@@ -15,6 +16,8 @@ import {
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { useTavernStore } from '@/store';
+import { DEFAULT_HANDY_SETTINGS } from '@/types';
 import {
   Play,
   Square,
@@ -48,6 +51,7 @@ import {
   Waves,
   Timer,
   Crosshair,
+  PlugZap,
 } from 'lucide-react';
 
 // ============================================
@@ -279,10 +283,13 @@ function PositionBar({ position, min = 0, max = 100, label }: { position: number
 
 export function HandyControlPanel() {
   const { call, unwrap, toast } = useHandyAPI();
+  const store = useTavernStore();
+  const handySettings = store.settings.handy || DEFAULT_HANDY_SETTINGS;
+  const updateHandySettings = store.updateHandySettings;
 
-  // Config
-  const [appId, setAppId] = useState('');
-  const [connectionKey, setConnectionKey] = useState('');
+  // Config (local UI state for unsaved edits)
+  const [appId, setAppId] = useState(handySettings.appId);
+  const [connectionKey, setConnectionKey] = useState(handySettings.connectionKey);
   const [showAppId, setShowAppId] = useState(false);
   const [configSaved, setConfigSaved] = useState(false);
   const [testResult, setTestResult] = useState<TestResult>('idle');
@@ -299,7 +306,8 @@ export function HandyControlPanel() {
   // HAMP
   const [hampPlaying, setHampPlaying] = useState(false);
   const [hampVelocity, setHampVelocity] = useState(50);
-  const [hampStroke, setHampStroke] = useState(80);
+  const [hampMinStroke, setHampMinStroke] = useState(0);
+  const [hampMaxStroke, setHampMaxStroke] = useState(100);
   // Device's physical slider range (raw API values, typically 0-109.3)
   const [deviceMin, setDeviceMin] = useState(0);
   const [deviceMax, setDeviceMax] = useState(109.3);
@@ -345,32 +353,88 @@ export function HandyControlPanel() {
   const MODE_LOCK_DURATION = 10000; // 10 seconds: ignore device-reported mode changes after user sets mode
 
   // ---- Config persistence ----
+  // Migrate old localStorage keys to store on first load
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('handy-config');
-      if (saved) {
-        const cfg = JSON.parse(saved);
-        setAppId(cfg.appId || '');
-        setConnectionKey(cfg.connectionKey || '');
+      const oldConfig = localStorage.getItem('handy-config');
+      const oldInverted = localStorage.getItem('handy-inverted');
+      const oldEnabled = localStorage.getItem('handy-haptic-enabled');
+
+      // Only migrate if store doesn't have data yet and localStorage does
+      const needsMigration = (oldConfig || oldInverted || oldEnabled) &&
+        !store.settings.handy?.appId &&
+        !store.settings.handy?.connectionKey;
+
+      if (needsMigration) {
+        let migratedAppId = '';
+        let migratedConnectionKey = '';
+        let migratedInverted = false;
+        let migratedEnabled = false;
+
+        if (oldConfig) {
+          const cfg = JSON.parse(oldConfig);
+          migratedAppId = cfg.appId || '';
+          migratedConnectionKey = cfg.connectionKey || '';
+        }
+        if (oldInverted === 'true') migratedInverted = true;
+        if (oldEnabled === 'true') migratedEnabled = true;
+
+        updateHandySettings({
+          appId: migratedAppId,
+          connectionKey: migratedConnectionKey,
+          positionInverted: migratedInverted,
+          enabled: migratedEnabled,
+        });
+
+        setAppId(migratedAppId);
+        setConnectionKey(migratedConnectionKey);
+        if (migratedInverted) setPositionInverted(true);
+
+        // Clean up old localStorage keys
+        localStorage.removeItem('handy-config');
+        localStorage.removeItem('handy-inverted');
+        localStorage.removeItem('handy-haptic-enabled');
+
+        addLog('info', 'Configuración migrada desde localStorage al almacen de la app');
+      } else {
+        // Use store values
+        setAppId(handySettings.appId);
+        setConnectionKey(handySettings.connectionKey);
+        if (handySettings.positionInverted) setPositionInverted(true);
       }
-      const inv = localStorage.getItem('handy-inverted');
-      if (inv === 'true') setPositionInverted(true);
-    } catch {}
+    } catch {
+      // Fallback to store values
+      setAppId(handySettings.appId);
+      setConnectionKey(handySettings.connectionKey);
+    }
   }, []);
+
+  // Sync local state when store changes
+  useEffect(() => {
+    setAppId(handySettings.appId);
+    setConnectionKey(handySettings.connectionKey);
+    setPositionInverted(handySettings.positionInverted);
+  }, [handySettings.appId, handySettings.connectionKey, handySettings.positionInverted]);
 
   const toggleInversion = useCallback(() => {
     setPositionInverted(prev => {
       const next = !prev;
-      localStorage.setItem('handy-inverted', String(next));
+      updateHandySettings({ positionInverted: next });
       return next;
     });
-  }, []);
+  }, [updateHandySettings]);
 
   const saveConfig = useCallback(() => {
+    updateHandySettings({ appId, connectionKey });
+    // Also update legacy localStorage for backward compatibility with hooks
     localStorage.setItem('handy-config', JSON.stringify({ appId, connectionKey }));
+    localStorage.setItem('handy-inverted', String(positionInverted));
+    localStorage.setItem('handy-haptic-enabled', String(handySettings.enabled));
+    // Dispatch custom event so other hooks/components can pick up the change
+    window.dispatchEvent(new CustomEvent('handy-config-changed'));
     setConfigSaved(true);
     setTimeout(() => setConfigSaved(false), 2000);
-  }, [appId, connectionKey]);
+  }, [appId, connectionKey, positionInverted, handySettings.enabled, updateHandySettings]);
 
   const hasAppId = appId.trim().length >= 5;
   const hasCK = connectionKey.trim().length >= 5;
@@ -629,35 +693,35 @@ export function HandyControlPanel() {
   // HAMP Functions
   // =============================================
 
-  const computeStrokeRange = useCallback((strokePercent: number) => {
-    // strokePercent: 0 = no movement (center only), 100 = full device range
-    // If manual stroke positions are set, use those as the base range
-    // Otherwise use the device's detected physical limits (mm scale 0-109.3)
-    const baseMin = manualStrokeMin !== null ? manualStrokeMin : deviceMin;
-    const baseMax = manualStrokeMax !== null ? manualStrokeMax : deviceMax;
-    const center = (baseMin + baseMax) / 2;
-    const halfRange = Math.abs(baseMax - baseMin) / 2;
-    const effectiveRange = (strokePercent / 100) * halfRange;
-    // Raw mm values (0-109.3), normalized to 0-1 for API
-    const rawMin = Math.max(0, center - effectiveRange);
-    const rawMax = Math.min(SLIDER_ABS_MAX, center + effectiveRange);
-    return { min: rawMin / SLIDER_ABS_MAX, max: rawMax / SLIDER_ABS_MAX, center, effectiveRange, rawMin, rawMax };
-  }, [deviceMin, deviceMax, manualStrokeMin, manualStrokeMax]);
+  // Compute the actual stroke min/max to send to the API (normalized 0-1)
+  // Based on the hampMinStroke/hampMaxStroke slider values (0-100%)
+  const computeHampStroke = useCallback(() => {
+    // Ensure min <= max (validation like the reference implementation)
+    const clampedMin = Math.min(hampMinStroke, hampMaxStroke);
+    const clampedMax = Math.max(hampMinStroke, hampMaxStroke);
+    // API expects double values between 0 and 1
+    return {
+      min: clampedMin / 100,
+      max: clampedMax / 100,
+    };
+  }, [hampMinStroke, hampMaxStroke]);
 
   const hampStart = useCallback(async () => {
     setLoading(true);
     addLog('send', 'HAMP → START');
     try {
-      // Set stroke range first (normalized 0-1 for API)
-      const { min, max, rawMin, rawMax } = computeStrokeRange(hampStroke);
-      addLog('send', `Slider stroke: min=${min.toFixed(3)} max=${max.toFixed(3)} (${rawMin.toFixed(1)}—${rawMax.toFixed(1)} mm)`);
+      // 1. Set stroke range first (like reference: setStroke before start)
+      const { min, max } = computeHampStroke();
+      addLog('send', `Slider stroke: min=${min.toFixed(3)} (${(min*100).toFixed(0)}%) max=${max.toFixed(3)} (${(max*100).toFixed(0)}%)`);
       await call('PUT', 'slider/stroke', appId.trim(), connectionKey.trim(), { min, max });
 
+      // 2. Start HAMP (always starts with velocity=0 after a stop)
       const result = await call('PUT', 'hamp/start', appId.trim(), connectionKey.trim());
       if (result) {
         const r = unwrap(result);
         addLog('recv', `HAMP started: play_state=${r?.play_state}, velocity=${r?.velocity}`);
       }
+      // 3. Set velocity immediately after start (so user "hits the ground running")
       if (hampVelocity > 0) {
         await call('PUT', 'hamp/velocity', appId.trim(), connectionKey.trim(), { velocity: hampVelocity / 100 });
         addLog('send', `HAMP velocity → ${hampVelocity}%`);
@@ -670,7 +734,7 @@ export function HandyControlPanel() {
     } finally {
       setLoading(false);
     }
-  }, [call, appId, connectionKey, hampVelocity, hampStroke, computeStrokeRange, unwrap, addLog, toast]);
+  }, [call, appId, connectionKey, hampVelocity, computeHampStroke, unwrap, addLog, toast]);
 
   const hampStop = useCallback(async () => {
     setLoading(true);
@@ -695,31 +759,47 @@ export function HandyControlPanel() {
     } catch {}
   }, [call, appId, connectionKey, hampPlaying, addLog]);
 
-  const hampSetStroke = useCallback(async (v: number) => {
-    setHampStroke(v);
-    // Only send to device when HAMP is actively playing
+  const hampSetMinStroke = useCallback(async (v: number) => {
+    // Enforce min <= max (like reference implementation)
+    const clampedVal = Math.min(v, hampMaxStroke);
+    setHampMinStroke(clampedVal);
     if (!hampPlaying) return;
-    addLog('send', `HAMP stroke → ${v}%`);
+    addLog('send', `HAMP min stroke → ${clampedVal}%`);
     try {
-      const { min, max, rawMin, rawMax } = computeStrokeRange(v);
-      await call('PUT', 'slider/stroke', appId.trim(), connectionKey.trim(), { min, max });
-      addLog('recv', `Stroke aplicado: ${min.toFixed(3)}—${max.toFixed(3)} (${rawMin.toFixed(1)}—${rawMax.toFixed(1)} mm)`);
+      const minNorm = clampedVal / 100;
+      const maxNorm = hampMaxStroke / 100;
+      await call('PUT', 'slider/stroke', appId.trim(), connectionKey.trim(), { min: minNorm, max: maxNorm });
+      addLog('recv', `Stroke aplicado: min=${minNorm.toFixed(3)} max=${maxNorm.toFixed(3)}`);
     } catch {}
-  }, [call, appId, connectionKey, hampPlaying, computeStrokeRange, addLog]);
+  }, [call, appId, connectionKey, hampPlaying, hampMaxStroke, addLog]);
 
-  const hampApplyPreset = useCallback(async (velocity: number, stroke: number) => {
+  const hampSetMaxStroke = useCallback(async (v: number) => {
+    // Enforce max >= min (like reference implementation)
+    const clampedVal = Math.max(v, hampMinStroke);
+    setHampMaxStroke(clampedVal);
+    if (!hampPlaying) return;
+    addLog('send', `HAMP max stroke → ${clampedVal}%`);
+    try {
+      const minNorm = hampMinStroke / 100;
+      const maxNorm = clampedVal / 100;
+      await call('PUT', 'slider/stroke', appId.trim(), connectionKey.trim(), { min: minNorm, max: maxNorm });
+      addLog('recv', `Stroke aplicado: min=${minNorm.toFixed(3)} max=${maxNorm.toFixed(3)}`);
+    } catch {}
+  }, [call, appId, connectionKey, hampPlaying, hampMinStroke, addLog]);
+
+  const hampApplyPreset = useCallback(async (velocity: number, minStroke: number, maxStroke: number) => {
     setHampVelocity(velocity);
-    setHampStroke(stroke);
-    addLog('send', `HAMP preset: vel=${velocity}% stroke=${stroke}%`);
+    setHampMinStroke(minStroke);
+    setHampMaxStroke(maxStroke);
+    addLog('send', `HAMP preset: vel=${velocity}% min=${minStroke}% max=${maxStroke}%`);
     try {
       if (hampPlaying) {
         await call('PUT', 'hamp/velocity', appId.trim(), connectionKey.trim(), { velocity: velocity / 100 });
-        const { min, max, rawMin, rawMax } = computeStrokeRange(stroke);
-        await call('PUT', 'slider/stroke', appId.trim(), connectionKey.trim(), { min, max });
-        addLog('recv', `Preset aplicado: stroke ${min.toFixed(3)}—${max.toFixed(3)} (${rawMin.toFixed(1)}—${rawMax.toFixed(1)} mm)`);
+        await call('PUT', 'slider/stroke', appId.trim(), connectionKey.trim(), { min: minStroke / 100, max: maxStroke / 100 });
+        addLog('recv', `Preset aplicado: stroke min=${(minStroke/100).toFixed(3)} max=${(maxStroke/100).toFixed(3)}`);
       }
     } catch {}
-  }, [call, appId, connectionKey, hampPlaying, computeStrokeRange, addLog]);
+  }, [call, appId, connectionKey, hampPlaying, addLog]);
 
   // =============================================
   // HDSP Functions
@@ -1026,9 +1106,8 @@ export function HandyControlPanel() {
   const fwStatusLabel = (s?: number) => s === 0 ? 'OK' : s === 1 ? 'Actualizable' : s === 2 ? 'Requiere actualizar' : '?';
 
   // ---- Computed stroke range for display ----
-  const currentStrokeRange = computeStrokeRange(hampStroke);
-  const strokeDisplayMin = currentStrokeRange.min.toFixed(3);
-  const strokeDisplayMax = currentStrokeRange.max.toFixed(3);
+  // Display current HAMP stroke range (for visual feedback)
+  const hampStrokeRange = computeHampStroke();
 
   // ============================================
   // Render
@@ -1036,14 +1115,91 @@ export function HandyControlPanel() {
 
   return (
     <div className="max-h-[calc(100vh-180px)] overflow-y-auto pr-1 flex flex-col gap-5 pb-6">
-      {/* ---- Connection Header ---- */}
-      <ConnectionStatusBadge connected={connected} latency={lastLatency} />
-
-      {/* ---- Auth Config (collapsible when connected) ---- */}
+      {/* ---- Haptic System Enable / Auto-Connect Switches ---- */}
       <Card className={cn(
         "transition-all",
-        connected && "border-green-200 dark:border-green-900"
+        handySettings.enabled && "border-green-200 dark:border-green-900"
       )}>
+        <CardContent className="p-4 space-y-4">
+          {/* Enable/Disable Haptic */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                "flex items-center justify-center w-8 h-8 rounded-lg",
+                handySettings.enabled
+                  ? "bg-green-100 dark:bg-green-900/40"
+                  : "bg-muted"
+              )}>
+                <Zap className={cn(
+                  "w-4 h-4",
+                  handySettings.enabled ? "text-green-600 dark:text-green-400" : "text-muted-foreground"
+                )} />
+              </div>
+              <div>
+                <p className="text-sm font-medium">Sistema Haptic</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {handySettings.enabled
+                    ? 'Habilitado — el dispositivo responderá a los comandos'
+                    : 'Deshabilitado — sin comunicación con el dispositivo'}
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={handySettings.enabled}
+              onCheckedChange={(checked) => {
+                updateHandySettings({ enabled: checked });
+                localStorage.setItem('handy-haptic-enabled', String(checked));
+                window.dispatchEvent(new CustomEvent('handy-config-changed'));
+                addLog('info', checked ? 'Sistema haptic HABILITADO' : 'Sistema haptic DESHABILITADO');
+                if (!checked && connected) {
+                  // Stop any active playback when disabling
+                  hspStopRef.current();
+                }
+              }}
+            />
+          </div>
+
+          {/* Auto-Connect */}
+          <div className={cn(
+            "flex items-center justify-between rounded-lg border p-3 transition-all",
+            handySettings.enabled
+              ? "border-muted"
+              : "border-muted/50 opacity-50 pointer-events-none"
+          )}>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-7 h-7 rounded-md bg-muted/60">
+                <PlugZap className="w-3.5 h-3.5 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-xs font-medium">Autoconectar</p>
+                <p className="text-[10px] text-muted-foreground">
+                  Conectar automáticamente al iniciar la app
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={handySettings.autoConnect}
+              onCheckedChange={(checked) => {
+                updateHandySettings({ autoConnect: checked });
+                addLog('info', checked ? 'Autoconectar HABILITADO' : 'Autoconectar DESHABILITADO');
+              }}
+              disabled={!handySettings.enabled}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ---- Show the rest only if haptic is enabled ---- */}
+      {handySettings.enabled && (
+        <>
+          {/* ---- Connection Status ---- */}
+          <ConnectionStatusBadge connected={connected} latency={lastLatency} />
+
+          {/* ---- Auth Config (collapsible when connected) ---- */}
+          <Card className={cn(
+            "transition-all",
+            connected && "border-green-200 dark:border-green-900"
+          )}>
         <CardHeader className="p-3 pb-2">
           <CardTitle className="text-xs font-medium flex items-center gap-2 text-muted-foreground">
             <Fingerprint className="w-3.5 h-3.5" />
@@ -1313,23 +1469,49 @@ export function HandyControlPanel() {
                     <Slider value={[hampVelocity]} onValueChange={([v]) => hampSetVelocity(v)} min={0} max={100} step={1} disabled={loading} />
                   </div>
 
-                  {/* Stroke */}
+                  {/* Min Stroke */}
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center">
-                      <Label className="text-xs flex items-center gap-1"><ArrowUpDown className="w-3 h-3" /> Recorrido</Label>
-                      <span className="text-xs font-mono font-bold tabular-nums">{hampStroke}%</span>
+                      <Label className="text-xs flex items-center gap-1"><ArrowDown className="w-3 h-3" /> Recorrido Mínimo</Label>
+                      <span className="text-xs font-mono font-bold tabular-nums">{hampMinStroke}%</span>
                     </div>
-                    <Slider value={[hampStroke]} onValueChange={([v]) => hampSetStroke(v)} min={0} max={100} step={1} disabled={loading} />
-                    {/* Show actual stroke range being applied (normalized 0-1) */}
-                    <div className="flex justify-between text-[9px] text-muted-foreground font-mono">
-                      <span>Rango: {strokeDisplayMin}</span>
-                      <span>{strokeDisplayMax}</span>
+                    <Slider
+                      value={[hampMinStroke]}
+                      onValueChange={([v]) => hampSetMinStroke(v)}
+                      min={0}
+                      max={99}
+                      step={1}
+                      disabled={loading}
+                    />
+                  </div>
+
+                  {/* Max Stroke */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <Label className="text-xs flex items-center gap-1"><ArrowUp className="w-3 h-3" /> Recorrido Máximo</Label>
+                      <span className="text-xs font-mono font-bold tabular-nums">{hampMaxStroke}%</span>
                     </div>
-                    {manualStrokeMin !== null && manualStrokeMax !== null && (
-                      <p className="text-[9px] text-blue-600 dark:text-blue-400">
-                        * Usando rango manual: {manualStrokeMin} — {manualStrokeMax}
-                      </p>
-                    )}
+                    <Slider
+                      value={[hampMaxStroke]}
+                      onValueChange={([v]) => hampSetMaxStroke(v)}
+                      min={1}
+                      max={100}
+                      step={1}
+                      disabled={loading}
+                    />
+                  </div>
+
+                  {/* Stroke range visualization */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[9px] text-muted-foreground">
+                      <span>Rango aplicado: {hampStrokeRange.min.toFixed(3)} — {hampStrokeRange.max.toFixed(3)}</span>
+                    </div>
+                    <PositionBar
+                      position={(hampMinStroke + hampMaxStroke) / 2}
+                      min={hampMinStroke}
+                      max={hampMaxStroke}
+                      label="Zona de recorrido"
+                    />
                     {!hampPlaying && (
                       <p className="text-[9px] text-amber-600 dark:text-amber-400">
                         * Inicia el movimiento para aplicar cambios de recorrido en tiempo real
@@ -1340,12 +1522,12 @@ export function HandyControlPanel() {
                   {/* Presets */}
                   <div className="grid grid-cols-4 gap-1.5">
                     {[
-                      { l: 'Suave', v: 20, s: 40 },
-                      { l: 'Medio', v: 50, s: 65 },
-                      { l: 'Fuerte', v: 80, s: 85 },
-                      { l: 'Máximo', v: 100, s: 100 },
+                      { l: 'Suave', v: 20, minS: 20, maxS: 60 },
+                      { l: 'Medio', v: 50, minS: 10, maxS: 80 },
+                      { l: 'Fuerte', v: 80, minS: 5, maxS: 95 },
+                      { l: 'Máximo', v: 100, minS: 0, maxS: 100 },
                     ].map((p) => (
-                      <Button key={p.l} variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => hampApplyPreset(p.v, p.s)}>
+                      <Button key={p.l} variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => hampApplyPreset(p.v, p.minS, p.maxS)}>
                         {p.l}
                       </Button>
                     ))}
@@ -1932,6 +2114,8 @@ export function HandyControlPanel() {
             )}
 
           </div>
+      )}
+        </>
       )}
     </div>
   );

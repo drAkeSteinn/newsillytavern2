@@ -1544,6 +1544,27 @@ export interface QuickReplyItem {
   response: string;
 }
 
+export interface HandySettings {
+  /** Enable or disable the haptic system globally */
+  enabled: boolean;
+  /** Automatically connect to the Handy device on app load */
+  autoConnect: boolean;
+  /** Handy App ID for API authentication */
+  appId: string;
+  /** Handy Connection Key for device pairing */
+  connectionKey: string;
+  /** Software position inversion correction */
+  positionInverted: boolean;
+}
+
+export const DEFAULT_HANDY_SETTINGS: HandySettings = {
+  enabled: false,
+  autoConnect: false,
+  appId: '',
+  connectionKey: '',
+  positionInverted: false,
+};
+
 export interface AppSettings {
   theme: 'light' | 'dark' | 'system';
   fontSize: number;
@@ -1566,6 +1587,7 @@ export interface AppSettings {
   chatboxAppearance: ChatboxAppearanceSettings;
   embeddingsChat: EmbeddingsChatSettings;
   tools?: ToolsSettings;
+  handy?: HandySettings;
 }
 
 // ============ Embeddings Chat Integration Settings ============
@@ -3761,11 +3783,14 @@ export interface EffectKeyframeValue {
   params?: Record<string, unknown>;
 }
 
+export type HapticVelocityMode = 'auto' | 'manual';
+
 export interface HapticKeyframeValue {
   type: 'haptic';
-  position: number;              // 0-100, position of the Handy slider
-  velocity?: number;             // 0-1, movement speed (default 1.0)
-  stopOnTarget?: boolean;        // Whether to stop at target position (default false for continuous playback)
+  position: number;              // 0-100, Handy slider position (0=top/retracted, 100=bottom/extended). Normalized to 0-1 for HDSP xp parameter.
+  velocity?: number;             // 0-1, movement speed (default 1.0 = max speed). Maps to HDSP vp parameter. Only used when velocityMode='manual'.
+  velocityMode?: HapticVelocityMode; // 'auto' = calculate from position delta in timeline, 'manual' = use explicit velocity value. Default 'auto'.
+  stopOnTarget?: boolean;        // Whether to stop motor at target position (default false for continuous timeline streaming, true for single-shot moves).
 }
 
 /**
@@ -3811,6 +3836,7 @@ export interface TimelineEditorState {
   selectedSpriteId: string | null;
   selectedTrackId: string | null;
   selectedKeyframeId: string | null;
+  selectedKeyframeIds: string[];  // Multi-selection: array of selected keyframe IDs
   
   // Timeline view
   zoom: number;                  // 0.1-10, pixels per millisecond
@@ -3862,6 +3888,7 @@ export const DEFAULT_HAPTIC_KEYFRAME_VALUE: HapticKeyframeValue = {
   type: 'haptic',
   position: 50,
   velocity: 1.0,
+  velocityMode: 'auto',
   stopOnTarget: false,
 };
 
@@ -3914,6 +3941,7 @@ export const createDefaultTimelineEditorState = (): TimelineEditorState => ({
   selectedSpriteId: null,
   selectedTrackId: null,
   selectedKeyframeId: null,
+  selectedKeyframeIds: [],
   zoom: 0.05, // 50 pixels per second
   scrollX: 0,
   scrollY: 0,

@@ -93,7 +93,34 @@ export async function DELETE(request: NextRequest) {
         return NextResponse.json({ error: 'File not found' }, { status: 404 });
       }
 
+      // Delete the sprite file
       await fs.unlink(filePath);
+
+      // Also remove the sprite entry from metadata.json
+      try {
+        const urlParts = url.split('/');
+        // url format: /sprites/{collection}/{filename}
+        if (urlParts.length >= 4) {
+          const collectionName = urlParts[2];
+          const spriteFilename = urlParts.slice(3).join('/'); // In case filename has slashes
+          const metadataPath = path.join(SPRITES_DIR, collectionName, 'metadata.json');
+          
+          if (existsSync(metadataPath)) {
+            const metadataContent = await fs.readFile(metadataPath, 'utf-8');
+            const metadata = JSON.parse(metadataContent);
+            
+            if (metadata.sprites && metadata.sprites[spriteFilename]) {
+              delete metadata.sprites[spriteFilename];
+              metadata.updatedAt = new Date().toISOString();
+              await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
+              console.log(`[SpriteManage] Removed ${spriteFilename} from metadata.json`);
+            }
+          }
+        }
+      } catch (metaErr) {
+        // Non-critical: metadata update failed, but file was deleted
+        console.error('[SpriteManage] Error updating metadata on delete:', metaErr);
+      }
 
       return NextResponse.json({ success: true, message: 'Sprite deleted' });
     }

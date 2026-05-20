@@ -9,8 +9,14 @@
 // 1. Extracts the collection name from the sprite URL
 // 2. Loads the metadata.json from that collection
 // 3. Finds the sprite's timeline configuration
-// 4. Plays sounds at keyframe times
-// 5. Sends haptic positions to Handy device
+// 4. Plays sounds at keyframe times (via requestAnimationFrame loop)
+// 5. Plays haptic patterns via HSP (Handy Server Pattern)
+//
+// HSP vs HDSP approach:
+// - HSP preloads ALL points into the device buffer before playing
+// - The device handles timing, interpolation, and looping natively
+// - This eliminates network latency, loop wraparound jumps, and erratic velocity
+// - Sound tracks still use requestAnimationFrame for precise keyframe triggering
 //
 // Supports: idle sprites, trigger sprites, WEBP/GIF/WebM
 // ============================================
@@ -28,6 +34,8 @@ import type {
   StateCollectionV2,
 } from '@/types';
 import { isGlobalMuted } from '@/lib/audio/audio-mute-store';
+import { generateHspPattern } from '@/lib/haptic/hsp-pattern-generator';
+import type { HspPoint } from '@/hooks/use-haptic-playback';
 
 // ============================================
 // Types
@@ -57,6 +65,8 @@ interface ActiveTimeline {
   soundTriggers: SoundTrigger[];
   soundCollections: SoundCollection[];
   characterId: string;
+  // HSP state for this timeline
+  hspPlaying: boolean;
 }
 
 // ============================================
@@ -81,16 +91,12 @@ function getAudio(url: string): HTMLAudioElement {
 const activeTimelines = new Map<string, ActiveTimeline>();
 const collectionMetadataCache = new Map<string, CollectionMetadata>();
 
-// Loop checker state
+// Loop checker state (only for sound tracks now)
 let loopCheckerRunning = false;
 let loopAnimationId: number | null = null;
 
-// Haptic state (throttled)
-let lastHapticSendTime = 0;
-let lastSentHapticPosition: number | null = null;
-
 // ============================================
-// Haptic Helpers (read config from localStorage)
+// Haptic Config Helpers
 // ============================================
 
 interface HandyConfig {
@@ -100,6 +106,15 @@ interface HandyConfig {
 
 function readHandyConfig(): HandyConfig | null {
   try {
+    const storageKey = 'tavernflow-storage';
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      const handySettings = parsed?.state?.settings?.handy;
+      if (handySettings?.appId && handySettings?.connectionKey) {
+        return { appId: handySettings.appId, connectionKey: handySettings.connectionKey };
+      }
+    }
     const saved = localStorage.getItem('handy-config');
     if (saved) {
       const cfg = JSON.parse(saved) as HandyConfig;
@@ -111,153 +126,320 @@ function readHandyConfig(): HandyConfig | null {
 
 function readHapticEnabled(): boolean {
   try {
+    const storageKey = 'tavernflow-storage';
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      const handySettings = parsed?.state?.settings?.handy;
+      if (handySettings?.enabled !== undefined) return handySettings.enabled;
+    }
     return localStorage.getItem('handy-haptic-enabled') === 'true';
   } catch { return false; }
 }
 
 function readInverted(): boolean {
   try {
+    const storageKey = 'tavernflow-storage';
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      const handySettings = parsed?.state?.settings?.handy;
+      if (handySettings?.positionInverted !== undefined) return handySettings.positionInverted;
+    }
     return localStorage.getItem('handy-inverted') === 'true';
   } catch { return false; }
 }
 
-// Send haptic position to Handy device (throttled to ~12fps)
-function sendHapticPosition(position: number, velocity: number = 1.0) {
+// ============================================
+// HSP Pattern Playback (via REST API proxy)
+// ============================================
+//
+// These functions handle HSP pattern playback directly via the
+// /api/handy/hsp/* endpoints. They don't use the React hook
+// because they're called from non-React contexts (global functions).
+//
+// Flow:
+//   1. Get server time for sync
+//   2. Set device mode to HSP (mode 4)
+//   3. Set slider stroke to full range
+//   4. HSP setup (assign stream ID)
+//   5. HSP add (send points in batches)
+//   6. HSP play (with server_time, loop flag)
+//   7. On stop: HSP stop → HSP flush → center device
+
+let serverTimeOffset: number = 0;
+
+async function syncServerTime(): Promise<void> {
+  try {
+    const startLocal = Date.now();
+    const response = await fetch('/api/handy/servertime', {
+      method: 'GET',
+      signal: AbortSignal.timeout(5000),
+    });
+    const endLocal = Date.now();
+    const data = await response.json();
+    const serverTime = data?.result ?? data;
+
+    if (typeof serverTime === 'number' && serverTime > 0) {
+      const rtd = endLocal - startLocal;
+      const estimatedLocalAtServer = startLocal + rtd / 2;
+      serverTimeOffset = serverTime - estimatedLocalAtServer;
+    }
+  } catch {
+    // Keep existing offset or 0
+  }
+}
+
+function estimateServerTime(): number {
+  return Date.now() + serverTimeOffset;
+}
+
+async function setHandyMode(mode: number): Promise<boolean> {
+  const config = readHandyConfig();
+  if (!config) return false;
+  try {
+    const response = await fetch('/api/handy/mode2', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        appId: config.appId,
+        connectionKey: config.connectionKey,
+        mode,
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function setSliderStroke(min: number, max: number): Promise<void> {
   const config = readHandyConfig();
   if (!config) return;
-
-  // Throttle to ~12fps (80ms interval)
-  const now = Date.now();
-  if (now - lastHapticSendTime < 80) return;
-  lastHapticSendTime = now;
-
-  // Skip if position hasn't changed
-  const roundedPos = Math.round(position * 10) / 10;
-  if (lastSentHapticPosition !== null && lastSentHapticPosition === roundedPos) return;
-  lastSentHapticPosition = roundedPos;
-
-  // Normalize 0-100 → 0-1
-  const normalizedPosition = Math.max(0, Math.min(1, position / 100));
-  const inverted = readInverted();
-  const devicePos = inverted ? 1 - normalizedPosition : normalizedPosition;
-
-  fetch('/api/handy/hdsp/xpvp', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      appId: config.appId,
-      connectionKey: config.connectionKey,
-      xp: devicePos,
-      vp: Math.max(0, Math.min(1, velocity)),
-      stop_on_target: false,
-    }),
-  }).catch(() => { /* silently fail */ });
+  try {
+    await fetch('/api/handy/slider/stroke', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        appId: config.appId,
+        connectionKey: config.connectionKey,
+        min,
+        max,
+      }),
+    });
+  } catch { /* non-critical */ }
 }
 
-// Interpolate haptic position between keyframes
-function interpolateHapticPosition(
-  currentTime: number,
-  keyframes: { time: number; value: HapticKeyframeValue }[],
-): number {
-  if (keyframes.length === 0) return 50;
-  if (keyframes.length === 1) return keyframes[0].value.position;
-
-  let prev = keyframes[0];
-  let next = keyframes[keyframes.length - 1];
-
-  for (let i = 0; i < keyframes.length - 1; i++) {
-    if (currentTime >= keyframes[i].time && currentTime <= keyframes[i + 1].time) {
-      prev = keyframes[i];
-      next = keyframes[i + 1];
-      break;
-    }
-  }
-
-  if (currentTime <= prev.time) return prev.value.position;
-  if (currentTime >= next.time) return next.value.position;
-
-  const t = (currentTime - prev.time) / (next.time - prev.time);
-  return prev.value.position + (next.value.position - prev.value.position) * t;
-}
-
-// ============================================
-// Loop Checker - Single Global Loop
-// ============================================
-
-function startLoopChecker() {
-  if (loopCheckerRunning) return;
-
-  loopCheckerRunning = true;
-
-  const check = () => {
-    if (activeTimelines.size === 0) {
-      loopCheckerRunning = false;
-      loopAnimationId = null;
-      lastSentHapticPosition = null; // Reset debounce when stopping
-      return;
-    }
-
-    const now = Date.now();
-
-    for (const [, active] of activeTimelines) {
-      const elapsed = now - active.startTime;
-      const currentTime = elapsed % active.duration;
-
-      // Play sounds at current time
-      playSoundsAtTime(
-        active.timelineData,
-        currentTime,
-        active.soundTriggers,
-        active.soundCollections,
-        active
-      );
-
-      // Send haptic positions for haptic tracks
-      processHapticTracks(active.timelineData, currentTime);
-    }
-
-    loopAnimationId = requestAnimationFrame(check);
-  };
-
-  loopAnimationId = requestAnimationFrame(check);
-}
-
-// ============================================
-// Haptic Track Processor
-// ============================================
-
-function processHapticTracks(
+/**
+ * Start HSP pattern playback for a timeline's haptic tracks.
+ * Converts keyframes to HSP points, loads them into the device, and starts playback.
+ */
+async function startHspPatternPlayback(
   timeline: SpriteTimelineData,
-  currentTime: number,
-): void {
-  if (!readHapticEnabled()) return;
+): Promise<boolean> {
+  const config = readHandyConfig();
+  if (!config || !readHapticEnabled()) return false;
 
+  const { appId, connectionKey } = config;
+  const inverted = readInverted();
+
+  // Find haptic tracks
   const hapticTracks = timeline.tracks.filter(
-    (t) => t.type === 'haptic' && !t.muted && t.enabled
+    (t) => t.type === 'haptic' && !t.muted && t.enabled && t.keyframes.length > 0
   );
 
-  if (hapticTracks.length === 0) return;
+  if (hapticTracks.length === 0) return false;
 
-  for (const track of hapticTracks) {
-    if (track.keyframes.length === 0) continue;
+  // Convert haptic keyframes to HSP points
+  // For multiple haptic tracks, merge them (use the first active track)
+  // In practice, there's usually only one haptic track per timeline
+  const track = hapticTracks[0];
+  const keyframes = track.keyframes.map((kf) => ({
+    time: kf.time,
+    value: kf.value as HapticKeyframeValue,
+    interpolation: kf.interpolation,
+  }));
 
-    const hapticKeyframes = track.keyframes.map((kf) => ({
-      time: kf.time,
-      value: kf.value as HapticKeyframeValue,
-    }));
+  const points = generateHspPattern(keyframes, timeline.duration || 5000, timeline.loop);
 
-    const position = interpolateHapticPosition(currentTime, hapticKeyframes);
+  if (points.length === 0) return false;
 
-    // Find closest keyframe for velocity
-    let closestKf = hapticKeyframes[0];
-    for (const kf of hapticKeyframes) {
-      if (Math.abs(kf.time - currentTime) < Math.abs(closestKf.time - currentTime)) {
-        closestKf = kf;
+  // Apply inversion to all points
+  const adjustedPoints = inverted
+    ? points.map((p) => ({ t: p.t, x: 100 - p.x }))
+    : points;
+
+  console.log('[Timeline-HSP] 🎮 Starting HSP pattern playback:', {
+    points: adjustedPoints.length,
+    duration: timeline.duration,
+    loop: timeline.loop,
+    firstPoint: adjustedPoints[0],
+    lastPoint: adjustedPoints[adjustedPoints.length - 1],
+  });
+
+  try {
+    // 1. Sync server time
+    await syncServerTime();
+    const serverTime = estimateServerTime();
+
+    // 2. Set device mode to HSP (mode 4)
+    const modeSet = await setHandyMode(4);
+    if (!modeSet) {
+      console.warn('[Timeline-HSP] ⚠️ Failed to switch to HSP mode');
+      return false;
+    }
+
+    // 3. Set slider stroke to full range
+    await setSliderStroke(0, 1.0);
+
+    // 4. HSP setup
+    const streamId = Math.floor(Math.random() * 1024);
+    const setupResponse = await fetch('/api/handy/hsp/setup', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appId, connectionKey, stream_id: streamId }),
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!setupResponse.ok) {
+      console.error('[Timeline-HSP] ❌ HSP setup failed:', setupResponse.status);
+      return false;
+    }
+
+    // 5. HSP add - send initial batch
+    const initialBatch = adjustedPoints.slice(0, 10);
+    const addResponse = await fetch('/api/handy/hsp/add', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        appId,
+        connectionKey,
+        flush: false,
+        points: initialBatch,
+        tail_point_stream_index: initialBatch.length - 1,
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!addResponse.ok) {
+      console.error('[Timeline-HSP] ❌ HSP add (initial) failed');
+      return false;
+    }
+
+    // 6. HSP play
+    const playResponse = await fetch('/api/handy/hsp/play', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        appId,
+        connectionKey,
+        server_time: serverTime + 200, // 200ms delay for remaining points
+        start_time: 0,
+        loop: timeline.loop,
+        playback_rate: 1,
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!playResponse.ok) {
+      console.error('[Timeline-HSP] ❌ HSP play failed');
+      return false;
+    }
+
+    // 7. Send remaining points in batches
+    if (adjustedPoints.length > 10) {
+      const remaining = adjustedPoints.slice(10);
+      const batchCount = Math.ceil(remaining.length / 100);
+      let sentCount = 10;
+
+      for (let i = 0; i < batchCount; i++) {
+        const batchPoints = remaining.slice(i * 100, (i + 1) * 100);
+        sentCount += batchPoints.length;
+
+        try {
+          await fetch('/api/handy/hsp/add', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              appId,
+              connectionKey,
+              flush: false,
+              points: batchPoints,
+              tail_point_stream_index: sentCount - 1,
+            }),
+            signal: AbortSignal.timeout(5000),
+          });
+        } catch {
+          console.warn(`[Timeline-HSP] ⚠️ Error sending batch ${i + 1}/${batchCount}`);
+        }
       }
     }
 
-    const velocity = closestKf.value.velocity ?? 1.0;
-    sendHapticPosition(position, velocity);
+    console.log('[Timeline-HSP] ✅ HSP pattern playback started successfully');
+    return true;
+
+  } catch (err) {
+    console.error('[Timeline-HSP] ❌ Error:', err);
+    return false;
+  }
+}
+
+/**
+ * Stop HSP pattern playback and return device to center.
+ */
+async function stopHspPatternPlayback(): Promise<void> {
+  const config = readHandyConfig();
+  if (!config) return;
+
+  const { appId, connectionKey } = config;
+  const inverted = readInverted();
+
+  try {
+    // 1. Stop HSP
+    await fetch('/api/handy/hsp/stop', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appId, connectionKey }),
+      signal: AbortSignal.timeout(5000),
+    }).catch(() => {});
+
+    // 2. Flush buffer
+    await fetch('/api/handy/hsp/flush', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appId, connectionKey }),
+      signal: AbortSignal.timeout(5000),
+    }).catch(() => {});
+
+    // 3. Switch to HDSP mode and center device
+    await setHandyMode(2);
+
+    const centerPos = inverted ? 0.5 : 0.5;
+    await fetch('/api/handy/hdsp/xpvp', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        appId,
+        connectionKey,
+        xp: centerPos,
+        vp: 0.3,
+        stop_on_target: true,
+        immediate_rsp: true,
+      }),
+    }).catch(() => {});
+
+    // 4. Stop HAMP
+    setTimeout(() => {
+      fetch('/api/handy/hamp/stop', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appId, connectionKey }),
+      }).catch(() => {});
+    }, 300);
+
+  } catch (err) {
+    console.error('[Timeline-HSP] ❌ Error stopping:', err);
   }
 }
 
@@ -364,7 +546,7 @@ function playSoundsAtTime(
   for (const track of timeline.tracks) {
     if (track.muted || !track.enabled) continue;
 
-    // Only process sound tracks (or legacy 'sprite' tracks with sound data)
+    // Only process sound tracks
     const isSoundTrack = track.type === 'sound' || (
       track.type === 'sprite' && track.keyframes.some(kf => {
         const val = kf.value as unknown as Record<string, unknown>;
@@ -380,7 +562,6 @@ function playSoundsAtTime(
       const keyframeId = keyframe.id;
       const keyframeTime = keyframe.time;
 
-      // Check if playhead is crossing this keyframe
       const isCrossing = currentTime >= keyframeTime && currentTime < keyframeTime + toleranceMs;
 
       if (isCrossing && !active.triggeredKeyframes.has(keyframeId)) {
@@ -399,11 +580,9 @@ function playSoundsAtTime(
           (async () => {
             let audioEl: HTMLAudioElement | null = null;
 
-            // Try sound trigger first (by ID)
             if (soundValue.soundTriggerId) {
               let trigger = soundTriggers.find(t => t.id === soundValue.soundTriggerId);
 
-              // Fallback: try to find by name if ID not found
               if (!trigger && soundValue.soundTriggerName) {
                 trigger = soundTriggers.find(t =>
                   t.name.toLowerCase() === soundValue.soundTriggerName!.toLowerCase()
@@ -418,7 +597,6 @@ function playSoundsAtTime(
                 );
               }
             }
-            // Fall back to direct URL
             else if (soundValue.soundUrl) {
               audioEl = await playSoundFromUrl(
                 soundValue.soundUrl,
@@ -438,7 +616,6 @@ function playSoundsAtTime(
           })();
         }
 
-        // Handle stop command
         if (soundValue.stop) {
           const trackAudios = active.activeAudios.get(trackId) || [];
           for (const audio of trackAudios) {
@@ -458,6 +635,56 @@ function playSoundsAtTime(
 }
 
 // ============================================
+// Loop Checker - Only for Sound Tracks
+// ============================================
+// HSP handles haptic playback natively - no need for requestAnimationFrame
+// haptic updates. This loop only triggers sound keyframes.
+
+function startLoopChecker() {
+  if (loopCheckerRunning) return;
+
+  loopCheckerRunning = true;
+
+  const check = () => {
+    if (activeTimelines.size === 0) {
+      loopCheckerRunning = false;
+      loopAnimationId = null;
+      return;
+    }
+
+    const now = Date.now();
+
+    for (const [, active] of activeTimelines) {
+      // Only process sound tracks via the loop checker
+      const hasSoundTracks = active.timelineData.tracks.some(t =>
+        !t.muted && t.enabled && (t.type === 'sound' || (
+          t.type === 'sprite' && t.keyframes.some(kf => {
+            const val = kf.value as unknown as Record<string, unknown>;
+            return val?.soundTriggerId || val?.play;
+          })
+        ))
+      );
+
+      if (hasSoundTracks) {
+        const elapsed = now - active.startTime;
+        const currentTime = elapsed % active.duration;
+        playSoundsAtTime(
+          active.timelineData,
+          currentTime,
+          active.soundTriggers,
+          active.soundCollections,
+          active
+        );
+      }
+    }
+
+    loopAnimationId = requestAnimationFrame(check);
+  };
+
+  loopAnimationId = requestAnimationFrame(check);
+}
+
+// ============================================
 // Start/Stop Timeline
 // ============================================
 
@@ -473,12 +700,43 @@ function stopTimeline(characterId: string) {
     }
   }
 
+  // If this timeline was playing HSP, stop it
+  if (active.hspPlaying) {
+    stopHspPatternPlayback();
+  }
+
   activeTimelines.delete(characterId);
 
-  // If no more active timelines, send haptic to center
+  // If no more active timelines, ensure device is stopped
   if (activeTimelines.size === 0 && readHapticEnabled()) {
-    sendHapticPosition(50, 0.3);
-    lastSentHapticPosition = null;
+    // HSP stop already called above, but ensure device is centered
+    const config = readHandyConfig();
+    if (config) {
+      const inverted = readInverted();
+      const centerPos = inverted ? 0.5 : 0.5;
+      fetch('/api/handy/hdsp/xpvp', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appId: config.appId,
+          connectionKey: config.connectionKey,
+          xp: centerPos,
+          vp: 0.3,
+          stop_on_target: true,
+          immediate_rsp: true,
+        }),
+      }).catch(() => {});
+      setTimeout(() => {
+        fetch('/api/handy/hamp/stop', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            appId: config.appId,
+            connectionKey: config.connectionKey,
+          }),
+        }).catch(() => {});
+      }, 500);
+    }
   }
 }
 
@@ -492,7 +750,7 @@ function startTimeline(
   // Stop any existing timeline for this character
   stopTimeline(characterId);
 
-  // Check if there are any playable tracks (sound or haptic)
+  // Check if there are any playable tracks
   const hasSoundTracks = timeline.tracks.some(t => !t.muted && t.enabled && (
     t.type === 'sound' || (
       t.type === 'sprite' && t.keyframes.some(kf => {
@@ -519,6 +777,7 @@ function startTimeline(
     soundTriggers,
     soundCollections,
     characterId,
+    hspPlaying: false,
   };
 
   activeTimelines.set(characterId, active);
@@ -530,27 +789,31 @@ function startTimeline(
     url: spriteUrl.split('/').pop(),
   });
 
-  // Start the loop checker if not already running
-  startLoopChecker();
-
-  // Play initial sounds at time 0
+  // Start the loop checker for sound tracks
   if (hasSoundTracks) {
+    startLoopChecker();
+
+    // Play initial sounds at time 0
     playSoundsAtTime(timeline, 0, soundTriggers, soundCollections, active);
   }
 
-  // Send initial haptic position
+  // Start HSP pattern playback for haptic tracks
   if (hasHapticTracks) {
-    processHapticTracks(timeline, 0);
+    startHspPatternPlayback(timeline).then(success => {
+      if (success) {
+        const tl = activeTimelines.get(characterId);
+        if (tl) tl.hspPlaying = true;
+        console.log('[Timeline] 🎮 HSP pattern playback started');
+      } else {
+        console.warn('[Timeline] ⚠️ HSP pattern playback failed to start');
+      }
+    });
   }
 }
 
 // ============================================
 // Idle Sprite URL Resolver
 // ============================================
-
-// Replicate the same logic as CharacterSprite.getSpriteUrl / getSpriteFromStateCollectionV2
-// to compute the displayed sprite URL for idle/talk/thinking states.
-// This requires character data (spritePacksV2, stateCollectionsV2).
 
 function computeIdleSpriteUrl(
   spriteState: string,
@@ -564,7 +827,6 @@ function computeIdleSpriteUrl(
 
   if (!hasV2Collections || !hasV2Packs) return null;
 
-  // Find state collection matching the current sprite state
   const stateCollection = character.stateCollectionsV2!.find(
     (c: StateCollectionV2) => c.state === spriteState
   );
@@ -585,10 +847,6 @@ function computeIdleSpriteUrl(
     }
     case 'random':
     case 'list': {
-      // For random/list, we can't easily predict the URL from here
-      // since random uses Math.random() and list uses a rotation index.
-      // Return first sprite URL as fallback — the actual displayed sprite
-      // may differ, but this ensures we at least try to load timeline data.
       return pack.sprites[0]?.url || null;
     }
     default:
@@ -606,7 +864,6 @@ export function useTimelineSpriteSounds() {
   const soundCollections = useTavernStore((state) => state.soundCollections ?? []);
   const characters = useTavernStore((state) => state.characters ?? []);
 
-  // Build a character lookup map for efficiency
   const characterMap = useRef<Map<string, CharacterCard>>(new Map());
   useEffect(() => {
     characterMap.current = new Map(characters.map(c => [c.id, c]));
@@ -614,17 +871,14 @@ export function useTimelineSpriteSounds() {
 
   const prevSpriteUrlsRef = useRef<Record<string, string>>({});
 
-  // Start/stop timeline when sprite changes (trigger OR idle)
+  // Start/stop timeline when sprite changes
   useEffect(() => {
     const currentSpriteUrls: Record<string, string> = {};
 
     for (const [characterId, charState] of Object.entries(characterSpriteStates)) {
-      // Determine effective sprite URL:
-      // Priority: trigger > idle from state collections
       let effectiveUrl = charState.triggerSpriteUrl || '';
 
       if (!effectiveUrl) {
-        // No trigger active — compute idle sprite URL
         const character = characterMap.current.get(characterId);
         effectiveUrl = computeIdleSpriteUrl(
           charState.spriteState,
@@ -637,21 +891,16 @@ export function useTimelineSpriteSounds() {
 
       const prevUrl = prevSpriteUrlsRef.current[characterId];
 
-      // If sprite URL changed to a new sprite
       if (effectiveUrl && effectiveUrl !== prevUrl) {
-        // Check if timeline sounds are enabled (only for trigger sprites)
         if (charState.triggerSpriteUrl && !charState.useTimelineSounds) {
-          // For triggers with disabled timeline sounds, skip
           continue;
         }
 
-        // Extract collection name and filename from URL
         const collectionName = extractCollectionFromUrl(effectiveUrl);
         const filename = extractFilenameFromUrl(effectiveUrl);
 
         if (!collectionName || !filename) continue;
 
-        // Load collection metadata and find sprite timeline
         (async () => {
           const metadata = await loadCollectionMetadata(collectionName);
           if (!metadata) return;
@@ -659,7 +908,6 @@ export function useTimelineSpriteSounds() {
           const spriteMeta = metadata.sprites[filename];
           if (!spriteMeta?.timeline?.tracks) return;
 
-          // Start timeline (handles both sound and haptic tracks)
           startTimeline(
             characterId,
             effectiveUrl,
@@ -670,7 +918,6 @@ export function useTimelineSpriteSounds() {
         })();
       }
 
-      // If sprite was cleared but we had an active timeline
       if (!effectiveUrl && prevUrl) {
         stopTimeline(characterId);
       }

@@ -42,8 +42,8 @@ interface SpriteCollection {
 
 // Supported sprite formats
 const IMAGE_EXTENSIONS = /\.(png|jpg|jpeg|webp)$/i;
-const ANIMATION_EXTENSIONS = /\.(gif|webm|apng)$/i;
-const ALL_SPRITE_EXTENSIONS = /\.(png|jpg|jpeg|webp|gif|webm|apng)$/i;
+const ANIMATION_EXTENSIONS = /\.(gif|webm|apng|mp4|mov|avi|mkv|ogv)$/i;
+const ALL_SPRITE_EXTENSIONS = /\.(png|jpg|jpeg|webp|gif|webm|apng|mp4|mov|avi|mkv|ogv)$/i;
 
 interface SpriteMetadata {
   label?: string;

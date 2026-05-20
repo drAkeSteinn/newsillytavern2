@@ -33,6 +33,7 @@ import type {
   TimelineKeyframe,
   SoundKeyframeValue,
   HapticKeyframeValue,
+  HapticVelocityMode,
   SpriteAnimationFormat,
   SoundTrigger,
   SpriteTimelineData,
@@ -80,6 +81,8 @@ import {
 import { useTavernStore } from '@/store/tavern-store';
 import { useToast } from '@/hooks/use-toast';
 import { useHapticPlayback } from '@/hooks/use-haptic-playback';
+import type { HspPoint } from '@/hooks/use-haptic-playback';
+import { generateHspPattern } from '@/lib/haptic/hsp-pattern-generator';
 
 // Audio cache for preloading sounds
 const audioCache = new Map<string, HTMLAudioElement>();
@@ -151,47 +154,11 @@ interface SpriteCollectionFromAPI {
 // Main Component
 // ============================================
 
-// ============================================
-// Haptic interpolation helper
-// ============================================
-
-function interpolateHapticPosition(
-  currentTime: number,
-  keyframes: TimelineKeyframe[],
-): number {
-  if (keyframes.length === 0) return 50; // Default center
-  if (keyframes.length === 1) return (keyframes[0].value as HapticKeyframeValue).position;
-
-  // Find surrounding keyframes
-  let prev = keyframes[0];
-  let next = keyframes[keyframes.length - 1];
-
-  for (let i = 0; i < keyframes.length - 1; i++) {
-    if (currentTime >= keyframes[i].time && currentTime <= keyframes[i + 1].time) {
-      prev = keyframes[i];
-      next = keyframes[i + 1];
-      break;
-    }
-  }
-
-  const prevPos = (prev.value as HapticKeyframeValue).position;
-  const nextPos = (next.value as HapticKeyframeValue).position;
-
-  // Handle edge cases
-  if (currentTime <= prev.time) return prevPos;
-  if (currentTime >= next.time) return nextPos;
-
-  const t = (currentTime - prev.time) / (next.time - prev.time);
-
-  // Apply interpolation based on type
-  switch (prev.interpolation) {
-    case 'hold': return prevPos;
-    case 'ease-in': return prevPos + (nextPos - prevPos) * (t * t);
-    case 'ease-out': return prevPos + (nextPos - prevPos) * (1 - (1 - t) * (1 - t));
-    case 'ease-in-out': return prevPos + (nextPos - prevPos) * (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
-    default: return prevPos + (nextPos - prevPos) * t; // linear
-  }
-}
+// Haptic playback now uses HSP (Handy Server Pattern) instead of HDSP streaming.
+// HSP preloads all pattern points into the device buffer, then the device handles
+// timing, interpolation, and looping natively — eliminating network latency and
+// loop wraparound issues.
+// See: /src/lib/haptic/hsp-pattern-generator.ts and /src/hooks/use-haptic-playback.ts
 
 // ============================================
 // Main Component
@@ -203,6 +170,10 @@ export function SpriteTimelineEditor() {
     selectCollection,
     selectSprite,
     selectKeyframe,
+    selectKeyframes,
+    toggleKeyframeSelection,
+    addToKeyframeSelection,
+    clearKeyframeSelection,
     setZoom,
     toggleSnap,
     soundTriggers,
@@ -255,6 +226,18 @@ export function SpriteTimelineEditor() {
   // Ref to the haptic track content element being dragged (for fresh rect on scroll)
   const hapticDragTrackElRef = useRef<HTMLElement | null>(null);
   
+  // Marquee selection state
+  const [isMarqueeSelecting, setIsMarqueeSelecting] = useState(false);
+  const [marqueeStart, setMarqueeStart] = useState<{x: number; y: number; time: number} | null>(null);
+  const [marqueeEnd, setMarqueeEnd] = useState<{x: number; y: number; time: number} | null>(null);
+  const [marqueeTrackId, setMarqueeTrackId] = useState<string | null>(null);
+
+  // Multi-keyframes drag state - stores initial positions when drag starts
+  const [multiDragInitialPositions, setMultiDragInitialPositions] = useState<Map<string, {time: number; position?: number}>>(new Map());
+  const [multiDragStartTime, setMultiDragStartTime] = useState<number | null>(null);
+  const multiDragInitialPositionsRef = useRef<Map<string, {time: number; position?: number}>>(new Map());
+  const multiDragStartTimeRef = useRef<number | null>(null);
+
   // Track which keyframes have been triggered during playback
   const triggeredKeyframesRef = useRef<Set<string>>(new Set());
   
@@ -288,7 +271,28 @@ export function SpriteTimelineEditor() {
   const selectedCollection = timelineCollections.find(c => c.id === editorState.selectedCollectionId);
   const selectedSprite = selectedCollection?.sprites.find(s => s.id === editorState.selectedSpriteId);
   const selectedTrack = selectedSprite?.timeline.tracks.find(t => t.id === editorState.selectedTrackId);
-  const selectedKeyframe = selectedTrack?.keyframes.find(k => k.id === editorState.selectedKeyframeId);
+
+  // Find selected keyframe across ALL tracks (not just selectedTrack),
+  // since selectedTrackId may not be set when a keyframe is clicked.
+  const selectedKeyframe = (() => {
+    if (!selectedSprite || !editorState.selectedKeyframeId) return undefined;
+    for (const track of selectedSprite.timeline.tracks) {
+      const kf = track.keyframes.find(k => k.id === editorState.selectedKeyframeId);
+      if (kf) return kf;
+    }
+    return undefined;
+  })();
+
+  // Find the track that contains the selected keyframe
+  const selectedKeyframeTrack = (() => {
+    if (!selectedSprite || !editorState.selectedKeyframeId) return undefined;
+    for (const track of selectedSprite.timeline.tracks) {
+      if (track.keyframes.some(k => k.id === editorState.selectedKeyframeId)) {
+        return track;
+      }
+    }
+    return undefined;
+  })();
 
   // Capture first frame of animated image (webp, gif) when sprite is selected
   useEffect(() => {
@@ -770,9 +774,32 @@ export function SpriteTimelineEditor() {
       triggeredKeyframesRef.current.clear();
     }
     
-    // Start haptic playback if enabled
+    // Start haptic playback using HSP pattern if enabled
     if (hapticEnabled && haptic.isConnected) {
-      haptic.startHapticPlayback();
+      const hapticTracks = selectedSprite.timeline.tracks.filter(t => t.type === 'haptic' && !t.muted);
+      if (hapticTracks.length > 0 && hapticTracks[0].keyframes.length > 0) {
+        // Generate HSP pattern from haptic keyframes
+        const track = hapticTracks[0];
+        const hspKeyframes = track.keyframes.map((kf) => ({
+          time: kf.time,
+          value: kf.value as HapticKeyframeValue,
+          interpolation: kf.interpolation,
+        }));
+        const hspPoints = generateHspPattern(
+          hspKeyframes,
+          selectedSprite.timeline.duration,
+          selectedSprite.timeline.loop,
+        );
+        if (hspPoints.length > 0) {
+          haptic.playHspPattern(hspPoints, selectedSprite.timeline.loop).then(success => {
+            if (success) {
+              console.log('[TimelineEditor] 🎮 HSP pattern started');
+            } else {
+              console.warn('[TimelineEditor] ⚠️ HSP pattern failed');
+            }
+          });
+        }
+      }
     }
     
     setIsPlaying(true);
@@ -794,24 +821,9 @@ export function SpriteTimelineEditor() {
         // Check and play sounds at current position
         checkAndPlaySounds(currentTime);
         
-        // Send haptic positions for all non-muted haptic tracks
-        if (hapticEnabled && haptic.isConnected) {
-          const hapticTracks = selectedSprite.timeline.tracks.filter(t => t.type === 'haptic' && !t.muted);
-          for (const track of hapticTracks) {
-            if (track.keyframes.length === 0) continue;
-            const position = interpolateHapticPosition(currentTime, track.keyframes);
-            let velocity = 1.0;
-            let closestKf = track.keyframes[0];
-            for (const kf of track.keyframes) {
-              if (Math.abs(kf.time - currentTime) < Math.abs(closestKf.time - currentTime)) {
-                closestKf = kf;
-              }
-            }
-            const hv = closestKf.value as HapticKeyframeValue;
-            if (hv.velocity !== undefined) velocity = hv.velocity;
-            haptic.sendPosition(position, velocity);
-          }
-        }
+        // Haptic playback is now handled by HSP pattern (device-native).
+        // No need to send per-frame haptic commands — the device handles
+        // timing, interpolation, and looping natively.
       } catch (err) {
         console.error('[TimelineEditor] Animation frame error:', err);
       }
@@ -838,8 +850,8 @@ export function SpriteTimelineEditor() {
     // Clear triggered keyframes on pause so they can be replayed when seeking back
     triggeredKeyframesRef.current.clear();
     
-    // Stop haptic playback
-    if (hapticEnabled && haptic.isPlaying) {
+    // Stop haptic playback (HSP or HDSP)
+    if (hapticEnabled && (haptic.isPlaying || haptic.isHspPlaying)) {
       haptic.stopHapticPlayback();
     }
     
@@ -858,8 +870,8 @@ export function SpriteTimelineEditor() {
     setPlaybackTime(0);
     triggeredKeyframesRef.current.clear(); // Clear triggered keyframes
     
-    // Stop haptic playback
-    if (hapticEnabled && haptic.isPlaying) {
+    // Stop haptic playback (HSP or HDSP)
+    if (hapticEnabled && (haptic.isPlaying || haptic.isHspPlaying)) {
       haptic.stopHapticPlayback();
     }
     
@@ -1082,6 +1094,7 @@ export function SpriteTimelineEditor() {
         type: 'haptic' as const,
         position: p.position,
         velocity: 1.0,
+        velocityMode: 'auto' as const,
         stopOnTarget: false,
       } as HapticKeyframeValue,
       interpolation: 'linear' as const,
@@ -1166,6 +1179,7 @@ export function SpriteTimelineEditor() {
               type: 'haptic' as const,
               position: Math.max(0, Math.min(100, position)),
               velocity: 1.0,
+              velocityMode: 'auto' as const,
               stopOnTarget: false,
             } as HapticKeyframeValue,
             interpolation: 'linear' as const,
@@ -1729,6 +1743,61 @@ export function SpriteTimelineEditor() {
       setHapticDragInfo({ position: newPosition, x: e.clientX, y: e.clientY });
     }
     
+    // Multi-keyframe drag: if multiple keyframes are selected, move them all together
+    const currentSelectedIds = useTavernStore.getState().editorState.selectedKeyframeIds;
+    if (currentSelectedIds.length > 1 && multiDragInitialPositionsRef.current.size > 0 && multiDragStartTimeRef.current !== null) {
+      // Calculate delta from the primary dragged keyframe's initial position
+      const primaryInitial = multiDragInitialPositionsRef.current.get(draggingKeyframe.keyframeId);
+      if (primaryInitial) {
+        const timeDelta = newTime - primaryInitial.time;
+        const positionDelta = (newPosition !== undefined && primaryInitial.position !== undefined)
+          ? newPosition - primaryInitial.position
+          : undefined;
+        
+        // Move all selected keyframes by the same delta
+        setTimelineCollections(prev => prev.map(col => ({
+          ...col,
+          sprites: col.sprites.map(s =>
+            s.id === selectedSprite.id
+              ? {
+                  ...s,
+                  timeline: {
+                    ...s.timeline,
+                    tracks: s.timeline.tracks.map(t => ({
+                      ...t,
+                      keyframes: t.keyframes.map(k => {
+                        const initial = multiDragInitialPositionsRef.current.get(k.id);
+                        if (!initial) return k;
+                        
+                        let movedTime = initial.time + timeDelta;
+                        // Apply snap
+                        if (editorState.snapEnabled && editorState.snapInterval > 0) {
+                          movedTime = Math.round(movedTime / editorState.snapInterval) * editorState.snapInterval;
+                        }
+                        movedTime = Math.max(0, Math.min(movedTime, selectedSprite.timeline.duration));
+                        
+                        const updated = { ...k, time: movedTime };
+                        // For haptic keyframes, also move position
+                        if (positionDelta !== undefined && initial.position !== undefined) {
+                          const hv = k.value as HapticKeyframeValue;
+                          if (hv.type === 'haptic') {
+                            const movedPosition = Math.max(0, Math.min(100, Math.round(initial.position + positionDelta)));
+                            updated.value = { ...k.value, position: movedPosition } as HapticKeyframeValue;
+                          }
+                        }
+                        return updated;
+                      }).sort((a, b) => a.time - b.time),
+                    })),
+                  },
+                }
+              : s
+          ),
+        })));
+        return; // Skip single keyframe move below
+      }
+    }
+    
+    // Single keyframe move (original behavior)
     handleMoveKeyframe(draggingKeyframe.trackId, draggingKeyframe.keyframeId, newTime, newPosition);
   }, [draggingKeyframe, selectedSprite, editorState.zoom, editorState.snapEnabled, editorState.snapInterval, handleMoveKeyframe]);
 
@@ -1736,6 +1805,11 @@ export function SpriteTimelineEditor() {
     setDraggingKeyframe(null);
     setHapticDragInfo(null);
     hapticDragTrackElRef.current = null;
+    // Clear multi-drag state
+    setMultiDragInitialPositions(new Map());
+    multiDragInitialPositionsRef.current = new Map();
+    setMultiDragStartTime(null);
+    multiDragStartTimeRef.current = null;
   }, []);
 
   // Add/remove mouse event listeners for keyframe dragging
@@ -1749,6 +1823,139 @@ export function SpriteTimelineEditor() {
       };
     }
   }, [draggingKeyframe, handleKeyframeMouseMove, handleKeyframeMouseUp]);
+
+  // ===== MARQUEE SELECTION HANDLERS =====
+  const handleMarqueeMouseMove = useCallback((e: MouseEvent) => {
+    if (!isMarqueeSelecting || !marqueeStart) return;
+    
+    const scrollLeft = timelineScrollRef.current?.scrollLeft || 0;
+    // Find the track content element for marqueeTrackId
+    const trackContentEl = document.querySelector(`[data-track-id="${marqueeTrackId}"] [data-track-content]`);
+    let time = marqueeStart.time;
+    if (trackContentEl) {
+      const rect = trackContentEl.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left + scrollLeft;
+      time = mouseX / editorState.zoom;
+    }
+    
+    setMarqueeEnd({ x: e.clientX, y: e.clientY, time });
+  }, [isMarqueeSelecting, marqueeStart, marqueeTrackId, editorState.zoom]);
+
+  const handleMarqueeMouseUp = useCallback(() => {
+    if (!isMarqueeSelecting || !marqueeStart || !marqueeEnd || !selectedSprite || !marqueeTrackId) {
+      setIsMarqueeSelecting(false);
+      setMarqueeStart(null);
+      setMarqueeEnd(null);
+      setMarqueeTrackId(null);
+      return;
+    }
+    
+    // Find the track
+    const track = selectedSprite.timeline.tracks.find(t => t.id === marqueeTrackId);
+    if (track) {
+      const isHapticTrack = track.type === 'haptic';
+      
+      // Calculate time range from marquee
+      const minTime = Math.min(marqueeStart.time, marqueeEnd.time);
+      const maxTime = Math.max(marqueeStart.time, marqueeEnd.time);
+      
+      // Find keyframes within the marquee selection
+      const selectedIds: string[] = [];
+      const trackContentEl = document.querySelector(`[data-track-id="${marqueeTrackId}"] [data-track-content]`);
+      const trackRect = trackContentEl?.getBoundingClientRect();
+      
+      for (const kf of track.keyframes) {
+        // Check time range
+        if (kf.time >= minTime && kf.time <= maxTime) {
+          if (isHapticTrack && trackRect) {
+            // For haptic, also check Y range
+            const hv = kf.value as HapticKeyframeValue;
+            const kfY = trackRect.top + ((100 - hv.position) / 100) * trackRect.height;
+            if (kfY >= Math.min(marqueeStart.y, marqueeEnd.y) && kfY <= Math.max(marqueeStart.y, marqueeEnd.y)) {
+              selectedIds.push(kf.id);
+            }
+          } else {
+            selectedIds.push(kf.id);
+          }
+        }
+      }
+      
+      if (selectedIds.length > 0) {
+        selectKeyframes(selectedIds);
+      } else {
+        clearKeyframeSelection();
+      }
+    }
+    
+    setIsMarqueeSelecting(false);
+    setMarqueeStart(null);
+    setMarqueeEnd(null);
+    setMarqueeTrackId(null);
+  }, [isMarqueeSelecting, marqueeStart, marqueeEnd, selectedSprite, marqueeTrackId, selectKeyframes, clearKeyframeSelection]);
+
+  // Add/remove marquee event listeners
+  useEffect(() => {
+    if (isMarqueeSelecting) {
+      window.addEventListener('mousemove', handleMarqueeMouseMove);
+      window.addEventListener('mouseup', handleMarqueeMouseUp);
+      return () => {
+        window.removeEventListener('mousemove', handleMarqueeMouseMove);
+        window.removeEventListener('mouseup', handleMarqueeMouseUp);
+      };
+    }
+  }, [isMarqueeSelecting, handleMarqueeMouseMove, handleMarqueeMouseUp]);
+
+  // Handle Delete key to remove selected keyframes
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!selectedSprite) return;
+      
+      // Delete or Backspace key
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        // Don't delete if focused on an input element
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+        
+        const selectedIds = editorState.selectedKeyframeIds;
+        if (selectedIds.length === 0) return;
+        
+        e.preventDefault();
+        
+        // Delete all selected keyframes
+        setTimelineCollections(prev => prev.map(col => ({
+          ...col,
+          sprites: col.sprites.map(s =>
+            s.id === selectedSprite.id
+              ? {
+                  ...s,
+                  timeline: {
+                    ...s.timeline,
+                    tracks: s.timeline.tracks.map(t => ({
+                      ...t,
+                      keyframes: t.keyframes.filter(k => !selectedIds.includes(k.id)),
+                    })),
+                  },
+                }
+              : s
+          ),
+        })));
+        
+        clearKeyframeSelection();
+        toast({
+          title: 'Keyframes eliminados',
+          description: `${selectedIds.length} keyframe(s) eliminado(s)`,
+        });
+      }
+      
+      // Escape key to clear selection
+      if (e.key === 'Escape') {
+        clearKeyframeSelection();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedSprite, editorState.selectedKeyframeIds, clearKeyframeSelection, toast]);
 
   // Handle timeline ruler click for seeking
   const handleRulerClick = (e: React.MouseEvent) => {
@@ -1772,7 +1979,7 @@ export function SpriteTimelineEditor() {
     if (!selectedSprite) return null;
     
     const duration = selectedSprite.timeline.duration;
-    const marks: JSX.Element[] = [];
+    const marks: React.JSX.Element[] = [];
     const subdivisionMs = 200; // 5 divisions per second
     
     // Calculate how many seconds we can fit
@@ -2380,7 +2587,7 @@ export function SpriteTimelineEditor() {
                       const trackHeight = isHaptic ? 120 : 50;
 
                       return (
-                      <div key={track.id} className="flex border-b" style={{ minHeight: `${trackHeight}px` }}>
+                      <div key={track.id} data-track-id={track.id} className="flex border-b" style={{ minHeight: `${trackHeight}px` }}>
                         {/* Track header - Fixed width */}
                         <div className={cn(
                           "w-44 flex-shrink-0 p-2 border-r flex flex-col gap-1 sticky left-0 z-10",
@@ -2509,7 +2716,30 @@ export function SpriteTimelineEditor() {
                           onDragOver={!isHaptic ? (e) => handleDragOver(e, track.id) : undefined}
                           onDragLeave={!isHaptic ? handleDragLeave : undefined}
                           onDrop={!isHaptic ? (e) => handleTrackDrop(e, track.id) : undefined}
+                          onMouseDown={(e) => {
+                            // Only start marquee if clicking on empty space (not on a keyframe)
+                            // and only for left mouse button
+                            if (e.button !== 0) return;
+                            const target = e.target as HTMLElement;
+                            // If clicking on a keyframe element, don't start marquee
+                            if (target.closest('[data-keyframe]')) return;
+                            
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const scrollLeft = timelineScrollRef.current?.scrollLeft || 0;
+                            const mouseX = e.clientX - rect.left + scrollLeft;
+                            const time = mouseX / editorState.zoom;
+                            
+                            setIsMarqueeSelecting(true);
+                            setMarqueeStart({ x: e.clientX, y: e.clientY, time });
+                            setMarqueeEnd({ x: e.clientX, y: e.clientY, time });
+                            setMarqueeTrackId(track.id);
+                          }}
                           onClick={(e) => {
+                            // Clear selection when clicking on empty space without modifiers
+                            const target = e.target as HTMLElement;
+                            if (!target.closest('[data-keyframe]') && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                              clearKeyframeSelection();
+                            }
                             if (!isHaptic) return;
                             // Create haptic keyframe on click
                             const rect = e.currentTarget.getBoundingClientRect();
@@ -2539,6 +2769,7 @@ export function SpriteTimelineEditor() {
                                 type: 'haptic',
                                 position,
                                 velocity: 1.0,
+                                velocityMode: 'auto',
                                 stopOnTarget: false,
                               } as HapticKeyframeValue,
                               interpolation: 'linear',
@@ -2614,6 +2845,7 @@ export function SpriteTimelineEditor() {
                                 const kfX = keyframe.time * pixelsPerMs;
                                 const kfY = ((100 - hv.position) / 100) * trackHeight;
                                 const isSelected = editorState.selectedKeyframeId === keyframe.id;
+                                const isInMultiSelection = editorState.selectedKeyframeIds.includes(keyframe.id);
                                 const isDragging = draggingKeyframe?.keyframeId === keyframe.id;
 
                                 return (
@@ -2624,11 +2856,12 @@ export function SpriteTimelineEditor() {
                                       style={{
                                         left: `${kfX}px`,
                                         height: `${kfY}px`,
-                                        backgroundColor: isSelected ? 'rgb(217 70 239 / 0.5)' : 'rgb(217 70 239 / 0.15)',
+                                        backgroundColor: isSelected || isInMultiSelection ? 'rgb(217 70 239 / 0.5)' : 'rgb(217 70 239 / 0.15)',
                                       }}
                                     />
                                     {/* Diamond keyframe */}
                                     <div
+                                      data-keyframe
                                       className={cn(
                                         "absolute w-4 h-4 cursor-grab active:cursor-grabbing group z-20",
                                         "transition-transform",
@@ -2640,10 +2873,46 @@ export function SpriteTimelineEditor() {
                                       }}
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        selectKeyframe(keyframe.id);
+                                        if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                                          // Toggle in multi-selection
+                                          toggleKeyframeSelection(keyframe.id);
+                                        } else {
+                                          // Single selection (replaces any existing selection)
+                                          selectKeyframe(keyframe.id);
+                                        }
                                       }}
                                       onMouseDown={(e) => {
                                         e.stopPropagation();
+                                        // Handle selection
+                                        if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                                          toggleKeyframeSelection(keyframe.id);
+                                        } else if (!editorState.selectedKeyframeIds.includes(keyframe.id)) {
+                                          // If not already in selection, replace selection with this one
+                                          selectKeyframe(keyframe.id);
+                                        }
+
+                                        // Store initial positions for all selected keyframes for multi-drag
+                                        const currentSelectedIds = useTavernStore.getState().editorState.selectedKeyframeIds;
+                                        if (currentSelectedIds.includes(keyframe.id) && selectedSprite) {
+                                          const initialPositions = new Map<string, {time: number; position?: number}>();
+                                          for (const trk of selectedSprite.timeline.tracks) {
+                                            for (const kf of trk.keyframes) {
+                                              if (currentSelectedIds.includes(kf.id)) {
+                                                const hv = kf.value as HapticKeyframeValue;
+                                                initialPositions.set(kf.id, {
+                                                  time: kf.time,
+                                                  position: hv.type === 'haptic' ? hv.position : undefined,
+                                                });
+                                              }
+                                            }
+                                          }
+                                          setMultiDragInitialPositions(initialPositions);
+                                          multiDragInitialPositionsRef.current = initialPositions;
+                                          setMultiDragStartTime(keyframe.time);
+                                          multiDragStartTimeRef.current = keyframe.time;
+                                        }
+
+                                        // Keep as primary selected
                                         selectKeyframe(keyframe.id);
                                         // Capture track content element for haptic Y-axis dragging
                                         const trackContentEl = (e.currentTarget as HTMLElement).closest('[data-track-content]') as HTMLElement | null;
@@ -2660,6 +2929,8 @@ export function SpriteTimelineEditor() {
                                           "w-full h-full rotate-45 rounded-sm border-2 transition-colors",
                                           isSelected
                                             ? "bg-fuchsia-500 border-fuchsia-300 shadow-lg shadow-fuchsia-500/30"
+                                            : isInMultiSelection
+                                            ? "bg-fuchsia-400 border-fuchsia-200 shadow-md shadow-fuchsia-400/20"
                                             : "bg-fuchsia-600 border-fuchsia-400 group-hover:bg-fuchsia-400",
                                           isDragging && "bg-fuchsia-300 border-fuchsia-200"
                                         )}
@@ -2692,23 +2963,60 @@ export function SpriteTimelineEditor() {
                           ) : (
                             <>
                               {/* Sound keyframes (original rendering) */}
-                              {track.keyframes.map((keyframe) => (
+                              {track.keyframes.map((keyframe) => {
+                                const isInMultiSelection = editorState.selectedKeyframeIds.includes(keyframe.id);
+                                return (
                                 <div
                                   key={keyframe.id}
+                                  data-keyframe
                                   className={cn(
                                     "absolute top-1/2 -translate-y-1/2 w-5 h-7 rounded cursor-grab active:cursor-grabbing group",
                                     editorState.selectedKeyframeId === keyframe.id
                                       ? "bg-amber-500 hover:bg-amber-400 border-2 border-amber-300"
+                                      : isInMultiSelection
+                                      ? "bg-amber-400 hover:bg-amber-300 border-2 border-amber-200"
                                       : "bg-blue-500 hover:bg-blue-400 border border-blue-300",
                                     draggingKeyframe?.keyframeId === keyframe.id && "scale-110 bg-amber-500 border-2 border-white"
                                   )}
                                   style={{ left: `${keyframe.time * pixelsPerMs - 10}px` }}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    selectKeyframe(keyframe.id);
+                                    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                                      toggleKeyframeSelection(keyframe.id);
+                                    } else {
+                                      selectKeyframe(keyframe.id);
+                                    }
                                   }}
                                   onMouseDown={(e) => {
                                     e.stopPropagation();
+                                    // Handle selection
+                                    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                                      toggleKeyframeSelection(keyframe.id);
+                                    } else if (!editorState.selectedKeyframeIds.includes(keyframe.id)) {
+                                      selectKeyframe(keyframe.id);
+                                    }
+
+                                    // Store initial positions for all selected keyframes for multi-drag
+                                    const currentSelectedIds = useTavernStore.getState().editorState.selectedKeyframeIds;
+                                    if (currentSelectedIds.includes(keyframe.id) && selectedSprite) {
+                                      const initialPositions = new Map<string, {time: number; position?: number}>();
+                                      for (const trk of selectedSprite.timeline.tracks) {
+                                        for (const kf of trk.keyframes) {
+                                          if (currentSelectedIds.includes(kf.id)) {
+                                            const hv = kf.value as HapticKeyframeValue;
+                                            initialPositions.set(kf.id, {
+                                              time: kf.time,
+                                              position: hv.type === 'haptic' ? hv.position : undefined,
+                                            });
+                                          }
+                                        }
+                                      }
+                                      setMultiDragInitialPositions(initialPositions);
+                                      multiDragInitialPositionsRef.current = initialPositions;
+                                      setMultiDragStartTime(keyframe.time);
+                                      multiDragStartTimeRef.current = keyframe.time;
+                                    }
+
                                     selectKeyframe(keyframe.id);
                                     setDraggingKeyframe({ trackId: track.id, keyframeId: keyframe.id });
                                   }}
@@ -2734,9 +3042,34 @@ export function SpriteTimelineEditor() {
                                     <span className="text-[8px] text-white">×</span>
                                   </button>
                                 </div>
-                              ))}
+                                );
+                              })}
                             </>
                           )}
+
+                          {/* Marquee selection rectangle */}
+                          {isMarqueeSelecting && marqueeStart && marqueeEnd && marqueeTrackId === track.id && (() => {
+                            const trackContentEl = document.querySelector(`[data-track-id="${marqueeTrackId}"] [data-track-content]`) as HTMLElement;
+                            if (!trackContentEl) return null;
+                            const trackRect = trackContentEl.getBoundingClientRect();
+                            
+                            const x1 = Math.min(marqueeStart.x, marqueeEnd.x) - trackRect.left;
+                            const x2 = Math.max(marqueeStart.x, marqueeEnd.x) - trackRect.left;
+                            const y1 = isHaptic ? Math.min(marqueeStart.y, marqueeEnd.y) - trackRect.top : 0;
+                            const y2 = isHaptic ? Math.max(marqueeStart.y, marqueeEnd.y) - trackRect.top : trackRect.height;
+                            
+                            return (
+                              <div
+                                className="absolute border border-blue-400 bg-blue-400/15 pointer-events-none z-30 rounded-sm"
+                                style={{
+                                  left: `${x1}px`,
+                                  width: `${x2 - x1}px`,
+                                  top: `${y1}px`,
+                                  height: `${y2 - y1}px`,
+                                }}
+                              />
+                            );
+                          })()}
 
                           {/* Playhead indicator for this track */}
                           <div
@@ -2786,7 +3119,60 @@ export function SpriteTimelineEditor() {
             
             <TabsContent value="properties" className="flex-1 overflow-hidden m-0">
               <ScrollArea className="h-full p-3">
-                {selectedKeyframe ? (
+                {editorState.selectedKeyframeIds.length > 1 ? (
+                  <div className="space-y-3">
+                    <div className="p-2 bg-fuchsia-500/10 rounded border border-fuchsia-500/30 flex items-center gap-2">
+                      <Vibrate className="w-3 h-3 text-fuchsia-400" />
+                      <span className="text-xs font-medium text-fuchsia-400">
+                        {editorState.selectedKeyframeIds.length} Keyframes Seleccionados
+                      </span>
+                    </div>
+                    
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="w-full h-7 text-xs"
+                      onClick={() => {
+                        if (!selectedSprite) return;
+                        const selectedIds = editorState.selectedKeyframeIds;
+                        setTimelineCollections(prev => prev.map(col => ({
+                          ...col,
+                          sprites: col.sprites.map(s =>
+                            s.id === selectedSprite.id
+                              ? {
+                                  ...s,
+                                  timeline: {
+                                    ...s.timeline,
+                                    tracks: s.timeline.tracks.map(t => ({
+                                      ...t,
+                                      keyframes: t.keyframes.filter(k => !selectedIds.includes(k.id)),
+                                    })),
+                                  },
+                                }
+                              : s
+                          ),
+                        })));
+                        clearKeyframeSelection();
+                        toast({
+                          title: 'Keyframes eliminados',
+                          description: `${selectedIds.length} keyframe(s) eliminado(s)`,
+                        });
+                      }}
+                    >
+                      <Trash2 className="w-3 h-3 mr-1" />
+                      Eliminar Keyframes ({editorState.selectedKeyframeIds.length})
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full h-7 text-xs"
+                      onClick={clearKeyframeSelection}
+                    >
+                      Deseleccionar Todo
+                    </Button>
+                  </div>
+                ) : selectedKeyframe ? (
                   <div className="space-y-3">
                     <Label className="text-xs font-medium">Keyframe Seleccionado</Label>
                     
@@ -2798,7 +3184,7 @@ export function SpriteTimelineEditor() {
                         onChange={(e) => {
                           const newTime = parseTime(e.target.value);
                           if (newTime >= 0) {
-                            handleMoveKeyframe(selectedTrack!.id, selectedKeyframe.id, newTime);
+                            handleMoveKeyframe(selectedKeyframeTrack!.id, selectedKeyframe.id, newTime);
                           }
                         }}
                         className="w-full h-7 text-xs font-mono"
@@ -2815,7 +3201,7 @@ export function SpriteTimelineEditor() {
                             max="2"
                             step="0.1"
                             value={(selectedKeyframe.value as SoundKeyframeValue).volume || 1}
-                            onChange={(e) => handleUpdateKeyframe(selectedTrack!.id, selectedKeyframe.id, {
+                            onChange={(e) => handleUpdateKeyframe(selectedKeyframeTrack!.id, selectedKeyframe.id, {
                               value: { ...selectedKeyframe.value, volume: parseFloat(e.target.value) || 1 }
                             })}
                             className="w-full h-7 text-xs"
@@ -2850,7 +3236,7 @@ export function SpriteTimelineEditor() {
                             max={100}
                             step={1}
                             value={[(selectedKeyframe.value as HapticKeyframeValue).position]}
-                            onValueChange={([val]) => handleUpdateKeyframe(selectedTrack!.id, selectedKeyframe.id, {
+                            onValueChange={([val]) => handleUpdateKeyframe(selectedKeyframeTrack!.id, selectedKeyframe.id, {
                               value: { ...selectedKeyframe.value, position: val }
                             })}
                             className="w-full"
@@ -2863,7 +3249,7 @@ export function SpriteTimelineEditor() {
                             value={(selectedKeyframe.value as HapticKeyframeValue).position}
                             onChange={(e) => {
                               const pos = Math.max(0, Math.min(100, parseInt(e.target.value) || 50));
-                              handleUpdateKeyframe(selectedTrack!.id, selectedKeyframe.id, {
+                              handleUpdateKeyframe(selectedKeyframeTrack!.id, selectedKeyframe.id, {
                                 value: { ...selectedKeyframe.value, position: pos }
                               });
                             }}
@@ -2873,25 +3259,22 @@ export function SpriteTimelineEditor() {
 
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
-                            <Label className="text-xs">Velocidad</Label>
-                            <span className="text-xs font-mono text-fuchsia-400">{(selectedKeyframe.value as HapticKeyframeValue).velocity ?? 1.0}</span>
+                            <Label className="text-xs font-semibold">⚡ Modo HSP</Label>
+                            <div className="flex items-center gap-1.5 bg-fuchsia-500/10 rounded-md px-2 py-1">
+                              <span className="text-[10px] text-fuchsia-300 font-medium">HSP Pattern</span>
+                            </div>
                           </div>
-                          <Slider
-                            min={0}
-                            max={1}
-                            step={0.05}
-                            value={[(selectedKeyframe.value as HapticKeyframeValue).velocity ?? 1.0]}
-                            onValueChange={([val]) => handleUpdateKeyframe(selectedTrack!.id, selectedKeyframe.id, {
-                              value: { ...selectedKeyframe.value, velocity: val }
-                            })}
-                            className="w-full"
-                          />
+                          <div className="p-2 bg-fuchsia-500/5 rounded border border-fuchsia-500/20">
+                            <p className="text-xs text-fuchsia-300/70 leading-relaxed">
+                              🎮 Este keyframe se convierte en un punto del patrón HSP. El dispositivo maneja la interpolación, velocidad y loop nativamente.
+                            </p>
+                          </div>
                         </div>
 
                         <div className="flex items-center gap-2">
                           <Switch
                             checked={(selectedKeyframe.value as HapticKeyframeValue).stopOnTarget ?? false}
-                            onCheckedChange={(checked) => handleUpdateKeyframe(selectedTrack!.id, selectedKeyframe.id, {
+                            onCheckedChange={(checked) => handleUpdateKeyframe(selectedKeyframeTrack!.id, selectedKeyframe.id, {
                               value: { ...selectedKeyframe.value, stopOnTarget: checked }
                             })}
                           />
@@ -2899,10 +3282,10 @@ export function SpriteTimelineEditor() {
                         </div>
 
                         <div className="space-y-2">
-                          <Label className="text-xs">Interpolación</Label>
+                          <Label className="text-xs font-semibold">🔄 Interpolación</Label>
                           <Select
                             value={selectedKeyframe.interpolation}
-                            onValueChange={(val) => handleUpdateKeyframe(selectedTrack!.id, selectedKeyframe.id, {
+                            onValueChange={(val) => handleUpdateKeyframe(selectedKeyframeTrack!.id, selectedKeyframe.id, {
                               interpolation: val as TimelineKeyframe['interpolation']
                             })}
                           >
@@ -2925,7 +3308,7 @@ export function SpriteTimelineEditor() {
                       variant="destructive"
                       size="sm"
                       className="w-full h-7 text-xs"
-                      onClick={() => handleDeleteKeyframe(selectedTrack!.id, selectedKeyframe.id)}
+                      onClick={() => handleDeleteKeyframe(selectedKeyframeTrack!.id, selectedKeyframe.id)}
                     >
                       <Trash2 className="w-3 h-3 mr-1" />
                       Eliminar Keyframe
@@ -2933,6 +3316,11 @@ export function SpriteTimelineEditor() {
                   </div>
                 ) : selectedSprite ? (
                   <div className="space-y-3">
+                    <div className="p-2 bg-muted/50 rounded border border-muted-foreground/20">
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">
+                        💡 Haz clic en un keyframe en la línea de tiempo para ver y editar sus propiedades (posición, velocidad, interpolación).
+                      </p>
+                    </div>
                     <Label className="text-xs font-medium">Sprite: {selectedSprite.label}</Label>
                     
                     <div className="space-y-2">

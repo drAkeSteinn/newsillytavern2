@@ -56,7 +56,7 @@ import type {
 
 // Import defaults for merge function
 import { defaultSettings, defaultPersona } from './defaults';
-import { DEFAULT_DIALOGUE_SETTINGS, DEFAULT_SUMMARY_SETTINGS, DEFAULT_QUEST_SETTINGS, DEFAULT_CHATBOX_APPEARANCE, DEFAULT_TOOLS_SETTINGS } from '@/types';
+import { DEFAULT_DIALOGUE_SETTINGS, DEFAULT_SUMMARY_SETTINGS, DEFAULT_QUEST_SETTINGS, DEFAULT_CHATBOX_APPEARANCE, DEFAULT_TOOLS_SETTINGS, DEFAULT_HANDY_SETTINGS } from '@/types';
 
 // Combined store type
 export type TavernState = CharacterSlice &
@@ -164,6 +164,7 @@ export const useTavernStore = create<TavernState>()(
         // Stats state is stored within sessions.sessionStats
         // Timeline Editor state
         collections: state.collections,
+        // Handy / Haptic settings are stored within settings.handy
       }),
       merge: (persistedState: unknown, currentState) => {
         const persisted = persistedState as Record<string, unknown> | undefined;
@@ -242,6 +243,11 @@ export const useTavernStore = create<TavernState>()(
           tools: {
             ...DEFAULT_TOOLS_SETTINGS,
             ...((persistedSettings?.tools as Record<string, unknown>) || {})
+          },
+          // Ensure handy settings exist with defaults (for backward compatibility)
+          handy: {
+            ...DEFAULT_HANDY_SETTINGS,
+            ...((persistedSettings?.handy as Record<string, unknown>) || {})
           }
         };
 

@@ -2,7 +2,8 @@
 // Settings Slice - Application settings
 // ============================================
 
-import type { AppSettings, ChatboxAppearanceSettings, ChatboxBackgroundSettings, ChatboxFontSettings, ChatboxTextFormatting, ChatboxTextColors, MessageBubbleSettings, ChatboxAvatarSettings, ChatboxStreamingSettings, ChatboxInputSettings } from '@/types';
+import type { AppSettings, ChatboxAppearanceSettings, ChatboxBackgroundSettings, ChatboxFontSettings, ChatboxTextFormatting, ChatboxTextColors, MessageBubbleSettings, ChatboxAvatarSettings, ChatboxStreamingSettings, ChatboxInputSettings, HandySettings } from '@/types';
+import { DEFAULT_HANDY_SETTINGS } from '@/types';
 import { defaultSettings } from '../defaults';
 
 export interface SettingsSlice {
@@ -23,6 +24,9 @@ export interface SettingsSlice {
   updateChatboxStreaming: (updates: Partial<ChatboxStreamingSettings>) => void;
   updateChatboxInput: (updates: Partial<ChatboxInputSettings>) => void;
   resetChatboxAppearance: () => void;
+
+  // Handy / Haptic Settings Actions
+  updateHandySettings: (updates: Partial<HandySettings>) => void;
 }
 
 export const createSettingsSlice = (set: any, _get: any): SettingsSlice => ({
@@ -126,6 +130,17 @@ export const createSettingsSlice = (set: any, _get: any): SettingsSlice => ({
     settings: {
       ...state.settings,
       chatboxAppearance: defaultSettings.chatboxAppearance
+    }
+  })),
+
+  // Handy / Haptic Settings Actions
+  updateHandySettings: (updates) => set((state: any) => ({
+    settings: {
+      ...state.settings,
+      handy: {
+        ...(state.settings.handy || DEFAULT_HANDY_SETTINGS),
+        ...updates
+      }
     }
   })),
 });

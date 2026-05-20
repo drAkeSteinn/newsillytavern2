@@ -15,342 +15,373 @@
             "name": "Haptic Track 1",
             "keyframes": [
               {
-                "id": "213669c1-4fa2-4f92-9c26-f953791543fb",
+                "id": "dec246e7-159f-4ec5-bc7e-ceb5740561e3",
                 "time": 0,
                 "value": {
                   "type": "haptic",
                   "position": 50,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "c4b7e13e-49ce-4d93-a39c-029cbb3989ad",
+                "id": "6193adb0-988b-4343-b2cb-5205b383bf2b",
                 "time": 100,
                 "value": {
                   "type": "haptic",
-                  "position": 90,
+                  "position": 60,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "0c5a9cfc-00b1-465f-b679-ddf59363b7c7",
+                "id": "eba0992f-da71-459b-943c-5639ff500502",
                 "time": 200,
                 "value": {
                   "type": "haptic",
-                  "position": 48,
+                  "position": 74,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "d74715d1-f4c5-4056-9dc6-d749de48e53f",
+                "id": "6e5394c5-09f6-45fc-8876-a949ad336ede",
+                "time": 300,
+                "value": {
+                  "type": "haptic",
+                  "position": 86,
+                  "velocity": 1,
+                  "velocityMode": "auto",
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "d353a764-fa34-47b4-94aa-4ceec94ffa18",
                 "time": 400,
                 "value": {
                   "type": "haptic",
-                  "position": 40,
+                  "position": 89,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "1c9f6d67-c5b2-48b4-8b64-bed2b0c35caa",
+                "id": "10dda58b-7434-4c08-99e0-8debf616ef51",
                 "time": 500,
                 "value": {
                   "type": "haptic",
-                  "position": 85,
+                  "position": 76,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "91cbbec4-305e-4089-b8c1-0088d048df6b",
+                "id": "2e916a34-90ca-4dff-a016-1b1a94a3f86f",
                 "time": 600,
                 "value": {
                   "type": "haptic",
-                  "position": 81,
+                  "position": 45,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "a9fd5459-79d4-4e56-8e07-4ec342d7763e",
+                "id": "228c2937-569d-47f6-9b6c-c7d963d79fbb",
                 "time": 700,
                 "value": {
                   "type": "haptic",
-                  "position": 40,
+                  "position": 15,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "090ea1bc-5091-47b5-bae7-b44f42b2ee6b",
+                "id": "d061b54b-d772-4943-a8e6-dcd0a47d06c9",
                 "time": 800,
                 "value": {
                   "type": "haptic",
-                  "position": 11,
+                  "position": 16,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "0b60893a-7f1d-435e-8d0c-ce32d0b57c1b",
+                "id": "ecea9318-e28f-4762-aadd-a92ed31f25d4",
                 "time": 900,
                 "value": {
                   "type": "haptic",
-                  "position": 19,
+                  "position": 55,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "fcab25c5-a60f-4760-9c5f-5983f39e3d0d",
+                "id": "b68ec84b-f48a-4b2c-b327-ffa2c6c5cc5b",
                 "time": 1000,
                 "value": {
                   "type": "haptic",
-                  "position": 50,
+                  "position": 89,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "449e88d0-63a9-4173-a98e-91702b54d4ab",
+                "id": "e0a0406f-3450-4fbb-8447-c58f5de990d4",
                 "time": 1100,
                 "value": {
                   "type": "haptic",
-                  "position": 79,
+                  "position": 64,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "fcd49c67-c26e-41bb-a26a-2bad1b695639",
+                "id": "5c52969b-fe19-424c-a12f-ac76417bf2a3",
                 "time": 1200,
                 "value": {
                   "type": "haptic",
-                  "position": 90,
+                  "position": 14,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "66d2d349-f470-47f9-894f-daab46077536",
+                "id": "e3ea2521-566c-4026-879b-579eb132ce0d",
                 "time": 1300,
                 "value": {
                   "type": "haptic",
-                  "position": 28,
+                  "position": 34,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "f9fbf5bc-0f5c-43e6-b4d8-4311fab5377a",
-                "time": 1300,
-                "value": {
-                  "type": "haptic",
-                  "position": 84,
-                  "velocity": 1,
-                  "stopOnTarget": false
-                },
-                "interpolation": "linear"
-              },
-              {
-                "id": "9667b09e-22e9-4d79-b5f6-32d48219610e",
+                "id": "4f3d51ff-5414-43ce-8e69-e4d5ba04ce9a",
                 "time": 1400,
                 "value": {
                   "type": "haptic",
-                  "position": 68,
+                  "position": 89,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "9a1caddc-17fe-4787-b5cf-0dd5811dd363",
+                "id": "0d8b1934-524c-4616-9227-722644d43bd1",
                 "time": 1500,
                 "value": {
                   "type": "haptic",
                   "position": 50,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "654cabb2-6c0b-4e88-b2a3-b1cdef757923",
+                "id": "dbef83ed-3c6f-4e47-8f55-b42e3c203bed",
                 "time": 1600,
                 "value": {
                   "type": "haptic",
-                  "position": 35,
+                  "position": 13,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "26198e88-8414-49af-bef0-b702a6d1b530",
+                "id": "10849c28-718b-4543-9a0a-cddd323f3736",
                 "time": 1700,
                 "value": {
                   "type": "haptic",
-                  "position": 25,
+                  "position": 80,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "df9005ff-c0ab-4e02-9f29-a49926b24f3d",
+                "id": "4e50d243-5cc2-4fa6-8979-538b58554725",
                 "time": 1800,
                 "value": {
                   "type": "haptic",
-                  "position": 19,
+                  "position": 55,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "26204f60-0ad8-4df5-946a-5ef86e8ee3d7",
+                "id": "54e904c4-efa0-4bba-82a0-c0b98df0b88c",
                 "time": 1900,
                 "value": {
                   "type": "haptic",
-                  "position": 16,
+                  "position": 17,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "cfcf8cd1-276d-43ae-9fed-05a2bba842c4",
+                "id": "4441553b-b710-4eb2-8923-42e24d1f4d67",
                 "time": 2000,
                 "value": {
                   "type": "haptic",
-                  "position": 15,
+                  "position": 89,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "6f52c89c-b46e-4e2a-b8c7-f129f9e6fd13",
+                "id": "7eac86b7-9a1b-4b3c-a392-f2c40b259f6b",
                 "time": 2100,
                 "value": {
                   "type": "haptic",
-                  "position": 16,
+                  "position": 23,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "ec2482a5-a87c-491f-a28f-699f6fb1894c",
+                "id": "17e4f047-7c06-43f2-82d1-4d9280d88778",
                 "time": 2200,
                 "value": {
                   "type": "haptic",
-                  "position": 19,
+                  "position": 59,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "fc623bc3-2ae3-4ca0-a142-d07f6430d5a4",
+                "id": "9772c1dd-0e33-445c-9745-cae13592a5ca",
                 "time": 2300,
                 "value": {
                   "type": "haptic",
-                  "position": 25,
+                  "position": 58,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "2332d363-7c76-4478-a3a1-0c1ed67b3b42",
+                "id": "9b6a5a01-099d-45d7-8a0d-6124eb452846",
                 "time": 2400,
                 "value": {
                   "type": "haptic",
-                  "position": 35,
+                  "position": 31,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "dbf72ea5-3932-44bf-b476-171727a2063f",
+                "id": "6d8bb0ee-0aa8-431a-b2f7-b01f56b1dcd9",
                 "time": 2500,
                 "value": {
                   "type": "haptic",
-                  "position": 50,
+                  "position": 76,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "59fda0f4-9558-4200-8de7-4646957f7147",
+                "id": "2ebd0721-617c-4749-a4c0-2cb5eeb2e5d0",
                 "time": 2600,
                 "value": {
                   "type": "haptic",
-                  "position": 68,
+                  "position": 22,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "45a5688b-9bc5-41d2-99ce-0ef90b359a4a",
+                "id": "ec973e7c-ee77-4542-98cb-e2259bc4a92a",
                 "time": 2700,
                 "value": {
                   "type": "haptic",
-                  "position": 84,
+                  "position": 77,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "5f60f32e-7067-4a43-946d-177efe73c7d5",
+                "id": "7495d5a6-dace-4c09-ab03-8fcc1c271fb3",
                 "time": 2800,
                 "value": {
                   "type": "haptic",
-                  "position": 90,
+                  "position": 27,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "3f1af076-a497-4390-8b83-2e90af444785",
+                "id": "b777b236-4e76-4b47-bbf7-4dcc9605f5c3",
                 "time": 2900,
                 "value": {
                   "type": "haptic",
-                  "position": 79,
+                  "position": 64,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
               },
               {
-                "id": "82fa781a-4d76-4070-bce0-cbcc927cfe9e",
+                "id": "9deccdf5-1226-49e0-8f75-a8ee4b613667",
                 "time": 3000,
                 "value": {
                   "type": "haptic",
                   "position": 50,
                   "velocity": 1,
+                  "velocityMode": "auto",
                   "stopOnTarget": false
                 },
                 "interpolation": "linear"
@@ -383,7 +414,7 @@
               },
               {
                 "id": "796ef707-4ae2-4283-9c11-f8fb19d848fe",
-                "time": 1700,
+                "time": 1200,
                 "value": {
                   "type": "sound",
                   "soundUrl": "",
@@ -414,11 +445,11 @@
           }
         ],
         "markers": [],
-        "loop": false,
+        "loop": true,
         "autoPlaySounds": true,
         "globalVolume": 1
       },
-      "updatedAt": "2026-04-29T21:48:04.103Z"
+      "updatedAt": "2026-05-20T11:39:00.364Z"
     },
     "Wan22_SVI_Pro_00042.mp4": {
       "label": "Wan22_SVI_Pro_00042",
@@ -862,8 +893,426 @@
         "globalVolume": 1
       },
       "updatedAt": "2026-04-29T21:48:21.911Z"
+    },
+    "20260503_133003_Wan2.2_00001.mp4": {
+      "label": "20260503_133003_Wan2.2_00001",
+      "filename": "20260503_133003_Wan2.2_00001.mp4",
+      "duration": 3000,
+      "timeline": {
+        "duration": 3000,
+        "tracks": [
+          {
+            "id": "90084988-0a73-43f9-842a-78d335f70056",
+            "type": "haptic",
+            "name": "Haptic Track 1",
+            "keyframes": [
+              {
+                "id": "de1069d5-61d6-487b-b34a-cab9f28c011a",
+                "time": 0,
+                "value": {
+                  "type": "haptic",
+                  "position": 5,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "166b6420-fd92-46f1-9787-266e5dedade9",
+                "time": 100,
+                "value": {
+                  "type": "haptic",
+                  "position": 14,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "cca096e3-83ba-4418-9610-9c30c69d1e75",
+                "time": 200,
+                "value": {
+                  "type": "haptic",
+                  "position": 23,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "8bda5f96-4e13-4ad1-8e7b-16ded3b4fde5",
+                "time": 300,
+                "value": {
+                  "type": "haptic",
+                  "position": 32,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "e44c41d4-f65e-421a-8446-0b8f4f1b57e6",
+                "time": 400,
+                "value": {
+                  "type": "haptic",
+                  "position": 41,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "b967fe88-b227-47ab-a3fd-c443fbbb3f9e",
+                "time": 500,
+                "value": {
+                  "type": "haptic",
+                  "position": 50,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "63474c30-8929-4535-8064-80c08e2451a1",
+                "time": 600,
+                "value": {
+                  "type": "haptic",
+                  "position": 59,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "98fcad07-a79d-4cb1-9032-d5f93c0764e8",
+                "time": 700,
+                "value": {
+                  "type": "haptic",
+                  "position": 68,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "cbf2cbf2-7f49-44d5-a7e1-9d2a4c3e73aa",
+                "time": 800,
+                "value": {
+                  "type": "haptic",
+                  "position": 77,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "2d4e4403-97b1-4774-983e-b9cfed2800da",
+                "time": 900,
+                "value": {
+                  "type": "haptic",
+                  "position": 86,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "e29adc76-68bc-4d60-a156-62ef16b73ecc",
+                "time": 1000,
+                "value": {
+                  "type": "haptic",
+                  "position": 95,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "109a458c-10e6-484d-85b3-c001432b0ba4",
+                "time": 1100,
+                "value": {
+                  "type": "haptic",
+                  "position": 86,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "c25fb813-e580-4ac7-860c-5b11969c6679",
+                "time": 1200,
+                "value": {
+                  "type": "haptic",
+                  "position": 77,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "0ab8322a-0d89-4cd1-9e24-edcf6ac8ee90",
+                "time": 1300,
+                "value": {
+                  "type": "haptic",
+                  "position": 68,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "ca9f7cc2-3e2f-4d3c-b358-54148814d11f",
+                "time": 1400,
+                "value": {
+                  "type": "haptic",
+                  "position": 59,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "e76ebc4d-e0d6-4345-87e3-ce35aff168e1",
+                "time": 1500,
+                "value": {
+                  "type": "haptic",
+                  "position": 50,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "e974786a-6f99-4f10-a93c-fefde60debe4",
+                "time": 1600,
+                "value": {
+                  "type": "haptic",
+                  "position": 41,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "43ab77f1-58d3-4b2d-9dbe-eb5aad13d935",
+                "time": 1700,
+                "value": {
+                  "type": "haptic",
+                  "position": 32,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "a219b027-56fe-4aec-92e4-dde5002696a9",
+                "time": 1800,
+                "value": {
+                  "type": "haptic",
+                  "position": 23,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "a238e359-bce5-4e94-b069-d67015d39111",
+                "time": 1900,
+                "value": {
+                  "type": "haptic",
+                  "position": 14,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "3e975c9b-48f0-45e5-9bcf-e793109fd89f",
+                "time": 2000,
+                "value": {
+                  "type": "haptic",
+                  "position": 5,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "a8d6621f-1bcc-4a64-ac8c-2f41610e8999",
+                "time": 2100,
+                "value": {
+                  "type": "haptic",
+                  "position": 14,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "5d5ead26-c13f-4b23-ad72-c72ee954b1da",
+                "time": 2200,
+                "value": {
+                  "type": "haptic",
+                  "position": 23,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "6e42486a-f1ad-43e7-8753-5d2effa3eec5",
+                "time": 2300,
+                "value": {
+                  "type": "haptic",
+                  "position": 32,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "c6b54644-987c-4259-8879-3253d3f0e6d2",
+                "time": 2400,
+                "value": {
+                  "type": "haptic",
+                  "position": 41,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "e6096363-e9db-417a-8af0-72527fadc9cd",
+                "time": 2500,
+                "value": {
+                  "type": "haptic",
+                  "position": 50,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "78284be1-a4ce-4c2b-a425-258482d807ee",
+                "time": 2600,
+                "value": {
+                  "type": "haptic",
+                  "position": 59,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "3847a0b1-9b58-460d-8c9d-fd5ff6570497",
+                "time": 2700,
+                "value": {
+                  "type": "haptic",
+                  "position": 68,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "8c5c6b3d-315e-420f-8a2b-7e94906606be",
+                "time": 2800,
+                "value": {
+                  "type": "haptic",
+                  "position": 77,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "faad4b48-143f-4327-af6b-fcee1b3e9cd4",
+                "time": 2900,
+                "value": {
+                  "type": "haptic",
+                  "position": 86,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              },
+              {
+                "id": "92144d14-1534-430f-a3a0-60a48c843e5f",
+                "time": 3000,
+                "value": {
+                  "type": "haptic",
+                  "position": 95,
+                  "velocity": 1,
+                  "stopOnTarget": false
+                },
+                "interpolation": "linear"
+              }
+            ],
+            "enabled": true,
+            "locked": false,
+            "muted": false,
+            "volume": 1
+          },
+          {
+            "id": "224e9282-c146-4b0a-801d-b20ebadbd0f9",
+            "type": "sound",
+            "name": "Sound Track 1",
+            "keyframes": [
+              {
+                "id": "3e6406f4-0756-4be4-ad3f-b1ebd2c41a7f",
+                "time": 500,
+                "value": {
+                  "type": "sound",
+                  "soundUrl": "",
+                  "soundTriggerId": "f0fe8a3f-4153-4320-8ded-6b65b438e00f",
+                  "soundTriggerName": "glohg",
+                  "volume": 0.8,
+                  "pan": 0,
+                  "play": true,
+                  "stop": false
+                },
+                "interpolation": "hold"
+              },
+              {
+                "id": "8a44422f-0eaa-4d9d-99db-46a4ff9d0e37",
+                "time": 1700,
+                "value": {
+                  "type": "sound",
+                  "soundUrl": "",
+                  "soundTriggerId": "7435a464-45d4-4bb4-bbff-d86215394558",
+                  "soundTriggerName": "gluck",
+                  "volume": 0.8,
+                  "pan": 0,
+                  "play": true,
+                  "stop": false
+                },
+                "interpolation": "hold"
+              }
+            ],
+            "enabled": true,
+            "locked": false,
+            "muted": false,
+            "volume": 1
+          },
+          {
+            "id": "c0b0c44b-e2ac-454c-9713-e08f4f93d8a5",
+            "type": "sound",
+            "name": "Sound Track 2",
+            "keyframes": [],
+            "enabled": true,
+            "locked": false,
+            "muted": false,
+            "volume": 1
+          }
+        ],
+        "markers": [],
+        "loop": false,
+        "autoPlaySounds": true,
+        "globalVolume": 1
+      },
+      "updatedAt": "2026-05-20T07:31:11.417Z"
     }
   },
   "createdAt": "2026-04-05T00:48:03.707Z",
-  "updatedAt": "2026-04-29T21:48:21.911Z"
+  "updatedAt": "2026-05-20T11:39:00.364Z"
 }

@@ -3,7 +3,7 @@
 // ============================================
 
 import type { LLMConfig, AppSettings, PromptTemplate, Persona, LorebookSettings, ContextSettings } from '@/types';
-import { DEFAULT_CHATBOX_APPEARANCE } from '@/types';
+import { DEFAULT_CHATBOX_APPEARANCE, DEFAULT_HANDY_SETTINGS } from '@/types';
 
 export const defaultLLMConfig: LLMConfig = {
   id: 'default',
@@ -114,7 +114,8 @@ export const defaultSettings: AppSettings = {
     searchContextDepth: 1,
     // Group dynamics extraction (extracts inter-character relationships in group chats)
     groupDynamicsExtraction: false,
-  }
+  },
+  handy: DEFAULT_HANDY_SETTINGS,
 };
 
 export const defaultPromptTemplate: PromptTemplate = {

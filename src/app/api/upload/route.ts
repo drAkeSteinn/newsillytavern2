@@ -80,6 +80,65 @@ async function updateCollectionJson(collectionPath: string, filename: string, pu
   }
 }
 
+/**
+ * Update metadata.json when uploading sprites to a collection.
+ * This ensures the sprite appears with proper label and metadata in the collection.
+ */
+async function updateSpriteMetadata(collectionPath: string, filename: string, publicUrl: string): Promise<void> {
+  const metadataPath = path.join(collectionPath, 'metadata.json');
+  
+  try {
+    let metadata: Record<string, unknown> = {
+      version: 1,
+      collectionName: path.basename(collectionPath),
+      sprites: {},
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Read existing metadata if exists
+    if (existsSync(metadataPath)) {
+      const content = await readFile(metadataPath, 'utf-8');
+      metadata = JSON.parse(content);
+    }
+
+    // Ensure sprites object exists
+    if (!metadata.sprites || typeof metadata.sprites !== 'object') {
+      metadata.sprites = {};
+    }
+
+    const sprites = metadata.sprites as Record<string, Record<string, unknown>>;
+    
+    // Only add if not already present (don't overwrite existing metadata like timelines)
+    if (!sprites[filename]) {
+      const isVideo = /\.(mp4|webm|mov|avi|mkv|ogv)$/i.test(filename);
+      const label = filename.replace(/\.[^.]+$/, '');
+      
+      sprites[filename] = {
+        label,
+        filename,
+        duration: isVideo ? 5000 : 3000, // Default duration: 5s for video, 3s for image
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    } else {
+      // Update only the timestamp for existing entries
+      sprites[filename] = {
+        ...sprites[filename],
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    metadata.updatedAt = new Date().toISOString();
+    
+    // Save metadata
+    await writeFile(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
+    console.log(`[Upload] Updated metadata.json for sprite collection ${path.basename(collectionPath)}`);
+  } catch (error) {
+    console.error('[Upload] Error updating sprite metadata.json:', error);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -145,6 +204,11 @@ export async function POST(request: NextRequest) {
     // Update collection.json if uploading background
     if (type === 'background' && collection) {
       await updateCollectionJson(uploadDir, filename, publicUrl);
+    }
+
+    // Update metadata.json if uploading sprite to a collection
+    if (type === 'sprite' && collection) {
+      await updateSpriteMetadata(uploadDir, filename, publicUrl);
     }
 
     // Determine if it's an animation
