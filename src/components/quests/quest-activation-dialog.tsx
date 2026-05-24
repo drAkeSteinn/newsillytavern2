@@ -43,6 +43,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { QuestTemplate, QuestPriority, QuestActivationMethod } from '@/types';
+import { evaluateActivationConditions } from '@/lib/triggers/handlers/quest-handler';
 
 // ============================================
 // Quest Activation Dialog Props
@@ -162,7 +163,7 @@ export function QuestActivationDialog({
   // Selected template details
   const selectedTemplate = questTemplates.find(t => t.id === selectedTemplateId);
 
-  // Check if can activate (prerequisites)
+  // Check if can activate (prerequisites + activation conditions)
   const canActivate = useMemo(() => {
     if (!selectedTemplate) return false;
 
@@ -179,6 +180,15 @@ export function QuestActivationDialog({
       if (missingPrereqs.length > 0) return false;
     }
 
+    // Check activation conditions (by_attribute / by_objective)
+    const activationConditionsMet = evaluateActivationConditions(
+      selectedTemplate,
+      currentSession?.sessionStats,
+      sessionQuests,
+      questTemplates
+    );
+    if (!activationConditionsMet) return false;
+
     // Check if already active (and not repeatable)
     if (!selectedTemplate.isRepeatable && activeTemplateIds.includes(selectedTemplate.id)) {
       return false;
@@ -190,7 +200,7 @@ export function QuestActivationDialog({
     if (activeCount >= maxActive) return false;
 
     return true;
-  }, [selectedTemplate, sessionQuests, activeTemplateIds, questSettings?.maxActiveQuests]);
+  }, [selectedTemplate, sessionQuests, activeTemplateIds, questSettings?.maxActiveQuests, currentSession?.sessionStats, questTemplates]);
 
   // Handle activation
   const handleActivate = () => {

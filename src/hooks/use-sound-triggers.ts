@@ -16,6 +16,26 @@ interface QueueItem {
 
 const audioQueue: QueueItem[] = [];
 let isPlaying = false;
+let currentlyPlayingAudio: HTMLAudioElement | null = null;
+
+/**
+ * Stop all sound trigger playback immediately.
+ * Called when the user presses the global mute button.
+ */
+export function stopAllSoundTriggers(): void {
+  // Clear the queue
+  audioQueue.length = 0;
+  isPlaying = false;
+
+  // Stop currently playing audio
+  if (currentlyPlayingAudio) {
+    currentlyPlayingAudio.pause();
+    currentlyPlayingAudio.src = '';
+    currentlyPlayingAudio = null;
+  }
+
+  console.log('[SoundTriggers] ⏹ All sound triggers stopped (mute all)');
+}
 
 async function processAudioQueue() {
   if (isGlobalMuted()) return;
@@ -25,6 +45,9 @@ async function processAudioQueue() {
   console.log(`[SoundTriggers] 🎵 Processing queue, ${audioQueue.length} items pending`);
   
   while (audioQueue.length > 0) {
+    // Stop processing if globally muted
+    if (isGlobalMuted()) break;
+
     const item = audioQueue.shift();
     if (!item) break;
     
@@ -32,6 +55,7 @@ async function processAudioQueue() {
       console.log(`[SoundTriggers] 🔊 Playing: "${item.triggerName}" (keyword: "${item.keyword}") -> ${item.src}`);
       const audio = new Audio(item.src);
       audio.volume = Math.min(1, Math.max(0, item.volume));
+      currentlyPlayingAudio = audio;
       
       await audio.play();
       
@@ -42,9 +66,12 @@ async function processAudioQueue() {
         setTimeout(() => resolve(), 5000); // Max 5s per sound
       });
       
+      currentlyPlayingAudio = null;
+      
       // Small gap between sounds
       await new Promise(resolve => setTimeout(resolve, 100));
     } catch (error) {
+      currentlyPlayingAudio = null;
       console.warn('[SoundTriggers] ❌ Failed to play:', item.src, error);
     }
   }

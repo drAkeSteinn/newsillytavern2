@@ -432,7 +432,7 @@ export function detectSkillActivations(
   }
   
   // Get skills with activation keys
-  const skillsWithKeys = statsConfig.skills.filter(
+  const skillsWithKeys = (statsConfig.skills || []).filter(
     s => s.activationKey || (s.activationKeys && s.activationKeys.length > 0)
   );
   
@@ -529,7 +529,7 @@ export function detectSkillActivationsIncremental(
   }
   
   // Get skills with activation keys
-  const skillsWithKeys = statsConfig.skills.filter(
+  const skillsWithKeys = (statsConfig.skills || []).filter(
     s => s.activationKey || (s.activationKeys && s.activationKeys.length > 0)
   );
   

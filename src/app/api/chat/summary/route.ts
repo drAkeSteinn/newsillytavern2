@@ -191,7 +191,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<SummaryRe
       characterName
     );
 
-    const summaryContent = response.content || '';
+    const summaryContent = response.message || '';
     const tokenCount = estimateTokens(summaryContent);
 
     // Create summary data

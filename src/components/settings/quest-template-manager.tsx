@@ -17,14 +17,22 @@ import type {
   QuestObjectiveType,
   QuestRewardType,
   QuestActivationMethod,
+  QuestActivationType,
   QuestValueCondition,
   QuestValueType,
   QuestNumberOperator,
   QuestTextOperator,
   AttributeAction,
+  AttributeType,
+  AttributeDefinition,
   TriggerCategory,
   TriggerTargetMode,
   QuestCharacterFilter,
+  QuestObjectiveVisibilityType,
+  QuestAttributeOperator,
+  QuestAttributeCondition,
+  QuestObjectiveCondition,
+  QuestVisibilityConditionGroup,
 } from '@/types';
 import { cn, generateId } from '@/lib/utils';
 import {
@@ -351,6 +359,18 @@ export function QuestTemplateManager() {
                             <span>Automático</span>
                           </>
                         )}
+                        {template.activation.activationType === 'by_attribute' && (
+                          <Badge variant="secondary" className="text-[10px] h-5 gap-1 bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                            <Filter className="w-3 h-3" />
+                            Cond. Atributo
+                          </Badge>
+                        )}
+                        {template.activation.activationType === 'by_objective' && (
+                          <Badge variant="secondary" className="text-[10px] h-5 gap-1 bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                            <Target className="w-3 h-3" />
+                            Cond. Objetivo
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         {template.isRepeatable && (
@@ -417,8 +437,54 @@ interface SortableObjectiveItemProps {
   onToggleExpand: () => void;
   onUpdate: (updates: Partial<QuestObjectiveTemplate>) => void;
   onRemove: () => void;
-  allCharacters: Array<{ id: string; name: string }>;
+  allCharacters: Array<{ id: string; name: string; statsConfig?: { attributes?: AttributeDefinition[] } }>;
+  personas: Array<{ id: string; name: string; statsConfig?: { attributes?: AttributeDefinition[] } }>;
+  activePersonaId: string | null;
   objectivePrefix: string;
+  allTemplates: QuestTemplate[];
+  currentTemplateId: string;
+}
+
+// Helper: Get attributes for a given targetId (character or persona)
+function getAttributesForTarget(
+  targetId: string,
+  allCharacters: Array<{ id: string; name: string; statsConfig?: { attributes?: AttributeDefinition[] } }>,
+  personas: Array<{ id: string; name: string; statsConfig?: { attributes?: AttributeDefinition[] } }>,
+  activePersonaId: string | null,
+): AttributeDefinition[] {
+  if (!targetId) return [];
+  if (targetId === '__user__') {
+    if (!activePersonaId) return [];
+    const persona = personas.find(p => p.id === activePersonaId);
+    return persona?.statsConfig?.attributes || [];
+  }
+  const char = allCharacters.find(c => c.id === targetId);
+  return char?.statsConfig?.attributes || [];
+}
+
+// Helper: Get available operators based on attribute type
+function getOperatorsForAttributeType(attrType?: AttributeType): QuestAttributeOperator[] {
+  // Common operators available for all types
+  const common: QuestAttributeOperator[] = ['has_attribute', 'missing_attribute', 'is_true', 'is_false'];
+  
+  if (attrType === 'number') {
+    return [...common, 'eq', 'neq', 'gt', 'gte', 'lt', 'lte'];
+  }
+  
+  // Text and keyword types
+  return [...common, 'eq', 'neq', 'contains', 'not_contains'];
+}
+
+// Helper: Get the type of a selected attribute
+function getAttributeTypeForKey(
+  attributeKey: string,
+  targetId: string,
+  allCharacters: Array<{ id: string; name: string; statsConfig?: { attributes?: AttributeDefinition[] } }>,
+  personas: Array<{ id: string; name: string; statsConfig?: { attributes?: AttributeDefinition[] } }>,
+  activePersonaId: string | null,
+): AttributeType | undefined {
+  const attrs = getAttributesForTarget(targetId, allCharacters, personas, activePersonaId);
+  return attrs.find(a => a.key === attributeKey)?.type;
 }
 
 function SortableObjectiveItem({
@@ -430,7 +496,11 @@ function SortableObjectiveItem({
   onUpdate,
   onRemove,
   allCharacters,
+  personas,
+  activePersonaId,
   objectivePrefix,
+  allTemplates,
+  currentTemplateId,
 }: SortableObjectiveItemProps) {
   const {
     attributes,
@@ -533,6 +603,18 @@ function SortableObjectiveItem({
                 {objective.characterFilter.characterIds.length}
               </Badge>
             )}
+            {objective.visibilityType === 'by_attribute' && (
+              <Badge variant="secondary" className="text-[10px] h-5 gap-1 bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                <Filter className="w-3 h-3" />
+                Cond. Atributo
+              </Badge>
+            )}
+            {objective.visibilityType === 'by_objective' && (
+              <Badge variant="secondary" className="text-[10px] h-5 gap-1 bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                <Target className="w-3 h-3" />
+                Cond. Objetivo
+              </Badge>
+            )}
           </div>
           {!isExpanded && (
             <p className="text-xs text-muted-foreground truncate mt-0.5">
@@ -596,6 +678,410 @@ function SortableObjectiveItem({
               </Select>
             </div>
           </div>
+
+          {/* Visibility Type */}
+          <div className="space-y-1">
+            <Label className="text-[10px] text-muted-foreground">Tipo de Visibilidad</Label>
+            <Select
+              value={objective.visibilityType || 'normal'}
+              onValueChange={(v) => {
+                const visType = v as QuestObjectiveVisibilityType;
+                let visibilityConditions: QuestVisibilityConditionGroup | undefined;
+                if (visType === 'by_attribute') {
+                  visibilityConditions = {
+                    attributeConditions: [{ targetId: '', attributeKey: '', operator: 'eq', value: '' }],
+                    logic: 'and',
+                  };
+                } else if (visType === 'by_objective') {
+                  visibilityConditions = {
+                    objectiveConditions: [{ objectiveId: '' }],
+                    logic: 'and',
+                  };
+                } else {
+                  visibilityConditions = undefined;
+                }
+                onUpdate({ visibilityType: visType, visibilityConditions });
+              }}
+            >
+              <SelectTrigger className="bg-background h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="normal">
+                  <div className="flex items-center gap-2">
+                    <Eye className="w-3 h-3" />
+                    Normal (siempre activo)
+                  </div>
+                </SelectItem>
+                <SelectItem value="by_attribute">
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-3 h-3" />
+                    Por Atributo
+                  </div>
+                </SelectItem>
+                <SelectItem value="by_objective">
+                  <div className="flex items-center gap-2">
+                    <Target className="w-3 h-3" />
+                    Por Objetivo
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Conditional Visibility Editors */}
+          {objective.visibilityType === 'by_attribute' && objective.visibilityConditions && (
+            <div className="space-y-3 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
+              <div className="flex items-center justify-between">
+                <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  <Filter className="w-3 h-3 text-amber-500" />
+                  Condiciones de Atributo
+                </Label>
+                {/* Logic toggle */}
+                <div className="flex items-center gap-2">
+                  <span className={cn("text-[10px] font-medium", objective.visibilityConditions.logic === 'and' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>AND</span>
+                  <Switch
+                    checked={objective.visibilityConditions.logic === 'or'}
+                    onCheckedChange={(v) => onUpdate({
+                      visibilityConditions: { ...objective.visibilityConditions!, logic: v ? 'or' : 'and' }
+                    })}
+                    className="data-[state=checked]:bg-amber-500"
+                  />
+                  <span className={cn("text-[10px] font-medium", objective.visibilityConditions.logic === 'or' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>OR</span>
+                </div>
+              </div>
+
+              {/* Attribute Conditions List */}
+              <div className="space-y-2">
+                {(objective.visibilityConditions.attributeConditions || []).map((cond, condIdx) => {
+                  const needsValue = !['has_attribute', 'missing_attribute', 'is_true', 'is_false'].includes(cond.operator);
+                  const availableAttributes = getAttributesForTarget(cond.targetId, allCharacters, personas, activePersonaId);
+                  const currentAttrType = getAttributeTypeForKey(cond.attributeKey, cond.targetId, allCharacters, personas, activePersonaId);
+                  const availableOperators = getOperatorsForAttributeType(currentAttrType);
+                  const isNumericAttr = currentAttrType === 'number';
+                  const attrTypeLabels: Record<string, string> = { number: '🔢', keyword: '🏷️', text: '📝' };
+                  
+                  return (
+                    <div key={condIdx} className="p-2 rounded bg-muted/30 space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* Target selector */}
+                        <div className="space-y-1">
+                          <Label className="text-[9px] text-muted-foreground">Personaje / Persona</Label>
+                          <Select
+                            value={cond.targetId}
+                            onValueChange={(v) => {
+                              const updated = [...(objective.visibilityConditions!.attributeConditions || [])];
+                              // When target changes, reset attributeKey and operator since they may not be valid
+                              updated[condIdx] = { ...updated[condIdx], targetId: v, attributeKey: '', operator: 'eq', value: '' };
+                              onUpdate({ visibilityConditions: { ...objective.visibilityConditions!, attributeConditions: updated } });
+                            }}
+                          >
+                            <SelectTrigger className="bg-background h-7 text-xs">
+                              <SelectValue placeholder="Seleccionar..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__user__">
+                                <div className="flex items-center gap-1.5">
+                                  <User className="w-3 h-3" />
+                                  Persona (Usuario)
+                                </div>
+                              </SelectItem>
+                              {allCharacters.map((char) => (
+                                <SelectItem key={char.id} value={char.id}>
+                                  {char.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Attribute Key - Dropdown populated from selected character's attributes */}
+                        <div className="space-y-1">
+                          <Label className="text-[9px] text-muted-foreground">Atributo</Label>
+                          {availableAttributes.length > 0 ? (
+                            <Select
+                              value={cond.attributeKey}
+                              onValueChange={(v) => {
+                                const updated = [...(objective.visibilityConditions!.attributeConditions || [])];
+                                // Check if current operator is valid for the new attribute type
+                                const newAttrType = availableAttributes.find(a => a.key === v)?.type;
+                                const validOperators = getOperatorsForAttributeType(newAttrType);
+                                const newOperator = validOperators.includes(cond.operator) ? cond.operator : 'eq';
+                                updated[condIdx] = { ...updated[condIdx], attributeKey: v, operator: newOperator, value: '' };
+                                onUpdate({ visibilityConditions: { ...objective.visibilityConditions!, attributeConditions: updated } });
+                              }}
+                            >
+                              <SelectTrigger className="bg-background h-7 text-xs">
+                                <SelectValue placeholder="Seleccionar atributo..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableAttributes.map(attr => (
+                                  <SelectItem key={attr.key} value={attr.key}>
+                                    <span className="flex items-center gap-1.5">
+                                      <span className="text-[10px]">{attrTypeLabels[attr.type] || '📝'}</span>
+                                      {attr.name}
+                                      <span className="text-muted-foreground text-[9px]">({attr.key})</span>
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Input
+                              value={cond.attributeKey}
+                              onChange={(e) => {
+                                const updated = [...(objective.visibilityConditions!.attributeConditions || [])];
+                                updated[condIdx] = { ...updated[condIdx], attributeKey: e.target.value };
+                                onUpdate({ visibilityConditions: { ...objective.visibilityConditions!, attributeConditions: updated } });
+                              }}
+                              placeholder={cond.targetId ? 'Sin atributos definidos' : 'Selecciona un personaje primero...'}
+                              className="bg-background h-7 text-xs font-mono"
+                              disabled={!cond.targetId}
+                            />
+                          )}
+                        </div>
+                      </div>
+
+                      <div className={cn("grid gap-2", needsValue ? "grid-cols-[1fr_1fr_auto]" : "grid-cols-[1fr_auto]")}>
+                        {/* Operator - filtered by attribute type */}
+                        <div className="space-y-1">
+                          <Label className="text-[9px] text-muted-foreground">
+                            Operador
+                            {currentAttrType && (
+                              <span className="ml-1 text-amber-500">
+                                ({currentAttrType === 'number' ? 'Numérico' : currentAttrType === 'keyword' ? 'Estado' : 'Texto'})
+                              </span>
+                            )}
+                          </Label>
+                          <Select
+                            value={availableOperators.includes(cond.operator) ? cond.operator : 'eq'}
+                            onValueChange={(v) => {
+                              const updated = [...(objective.visibilityConditions!.attributeConditions || [])];
+                              updated[condIdx] = { ...updated[condIdx], operator: v as QuestAttributeOperator };
+                              onUpdate({ visibilityConditions: { ...objective.visibilityConditions!, attributeConditions: updated } });
+                            }}
+                          >
+                            <SelectTrigger className="bg-background h-7 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableOperators.includes('has_attribute') && <SelectItem value="has_attribute">Tiene atributo</SelectItem>}
+                              {availableOperators.includes('missing_attribute') && <SelectItem value="missing_attribute">No tiene atributo</SelectItem>}
+                              {availableOperators.includes('is_true') && <SelectItem value="is_true">Es verdadero</SelectItem>}
+                              {availableOperators.includes('is_false') && <SelectItem value="is_false">Es falso</SelectItem>}
+                              {isNumericAttr && availableOperators.includes('gt') && <SelectItem value="gt">&gt; Mayor que</SelectItem>}
+                              {isNumericAttr && availableOperators.includes('gte') && <SelectItem value="gte">≥ Mayor o igual</SelectItem>}
+                              {isNumericAttr && availableOperators.includes('lt') && <SelectItem value="lt">&lt; Menor que</SelectItem>}
+                              {isNumericAttr && availableOperators.includes('lte') && <SelectItem value="lte">≤ Menor o igual</SelectItem>}
+                              {availableOperators.includes('eq') && <SelectItem value="eq">= Igual</SelectItem>}
+                              {availableOperators.includes('neq') && <SelectItem value="neq">≠ Diferente</SelectItem>}
+                              {!isNumericAttr && availableOperators.includes('contains') && <SelectItem value="contains">Contiene</SelectItem>}
+                              {!isNumericAttr && availableOperators.includes('not_contains') && <SelectItem value="not_contains">No contiene</SelectItem>}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Value input (only for operators that need it) */}
+                        {needsValue && (
+                          <div className="space-y-1">
+                            <Label className="text-[9px] text-muted-foreground">Valor</Label>
+                            <Input
+                              type={isNumericAttr ? 'number' : 'text'}
+                              value={cond.value !== undefined ? String(cond.value) : ''}
+                              onChange={(e) => {
+                                const updated = [...(objective.visibilityConditions!.attributeConditions || [])];
+                                const val = isNumericAttr
+                                  ? (e.target.value === '' ? '' : Number(e.target.value))
+                                  : e.target.value;
+                                updated[condIdx] = { ...updated[condIdx], value: val as string | number | undefined };
+                                onUpdate({ visibilityConditions: { ...objective.visibilityConditions!, attributeConditions: updated } });
+                              }}
+                              placeholder={isNumericAttr ? '50' : 'texto...'}
+                              className="bg-background h-7 text-xs"
+                            />
+                          </div>
+                        )}
+
+                        {/* Remove button */}
+                        <div className="flex items-end">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-red-500 hover:bg-red-500/10"
+                            onClick={() => {
+                              const updated = (objective.visibilityConditions!.attributeConditions || []).filter((_, i) => i !== condIdx);
+                              onUpdate({ visibilityConditions: { ...objective.visibilityConditions!, attributeConditions: updated } });
+                            }}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Add condition button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+                onClick={() => {
+                  const current = objective.visibilityConditions!.attributeConditions || [];
+                  onUpdate({
+                    visibilityConditions: {
+                      ...objective.visibilityConditions!,
+                      attributeConditions: [...current, { targetId: '', attributeKey: '', operator: 'eq', value: '' }]
+                    }
+                  });
+                }}
+              >
+                <Plus className="w-3 h-3 mr-1" />
+                Agregar condición de atributo
+              </Button>
+
+              <p className="text-[9px] text-muted-foreground flex items-center gap-1">
+                <Info className="w-3 h-3" />
+                El objetivo solo será visible si se cumplen las condiciones de atributos
+              </p>
+            </div>
+          )}
+
+          {objective.visibilityType === 'by_objective' && objective.visibilityConditions && (
+            <div className="space-y-3 p-3 rounded-lg bg-purple-500/5 border border-purple-500/20">
+              <div className="flex items-center justify-between">
+                <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  <Target className="w-3 h-3 text-purple-500" />
+                  Condiciones de Objetivo
+                </Label>
+                {/* Logic toggle */}
+                <div className="flex items-center gap-2">
+                  <span className={cn("text-[10px] font-medium", objective.visibilityConditions.logic === 'and' ? 'text-purple-600 dark:text-purple-400' : 'text-muted-foreground')}>AND</span>
+                  <Switch
+                    checked={objective.visibilityConditions.logic === 'or'}
+                    onCheckedChange={(v) => onUpdate({
+                      visibilityConditions: { ...objective.visibilityConditions!, logic: v ? 'or' : 'and' }
+                    })}
+                    className="data-[state=checked]:bg-purple-500"
+                  />
+                  <span className={cn("text-[10px] font-medium", objective.visibilityConditions.logic === 'or' ? 'text-purple-600 dark:text-purple-400' : 'text-muted-foreground')}>OR</span>
+                </div>
+              </div>
+
+              {/* Objective Conditions List */}
+              <div className="space-y-2">
+                {(objective.visibilityConditions.objectiveConditions || []).map((cond, condIdx) => {
+                  // Get objectives from the selected template (or current template if no templateId)
+                  const selectedTemplateId = cond.templateId || '';
+                  const selectedTemplate = selectedTemplateId
+                    ? allTemplates.find(t => t.id === selectedTemplateId)
+                    : allTemplates.find(t => t.id === currentTemplateId);
+                  const availableObjectives = selectedTemplate?.objectives || [];
+
+                  return (
+                    <div key={condIdx} className="p-2 rounded bg-muted/30 space-y-2">
+                      <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                        {/* Mission selector */}
+                        <div className="space-y-1">
+                          <Label className="text-[9px] text-muted-foreground">Misión</Label>
+                          <Select
+                            value={cond.templateId || '__this__'}
+                            onValueChange={(v) => {
+                              const updated = [...(objective.visibilityConditions!.objectiveConditions || [])];
+                              updated[condIdx] = { ...updated[condIdx], templateId: v === '__this__' ? undefined : v, objectiveId: '' };
+                              onUpdate({ visibilityConditions: { ...objective.visibilityConditions!, objectiveConditions: updated } });
+                            }}
+                          >
+                            <SelectTrigger className="bg-background h-7 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__this__">Esta misión</SelectItem>
+                              {allTemplates
+                                .filter(t => t.id !== currentTemplateId)
+                                .map(t => (
+                                  <SelectItem key={t.id} value={t.id}>
+                                    {t.icon || '📜'} {t.name}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Objective selector */}
+                        <div className="space-y-1">
+                          <Label className="text-[9px] text-muted-foreground">Objetivo</Label>
+                          <Select
+                            value={cond.objectiveId}
+                            onValueChange={(v) => {
+                              const updated = [...(objective.visibilityConditions!.objectiveConditions || [])];
+                              updated[condIdx] = { ...updated[condIdx], objectiveId: v };
+                              onUpdate({ visibilityConditions: { ...objective.visibilityConditions!, objectiveConditions: updated } });
+                            }}
+                          >
+                            <SelectTrigger className="bg-background h-7 text-xs">
+                              <SelectValue placeholder="Seleccionar objetivo..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableObjectives.length === 0 ? (
+                                <SelectItem value="__none__" disabled>Sin objetivos</SelectItem>
+                              ) : (
+                                availableObjectives.map(obj => (
+                                  <SelectItem key={obj.id} value={obj.id}>
+                                    {obj.description || obj.id}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Remove button */}
+                        <div className="flex items-end">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-red-500 hover:bg-red-500/10"
+                            onClick={() => {
+                              const updated = (objective.visibilityConditions!.objectiveConditions || []).filter((_, i) => i !== condIdx);
+                              onUpdate({ visibilityConditions: { ...objective.visibilityConditions!, objectiveConditions: updated } });
+                            }}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Add condition button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-purple-600 dark:text-purple-400 hover:bg-purple-500/10"
+                onClick={() => {
+                  const current = objective.visibilityConditions!.objectiveConditions || [];
+                  onUpdate({
+                    visibilityConditions: {
+                      ...objective.visibilityConditions!,
+                      objectiveConditions: [...current, { objectiveId: '' }]
+                    }
+                  });
+                }}
+              >
+                <Plus className="w-3 h-3 mr-1" />
+                Agregar condición de objetivo
+              </Button>
+
+              <p className="text-[9px] text-muted-foreground flex items-center gap-1">
+                <Info className="w-3 h-3" />
+                El objetivo solo será visible si los objetivos referenciados están completados
+              </p>
+            </div>
+          )}
 
           {/* Description */}
           <div className="space-y-1">
@@ -1218,7 +1704,10 @@ function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingI
   const [activationCaseSensitive, setActivationCaseSensitive] = useState(template?.activation?.caseSensitive ?? false);
   const [activationMethod, setActivationMethod] = useState<QuestActivationMethod>(template?.activation?.method || 'keyword');
   const [turnInterval, setTurnInterval] = useState(template?.activation?.turnInterval || 5);
-  const [chainPrerequisiteId, setChainPrerequisiteId] = useState<string>('');
+  const [chainPrerequisiteId, setChainPrerequisiteId] = useState<string>(template?.activation?.chainPrerequisiteId || '');
+  // Activation conditions
+  const [activationType, setActivationType] = useState<QuestObjectiveVisibilityType>(template?.activation?.activationType || 'normal');
+  const [activationConditions, setActivationConditions] = useState<QuestVisibilityConditionGroup | undefined>(template?.activation?.activationConditions);
   
   // Completion
   const [completionKey, setCompletionKey] = useState(template?.completion?.key || '');
@@ -1317,6 +1806,9 @@ function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingI
         caseSensitive: activationCaseSensitive,
         method: activationMethod,
         turnInterval: activationMethod === 'turn' ? turnInterval : undefined,
+        chainPrerequisiteId: activationMethod === 'chain' ? chainPrerequisiteId : undefined,
+        activationType: activationType === 'normal' ? undefined : activationType,
+        activationConditions: activationType !== 'normal' ? activationConditions : undefined,
       },
       
       objectives,
@@ -1975,26 +2467,29 @@ function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingI
                           <Label className="text-xs text-muted-foreground">Misión prerrequisito que activa esta misión</Label>
                           <Select
                             value={chainPrerequisiteId}
-                            onValueChange={setChainPrerequisiteId}
+                            onValueChange={(v) => {
+                              setChainPrerequisiteId(v);
+                              // Auto-add to prerequisites if not already there
+                              if (v && !prerequisites.includes(v)) {
+                                setPrerequisites([...prerequisites, v]);
+                              }
+                            }}
                           >
                             <SelectTrigger className="bg-background h-8 text-xs">
-                              <SelectValue placeholder="Seleccionar prerrequisito..." />
+                              <SelectValue placeholder="Seleccionar misión que activa esta..." />
                             </SelectTrigger>
                             <SelectContent>
-                              {prerequisites.length === 0 ? (
-                                <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                                  Primero agrega prerrequisitos en la sección Info Básica
-                                </div>
-                              ) : (
-                                prerequisites.map(prereqId => {
-                                  const prereqTemplate = allTemplates.find(t => t.id === prereqId);
-                                  return (
-                                    <SelectItem key={prereqId} value={prereqId}>
-                                      {prereqTemplate?.icon} {prereqTemplate?.name || prereqId}
-                                    </SelectItem>
-                                  );
-                                })
-                              )}
+                              {allTemplates
+                                .filter(t => t.id !== id)
+                                .map(t => (
+                                  <SelectItem key={t.id} value={t.id}>
+                                    <span className="flex items-center gap-1.5">
+                                      <span className="text-sm">{t.icon || '📜'}</span>
+                                      {t.name}
+                                      <span className="text-muted-foreground text-[9px]">({t.id})</span>
+                                    </span>
+                                  </SelectItem>
+                                ))}
                             </SelectContent>
                           </Select>
                         </div>
@@ -2002,7 +2497,7 @@ function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingI
                       <div className="flex items-start gap-2 ml-9">
                         <Info className="w-3.5 h-3.5 text-purple-400 mt-0.5 shrink-0" />
                         <p className="text-[11px] text-muted-foreground">
-                          Esta misión se activará automáticamente cuando se complete la misión seleccionada.
+                          Esta misión se activará automáticamente cuando se complete la misión seleccionada. Se añadirá automáticamente como prerrequisito.
                         </p>
                       </div>
                     </div>
@@ -2031,6 +2526,417 @@ function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingI
                       <p className="text-xs text-muted-foreground">La key debe coincidir exactamente en casing</p>
                     </div>
                   </label>
+                </div>
+              </div>
+
+              <Separator className="bg-border/50" />
+
+              {/* Condiciones de Activación */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <div className="p-1.5 rounded-md bg-rose-500/10">
+                    <Filter className="w-4 h-4 text-rose-500" />
+                  </div>
+                  Condición de Activación
+                  <HelpCircle className="w-3.5 h-3.5 text-muted-foreground ml-1" title="Define si la misión necesita condiciones adicionales para poder activarse" />
+                </div>
+                <div className="pl-8 space-y-4">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-muted-foreground">Tipo de Condición</Label>
+                    <Select
+                      value={activationType}
+                      onValueChange={(v) => {
+                        const actType = v as QuestObjectiveVisibilityType;
+                        setActivationType(actType);
+                        let newConditions: QuestVisibilityConditionGroup | undefined;
+                        if (actType === 'by_attribute') {
+                          newConditions = {
+                            attributeConditions: [{ targetId: '', attributeKey: '', operator: 'eq', value: '' }],
+                            logic: 'and',
+                          };
+                        } else if (actType === 'by_objective') {
+                          newConditions = {
+                            objectiveConditions: [{ objectiveId: '' }],
+                            logic: 'and',
+                          };
+                        } else {
+                          newConditions = undefined;
+                        }
+                        setActivationConditions(newConditions);
+                      }}
+                    >
+                      <SelectTrigger className="bg-background h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="normal">
+                          <div className="flex items-center gap-2">
+                            <Eye className="w-3 h-3" />
+                            Normal (siempre activo si está disponible)
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="by_attribute">
+                          <div className="flex items-center gap-2">
+                            <Filter className="w-3 h-3" />
+                            Por Atributo
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="by_objective">
+                          <div className="flex items-center gap-2">
+                            <Target className="w-3 h-3" />
+                            Por Objetivo
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Activation Condition: By Attribute */}
+                  {activationType === 'by_attribute' && activationConditions && (
+                    <div className="space-y-3 p-3 rounded-lg bg-rose-500/5 border border-rose-500/20">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                          <Filter className="w-3 h-3 text-rose-500" />
+                          Condiciones de Atributo para Activación
+                        </Label>
+                        {/* Logic toggle */}
+                        <div className="flex items-center gap-2">
+                          <span className={cn("text-[10px] font-medium", activationConditions.logic === 'and' ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground')}>AND</span>
+                          <Switch
+                            checked={activationConditions.logic === 'or'}
+                            onCheckedChange={(v) => setActivationConditions({ ...activationConditions, logic: v ? 'or' : 'and' })}
+                            className="data-[state=checked]:bg-rose-500"
+                          />
+                          <span className={cn("text-[10px] font-medium", activationConditions.logic === 'or' ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground')}>OR</span>
+                        </div>
+                      </div>
+
+                      {/* Attribute Conditions List */}
+                      <div className="space-y-2">
+                        {(activationConditions.attributeConditions || []).map((cond, condIdx) => {
+                          const needsValue = !['has_attribute', 'missing_attribute', 'is_true', 'is_false'].includes(cond.operator);
+                          const availableAttributes = getAttributesForTarget(cond.targetId, allCharacters, personas, activePersonaId);
+                          const currentAttrType = getAttributeTypeForKey(cond.attributeKey, cond.targetId, allCharacters, personas, activePersonaId);
+                          const availableOperators = getOperatorsForAttributeType(currentAttrType);
+                          const isNumericAttr = currentAttrType === 'number';
+                          const attrTypeLabels: Record<string, string> = { number: '🔢', keyword: '🏷️', text: '📝' };
+                          
+                          return (
+                            <div key={condIdx} className="p-2 rounded bg-muted/30 space-y-2">
+                              <div className="grid grid-cols-2 gap-2">
+                                {/* Target selector */}
+                                <div className="space-y-1">
+                                  <Label className="text-[9px] text-muted-foreground">Personaje / Persona</Label>
+                                  <Select
+                                    value={cond.targetId}
+                                    onValueChange={(v) => {
+                                      const updated = [...(activationConditions.attributeConditions || [])];
+                                      // When target changes, reset attributeKey and operator
+                                      updated[condIdx] = { ...updated[condIdx], targetId: v, attributeKey: '', operator: 'eq', value: '' };
+                                      setActivationConditions({ ...activationConditions, attributeConditions: updated });
+                                    }}
+                                  >
+                                    <SelectTrigger className="bg-background h-7 text-xs">
+                                      <SelectValue placeholder="Seleccionar..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="__user__">
+                                        <div className="flex items-center gap-1.5">
+                                          <User className="w-3 h-3" />
+                                          Persona (Usuario)
+                                        </div>
+                                      </SelectItem>
+                                      {allCharacters.map((char) => (
+                                        <SelectItem key={char.id} value={char.id}>
+                                          {char.name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+
+                                {/* Attribute Key - Dropdown populated from selected character's attributes */}
+                                <div className="space-y-1">
+                                  <Label className="text-[9px] text-muted-foreground">Atributo</Label>
+                                  {availableAttributes.length > 0 ? (
+                                    <Select
+                                      value={cond.attributeKey}
+                                      onValueChange={(v) => {
+                                        const updated = [...(activationConditions.attributeConditions || [])];
+                                        // Check if current operator is valid for the new attribute type
+                                        const newAttrType = availableAttributes.find(a => a.key === v)?.type;
+                                        const validOperators = getOperatorsForAttributeType(newAttrType);
+                                        const newOperator = validOperators.includes(cond.operator) ? cond.operator : 'eq';
+                                        updated[condIdx] = { ...updated[condIdx], attributeKey: v, operator: newOperator, value: '' };
+                                        setActivationConditions({ ...activationConditions, attributeConditions: updated });
+                                      }}
+                                    >
+                                      <SelectTrigger className="bg-background h-7 text-xs">
+                                        <SelectValue placeholder="Seleccionar atributo..." />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {availableAttributes.map(attr => (
+                                          <SelectItem key={attr.key} value={attr.key}>
+                                            <span className="flex items-center gap-1.5">
+                                              <span className="text-[10px]">{attrTypeLabels[attr.type] || '📝'}</span>
+                                              {attr.name}
+                                              <span className="text-muted-foreground text-[9px]">({attr.key})</span>
+                                            </span>
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  ) : (
+                                    <Input
+                                      value={cond.attributeKey}
+                                      onChange={(e) => {
+                                        const updated = [...(activationConditions.attributeConditions || [])];
+                                        updated[condIdx] = { ...updated[condIdx], attributeKey: e.target.value };
+                                        setActivationConditions({ ...activationConditions, attributeConditions: updated });
+                                      }}
+                                      placeholder={cond.targetId ? 'Sin atributos definidos' : 'Selecciona un personaje primero...'}
+                                      className="bg-background h-7 text-xs font-mono"
+                                      disabled={!cond.targetId}
+                                    />
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className={cn("grid gap-2", needsValue ? "grid-cols-[1fr_1fr_auto]" : "grid-cols-[1fr_auto]")}>
+                                {/* Operator - filtered by attribute type */}
+                                <div className="space-y-1">
+                                  <Label className="text-[9px] text-muted-foreground">
+                                    Operador
+                                    {currentAttrType && (
+                                      <span className="ml-1 text-rose-500">
+                                        ({currentAttrType === 'number' ? 'Numérico' : currentAttrType === 'keyword' ? 'Estado' : 'Texto'})
+                                      </span>
+                                    )}
+                                  </Label>
+                                  <Select
+                                    value={availableOperators.includes(cond.operator) ? cond.operator : 'eq'}
+                                    onValueChange={(v) => {
+                                      const updated = [...(activationConditions.attributeConditions || [])];
+                                      updated[condIdx] = { ...updated[condIdx], operator: v as QuestAttributeOperator };
+                                      setActivationConditions({ ...activationConditions, attributeConditions: updated });
+                                    }}
+                                  >
+                                    <SelectTrigger className="bg-background h-7 text-xs">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {availableOperators.includes('has_attribute') && <SelectItem value="has_attribute">Tiene atributo</SelectItem>}
+                                      {availableOperators.includes('missing_attribute') && <SelectItem value="missing_attribute">No tiene atributo</SelectItem>}
+                                      {availableOperators.includes('is_true') && <SelectItem value="is_true">Es verdadero</SelectItem>}
+                                      {availableOperators.includes('is_false') && <SelectItem value="is_false">Es falso</SelectItem>}
+                                      {isNumericAttr && availableOperators.includes('gt') && <SelectItem value="gt">&gt; Mayor que</SelectItem>}
+                                      {isNumericAttr && availableOperators.includes('gte') && <SelectItem value="gte">≥ Mayor o igual</SelectItem>}
+                                      {isNumericAttr && availableOperators.includes('lt') && <SelectItem value="lt">&lt; Menor que</SelectItem>}
+                                      {isNumericAttr && availableOperators.includes('lte') && <SelectItem value="lte">≤ Menor o igual</SelectItem>}
+                                      {availableOperators.includes('eq') && <SelectItem value="eq">= Igual</SelectItem>}
+                                      {availableOperators.includes('neq') && <SelectItem value="neq">≠ Diferente</SelectItem>}
+                                      {!isNumericAttr && availableOperators.includes('contains') && <SelectItem value="contains">Contiene</SelectItem>}
+                                      {!isNumericAttr && availableOperators.includes('not_contains') && <SelectItem value="not_contains">No contiene</SelectItem>}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+
+                                {/* Value input (only for operators that need it) */}
+                                {needsValue && (
+                                  <div className="space-y-1">
+                                    <Label className="text-[9px] text-muted-foreground">Valor</Label>
+                                    <Input
+                                      type={isNumericAttr ? 'number' : 'text'}
+                                      value={cond.value !== undefined ? String(cond.value) : ''}
+                                      onChange={(e) => {
+                                        const updated = [...(activationConditions.attributeConditions || [])];
+                                        const val = isNumericAttr
+                                          ? (e.target.value === '' ? '' : Number(e.target.value))
+                                          : e.target.value;
+                                        updated[condIdx] = { ...updated[condIdx], value: val as string | number | undefined };
+                                        setActivationConditions({ ...activationConditions, attributeConditions: updated });
+                                      }}
+                                      placeholder={isNumericAttr ? '50' : 'texto...'}
+                                      className="bg-background h-7 text-xs"
+                                    />
+                                  </div>
+                                )}
+
+                                {/* Remove button */}
+                                <div className="flex items-end">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0 text-red-500 hover:bg-red-500/10"
+                                    onClick={() => {
+                                      const updated = (activationConditions.attributeConditions || []).filter((_, i) => i !== condIdx);
+                                      setActivationConditions({ ...activationConditions, attributeConditions: updated });
+                                    }}
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Add condition button */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-500/10"
+                        onClick={() => {
+                          const current = activationConditions.attributeConditions || [];
+                          setActivationConditions({
+                            ...activationConditions,
+                            attributeConditions: [...current, { targetId: '', attributeKey: '', operator: 'eq', value: '' }]
+                          });
+                        }}
+                      >
+                        <Plus className="w-3 h-3 mr-1" />
+                        Agregar condición de atributo
+                      </Button>
+
+                      <p className="text-[9px] text-muted-foreground flex items-center gap-1">
+                        <Info className="w-3 h-3" />
+                        La misión solo podrá activarse si se cumplen las condiciones de atributos
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Activation Condition: By Objective */}
+                  {activationType === 'by_objective' && activationConditions && (
+                    <div className="space-y-3 p-3 rounded-lg bg-violet-500/5 border border-violet-500/20">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                          <Target className="w-3 h-3 text-violet-500" />
+                          Condiciones de Objetivo para Activación
+                        </Label>
+                        {/* Logic toggle */}
+                        <div className="flex items-center gap-2">
+                          <span className={cn("text-[10px] font-medium", activationConditions.logic === 'and' ? 'text-violet-600 dark:text-violet-400' : 'text-muted-foreground')}>AND</span>
+                          <Switch
+                            checked={activationConditions.logic === 'or'}
+                            onCheckedChange={(v) => setActivationConditions({ ...activationConditions, logic: v ? 'or' : 'and' })}
+                            className="data-[state=checked]:bg-violet-500"
+                          />
+                          <span className={cn("text-[10px] font-medium", activationConditions.logic === 'or' ? 'text-violet-600 dark:text-violet-400' : 'text-muted-foreground')}>OR</span>
+                        </div>
+                      </div>
+
+                      {/* Objective Conditions List */}
+                      <div className="space-y-2">
+                        {(activationConditions.objectiveConditions || []).map((cond, condIdx) => {
+                          // Get objectives from the selected template (or current template if no templateId)
+                          const selectedTemplateId = cond.templateId || '';
+                          const selectedTemplate = selectedTemplateId
+                            ? allTemplates.find(t => t.id === selectedTemplateId)
+                            : allTemplates.find(t => t.id === id);
+                          const availableObjectives = selectedTemplate?.objectives || [];
+
+                          return (
+                            <div key={condIdx} className="p-2 rounded bg-muted/30 space-y-2">
+                              <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                                {/* Mission selector */}
+                                <div className="space-y-1">
+                                  <Label className="text-[9px] text-muted-foreground">Misión</Label>
+                                  <Select
+                                    value={cond.templateId || '__this__'}
+                                    onValueChange={(v) => {
+                                      const updated = [...(activationConditions.objectiveConditions || [])];
+                                      updated[condIdx] = { ...updated[condIdx], templateId: v === '__this__' ? undefined : v, objectiveId: '' };
+                                      setActivationConditions({ ...activationConditions, objectiveConditions: updated });
+                                    }}
+                                  >
+                                    <SelectTrigger className="bg-background h-7 text-xs">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="__this__">Esta misión</SelectItem>
+                                      {allTemplates
+                                        .filter(t => t.id !== id)
+                                        .map(t => (
+                                          <SelectItem key={t.id} value={t.id}>
+                                            {t.icon || '📜'} {t.name}
+                                          </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+
+                                {/* Objective selector */}
+                                <div className="space-y-1">
+                                  <Label className="text-[9px] text-muted-foreground">Objetivo</Label>
+                                  <Select
+                                    value={cond.objectiveId}
+                                    onValueChange={(v) => {
+                                      const updated = [...(activationConditions.objectiveConditions || [])];
+                                      updated[condIdx] = { ...updated[condIdx], objectiveId: v };
+                                      setActivationConditions({ ...activationConditions, objectiveConditions: updated });
+                                    }}
+                                  >
+                                    <SelectTrigger className="bg-background h-7 text-xs">
+                                      <SelectValue placeholder="Seleccionar objetivo..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {availableObjectives.length === 0 ? (
+                                        <SelectItem value="__none__" disabled>Sin objetivos</SelectItem>
+                                      ) : (
+                                        availableObjectives.map(obj => (
+                                          <SelectItem key={obj.id} value={obj.id}>
+                                            {obj.description || obj.id}
+                                          </SelectItem>
+                                        ))
+                                      )}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+
+                                {/* Remove button */}
+                                <div className="flex items-end">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0 text-red-500 hover:bg-red-500/10"
+                                    onClick={() => {
+                                      const updated = (activationConditions.objectiveConditions || []).filter((_, i) => i !== condIdx);
+                                      setActivationConditions({ ...activationConditions, objectiveConditions: updated });
+                                    }}
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Add condition button */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-violet-600 dark:text-violet-400 hover:bg-violet-500/10"
+                        onClick={() => {
+                          const current = activationConditions.objectiveConditions || [];
+                          setActivationConditions({
+                            ...activationConditions,
+                            objectiveConditions: [...current, { objectiveId: '' }]
+                          });
+                        }}
+                      >
+                        <Plus className="w-3 h-3 mr-1" />
+                        Agregar condición de objetivo
+                      </Button>
+
+                      <p className="text-[9px] text-muted-foreground flex items-center gap-1">
+                        <Info className="w-3 h-3" />
+                        La misión solo podrá activarse cuando los objetivos seleccionados estén completados
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -2097,7 +3003,11 @@ function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingI
                           onUpdate={(updates) => updateObjective(index, updates)}
                           onRemove={() => removeObjective(index)}
                           allCharacters={allCharacters}
+                          personas={personas}
+                          activePersonaId={activePersonaId}
                           objectivePrefix={objectivePrefix}
+                          allTemplates={allTemplates}
+                          currentTemplateId={id}
                         />
                       ))}
                     </div>
@@ -2326,26 +3236,83 @@ function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingI
 
                   {chainType === 'specific' && (
                     <div className="p-4 rounded-lg border border-violet-500/20 bg-violet-500/5">
-                      <Label className="text-xs text-muted-foreground mb-2 block">ID de la Siguiente Misión</Label>
-                      <Input
+                      <Label className="text-xs text-muted-foreground mb-2 block">Siguiente Misión</Label>
+                      <Select
                         value={chainNextQuestId}
-                        onChange={(e) => setChainNextQuestId(e.target.value)}
-                        placeholder="siguiente-mision"
-                        className="bg-background font-mono"
-                      />
+                        onValueChange={setChainNextQuestId}
+                      >
+                        <SelectTrigger className="bg-background">
+                          <SelectValue placeholder="Seleccionar misión..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allTemplates
+                            .filter(t => t.id !== id)
+                            .map(t => (
+                              <SelectItem key={t.id} value={t.id}>
+                                <span className="flex items-center gap-1.5">
+                                  <span className="text-sm">{t.icon || '📜'}</span>
+                                  {t.name}
+                                  <span className="text-muted-foreground text-[9px]">({t.id})</span>
+                                </span>
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   )}
 
                   {chainType === 'random' && (
-                    <div className="p-4 rounded-lg border border-amber-500/20 bg-amber-500/5">
+                    <div className="p-4 rounded-lg border border-amber-500/20 bg-amber-500/5 space-y-3">
                       <Label className="text-xs text-muted-foreground mb-2 block">Pool de Misiones</Label>
-                      <Input
-                        value={chainRandomPool.join(', ')}
-                        onChange={(e) => setChainRandomPool(e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-                        placeholder="mision-1, mision-2, mision-3"
-                        className="bg-background font-mono"
-                      />
-                      <p className="text-[10px] text-muted-foreground mt-2">IDs separados por coma. Se seleccionará una aleatoriamente.</p>
+                      {/* Available missions to add */}
+                      <Select
+                        value=""
+                        onValueChange={(v) => {
+                          if (v && !chainRandomPool.includes(v)) {
+                            setChainRandomPool([...chainRandomPool, v]);
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="bg-background">
+                          <SelectValue placeholder="+ Agregar misión al pool..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allTemplates
+                            .filter(t => t.id !== id && !chainRandomPool.includes(t.id))
+                            .map(t => (
+                              <SelectItem key={t.id} value={t.id}>
+                                <span className="flex items-center gap-1.5">
+                                  <span className="text-sm">{t.icon || '📜'}</span>
+                                  {t.name}
+                                </span>
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      {/* Selected pool missions */}
+                      {chainRandomPool.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {chainRandomPool.map(poolId => {
+                            const poolTemplate = allTemplates.find(t => t.id === poolId);
+                            return (
+                              <Badge
+                                key={poolId}
+                                variant="secondary"
+                                className="gap-1 pr-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                              >
+                                {poolTemplate?.icon || '📜'} {poolTemplate?.name || poolId}
+                                <button
+                                  className="ml-1 hover:bg-amber-500/20 rounded p-0.5"
+                                  onClick={() => setChainRandomPool(chainRandomPool.filter(id => id !== poolId))}
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <p className="text-[10px] text-muted-foreground">Se seleccionará una misión aleatoriamente del pool al completar esta misión.</p>
                     </div>
                   )}
 
@@ -2853,6 +3820,11 @@ function QuestTemplateEditorDialog({ template, isNew, onSave, onClose, existingI
                     {activationMethod === 'manual' && 'Manual'}
                     {activationMethod === 'chain' && 'En cadena'}
                     {activationMethod === 'automatic' && 'Automático'}
+                    {activationType !== 'normal' && (
+                      <span className="ml-1 text-muted-foreground">
+                        ({activationType === 'by_attribute' ? 'Cond. Atributo' : 'Cond. Objetivo'})
+                      </span>
+                    )}
                   </p>
                 </div>
 

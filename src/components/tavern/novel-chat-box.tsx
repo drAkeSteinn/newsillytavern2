@@ -83,6 +83,8 @@ import { ThemeEffects, getThemeColors as getThemeColorsUtil } from './theme-effe
 import { useAudioRecorder, useAudioTranscription } from '@/hooks/use-audio-recorder';
 import { useWakeWordDetection } from '@/hooks/use-wake-word-detection';
 import { isGlobalMuted, setGlobalMuted } from '@/lib/audio/audio-mute-store';
+import { pauseAllTimelines, resumeAllTimelines } from '@/hooks/use-timeline-sprite-sounds';
+import { stopAllSoundTriggers } from '@/hooks/use-sound-triggers';
 import { ttsService } from '@/lib/tts';
 
 // Tab type for the chatbox
@@ -677,6 +679,13 @@ export function NovelChatBox({
     if (newMuted) {
       // Stop any currently playing TTS when muting
       try { ttsService.stop(); } catch { /* ignore */ }
+      // Pause ALL sprite timeline sounds and haptic tracks (can be resumed on unmute)
+      pauseAllTimelines();
+      // Stop ALL keyword-triggered sound queue playback
+      stopAllSoundTriggers();
+    } else {
+      // Resume sprite timeline sounds and haptic tracks when unmuting
+      resumeAllTimelines();
     }
   }, [globalMuted]);
 

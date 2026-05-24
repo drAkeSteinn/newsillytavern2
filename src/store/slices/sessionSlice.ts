@@ -22,6 +22,7 @@ import {
   type RewardStoreActions,
 } from '@/lib/quest/quest-reward-executor';
 import type { ActivationCost, QuestReward, SkillDefinition } from '@/types';
+import { evaluateObjectiveVisibility, evaluateActivationConditions } from '@/lib/triggers/handlers/quest-handler';
 
 // ============================================
 // Quest Reward Execution Guard
@@ -370,7 +371,8 @@ function initializeSessionStatsForCharacters(
 /**
  * Create quest instances from templates
  * Creates 'available' status quests (not yet activated)
- * 'automatic' quests without prerequisites start as 'active' immediately
+ * 'automatic' quests without prerequisites AND with 'normal' activation type start as 'active' immediately
+ * Quests with by_attribute/by_objective activation types always start as 'available'
  */
 function createQuestInstancesFromTemplates(
   templates: QuestTemplate[]
@@ -378,9 +380,12 @@ function createQuestInstancesFromTemplates(
   return templates.map(template => {
     const isAutomatic = template.activation.method === 'automatic';
     const hasPrerequisites = template.prerequisites && template.prerequisites.length > 0;
+    const activationType = template.activation?.activationType || 'normal';
 
-    // Automatic quests without prerequisites become active immediately
-    const isActive = isAutomatic && !hasPrerequisites;
+    // Automatic quests without prerequisites AND with normal activation type become active immediately.
+    // Quests with by_attribute or by_objective activation types must start as 'available'
+    // and wait for their conditions to be evaluated before being activated.
+    const isActive = isAutomatic && !hasPrerequisites && activationType === 'normal';
 
     return {
       templateId: template.id,
@@ -389,6 +394,7 @@ function createQuestInstancesFromTemplates(
         templateId: obj.id,
         currentCount: 0,
         isCompleted: false,
+        isVisible: (obj.visibilityType || 'normal') === 'normal', // normal = always visible, conditional = starts hidden until evaluated
       })),
       progress: 0,
       activatedAt: isActive ? new Date().toISOString() : undefined,
@@ -425,6 +431,8 @@ function activateQuestsWhosePrerequisitesAreMet(
       .filter(q => q.status === 'completed')
       .map(q => q.templateId);
 
+    const questTemplates = get().questTemplates || [];
+
     // Find candidates: available quests that aren't the one just completed
     const candidates = session.sessionQuests.filter(
       (q: SessionQuestInstance) =>
@@ -445,6 +453,18 @@ function activateQuestsWhosePrerequisitesAreMet(
       );
 
       if (allMet) {
+        // Also check activation conditions (by_attribute / by_objective)
+        const canActivate = evaluateActivationConditions(
+          candidateTemplate,
+          session.sessionStats,
+          session.sessionQuests,
+          questTemplates
+        );
+        if (!canActivate) {
+          console.log(`[Quest Auto] Prerequisites met for "${candidateTemplate.name}" but activation conditions not met, skipping`);
+          continue;
+        }
+
         console.log(`[Quest Auto] Activating "${candidateTemplate.name}" (${candidateTemplate.activation.method}) — all prerequisites met`);
         get().activateQuest(sessionId, candidate.templateId);
       }
@@ -513,6 +533,9 @@ export interface SessionSlice {
   completeObjective: (sessionId: string, questTemplateId: string, objectiveId: string, characterId?: string) => void;
   activateSkillByTool: (sessionId: string, characterId: string, skillName: string, skillDescription: string, activationCosts: ActivationCost[], activationRewards: QuestReward[]) => void;
   toggleObjectiveCompletion: (sessionId: string, questTemplateId: string, objectiveId: string) => void;  // Toggle objective completion
+  updateObjectiveVisibility: (sessionId: string, questTemplateId: string, objectiveId: string, isVisible: boolean) => void;  // Update objective visibility
+  refreshAllObjectiveVisibility: (sessionId: string) => void;  // Re-evaluate all conditional objective visibilities
+  refreshAllActivationConditions: (sessionId: string) => void;  // Re-evaluate all quest activation conditions
   getSessionQuests: (sessionId: string) => SessionQuestInstance[];
   getActiveQuests: (sessionId: string) => SessionQuestInstance[];
   getAvailableQuests: (sessionId: string) => SessionQuestInstance[];
@@ -655,6 +678,17 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     } catch (err) {
       console.warn('[Session] Failed to create memory namespaces:', err);
     }
+
+    // Refresh objective visibility for conditional objectives (by_attribute / by_objective)
+    // Conditional objectives start with isVisible=false and need to be evaluated against current stats
+    try {
+      (get() as any).refreshAllObjectiveVisibility?.(id);
+    } catch { /* non-critical */ }
+
+    // Refresh activation conditions for available quests
+    try {
+      (get() as any).refreshAllActivationConditions?.(id);
+    } catch { /* non-critical */ }
 
     return id;
   },
@@ -801,6 +835,11 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
         } : s
       ),
     }));
+
+    // Refresh objective visibility after stats reset (attribute conditions may now evaluate differently)
+    try {
+      (get() as any).refreshAllObjectiveVisibility?.(sessionId);
+    } catch { /* non-critical */ }
   },
 
   clearChat: (sessionId) => {
@@ -893,6 +932,16 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
         } : s
       ),
     }));
+
+    // Refresh objective visibility after resetting quests (conditional objectives start hidden)
+    try {
+      (get() as any).refreshAllObjectiveVisibility?.(sessionId);
+    } catch { /* non-critical */ }
+
+    // Refresh activation conditions after resetting
+    try {
+      (get() as any).refreshAllActivationConditions?.(sessionId);
+    } catch { /* non-critical */ }
   },
 
   // Message Actions
@@ -1132,10 +1181,15 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
           : s
       ),
     }));
+
+    // Refresh objective visibility for conditional objectives
+    try {
+      (get() as any).refreshAllObjectiveVisibility?.(sessionId);
+    } catch { /* non-critical */ }
   },
 
   activateQuest: (sessionId, questTemplateId) => {
-    // Get template to check prerequisites
+    // Get template to check prerequisites and activation conditions
     const template = get().getTemplateById?.(questTemplateId);
     
     if (template?.prerequisites && template.prerequisites.length > 0) {
@@ -1151,6 +1205,22 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
       if (!hasAllPrereqs) {
         console.warn(`[Quest] Cannot activate "${template.name}": missing prerequisites. Required: ${template.prerequisites.join(', ')}`);
         return; // Don't activate - missing prerequisites
+      }
+    }
+
+    // Check activation conditions (by_attribute / by_objective)
+    if (template) {
+      const session = get().sessions.find((s: ChatSession) => s.id === sessionId);
+      const questTemplates = get().questTemplates || [];
+      const canActivate = evaluateActivationConditions(
+        template,
+        session?.sessionStats,
+        session?.sessionQuests || [],
+        questTemplates
+      );
+      if (!canActivate) {
+        console.warn(`[Quest] Cannot activate "${template.name}": activation conditions not met`);
+        return;
       }
     }
     
@@ -1186,6 +1256,11 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
         message: `¡Nueva misión activada: ${template.name}!`,
       });
     }
+
+    // Refresh objective visibility for the newly activated quest's conditional objectives
+    try {
+      (get() as any).refreshAllObjectiveVisibility?.(sessionId);
+    } catch { /* non-critical */ }
   },
 
   deactivateQuest: (sessionId, questTemplateId) => {
@@ -1350,10 +1425,11 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
             
             const newProgress = calculateQuestProgress(updatedObjectives);
             
-            // Only check non-optional objectives for auto-completion
+            // Only check non-optional, VISIBLE objectives for auto-completion
+            // Invisible (conditional) objectives can't be completed yet, so they shouldn't block completion
             const requiredObjectives = updatedObjectives.filter(o => {
               const objTemplate = template?.objectives.find(ot => ot.id === o.templateId);
-              return !objTemplate?.isOptional;
+              return !objTemplate?.isOptional && o.isVisible !== false;
             });
             const allRequiredCompleted = requiredObjectives.length === 0 || 
               requiredObjectives.every(o => o.isCompleted);
@@ -1425,6 +1501,16 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     if (chainQuest) {
       activateQuestsWhosePrerequisitesAreMet(get, sessionId, questTemplateId);
     }
+
+    // Refresh objective visibility since completing an objective may unlock by_objective conditions
+    try {
+      (get() as any).refreshAllObjectiveVisibility?.(sessionId);
+    } catch { /* non-critical */ }
+
+    // Refresh activation conditions since completing an objective may trigger by_objective activation
+    try {
+      (get() as any).refreshAllActivationConditions?.(sessionId);
+    } catch { /* non-critical */ }
   },
 
   getSessionQuests: (sessionId) => {
@@ -1476,10 +1562,11 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
             
             const newProgress = calculateQuestProgress(updatedObjectives);
             
-            // Only check non-optional objectives for auto-completion
+            // Only check non-optional, VISIBLE objectives for auto-completion
+            // Invisible (conditional) objectives can't be completed yet, so they shouldn't block completion
             const requiredObjectives = updatedObjectives.filter(o => {
               const objTemplate = template?.objectives.find(ot => ot.id === o.templateId);
-              return !objTemplate?.isOptional;
+              return !objTemplate?.isOptional && o.isVisible !== false;
             });
             const allRequiredCompleted = requiredObjectives.length === 0 || 
               requiredObjectives.every(o => o.isCompleted);
@@ -1796,6 +1883,129 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     }
   },
 
+  updateObjectiveVisibility: (sessionId, questTemplateId, objectiveId, isVisible) => {
+    set((state: any) => ({
+      sessions: state.sessions.map((s: ChatSession) => {
+        if (s.id !== sessionId) return s;
+        
+        return {
+          ...s,
+          sessionQuests: (s.sessionQuests || []).map((q: SessionQuestInstance) => {
+            if (q.templateId !== questTemplateId) return q;
+            
+            return {
+              ...q,
+              objectives: q.objectives.map((o) => {
+                if (o.templateId !== objectiveId) return o;
+                return { ...o, isVisible };
+              }),
+            };
+          }),
+          updatedAt: new Date().toISOString(),
+        };
+      }),
+    }));
+  },
+
+  /**
+   * Refresh visibility of ALL conditional objectives in a session.
+   * Evaluates by_attribute and by_objective conditions against current
+   * session stats and quest state. Should be called after:
+   * - A character stat is updated (attribute condition may change)
+   * - An objective is completed (objective condition may change)
+   * - A quest is activated/completed
+   */
+  refreshAllObjectiveVisibility: (sessionId) => {
+    const session = get().sessions.find((s: ChatSession) => s.id === sessionId);
+    if (!session?.sessionQuests) return;
+
+    const questTemplates = get().questTemplates || [];
+    const sessionStats = session.sessionStats;
+
+    console.log(`[QuestVisibility] Refreshing all objective visibility for session ${sessionId}. Stats targets: [${Object.keys(sessionStats?.characterStats || {}).join(', ')}]`);
+
+    for (const quest of session.sessionQuests) {
+      const template = questTemplates.find((t: any) => t.id === quest.templateId);
+      if (!template) continue;
+
+      for (const obj of quest.objectives) {
+        const objTemplate = template.objectives.find((o: any) => o.id === obj.templateId);
+        if (!objTemplate) continue;
+
+        // Only evaluate non-normal visibility types
+        const visibilityType = objTemplate.visibilityType || 'normal';
+        if (visibilityType === 'normal') {
+          // Normal objectives are always visible
+          if (!obj.isVisible) {
+            console.log(`[QuestVisibility] Quest "${template.name}" objective "${objTemplate.description}": normal → setting visible`);
+            get().updateObjectiveVisibility(sessionId, quest.templateId, obj.templateId, true);
+          }
+          continue;
+        }
+
+        const newVisibility = evaluateObjectiveVisibility(
+          objTemplate,
+          sessionStats,
+          session.sessionQuests,
+          questTemplates
+        );
+
+        console.log(`[QuestVisibility] Quest "${template.name}" objective "${objTemplate.description}": ${visibilityType} → wasVisible=${obj.isVisible}, newVisible=${newVisibility}`);
+
+        if (newVisibility !== obj.isVisible) {
+          get().updateObjectiveVisibility(sessionId, quest.templateId, obj.templateId, newVisibility);
+        }
+      }
+    }
+  },
+
+  /**
+   * Refresh activation conditions for ALL available quests in a session.
+   * Evaluates by_attribute and by_objective activation conditions against current
+   * session stats and quest state. Should be called after:
+   * - A character stat is updated (attribute condition may change)
+   * - An objective is completed (objective condition may change)
+   * - A quest is activated/completed
+   *
+   * For quests with method='automatic', this will auto-activate them if conditions are met.
+   * For other methods, it just evaluates and logs the condition state.
+   */
+  refreshAllActivationConditions: (sessionId) => {
+    const session = get().sessions.find((s: ChatSession) => s.id === sessionId);
+    if (!session?.sessionQuests) return;
+
+    const questTemplates = get().questTemplates || [];
+    const sessionStats = session.sessionStats;
+
+    // Check all available quests with conditional activation
+    const availableQuests = session.sessionQuests.filter(
+      (q: SessionQuestInstance) => q.status === 'available'
+    );
+
+    for (const quest of availableQuests) {
+      const template = questTemplates.find((t: any) => t.id === quest.templateId);
+      if (!template) continue;
+
+      const activationType = template.activation?.activationType || 'normal';
+      if (activationType === 'normal') continue; // Skip normal activation quests
+
+      const canActivate = evaluateActivationConditions(
+        template,
+        sessionStats,
+        session.sessionQuests,
+        questTemplates
+      );
+
+      console.log(`[Quest Activation Conditions] Quest "${template.name}": method=${template.activation?.method}, activationType=${activationType}, canActivate=${canActivate}`);
+
+      // Auto-activate if conditions are met and method is 'automatic'
+      if (canActivate && template.activation?.method === 'automatic') {
+        console.log(`[Quest Activation Conditions] Auto-activating "${template.name}" - conditions met and method is automatic`);
+        get().activateQuest(sessionId, quest.templateId);
+      }
+    }
+  },
+
   getActiveQuests: (sessionId) => {
     const session = get().sessions.find((s: ChatSession) => s.id === sessionId);
     return (session?.sessionQuests || []).filter((q: SessionQuestInstance) => q.status === 'active');
@@ -1818,6 +2028,19 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
   activateQuestFromTemplate: (sessionId, template) => {
     const session = get().sessions.find((s: ChatSession) => s.id === sessionId);
     if (!session) return;
+
+    // Check activation conditions (by_attribute / by_objective)
+    const questTemplates = get().questTemplates || [];
+    const canActivate = evaluateActivationConditions(
+      template,
+      session.sessionStats,
+      session.sessionQuests || [],
+      questTemplates
+    );
+    if (!canActivate) {
+      console.warn(`[Quest] Cannot activate "${template.name}" from template: activation conditions not met`);
+      return;
+    }
 
     const turnCount = session.turnCount || 0;
     const existingQuest = (session.sessionQuests || []).find(
@@ -1857,6 +2080,7 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
           templateId: obj.id,
           currentCount: 0,
           isCompleted: false,
+          isVisible: (obj.visibilityType || 'normal') === 'normal', // normal = always visible, conditional = starts hidden until evaluated
         })),
         progress: 0,
         activatedAt: new Date().toISOString(),
@@ -1883,6 +2107,11 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
       type: 'started',
       message: `Nueva misión iniciada: ${template.name}`,
     });
+
+    // Refresh objective visibility for conditional objectives in the newly activated quest
+    try {
+      (get() as any).refreshAllObjectiveVisibility?.(sessionId);
+    } catch { /* non-critical */ }
   },
 
   // ============================================

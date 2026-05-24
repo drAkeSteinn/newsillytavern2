@@ -1407,6 +1407,10 @@ type QuestPromptOptions = {
   questTemplate?: string;
   showKeys?: boolean;
   showProgress?: boolean;
+  characterId?: string;
+  isForNarrator?: boolean;
+  questSettings?: QuestSettings;
+  sessionStats?: import('@/types').SessionStats;
 };
 
 const DEFAULT_QUEST_PROMPT_OPTIONS: QuestPromptOptions = {
@@ -1446,7 +1450,11 @@ export function buildQuestPromptForLLM(
   const questContent = buildQuestPromptSection(
     templates,
     activeQuests,
-    templateStr
+    templateStr,
+    options.characterId,
+    options.isForNarrator,
+    options.questSettings as any,
+    options.sessionStats
   );
 
   // Resolve keys if keyContext provided

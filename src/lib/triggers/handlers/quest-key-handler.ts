@@ -20,7 +20,9 @@ import type {
   SessionQuestInstance,
   QuestSettings,
   QuestTriggerHit,
+  SessionStats,
 } from '@/types';
+import { evaluateActivationConditions } from './quest-handler';
 
 // ============================================
 // Quest Key Handler Context
@@ -33,6 +35,7 @@ export interface QuestKeyHandlerContext extends TriggerContext {
   sessionQuests: SessionQuestInstance[];
   questSettings: QuestSettings;
   turnCount?: number;
+  sessionStats?: SessionStats;
   
   // Store actions
   activateQuest?: (sessionId: string, questId: string) => void;
@@ -86,6 +89,15 @@ export class QuestKeyHandler implements KeyHandler {
     for (const quest of availableQuests) {
       const template = context.questTemplates.find(t => t.id === quest.templateId);
       if (template?.activation?.method === 'keyword') {
+        // Check activation conditions before allowing activation
+        const canActivate = evaluateActivationConditions(
+          template,
+          context.sessionStats,
+          context.sessionQuests,
+          context.questTemplates
+        );
+        if (!canActivate) continue;
+
         const keys = [
           template.activation.key,
           ...(template.activation.keys || [])
@@ -237,6 +249,18 @@ export class QuestKeyHandler implements KeyHandler {
     for (const quest of availableQuests) {
       const template = questTemplates.find(t => t.id === quest.templateId);
       if (template?.activation?.method === 'keyword') {
+        // Check activation conditions before allowing activation
+        const canActivate = evaluateActivationConditions(
+          template,
+          context.sessionStats,
+          sessionQuests,
+          questTemplates
+        );
+        if (!canActivate) {
+          console.log(`[QuestKeyHandler] Quest "${template.name}" activation conditions not met, skipping`);
+          continue;
+        }
+
         const keys = [
           template.activation.key,
           ...(template.activation.keys || [])
@@ -407,6 +431,15 @@ export class QuestKeyHandler implements KeyHandler {
     for (const quest of availableQuests) {
       const template = questTemplates.find(t => t.id === quest.templateId);
       if (template?.activation?.method === 'keyword') {
+        // Only register activation keys if activation conditions are met
+        const canActivate = evaluateActivationConditions(
+          template,
+          context.sessionStats,
+          sessionQuests,
+          questTemplates
+        );
+        if (!canActivate) continue;
+
         const activationKeys = [
           template.activation.key,
           ...(template.activation.keys || [])

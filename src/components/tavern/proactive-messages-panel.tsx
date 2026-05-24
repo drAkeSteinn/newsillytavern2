@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Card,
   CardContent,
@@ -29,6 +30,8 @@ import {
   MessageCircle,
   Shield,
   Timer,
+  Send,
+  Zap,
 } from 'lucide-react';
 import { DEFAULT_PROACTIVE_MESSAGES_CONFIG } from '@/types';
 import type { ProactiveMessagesConfig } from '@/types';
@@ -73,18 +76,15 @@ export function ProactiveMessagesPanel({
     <TooltipProvider>
       <div className="space-y-4">
         {/* Main Toggle */}
-        <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/40">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-amber-500" />
-            <span className="text-sm font-medium">Mensajes Proactivos</span>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">
-                <p>El personaje enviará mensajes sin que el usuario hable primero, basado en un temporizador configurable.</p>
-              </TooltipContent>
-            </Tooltip>
+        <div className="flex items-center justify-between p-4 rounded-lg border bg-gradient-to-r from-amber-500/5 to-orange-500/5 border-amber-500/20">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-500/10">
+              <Sparkles className="w-4 h-4 text-amber-500" />
+            </div>
+            <div>
+              <span className="text-sm font-medium">Mensajes Proactivos</span>
+              <p className="text-xs text-muted-foreground">El personaje envía mensajes automáticamente tras un periodo de inactividad</p>
+            </div>
           </div>
           <Switch
             checked={settings.enabled}
@@ -94,26 +94,70 @@ export function ProactiveMessagesPanel({
 
         {settings.enabled ? (
           <>
-            {/* Interval Configuration */}
+            {/* ─── How It Works ─── */}
+            <div className="p-4 rounded-lg border bg-card space-y-3">
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-amber-500" />
+                <h3 className="text-sm font-semibold">Cómo funciona</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="flex gap-2.5 p-2.5 rounded-md bg-muted/40">
+                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500/10 shrink-0 mt-0.5">
+                    <span className="text-xs font-bold text-blue-500">1</span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium">Temporizador</p>
+                    <p className="text-[11px] text-muted-foreground">Se mide el tiempo desde el último mensaje en el chat</p>
+                  </div>
+                </div>
+                <div className="flex gap-2.5 p-2.5 rounded-md bg-muted/40">
+                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-amber-500/10 shrink-0 mt-0.5">
+                    <span className="text-xs font-bold text-amber-500">2</span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium">Condición</p>
+                    <p className="text-[11px] text-muted-foreground">Si hay inactividad ≥ intervalo configurado → se activa</p>
+                  </div>
+                </div>
+                <div className="flex gap-2.5 p-2.5 rounded-md bg-muted/40">
+                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-green-500/10 shrink-0 mt-0.5">
+                    <span className="text-xs font-bold text-green-500">3</span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium">Mensaje</p>
+                    <p className="text-[11px] text-muted-foreground">El personaje genera y envía un mensaje en contexto</p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-start gap-2 p-2.5 rounded-md bg-muted/30 border border-border/30">
+                <Clock className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                <p className="text-[11px] text-muted-foreground">
+                  <strong>Reinicio:</strong> Cualquier mensaje nuevo (del usuario o del personaje) reinicia el temporizador. 
+                  Los mensajes proactivos no se envían durante la generación de respuestas.
+                </p>
+              </div>
+            </div>
+
+            {/* ─── Interval Configuration ─── */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <Clock className="w-4 h-4 text-amber-500" />
-                  Intervalo de Envío
+                  Intervalo de Inactividad
                 </CardTitle>
                 <CardDescription>
-                  Cada cuánto tiempo sin mensajes en el chat el personaje puede enviar un mensaje proactivo
+                  Tiempo que debe pasar sin mensajes para que el personaje envíe un mensaje proactivo
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Preset Buttons */}
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                   {INTERVAL_PRESETS.map((preset) => (
                     <Button
                       key={preset.value}
                       variant={settings.intervalSeconds === preset.value ? 'default' : 'outline'}
                       size="sm"
-                      className="h-8 text-xs"
+                      className="h-9 text-xs"
                       onClick={() => updateSettings({ intervalSeconds: preset.value })}
                     >
                       {preset.label}
@@ -122,10 +166,10 @@ export function ProactiveMessagesPanel({
                 </div>
 
                 {/* Custom Interval */}
-                <div className="space-y-1">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label className="text-xs">Intervalo personalizado</Label>
-                    <span className="text-xs font-medium text-amber-400">
+                    <span className="text-xs font-mono font-medium text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded">
                       {formatInterval(settings.intervalSeconds)}
                     </span>
                   </div>
@@ -146,24 +190,24 @@ export function ProactiveMessagesPanel({
               </CardContent>
             </Card>
 
-            {/* Conditions */}
+            {/* ─── Conditions ─── */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <Shield className="w-4 h-4 text-blue-500" />
-                  Condiciones
+                  Condiciones de Activación
                 </CardTitle>
                 <CardDescription>
-                  Cuándo se permiten los mensajes proactivos
+                  Define cuándo y cuántos mensajes proactivos se permiten
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-5">
                 {/* Minimum messages before start */}
-                <div className="space-y-1">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <MessageCircle className="w-3.5 h-3.5 text-blue-400" />
-                      <Label className="text-xs">Mensajes mínimos antes de activar</Label>
+                      <Label className="text-xs font-medium">Mensajes mínimos antes de activar</Label>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
@@ -173,8 +217,8 @@ export function ProactiveMessagesPanel({
                         </TooltipContent>
                       </Tooltip>
                     </div>
-                    <span className="text-xs font-mono font-medium text-blue-400 w-8 text-right">
-                      {settings.minMessagesBeforeStart}
+                    <span className="text-xs font-mono font-medium text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">
+                      {settings.minMessagesBeforeStart === 0 ? 'Inmediato' : settings.minMessagesBeforeStart}
                     </span>
                   </div>
                   <Slider
@@ -187,16 +231,17 @@ export function ProactiveMessagesPanel({
                   />
                   <div className="flex justify-between text-[10px] text-muted-foreground">
                     <span>Inmediato</span>
+                    <span>10</span>
                     <span>20 mensajes</span>
                   </div>
                 </div>
 
                 {/* Max per session */}
-                <div className="space-y-1">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <Timer className="w-3.5 h-3.5 text-purple-400" />
-                      <Label className="text-xs">Máximo por sesión</Label>
+                      <Label className="text-xs font-medium">Máximo por sesión</Label>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
@@ -206,8 +251,8 @@ export function ProactiveMessagesPanel({
                         </TooltipContent>
                       </Tooltip>
                     </div>
-                    <span className="text-xs font-mono font-medium text-purple-400 w-8 text-right">
-                      {settings.maxPerSession === 0 ? '∞' : settings.maxPerSession}
+                    <span className="text-xs font-mono font-medium text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded">
+                      {settings.maxPerSession === 0 ? '∞ Sin límite' : settings.maxPerSession}
                     </span>
                   </div>
                   <Slider
@@ -220,26 +265,22 @@ export function ProactiveMessagesPanel({
                   />
                   <div className="flex justify-between text-[10px] text-muted-foreground">
                     <span>Sin límite</span>
-                    <span>20 mensajes</span>
+                    <span>10</span>
+                    <span>20</span>
                   </div>
                 </div>
 
                 {/* Trigger States */}
-                <div className="space-y-2 pt-1">
-                  <Label className="text-xs">Activar cuando:</Label>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between p-2 bg-muted/30 rounded border border-border/30">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-amber-400" />
-                        <span className="text-xs">Inactividad del usuario</span>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs">
-                            <p>El personaje envía un mensaje cuando no hay actividad en el chat (ningún mensaje) durante el intervalo configurado.</p>
-                          </TooltipContent>
-                        </Tooltip>
+                <div className="space-y-2.5 pt-1">
+                  <Label className="text-xs font-medium">Activar cuando:</Label>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/30">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                        <div>
+                          <span className="text-xs font-medium">Inactividad del usuario</span>
+                          <p className="text-[10px] text-muted-foreground">El chat está abierto pero no hay mensajes nuevos</p>
+                        </div>
                       </div>
                       <Switch
                         checked={settings.allowedStates?.includes('idle') ?? true}
@@ -252,18 +293,13 @@ export function ProactiveMessagesPanel({
                         }}
                       />
                     </div>
-                    <div className="flex items-center justify-between p-2 bg-muted/30 rounded border border-border/30">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-blue-400" />
-                        <span className="text-xs">Usuario fuera de la pestaña</span>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs">
-                            <p>El personaje envía un mensaje cuando el usuario cambia a otra pestaña o ventana.</p>
-                          </TooltipContent>
-                        </Tooltip>
+                    <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/30">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-2.5 h-2.5 rounded-full bg-blue-400" />
+                        <div>
+                          <span className="text-xs font-medium">Usuario fuera de la pestaña</span>
+                          <p className="text-[10px] text-muted-foreground">El usuario cambió a otra pestaña o ventana del navegador</p>
+                        </div>
                       </div>
                       <Switch
                         checked={settings.allowedStates?.includes('user_away') ?? false}
@@ -281,7 +317,7 @@ export function ProactiveMessagesPanel({
               </CardContent>
             </Card>
 
-            {/* Custom Prompt */}
+            {/* ─── Custom Prompt ─── */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2">
@@ -289,42 +325,83 @@ export function ProactiveMessagesPanel({
                   Instrucción Personalizada
                 </CardTitle>
                 <CardDescription>
-                  Instrucciones adicionales para cuando el personaje envía un mensaje proactivo (opcional)
+                  Instrucciones adicionales para guiar el mensaje proactivo (opcional)
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <textarea
-                  className="w-full min-h-[80px] p-3 text-xs bg-muted/50 rounded-lg border border-border/40 resize-y focus:outline-none focus:ring-2 focus:ring-amber-500/50 placeholder:text-muted-foreground/60"
-                  placeholder="Ejemplo: Suele iniciar hablando del clima o preguntando cómo está el usuario. A veces comparte pensamientos en voz alta..."
+                <Textarea
+                  className="min-h-[100px] text-xs"
+                  placeholder="Ejemplo: Suele iniciar hablando del clima o preguntando cómo está el usuario. A veces comparte pensamientos en voz alta. Le gusta mencionar lo que ve por la ventana..."
                   value={settings.customPrompt || ''}
                   onChange={(e) => updateSettings({ customPrompt: e.target.value })}
                 />
-                <p className="text-[10px] text-muted-foreground mt-1.5">
-                  Si se deja vacío, se usará una instrucción predeterminada que mantiene al personaje en rol.
-                </p>
+                <div className="mt-2 p-2.5 rounded-md bg-muted/30 border border-border/30">
+                  <p className="text-[11px] text-muted-foreground">
+                    <strong>Si se deja vacío</strong>, se usa la instrucción predeterminada:
+                  </p>
+                  <p className="text-[10px] text-muted-foreground/70 mt-1 italic">
+                    "Reacciona naturalmente a la situación. Puedes comentar algo del entorno, expresar un pensamiento, 
+                    iniciar un nuevo tema o preguntar algo al usuario. Mantén el mensaje breve y natural."
+                  </p>
+                </div>
               </CardContent>
             </Card>
 
-            {/* Info Box */}
-            <div className="p-3 bg-amber-500/10 rounded-lg border border-amber-500/20 text-xs text-amber-200/80 space-y-1">
+            {/* ─── Status Summary ─── */}
+            <div className="p-4 rounded-lg border bg-card">
+              <div className="flex items-center gap-2 mb-3">
+                <Send className="w-4 h-4 text-emerald-500" />
+                <h3 className="text-sm font-semibold">Resumen de Configuración</h3>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="p-2.5 rounded-md bg-muted/30 text-center">
+                  <Clock className="w-4 h-4 mx-auto text-amber-500 mb-1" />
+                  <p className="text-lg font-bold">{formatInterval(settings.intervalSeconds)}</p>
+                  <p className="text-[10px] text-muted-foreground">Intervalo</p>
+                </div>
+                <div className="p-2.5 rounded-md bg-muted/30 text-center">
+                  <MessageCircle className="w-4 h-4 mx-auto text-blue-500 mb-1" />
+                  <p className="text-lg font-bold">{settings.minMessagesBeforeStart === 0 ? '0' : settings.minMessagesBeforeStart}</p>
+                  <p className="text-[10px] text-muted-foreground">Mensajes mín.</p>
+                </div>
+                <div className="p-2.5 rounded-md bg-muted/30 text-center">
+                  <Timer className="w-4 h-4 mx-auto text-purple-500 mb-1" />
+                  <p className="text-lg font-bold">{settings.maxPerSession === 0 ? '∞' : settings.maxPerSession}</p>
+                  <p className="text-[10px] text-muted-foreground">Máx/sesión</p>
+                </div>
+                <div className="p-2.5 rounded-md bg-muted/30 text-center">
+                  <Shield className="w-4 h-4 mx-auto text-green-500 mb-1" />
+                  <p className="text-lg font-bold">
+                    {settings.allowedStates?.includes('idle') && settings.allowedStates?.includes('user_away') ? 'Ambos' :
+                     settings.allowedStates?.includes('user_away') ? 'Ausente' : 'Inactivo'}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">Modo</p>
+                </div>
+              </div>
+            </div>
+
+            {/* ─── Important Notes ─── */}
+            <div className="p-3 bg-amber-500/10 rounded-lg border border-amber-500/20 text-xs space-y-1.5">
               <p className="font-medium text-amber-300 flex items-center gap-1.5">
                 <Sparkles className="w-3 h-3" />
-                Cómo funciona
+                Notas importantes
               </p>
-              <ul className="space-y-0.5 ml-4 list-disc text-amber-200/60">
-                <li>El temporizador mide el tiempo transcurrido desde el último mensaje del chat</li>
-                <li>Cualquier mensaje nuevo (usuario o personaje) reinicia el temporizador</li>
-                <li>Los mensajes proactivos no se envían durante la generación de una respuesta</li>
-                <li>Solo funciona en chat individual (no en chat grupal)</li>
-                <li>Los mensajes aparecerán con un indicador visual especial</li>
+              <ul className="space-y-1 ml-4 list-disc text-amber-200/60">
+                <li>El temporizador se reinicia con <strong>cualquier mensaje nuevo</strong> (usuario o personaje)</li>
+                <li>Los mensajes proactivos <strong>no se envían</strong> durante la generación de una respuesta</li>
+                <li>Solo funciona en <strong>chat individual</strong> (no en chat grupal)</li>
+                <li>Los mensajes aparecen con un <strong>indicador visual ✨</strong> en el chat</li>
+                <li>Se requiere un <strong>proveedor LLM configurado</strong> para generar los mensajes</li>
               </ul>
             </div>
           </>
         ) : (
-          <div className="text-center py-8 text-muted-foreground bg-muted/30 rounded-lg border border-border/40">
-            <Sparkles className="w-10 h-10 mx-auto mb-3 opacity-40" />
+          <div className="text-center py-10 text-muted-foreground bg-muted/30 rounded-lg border border-border/40">
+            <Sparkles className="w-12 h-12 mx-auto mb-3 opacity-30" />
             <p className="text-sm font-medium">Mensajes proactivos desactivados</p>
-            <p className="text-xs mt-1">Activa para que el personaje pueda iniciar conversaciones.</p>
+            <p className="text-xs mt-1 max-w-xs mx-auto">
+              Activa para que el personaje pueda iniciar conversaciones automáticamente tras un periodo de inactividad.
+            </p>
           </div>
         )}
       </div>

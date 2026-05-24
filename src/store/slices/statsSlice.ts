@@ -343,10 +343,21 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
     const oldValue = stats.attributeValues[attributeKey];
 
     // Find attribute definition for logging and clamping
-    const character = state.characters.find((c: any) => c.id === characterId);
-    const attributeDef = character?.statsConfig?.attributes?.find(
-      (a: AttributeDefinition) => a.key === attributeKey
-    );
+    let attributeDef: AttributeDefinition | undefined;
+    if (characterId === '__user__') {
+      // Look up active persona's statsConfig for __user__
+      const activePersonaId = (state as any).activePersonaId;
+      const personas: any[] = (state as any).personas || [];
+      const activePersona = personas.find((p: any) => p.id === activePersonaId);
+      attributeDef = activePersona?.statsConfig?.attributes?.find(
+        (a: AttributeDefinition) => a.key === attributeKey
+      );
+    } else {
+      const character = state.characters.find((c: any) => c.id === characterId);
+      attributeDef = character?.statsConfig?.attributes?.find(
+        (a: AttributeDefinition) => a.key === attributeKey
+      );
+    }
 
     // Clamp value to min/max bounds
     const clampedValue = clampAttributeValue(value, attributeDef);
@@ -434,6 +445,16 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
           : s
       ),
     });
+
+    // Refresh objective visibility since attribute conditions may have changed
+    try {
+      (get() as any).refreshAllObjectiveVisibility?.(sessionId);
+    } catch { /* non-critical */ }
+
+    // Refresh activation conditions since attribute conditions may have changed
+    try {
+      (get() as any).refreshAllActivationConditions?.(sessionId);
+    } catch { /* non-critical */ }
 
     // Return result with threshold info
     return {
@@ -566,6 +587,16 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
         ),
       };
     });
+
+    // Refresh objective visibility since attribute conditions may have changed
+    try {
+      (get() as any).refreshAllObjectiveVisibility?.(sessionId);
+    } catch { /* non-critical */ }
+
+    // Refresh activation conditions since attribute conditions may have changed
+    try {
+      (get() as any).refreshAllActivationConditions?.(sessionId);
+    } catch { /* non-critical */ }
   },
 
   resetCharacterStats: (sessionId, characterId, statsConfig) => {
@@ -604,6 +635,16 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
         ),
       };
     });
+
+    // Refresh objective visibility since attribute values changed
+    try {
+      (get() as any).refreshAllObjectiveVisibility?.(sessionId);
+    } catch { /* non-critical */ }
+
+    // Refresh activation conditions since attribute values changed
+    try {
+      (get() as any).refreshAllActivationConditions?.(sessionId);
+    } catch { /* non-critical */ }
   },
 
   clearSessionStats: (sessionId) => {

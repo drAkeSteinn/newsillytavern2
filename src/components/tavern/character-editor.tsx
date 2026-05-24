@@ -290,8 +290,8 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
 
   // Tab content renderers
   const renderInfoTab = () => (
-    <div className="space-y-4">
-      {/* Banner compact */}
+    <div className="space-y-6">
+      {/* Banner */}
       <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-500/20 rounded-lg">
         <Palette className="w-4 h-4 text-blue-500 shrink-0" />
         <p className="text-xs text-muted-foreground">
@@ -299,151 +299,207 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
         </p>
       </div>
 
-      {/* Top row: Avatar + Name + Tags in one efficient row */}
-      <div className="flex gap-5">
-        {/* Avatar */}
-        <div className="flex-shrink-0">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div 
-                className={cn(
-                  "w-28 h-28 rounded-xl overflow-hidden bg-muted border-2 border-dashed border-muted-foreground/25 flex items-center justify-center transition-colors",
-                  !uploading && "cursor-pointer hover:border-primary/50 hover:bg-muted/50"
-                )}
-                onClick={() => !uploading && fileInputRef.current?.click()}
-              >
-                {uploading ? (
-                  <div className="text-center text-muted-foreground">
-                    <Loader2 className="w-7 h-7 mx-auto animate-spin" />
-                    <span className="text-[10px] mt-1">Subiendo...</span>
-                  </div>
-                ) : character.avatar ? (
-                  <img 
-                    src={character.avatar} 
-                    alt={character.name || 'Avatar'}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="text-center text-muted-foreground">
-                    <Camera className="w-8 h-8 mx-auto mb-1 opacity-50" />
-                    <span className="text-[10px]">Avatar</span>
-                  </div>
-                )}
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Haz clic para subir avatar</p>
-            </TooltipContent>
-          </Tooltip>
-          <input
-            type="file"
-            ref={fileInputRef}
-            className="hidden"
-            accept="image/*"
-            onChange={handleAvatarUpload}
-            disabled={uploading}
-          />
+      {/* ═══ Section: Identidad ═══ */}
+      <div className="rounded-lg border bg-card p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center justify-center w-6 h-6 rounded-md bg-blue-500/10">
+            <Palette className="w-3.5 h-3.5 text-blue-500" />
+          </div>
+          <h3 className="text-sm font-semibold">Identidad</h3>
         </div>
 
-        {/* Name + Tags + Selectors - compact vertical stack */}
-        <div className="flex-1 min-w-0 space-y-3">
-          {/* Name field - full width */}
-          <div>
-            <div className="flex items-center gap-1.5 mb-1">
-              <Label htmlFor="name" className="text-xs font-medium">Nombre *</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                  <p>El nombre del personaje que se mostrará en el chat.</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <Input
-              id="name"
-              value={character.name}
-              onChange={(e) => setCharacter(prev => ({ ...prev, name: e.target.value }))}
-              placeholder="Nombre del personaje"
-              className="h-9"
+        <div className="flex gap-6 items-start">
+          {/* Avatar */}
+          <div className="flex-shrink-0">
+            <Label className="text-xs font-medium mb-2 block">Avatar</Label>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div 
+                  className={cn(
+                    "w-32 h-32 rounded-xl overflow-hidden bg-muted border-2 border-dashed border-muted-foreground/25 flex items-center justify-center transition-colors",
+                    !uploading && "cursor-pointer hover:border-primary/50 hover:bg-muted/50"
+                  )}
+                  onClick={() => !uploading && fileInputRef.current?.click()}
+                >
+                  {uploading ? (
+                    <div className="text-center text-muted-foreground">
+                      <Loader2 className="w-7 h-7 mx-auto animate-spin" />
+                      <span className="text-[10px] mt-1 block">Subiendo...</span>
+                    </div>
+                  ) : character.avatar ? (
+                    <img 
+                      src={character.avatar} 
+                      alt={character.name || 'Avatar'}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="text-center text-muted-foreground">
+                      <Camera className="w-8 h-8 mx-auto mb-1 opacity-50" />
+                      <span className="text-[10px]">Subir avatar</span>
+                    </div>
+                  )}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Haz clic para subir avatar (máx 5MB)</p>
+              </TooltipContent>
+            </Tooltip>
+            <input
+              type="file"
+              ref={fileInputRef}
+              className="hidden"
+              accept="image/*"
+              onChange={handleAvatarUpload}
+              disabled={uploading}
             />
           </div>
 
-          {/* Tags input + existing tags */}
-          <div>
-            <div className="flex items-center gap-1.5 mb-1">
-              <Label className="text-xs font-medium">Etiquetas</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                  <p>Tags para organizar y buscar personajes.</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <div className="flex gap-1.5">
-              <Input
-                value={newTag}
-                onChange={(e) => setNewTag(e.target.value)}
-                placeholder="Agregar etiqueta..."
-                onKeyDown={(e) => e.key === 'Enter' && handleAddTag()}
-                className="h-8 flex-1 text-xs"
-              />
-              <Button variant="outline" size="sm" className="h-8 px-3" onClick={handleAddTag}>
-                <Plus className="w-3 h-3" />
-              </Button>
-            </div>
-            {character.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1.5">
-                {character.tags.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="gap-1 text-xs py-0 px-1.5">
-                    {tag}
-                    <button
-                      type="button"
-                      className="ml-0.5 rounded-full p-0.5 hover:bg-destructive/20 hover:text-destructive transition-colors"
-                      onClick={(e) => { e.stopPropagation(); handleRemoveTag(tag); }}
-                    >
-                      <X className="w-2.5 h-2.5" />
-                    </button>
-                  </Badge>
-                ))}
+          {/* Name + Tags */}
+          <div className="flex-1 min-w-0 space-y-4">
+            {/* Name field */}
+            <div>
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Label htmlFor="name" className="text-sm font-medium">Nombre *</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p>El nombre del personaje que se mostrará en el chat.</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
-            )}
-          </div>
-        </div>
+              <Input
+                id="name"
+                value={character.name}
+                onChange={(e) => setCharacter(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="Nombre del personaje"
+                className="h-10"
+              />
+            </div>
 
-        {/* Selectors column - compact grid */}
-        <div className="flex-shrink-0 w-64 space-y-3">
-          <HUDSelector
-            value={character.hudTemplateId}
-            onChange={(hudTemplateId) => setCharacter(prev => ({ ...prev, hudTemplateId }))}
-            placeholder="Sin HUD"
-          />
-          <SpriteCollectionSelector
-            value={character.spriteConfig?.collection}
-            onChange={(collectionName) => setCharacter(prev => ({ 
-              ...prev, 
-              spriteConfig: { 
-                ...prev.spriteConfig, 
-                enabled: true,
-                collection: collectionName,
-                sprites: prev.spriteConfig?.sprites || {},
-                stateCollections: prev.spriteConfig?.stateCollections || {}
-              } 
-            }))}
-            placeholder="Sin sprites"
-          />
+            {/* Tags input */}
+            <div>
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Label className="text-sm font-medium">Etiquetas</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p>Tags para organizar y buscar personajes.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  value={newTag}
+                  onChange={(e) => setNewTag(e.target.value)}
+                  placeholder="Agregar etiqueta..."
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddTag()}
+                  className="h-9 flex-1"
+                />
+                <Button variant="outline" size="sm" className="h-9 px-4" onClick={handleAddTag}>
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  Agregar
+                </Button>
+              </div>
+              {character.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {character.tags.map((tag) => (
+                    <Badge key={tag} variant="secondary" className="gap-1 text-xs py-1 px-2.5">
+                      {tag}
+                      <button
+                        type="button"
+                        className="ml-0.5 rounded-full p-0.5 hover:bg-destructive/20 hover:text-destructive transition-colors"
+                        onClick={(e) => { e.stopPropagation(); handleRemoveTag(tag); }}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Bottom row: remaining selectors in efficient grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* ═══ Section: Asignaciones ═══ */}
+      <div className="rounded-lg border bg-card p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-500/10">
+            <Package className="w-3.5 h-3.5 text-amber-500" />
+          </div>
+          <h3 className="text-sm font-semibold">Asignaciones</h3>
+          <span className="text-xs text-muted-foreground ml-1">— Recursos vinculados a este personaje</span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* HUD Selector */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Layers className="w-4 h-4 text-blue-500" />
+              <Label className="text-sm font-medium">HUD</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>Selecciona un template de HUD para mostrar estadísticas del personaje.</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <HUDSelector
+              value={character.hudTemplateId}
+              onChange={(hudTemplateId) => setCharacter(prev => ({ ...prev, hudTemplateId }))}
+              placeholder="Sin HUD"
+            />
+          </div>
+
+          {/* Sprite Collection Selector */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <ImageIcon className="w-4 h-4 text-green-500" />
+              <Label className="text-sm font-medium">Colección de Sprites</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>Selecciona una colección de sprites para este personaje.</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <SpriteCollectionSelector
+              value={character.spriteConfig?.collection}
+              onChange={(collectionName) => setCharacter(prev => ({ 
+                ...prev, 
+                spriteConfig: { 
+                  ...prev.spriteConfig, 
+                  enabled: true,
+                  collection: collectionName,
+                  sprites: prev.spriteConfig?.sprites || {},
+                  stateCollections: prev.spriteConfig?.stateCollections || {}
+                } 
+              }))}
+              placeholder="Sin sprites"
+            />
+          </div>
+
           {/* Lorebook Selector */}
-          <div>
-            <div className="flex items-center gap-1.5 mb-1.5">
-              <BookOpen className="w-3 h-3 text-amber-500" />
-              <Label className="text-xs font-medium">Lorebooks</Label>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-amber-500" />
+              <Label className="text-sm font-medium">Lorebooks</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>Lorebooks que se inyectarán en el prompt al chatear con este personaje.</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
             <LorebookSelector
               value={character.lorebookIds}
@@ -453,10 +509,18 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
           </div>
 
           {/* Quest Templates Selector */}
-          <div>
-            <div className="flex items-center gap-1.5 mb-1.5">
-              <ScrollText className="w-3 h-3 text-purple-500" />
-              <Label className="text-xs font-medium">Misiones</Label>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <ScrollText className="w-4 h-4 text-purple-500" />
+              <Label className="text-sm font-medium">Misiones</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>Templates de misiones disponibles para este personaje.</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
             <QuestSelector
               value={character.questTemplateIds}
@@ -465,11 +529,19 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
             />
           </div>
 
-          {/* Embedding Namespaces Selector */}
-          <div>
-            <div className="flex items-center gap-1.5 mb-1.5">
-              <Database className="w-3 h-3 text-violet-500" />
-              <Label className="text-xs font-medium">Embeddings</Label>
+          {/* Embedding Namespaces Selector - full width */}
+          <div className="space-y-2 md:col-span-2">
+            <div className="flex items-center gap-2">
+              <Database className="w-4 h-4 text-violet-500" />
+              <Label className="text-sm font-medium">Embeddings</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>Namespaces de embeddings para buscar información relevante.</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
             <NamespaceSelector
               value={character.embeddingNamespaces}
@@ -478,6 +550,7 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
             />
           </div>
         </div>
+      </div>
     </div>
   );
 

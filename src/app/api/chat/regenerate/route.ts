@@ -321,6 +321,35 @@ export async function POST(request: NextRequest) {
 
           // Route to appropriate provider
           switch (llmConfig.provider) {
+            case 'test-mock': {
+              // Test mode: Simulate LLM response with trigger keys for testing
+              console.log('[Regenerate Route] Using TEST-MOCK provider');
+              const mockResponse = llmConfig.mockResponse || `*El personaje te mira con interés*
+
+¡Hola! Me alegra verte por aquí. Tenía algo que pedirte...
+
+[peticion_madera]
+
+¿Podrías conseguirme algo de madera para construir un refugio?
+
+También puedo ofrecerte algunos sonidos:
+
+|glohg|
+
+Y cambiar mi expresión:
+
+[sprite:alegre]`;
+
+              generator = async function* mockGenerator() {
+                const words = mockResponse.split(/(\s+)/);
+                for (const word of words) {
+                  yield word;
+                  await new Promise(resolve => setTimeout(resolve, 30 + Math.random() * 50));
+                }
+              }();
+              break;
+            }
+
             case 'z-ai': {
               let chatMessages = buildChatMessages(
                 finalSystemPrompt,

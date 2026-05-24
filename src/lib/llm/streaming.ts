@@ -27,6 +27,34 @@ export async function* getStreamGenerator(
   characterName: string
 ): AsyncGenerator<string> {
   switch (provider) {
+    case 'test-mock': {
+      // Test mode: Simulate LLM streaming response with trigger keys for testing
+      console.log('[getStreamGenerator] Using TEST-MOCK provider');
+      const mockResponse = config.mockResponse || `*El personaje te mira con interés*
+
+¡Hola! Me alegra verte por aquí. Tenía algo que pedirte...
+
+[peticion_madera]
+
+¿Podrías conseguirme algo de madera para construir un refugio?
+
+También puedo ofrecerte algunos sonidos:
+
+|glohg|
+
+Y cambiar mi expresión:
+
+[sprite:alegre]`;
+
+      // Stream word by word to simulate real LLM output
+      const words = mockResponse.split(/(\s+)/);
+      for (const word of words) {
+        yield word;
+        await new Promise(resolve => setTimeout(resolve, 30 + Math.random() * 50));
+      }
+      break;
+    }
+
     case 'z-ai': {
       yield* streamZAI(chatMessages);
       break;

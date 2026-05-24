@@ -136,7 +136,9 @@ export const SUPPORTED_PROVIDERS = [
   'lm-studio',
   'koboldcpp',
   'text-generation-webui',
-  'custom'
+  'grok',
+  'custom',
+  'test-mock'
 ] as const;
 
 export type SupportedProvider = typeof SUPPORTED_PROVIDERS[number];

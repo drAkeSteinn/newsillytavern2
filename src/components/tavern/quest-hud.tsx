@@ -27,6 +27,7 @@ import type {
   QuestStatus,
 } from '@/types';
 import { cn } from '@/lib/utils';
+import { evaluateActivationConditions } from '@/lib/triggers/handlers/quest-handler';
 import { 
   ScrollText, 
   ChevronDown, 
@@ -159,6 +160,8 @@ export function QuestHUD({
   const availableQuests = useMemo(() => {
     if (sessionQuests.length === 0) return [];
     
+    const session = activeSessionId ? sessions.find(s => s.id === activeSessionId) : null;
+    
     return sessionQuests
       .filter(q => q.status === 'available')
       .map(instance => {
@@ -166,6 +169,15 @@ export function QuestHUD({
         return template ? { instance, template } : null;
       })
       .filter((q): q is QuestWithTemplate => q !== null)
+      .filter(({ template }) => {
+        // Filter out quests whose activation conditions are not met
+        return evaluateActivationConditions(
+          template,
+          session?.sessionStats,
+          sessionQuests,
+          questTemplates
+        );
+      })
       .sort((a, b) => {
         // Sort by autoQuest order if available, then by priority
         const aOrder = a.template.autoQuest?.order ?? 999;
@@ -175,7 +187,7 @@ export function QuestHUD({
         const priorityOrder: Record<QuestPriority, number> = { main: 0, side: 1, hidden: 2 };
         return priorityOrder[a.template.priority] - priorityOrder[b.template.priority];
       });
-  }, [sessionQuests, questTemplates]);
+  }, [sessionQuests, questTemplates, activeSessionId, sessions]);
   
   // Handle quest activation/deactivation
   const handleQuestToggle = (templateId: string, currentStatus: QuestStatus) => {

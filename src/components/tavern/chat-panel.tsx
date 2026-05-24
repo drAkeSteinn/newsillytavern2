@@ -277,9 +277,12 @@ export function ChatPanel() {
   // ============================================
   const {
     isActive: isProactiveActive,
+    isConfigured: isProactiveConfigured,
+    inactiveReason: proactiveInactiveReason,
     nextIn: proactiveNextIn,
     sessionCount: proactiveSessionCount,
     isGeneratingProactive,
+    triggerNow: triggerProactiveNow,
   } = useProactiveMessages({
     isGenerating,
   });
@@ -1662,6 +1665,14 @@ export function ChatPanel() {
           <p className="text-muted-foreground max-w-md">
             {t('chat.welcome.subtitle')}
           </p>
+          {/* Proactive indicator when no session */}
+          {isProactiveConfigured && (
+            <div className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 text-amber-300/50 text-xs backdrop-blur-sm border border-amber-500/15 mx-auto w-fit">
+              <Sparkles className="h-3 w-3" />
+              <span>Proactivo</span>
+              <span className="opacity-70">— Inicia un chat para activar</span>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1710,6 +1721,56 @@ export function ChatPanel() {
         <HUDDisplay />
       )}
 
+      {/* Proactive Messages Indicator - inline above chatbox */}
+      {isProactiveConfigured && (
+        <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-30">
+          {isProactiveActive ? (
+            <button
+              type="button"
+              onClick={triggerProactiveNow}
+              disabled={isGeneratingProactive}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/20 text-amber-300 text-xs shadow-lg backdrop-blur-sm border border-amber-500/30 hover:bg-amber-500/30 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              title="Clic para enviar mensaje proactivo ahora"
+            >
+              {isGeneratingProactive ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-amber-300/30 border-t-amber-300 rounded-full animate-spin" />
+                  <span className="font-medium">Generando mensaje...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-3 w-3" />
+                  <span className="font-medium">Proactivo</span>
+                  {proactiveNextIn !== null && proactiveNextIn > 0 && (
+                    <span className="opacity-70 tabular-nums">
+                      {proactiveNextIn >= 60
+                        ? `${Math.floor(proactiveNextIn / 60)}:${String(proactiveNextIn % 60).padStart(2, '0')}`
+                        : `${proactiveNextIn}s`
+                      }
+                    </span>
+                  )}
+                  {proactiveNextIn !== null && proactiveNextIn === 0 && (
+                    <span className="opacity-80">● Listo</span>
+                  )}
+                </>
+              )}
+            </button>
+          ) : (
+            <div
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 text-amber-300/50 text-xs backdrop-blur-sm border border-amber-500/15"
+            >
+              <Sparkles className="h-3 w-3" />
+              <span>Proactivo</span>
+              <span className="opacity-70">
+                {proactiveInactiveReason === 'no_session' && '— Inicia un chat'}
+                {proactiveInactiveReason === 'no_llm' && '— Configura un LLM'}
+                {proactiveInactiveReason === 'group_chat' && '— No disponible en grupo'}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Floating Chat Box */}
       <NovelChatBox 
         onSendMessage={(msg) => handleSend(msg)}
@@ -1739,22 +1800,6 @@ export function ChatPanel() {
       
       {/* TTS Floating Indicator */}
       <TTSFloatingIndicator />
-      
-      {/* Proactive Messages Indicator */}
-      {isProactiveActive && (
-        <div className="fixed bottom-16 right-4 z-50 animate-in fade-in slide-in-from-right-2 duration-300">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 text-xs shadow-lg backdrop-blur-sm border border-amber-500/30">
-            <Sparkles className="h-3 w-3 animate-pulse" />
-            <span className="font-medium">Proactivo</span>
-            {proactiveNextIn !== null && proactiveNextIn > 0 && (
-              <span className="opacity-70">{proactiveNextIn}s</span>
-            )}
-            {isGeneratingProactive && (
-              <div className="w-3 h-3 border-2 border-amber-300/30 border-t-amber-300 rounded-full animate-spin" />
-            )}
-          </div>
-        </div>
-      )}
       
       {/* Embeddings Context Indicator */}
       {embeddingsContexts.length > 0 && (

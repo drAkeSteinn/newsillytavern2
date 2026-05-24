@@ -1,5 +1,3 @@
-'use server';
-
 import { NextRequest, NextResponse } from 'next/server';
 import type { ChatMessage, CharacterCard, LLMConfig, Persona } from '@/types';
 import {
@@ -103,15 +101,15 @@ export async function POST(request: NextRequest) {
     );
 
     // Build proactive instruction and append to system prompt
-    const defaultInstruction = `You are sending a message to ${userName} without them having spoken first. The conversation has been inactive for a while. React naturally to the situation. You might:
-- Comment on something happening around you
-- Express a thought or feeling
-- Start a new topic of conversation
-- Ask ${userName} something
-- React to the silence or passage of time
-- Perform an available action if it fits the scene naturally (e.g. *moves closer*, *looks around*, *sighs*)
+    const defaultInstruction = `Estás enviando un mensaje a ${userName} sin que haya hablado primero. La conversación ha estado inactiva por un tiempo. Reacciona de forma natural a la situación. Puedes:
+- Comentar algo que está ocurriendo a tu alrededor
+- Expresar un pensamiento o sentimiento
+- Iniciar un nuevo tema de conversación
+- Preguntar algo a ${userName}
+- Reaccionar al silencio o al paso del tiempo
+- Realizar una acción disponible si encaja naturalmente en la escena (ej. *se acerca*, *mira alrededor*, *suspira*)
 
-Keep your message brief and natural (1-3 paragraphs max). Do NOT mention that you are being proactive or that ${userName} hasn't spoken. Stay in character at all times.`;
+Mantén tu mensaje breve y natural (1-3 párrafos máximo). NO menciones que estás siendo proactivo o que ${userName} no ha hablado. Mantente en personaje en todo momento.`;
     const proactiveInstruction = proactiveConfig.customPrompt?.trim() || defaultInstruction;
 
     const finalSystemPrompt = `${systemPrompt}\n\n[Proactive Message Instruction]\n${proactiveInstruction}`;
@@ -138,10 +136,9 @@ Keep your message brief and natural (1-3 paragraphs max). Do NOT mention that yo
 
     // Add a user message to prompt the character to speak
     // This acts as a "nudge" without appearing in the actual chat
-    // In Spanish with {{char}} resolved to the character's name
     const nudgeMessage = {
       role: 'user' as const,
-      content: `[La escena continúa. {{char}} decide hablar o actuar.]`.replace(/\{\{char\}\}/g, character.name),
+      content: `[La escena continúa en silencio. ${character.name} decide hablar o actuar por su cuenta.]`,
     };
     chatMessages.push(nudgeMessage);
 
@@ -168,8 +165,9 @@ Keep your message brief and natural (1-3 paragraphs max). Do NOT mention that yo
 
     // Remove any meta-commentary about being proactive
     cleanedMessage = cleanedMessage
-      .replace(/\*proactive\*|\[proactive\]/gi, '')
+      .replace(/\*proactive\*|\[proactive\]|\[mensaje proactivo\]/gi, '')
       .replace(/I (decided to|wanted to|chose to) (reach out|say something|speak)/gi, '')
+      .replace(/(Decidí|Quise|Elegí) (escribir|decir algo|hablar|alcanzar)/gi, '')
       .trim();
 
     if (!cleanedMessage) {
@@ -212,6 +210,19 @@ function createGenerator(
   const params = llmConfig.parameters || {};
 
   switch (llmConfig.provider) {
+    case 'test-mock': {
+      // Test mode: Simulate proactive message response
+      console.log('[Proactive] Using TEST-MOCK provider');
+      const mockResponse = llmConfig.mockResponse || `*Suspira pensativamente* ¿Sabes? Se me ocurre que podríamos hacer algo interesante... [peticion_test]`;
+      return (async function* mockGenerator() {
+        const words = mockResponse.split(/(\s+)/);
+        for (const word of words) {
+          yield word;
+          await new Promise(resolve => setTimeout(resolve, 30 + Math.random() * 50));
+        }
+      })();
+    }
+
     case 'z-ai':
       return streamZAI(messages, {
         model: llmConfig.model,
@@ -224,7 +235,6 @@ function createGenerator(
     case 'openai':
     case 'lm-studio':
     case 'vllm':
-    case 'grok':
       return streamOpenAICompatible(
         { endpoint: llmConfig.endpoint, apiKey: llmConfig.apiKey },
         messages,

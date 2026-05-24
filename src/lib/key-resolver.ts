@@ -521,7 +521,7 @@ export function resolveQuestKeys(
     return text;
   }
 
-  const { questTemplates, sessionQuests, questSettings, characterId } = context;
+  const { questTemplates, sessionQuests, questSettings, characterId, sessionStats: questSessionStats } = context;
 
   // No quest data available - remove the key
   if (!questTemplates?.length || !sessionQuests?.length) {
@@ -542,7 +542,8 @@ export function resolveQuestKeys(
     '{{activeQuests}}',  // Simple template — result is just the quest list
     characterId,
     false,  // not for narrator
-    questSettings
+    questSettings,
+    questSessionStats ?? undefined
   );
 
   if (!rawQuestContent) {

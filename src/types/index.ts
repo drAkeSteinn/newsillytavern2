@@ -2185,6 +2185,66 @@ export type QuestPriority = 'main' | 'side' | 'hidden';
 export type QuestObjectiveType = 'collect' | 'reach' | 'defeat' | 'talk' | 'discover' | 'custom';
 
 // ============================================
+// QUEST OBJECTIVE VISIBILITY SYSTEM
+// ============================================
+
+/**
+ * Tipo de visibilidad del objetivo:
+ * - normal: Siempre activo si la misión está disponible
+ * - by_attribute: Visible solo si se cumplen condiciones de atributos de personaje/persona
+ * - by_objective: Visible solo si otro objetivo (de esta u otra misión) está completado
+ */
+export type QuestObjectiveVisibilityType = 'normal' | 'by_attribute' | 'by_objective';
+
+/**
+ * Operadores para comparación de atributos en condiciones de visibilidad
+ */
+export type QuestAttributeOperator =
+  | 'eq' | 'neq'                    // Igual / Diferente (number + text)
+  | 'gt' | 'gte' | 'lt' | 'lte'    // Mayor/menor (number)
+  | 'contains' | 'not_contains'     // Contiene / No contiene (text)
+  | 'has_attribute' | 'missing_attribute'  // El atributo existe / no existe
+  | 'is_true' | 'is_false';        // Booleano (truthy/falsy)
+
+/**
+ * Condición de atributo para visibilidad de objetivo
+ * Compara un atributo de un personaje o persona contra un valor
+ */
+export interface QuestAttributeCondition {
+  /** ID del personaje, o '__user__' para la persona */
+  targetId: string;
+  /** Key del atributo (coincide con AttributeDefinition.key) */
+  attributeKey: string;
+  /** Operador de comparación */
+  operator: QuestAttributeOperator;
+  /** Valor a comparar (para eq, neq, gt, gte, lt, lte, contains, not_contains) */
+  value?: number | string;
+}
+
+/**
+ * Condición de objetivo para visibilidad
+ * Referencia un objetivo de esta misión o de otra plantilla
+ */
+export interface QuestObjectiveCondition {
+  /** ID de la plantilla que contiene el objetivo, o vacío para la misión actual */
+  templateId?: string;
+  /** ID del objetivo que debe estar completado */
+  objectiveId: string;
+}
+
+/**
+ * Grupo de condiciones de visibilidad con lógica AND/OR
+ */
+export interface QuestVisibilityConditionGroup {
+  /** Lista de condiciones de atributo */
+  attributeConditions?: QuestAttributeCondition[];
+  /** Lista de condiciones de objetivo */
+  objectiveConditions?: QuestObjectiveCondition[];
+  /** Lógica de combinación: AND = todas deben cumplirse, OR = al menos una */
+  logic: 'and' | 'or';
+}
+
+// ============================================
 // QUEST VALUE DETECTION SYSTEM
 // ============================================
 
@@ -2249,6 +2309,18 @@ export interface QuestObjectiveTemplate {
   id: string;
   description: string;
   type: QuestObjectiveType;
+
+  // ============================================
+  // VISIBILITY SYSTEM - Tipo de visibilidad
+  // ============================================
+  // - normal: Siempre activo si la misión está disponible
+  // - by_attribute: Visible solo si se cumplen condiciones de atributos
+  // - by_objective: Visible solo si otro objetivo está completado
+  visibilityType?: QuestObjectiveVisibilityType;  // Default: 'normal' if not set
+
+  // Condiciones de visibilidad (para by_attribute y by_objective)
+  // Si visibilityType es 'normal', se ignora
+  visibilityConditions?: QuestVisibilityConditionGroup;
 
   // Keys para detectar completado (sistema unificado como HUD)
   completion: {
@@ -2437,6 +2509,14 @@ export interface QuestChainConfig {
 
 export type QuestActivationMethod = 'keyword' | 'turn' | 'manual' | 'chain' | 'automatic';
 
+/**
+ * Tipo de condición de activación:
+ * - normal: Siempre activo si la misión está disponible
+ * - by_attribute: Solo se activa si se cumplen condiciones de atributos de personaje/persona
+ * - by_objective: Solo se activa si otro objetivo (de esta u otra misión) está completado
+ */
+export type QuestActivationType = 'normal' | 'by_attribute' | 'by_objective';
+
 export interface QuestActivationConfig {
   // Keys para detectar activación (sistema unificado como HUD)
   key: string;                    // "mision:rescate"
@@ -2448,6 +2528,21 @@ export interface QuestActivationConfig {
   
   // Para method: 'turn' - cada cuántos turnos
   turnInterval?: number;
+
+  // Para method: 'chain' - qué prerrequisito activa esta misión
+  chainPrerequisiteId?: string;
+
+  // ============================================
+  // ACTIVATION CONDITIONS SYSTEM
+  // ============================================
+  // - normal: Siempre activo si la misión está disponible
+  // - by_attribute: Solo se activa si se cumplen condiciones de atributos
+  // - by_objective: Solo se activa si otro objetivo está completado
+  activationType?: QuestActivationType;  // Default: 'normal' if not set
+
+  // Condiciones de activación (para by_attribute y by_objective)
+  // Si activationType es 'normal', se ignora
+  activationConditions?: QuestVisibilityConditionGroup;
 }
 
 // ============================================
@@ -2522,6 +2617,7 @@ export interface SessionQuestObjective {
   templateId: string;             // Referencia al objetivo del template
   currentCount: number;
   isCompleted: boolean;
+  isVisible: boolean;             // Si las condiciones de visibilidad se cumplen (para by_attribute/by_objective)
 }
 
 export interface SessionQuestInstance {

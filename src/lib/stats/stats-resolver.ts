@@ -756,10 +756,17 @@ export function resolveStats(
     sessionStats,
   };
 
+  // Defensive access: statsConfig may have incomplete properties when sent from frontend
+  // (e.g., only {enabled: true, attributes: [...]} without skills/intentions/blockHeaders)
+  const skills = statsConfig.skills || [];
+  const intentions = statsConfig.intentions || [];
+  const invitations = statsConfig.invitations || [];
+  const blockHeaders = statsConfig.blockHeaders || {};
+
   const skillsBlock = buildSkillsBlock(
-    statsConfig.skills,
+    skills,
     attributeValues,
-    statsConfig.blockHeaders.skills,
+    blockHeaders.skills || '[ACCIONES DISPONIBLES]',
     context.questTemplates || [],
     context.characterName,
     sessionStats,
@@ -768,9 +775,9 @@ export function resolveStats(
   );
   
   const intentionsBlock = buildIntentionsBlock(
-    statsConfig.intentions,
+    intentions,
     attributeValues,
-    statsConfig.blockHeaders.intentions,
+    blockHeaders.intentions || 'Intenciones disponibles:',
     sessionStats,
     context.userName,
     context.characterName,
@@ -778,9 +785,9 @@ export function resolveStats(
   );
   
   const invitationsBlock = buildInvitationsBlock(
-    statsConfig.invitations,
+    invitations,
     attributeValues,
-    statsConfig.blockHeaders.invitations,
+    blockHeaders.invitations || '[PETICIONES DISPONIBLES]',
     context.allCharacters,
     sessionStats,
     context.userName,
@@ -792,15 +799,15 @@ export function resolveStats(
   const solicitudes = sessionStats?.solicitudes?.characterSolicitudes?.[characterId] || [];
   const solicitudesBlock = buildSolicitudesBlock(
     solicitudes,
-    statsConfig.blockHeaders?.solicitudesRecibidas || '[SOLICITUDES RECIBIDAS]',
+    blockHeaders.solicitudesRecibidas || '[SOLICITUDES RECIBIDAS]',
     context.userName,
     context.characterName
   );
 
   // Filter available items
-  const availableSkills = filterSkillsByRequirements(statsConfig.skills, attributeValues, sessionStats);
-  const availableIntentions = filterIntentionsByRequirements(statsConfig.intentions, attributeValues, sessionStats);
-  const availableInvitations = filterInvitationsByRequirements(statsConfig.invitations, attributeValues, sessionStats);
+  const availableSkills = filterSkillsByRequirements(skills, attributeValues, sessionStats);
+  const availableIntentions = filterIntentionsByRequirements(intentions, attributeValues, sessionStats);
+  const availableInvitations = filterInvitationsByRequirements(invitations, attributeValues, sessionStats);
 
   return {
     attributes: attributesMap,

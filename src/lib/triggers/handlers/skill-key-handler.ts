@@ -113,7 +113,7 @@ export class SkillKeyHandler implements KeyHandler {
     }
     
     // Get skills with activation keys
-    const skillsWithKeys = skillContext.statsConfig.skills.filter(
+    const skillsWithKeys = (skillContext.statsConfig.skills || []).filter(
       s => s.activationKey || (s.activationKeys && s.activationKeys.length > 0)
     );
     
@@ -157,7 +157,7 @@ export class SkillKeyHandler implements KeyHandler {
     if (!skillContext.statsConfig?.enabled) return null;
     
     // Get skills with activation keys
-    const skillsWithKeys = skillContext.statsConfig.skills.filter(
+    const skillsWithKeys = (skillContext.statsConfig.skills || []).filter(
       s => s.activationKey || (s.activationKeys && s.activationKeys.length > 0)
     );
     
@@ -351,7 +351,7 @@ export class SkillKeyHandler implements KeyHandler {
     
     if (!skillContext.statsConfig?.enabled) return keys;
     
-    const skillsWithKeys = skillContext.statsConfig.skills.filter(
+    const skillsWithKeys = (skillContext.statsConfig.skills || []).filter(
       s => s.activationKey || (s.activationKeys && s.activationKeys.length > 0)
     );
     

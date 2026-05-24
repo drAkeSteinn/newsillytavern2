@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { useTavernStore } from '@/store/tavern-store';
 import { toast } from 'sonner';
 import { Sparkles } from 'lucide-react';
@@ -17,9 +17,22 @@ interface UseProactiveMessagesOptions {
   }) => void;
 }
 
+/** Why proactive is not active (for UI feedback) */
+export type ProactiveInactiveReason = 
+  | 'no_character'      // No character selected
+  | 'not_configured'    // Character doesn't have proactive messages enabled
+  | 'group_chat'        // Active chat is a group chat (not supported)
+  | 'no_session'        // No active chat session
+  | 'no_llm'            // No LLM provider configured
+  | null;               // Active and running
+
 interface UseProactiveMessagesReturn {
   /** Whether proactive messages are currently active for the active character */
   isActive: boolean;
+  /** Whether the active character has proactive messages configured (enabled in settings) */
+  isConfigured: boolean;
+  /** Reason proactive is not active (null when active) */
+  inactiveReason: ProactiveInactiveReason;
   /** Seconds until next proactive message */
   nextIn: number | null;
   /** Total proactive messages sent this session */
@@ -33,8 +46,14 @@ interface UseProactiveMessagesReturn {
 /**
  * Hook that manages proactive message timers for the active character.
  * 
- * Proactive messages are sent by the character without the user speaking first,
- * based on a configurable interval timer.
+ * Timer Logic:
+ * ─────────────
+ * 1. When a chat session is active, the timer measures inactivity (time since last message)
+ * 2. If inactivity >= configured intervalSeconds → trigger proactive message
+ * 3. Any new message (user or character) resets the inactivity timer
+ * 4. Proactive messages are NOT sent during LLM generation
+ * 5. Session count tracks how many proactive messages have been sent
+ * 6. allowedStates determines WHEN to trigger: 'idle' (user present but quiet) or 'user_away' (tab hidden)
  */
 export function useProactiveMessages({
   isGenerating,
@@ -45,10 +64,12 @@ export function useProactiveMessages({
   const [isGeneratingProactive, setIsGeneratingProactive] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const lastMessageTimeRef = useRef<number>(Date.now());
+  const countdownRef = useRef<NodeJS.Timeout | null>(null);
+  const lastActivityTimeRef = useRef<number>(Date.now());
   const sessionCountRef = useRef(0);
   const isGeneratingRef = useRef(false);
-  const lastMessageTimestampRef = useRef<string>('');
+  const lastMessageIdRef = useRef<string>('');
+  const isActiveRef = useRef(false);
 
   // Keep refs in sync with props
   isGeneratingRef.current = isGenerating;
@@ -73,35 +94,91 @@ export function useProactiveMessages({
   const activePersona = personas.find((p) => p.id === activePersonaId);
 
   const config: ProactiveMessagesConfig | undefined = activeCharacter?.proactiveMessages;
-  const isActive = !!(config?.enabled && activeCharacter && !activeGroupId && activeSession && llmConfig);
 
-  // Track last message timestamp — inactivity is measured by time between messages
+  // Determine inactive reason for UI feedback
+  const inactiveReason: ProactiveInactiveReason = useMemo(() => {
+    if (!activeCharacter) return 'no_character';
+    if (!config?.enabled) return 'not_configured';
+    if (activeGroupId) return 'group_chat';
+    if (!activeSession) return 'no_session';
+    if (!llmConfig) return 'no_llm';
+    return null; // Active!
+  }, [activeCharacter, config?.enabled, activeGroupId, activeSession, llmConfig]);
+
+  const isConfigured = !!(config?.enabled && activeCharacter);
+  const isActive = inactiveReason === null;
+  isActiveRef.current = isActive;
+
+  // ─── Initialize from session data ───
+  useEffect(() => {
+    if (!activeSession) {
+      lastActivityTimeRef.current = Date.now();
+      sessionCountRef.current = 0;
+      setSessionCount(0);
+      return;
+    }
+
+    const messages = activeSession.messages.filter((m) => !m.isDeleted);
+
+    // Count existing proactive messages in session for accurate session count
+    const existingProactiveCount = messages.filter(
+      (m) => m.metadata?.proactiveInfo?.isProactive
+    ).length;
+    sessionCountRef.current = existingProactiveCount;
+    setSessionCount(existingProactiveCount);
+
+    // Set last activity time from the last message's timestamp
+    if (messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      const lastMsgTime = new Date(lastMsg.timestamp).getTime();
+      if (!isNaN(lastMsgTime) && lastMsgTime <= Date.now()) {
+        lastActivityTimeRef.current = lastMsgTime;
+      } else {
+        lastActivityTimeRef.current = Date.now();
+      }
+      lastMessageIdRef.current = lastMsg.id || lastMsg.timestamp;
+    } else {
+      lastActivityTimeRef.current = Date.now();
+      lastMessageIdRef.current = '';
+    }
+  }, [activeSessionId, activeCharacterId]);
+
+  // ─── Track new messages to reset inactivity timer ───
   useEffect(() => {
     if (!activeSession) return;
     const messages = activeSession.messages.filter((m) => !m.isDeleted);
     if (messages.length === 0) return;
+
     const lastMsg = messages[messages.length - 1];
-    if (lastMsg.timestamp !== lastMessageTimestampRef.current) {
-      lastMessageTimestampRef.current = lastMsg.timestamp;
-      // Reset the inactivity timer to the time of the last message
-      lastMessageTimeRef.current = Date.now();
+    const msgKey = lastMsg.id || lastMsg.timestamp;
+
+    if (msgKey !== lastMessageIdRef.current && lastMessageIdRef.current !== '') {
+      lastMessageIdRef.current = msgKey;
+      lastActivityTimeRef.current = Date.now();
     }
   }, [activeSession?.messages?.length]);
 
-  // Generate a proactive message
-  const generateProactiveMessage = useCallback(async (reason: 'timer_idle' | 'timer_away' = 'timer_idle') => {
+  // ─── Generate a proactive message ───
+  const generateProactiveMessage = useCallback(async (reason: 'timer_idle' | 'timer_away' | 'manual' = 'timer_idle') => {
     if (!activeCharacter || !activeSession || !llmConfig || !config) return;
     if (isGeneratingRef.current || isGeneratingProactive) return;
 
     // Check minimum messages requirement
     const messageCount = activeSession.messages.filter((m) => !m.isDeleted).length;
     if (messageCount < (config.minMessagesBeforeStart ?? 5)) {
+      toast('Mensajes proactivos', {
+        description: `Se necesitan al menos ${config.minMessagesBeforeStart ?? 5} mensajes en el chat antes de activar los mensajes proactivos.`,
+        duration: 3000,
+      });
       return;
     }
 
     // Check max per session
     if (config.maxPerSession > 0 && sessionCountRef.current >= config.maxPerSession) {
-      // Don't clear the timer, just skip this one
+      toast('Mensajes proactivos', {
+        description: `Se alcanzó el límite de ${config.maxPerSession} mensajes proactivos por sesión.`,
+        duration: 3000,
+      });
       return;
     }
 
@@ -118,7 +195,6 @@ export function useProactiveMessages({
           isDeleted: m.isDeleted,
         }));
 
-      // Get active lorebooks for this character
       const characterLorebookIds = activeCharacter.lorebookIds || [];
       const effectiveIds = characterLorebookIds.filter(id => activeLorebookIds.includes(id));
       const activeLorebooks = lorebooks.filter(lb => effectiveIds.includes(lb.id));
@@ -135,8 +211,8 @@ export function useProactiveMessages({
           lorebooks: activeLorebooks,
           sessionStats: activeSession.sessionStats,
           proactiveConfig: config,
-          reason,
-          lastActivityAt: lastMessageTimeRef.current,
+          reason: reason === 'manual' ? 'timer_idle' : reason,
+          lastActivityAt: lastActivityTimeRef.current,
         }),
       });
 
@@ -149,7 +225,7 @@ export function useProactiveMessages({
         const proactiveInfo: ProactiveMessageInfo = {
           isProactive: true,
           triggeredAt: result.timestamp,
-          reason,
+          reason: reason === 'manual' ? 'timer_idle' : reason,
           characterName: result.characterName || activeCharacter.name,
         };
 
@@ -160,7 +236,6 @@ export function useProactiveMessages({
             metadata: { proactiveInfo },
           });
         } else {
-          // Direct add to store
           addMessage(activeSession.id, {
             characterId: activeCharacter.id,
             role: 'assistant',
@@ -172,27 +247,39 @@ export function useProactiveMessages({
           });
         }
 
+        lastActivityTimeRef.current = Date.now();
+
         toast(`${activeCharacter.name} te envió un mensaje`, {
           description: result.message.slice(0, 80) + (result.message.length > 80 ? '...' : ''),
           icon: <Sparkles className="h-4 w-4 text-amber-400" />,
           duration: 4000,
         });
+      } else if (!result.success && result.error) {
+        toast('Error en mensaje proactivo', {
+          description: result.error,
+          duration: 3000,
+        });
       }
     } catch (error: any) {
       console.warn('[Proactive] Failed to generate message:', error?.message);
+      toast('Error en mensaje proactivo', {
+        description: error?.message || 'Error de conexión',
+        duration: 3000,
+      });
     } finally {
       setIsGeneratingProactive(false);
-      // Reset inactivity timer after sending a proactive message
-      lastMessageTimeRef.current = Date.now();
     }
-  }, [activeCharacter, activeSession, llmConfig, config, activePersona, onProactiveMessage, addMessage]);
+  }, [activeCharacter, activeSession, llmConfig, config, activePersona, onProactiveMessage, addMessage, lorebooks, activeLorebookIds, isGeneratingProactive]);
 
-  // Main timer logic
+  // ─── Main timer logic ───
   useEffect(() => {
-    // Clear any existing timer
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
+    }
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
     }
 
     if (!isActive) {
@@ -203,8 +290,8 @@ export function useProactiveMessages({
     const intervalMs = (config?.intervalSeconds ?? 300) * 1000;
 
     // Update countdown every second
-    const countdownRef = setInterval(() => {
-      const elapsed = Date.now() - lastMessageTimeRef.current;
+    countdownRef.current = setInterval(() => {
+      const elapsed = Date.now() - lastActivityTimeRef.current;
       const remaining = Math.max(0, Math.floor((intervalMs - elapsed) / 1000));
       setNextIn(remaining);
     }, 1000);
@@ -212,11 +299,11 @@ export function useProactiveMessages({
     // Check every 5 seconds if it's time to send
     timerRef.current = setInterval(() => {
       if (isGeneratingRef.current || isGeneratingProactive) return;
+      if (!isActiveRef.current) return;
 
-      const elapsed = Date.now() - lastMessageTimeRef.current;
+      const elapsed = Date.now() - lastActivityTimeRef.current;
 
       if (elapsed >= intervalMs) {
-        // Determine reason based on document visibility and allowed states
         const isHidden = document.hidden;
         const allowedStates = config?.allowedStates ?? ['idle'];
 
@@ -230,17 +317,26 @@ export function useProactiveMessages({
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      clearInterval(countdownRef);
+      if (countdownRef.current) clearInterval(countdownRef.current);
     };
   }, [isActive, config?.intervalSeconds, generateProactiveMessage, isGeneratingProactive]);
 
   // Manual trigger (for testing)
   const triggerNow = useCallback(async () => {
-    await generateProactiveMessage('timer_idle');
-  }, [generateProactiveMessage]);
+    if (!activeCharacter || !activeSession || !llmConfig || !config) {
+      toast('Mensajes proactivos', {
+        description: 'Se requiere un personaje con proactive activado, una sesión de chat y un proveedor LLM configurado.',
+        duration: 3000,
+      });
+      return;
+    }
+    await generateProactiveMessage('manual');
+  }, [generateProactiveMessage, activeCharacter, activeSession, llmConfig, config]);
 
   return {
     isActive,
+    isConfigured,
+    inactiveReason,
     nextIn: isActive ? nextIn : null,
     sessionCount,
     isGeneratingProactive,

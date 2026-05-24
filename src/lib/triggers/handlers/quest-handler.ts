@@ -20,10 +20,17 @@ import type { TriggerContext } from '../trigger-bus';
 import type {
   QuestTemplate,
   SessionQuestInstance,
+  SessionQuestObjective,
   QuestSettings,
   QuestTriggerHit,
   QuestObjectiveTemplate,
   QuestReward,
+  QuestAttributeCondition,
+  QuestObjectiveCondition,
+  QuestVisibilityConditionGroup,
+  QuestAttributeOperator,
+  SessionStats,
+  CharacterSessionStats,
 } from '@/types';
 import {
   checkQuestTriggersInText,
@@ -65,6 +72,7 @@ export interface QuestTriggerContext extends TriggerContext {
   questSettings: QuestSettings;
   sessionId: string;
   turnCount: number;
+  sessionStats?: SessionStats;
 }
 
 export interface QuestHandlerResult {
@@ -224,6 +232,7 @@ export function checkQuestTriggers(
       templates,
       sessionQuests,
       turnCount,
+      sessionStats: context.sessionStats,
     };
     
     const detectResult = checkQuestTriggersInText(detectContext, detectorHandlerState);
@@ -347,53 +356,259 @@ function processParsedTag(
 // Quest Prompt Builder
 // ============================================
 
+// ============================================
+// Objective Visibility Evaluation
+// ============================================
+
+/**
+ * Evaluate a single attribute condition against session stats
+ */
+function evaluateAttributeCondition(
+  condition: QuestAttributeCondition,
+  sessionStats: SessionStats | undefined
+): boolean {
+  if (!sessionStats || !condition.targetId || !condition.attributeKey) {
+    console.log(`[QuestHandler] evaluateAttributeCondition: missing params - targetId=${condition.targetId}, attributeKey=${condition.attributeKey}, hasStats=${!!sessionStats}`);
+    return false;
+  }
+
+  const charStats = sessionStats.characterStats?.[condition.targetId];
+  const attrValue = charStats?.attributeValues?.[condition.attributeKey];
+  const hasAttribute = charStats?.attributeValues?.hasOwnProperty(condition.attributeKey) ?? false;
+
+  if (!charStats) {
+    console.log(`[QuestHandler] evaluateAttributeCondition: no stats found for targetId="${condition.targetId}". Available targets: [${Object.keys(sessionStats.characterStats || {}).join(', ')}]`);
+  }
+
+  const result = applyOperator(condition.operator, attrValue, hasAttribute, condition.value);
+  console.log(`[QuestHandler] evaluateAttributeCondition: target="${condition.targetId}", attr="${condition.attributeKey}", value=${JSON.stringify(attrValue)}, hasAttr=${hasAttribute}, operator="${condition.operator}", targetValue=${JSON.stringify(condition.value)} → ${result}`);
+  return result;
+}
+
+/**
+ * Apply an attribute operator to determine if a condition is met
+ */
+function applyOperator(
+  operator: QuestAttributeOperator,
+  attrValue: number | string | undefined,
+  hasAttribute: boolean,
+  targetValue?: number | string
+): boolean {
+  switch (operator) {
+    case 'has_attribute':
+      return hasAttribute;
+    case 'missing_attribute':
+      return !hasAttribute;
+    case 'is_true':
+      if (!hasAttribute) return false;
+      if (typeof attrValue === 'number') return attrValue !== 0;
+      if (typeof attrValue === 'string') return attrValue !== '' && attrValue.toLowerCase() !== 'false';
+      return !!attrValue;
+    case 'is_false':
+      if (!hasAttribute) return false; // Missing attribute is NOT falsy - it's unknown
+      if (typeof attrValue === 'number') return attrValue === 0;
+      if (typeof attrValue === 'string') return attrValue === '' || attrValue.toLowerCase() === 'false';
+      return !attrValue;
+    case 'eq':
+      if (!hasAttribute) return false;
+      if (typeof attrValue === 'number' && typeof targetValue === 'number') return attrValue === targetValue;
+      return String(attrValue) === String(targetValue);
+    case 'neq':
+      if (!hasAttribute) return true;
+      if (typeof attrValue === 'number' && typeof targetValue === 'number') return attrValue !== targetValue;
+      return String(attrValue) !== String(targetValue);
+    case 'gt': {
+      if (!hasAttribute) return false;
+      const numAttr = typeof attrValue === 'number' ? attrValue : parseFloat(String(attrValue));
+      const numTarget = typeof targetValue === 'number' ? targetValue : parseFloat(String(targetValue));
+      return !isNaN(numAttr) && !isNaN(numTarget) && numAttr > numTarget;
+    }
+    case 'gte': {
+      if (!hasAttribute) return false;
+      const numAttrGte = typeof attrValue === 'number' ? attrValue : parseFloat(String(attrValue));
+      const numTargetGte = typeof targetValue === 'number' ? targetValue : parseFloat(String(targetValue));
+      return !isNaN(numAttrGte) && !isNaN(numTargetGte) && numAttrGte >= numTargetGte;
+    }
+    case 'lt': {
+      if (!hasAttribute) return false;
+      const numAttrLt = typeof attrValue === 'number' ? attrValue : parseFloat(String(attrValue));
+      const numTargetLt = typeof targetValue === 'number' ? targetValue : parseFloat(String(targetValue));
+      return !isNaN(numAttrLt) && !isNaN(numTargetLt) && numAttrLt < numTargetLt;
+    }
+    case 'lte': {
+      if (!hasAttribute) return false;
+      const numAttrLte = typeof attrValue === 'number' ? attrValue : parseFloat(String(attrValue));
+      const numTargetLte = typeof targetValue === 'number' ? targetValue : parseFloat(String(targetValue));
+      return !isNaN(numAttrLte) && !isNaN(numTargetLte) && numAttrLte <= numTargetLte;
+    }
+    case 'contains':
+      return hasAttribute && typeof attrValue === 'string' && attrValue.includes(String(targetValue));
+    case 'not_contains':
+      return !hasAttribute || typeof attrValue !== 'string' || !attrValue.includes(String(targetValue));
+    default:
+      return false;
+  }
+}
+
+/**
+ * Evaluate a single objective condition against all session quest instances
+ */
+function evaluateObjectiveCondition(
+  condition: QuestObjectiveCondition,
+  sessionQuests: SessionQuestInstance[],
+  templates: QuestTemplate[]
+): boolean {
+  if (!condition.objectiveId) return false;
+
+  const targetTemplateId = condition.templateId;
+
+  for (const q of sessionQuests) {
+    // If templateId specified, only check that template
+    if (targetTemplateId && q.templateId !== targetTemplateId) continue;
+
+    // Find the objective in the session instance
+    const sessionObj = q.objectives.find(o => o.templateId === condition.objectiveId);
+    if (sessionObj && sessionObj.isCompleted) {
+      return true;
+    }
+  }
+
+  // Also check if the objective belongs to a quest that isn't active yet.
+  // If a quest template has this objective but the quest is not in sessionQuests,
+  // the objective cannot be completed (quest isn't active), so return false.
+  // But if the quest IS in session but the objective wasn't instantiated (e.g. by_objective visibility),
+  // we need to check the template definition for objective existence.
+  if (targetTemplateId) {
+    const template = templates.find(t => t.id === targetTemplateId);
+    const questInstance = sessionQuests.find(q => q.templateId === targetTemplateId);
+    if (template && questInstance) {
+      // Quest is active but objective might not be instantiated (hidden objectives)
+      const templateHasObj = template.objectives.some(o => o.id === condition.objectiveId);
+      if (templateHasObj) {
+        // Objective exists in template but wasn't instantiated = not completed yet
+        const sessionObj = questInstance.objectives.find(o => o.templateId === condition.objectiveId);
+        return sessionObj?.isCompleted ?? false;
+      }
+    }
+  } else {
+    // No specific template - check all templates for this objective
+    for (const template of templates) {
+      const hasObj = template.objectives.some(o => o.id === condition.objectiveId);
+      if (hasObj) {
+        const questInstance = sessionQuests.find(q => q.templateId === template.id);
+        if (questInstance) {
+          const sessionObj = questInstance.objectives.find(o => o.templateId === condition.objectiveId);
+          return sessionObj?.isCompleted ?? false;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Evaluate visibility conditions for an objective
+ * Returns true if the objective should be visible, false if hidden
+ */
+export function evaluateObjectiveVisibility(
+  objective: QuestObjectiveTemplate,
+  sessionStats: SessionStats | undefined,
+  sessionQuests: SessionQuestInstance[],
+  templates: QuestTemplate[]
+): boolean {
+  // Normal visibility = always visible
+  const visibilityType = objective.visibilityType || 'normal';
+  if (visibilityType === 'normal') return true;
+
+  // If no conditions defined, default to visible
+  if (!objective.visibilityConditions) return true;
+
+  const conditions = objective.visibilityConditions;
+  const logic = conditions.logic || 'and';
+
+  // Collect results for all conditions
+  const results: boolean[] = [];
+
+  // Evaluate attribute conditions
+  if (conditions.attributeConditions && conditions.attributeConditions.length > 0) {
+    for (const cond of conditions.attributeConditions) {
+      results.push(evaluateAttributeCondition(cond, sessionStats));
+    }
+  }
+
+  // Evaluate objective conditions
+  if (conditions.objectiveConditions && conditions.objectiveConditions.length > 0) {
+    for (const cond of conditions.objectiveConditions) {
+      results.push(evaluateObjectiveCondition(cond, sessionQuests, templates));
+    }
+  }
+
+  // No conditions = visible
+  if (results.length === 0) return true;
+
+  // Apply logic
+  if (logic === 'and') {
+    return results.every(r => r);
+  } else {
+    return results.some(r => r);
+  }
+}
+
 /**
  * Check if an objective should be visible to a specific character
- * based on the characterFilter configuration
+ * based on the characterFilter configuration AND visibility conditions
  */
 export function isObjectiveVisibleForCharacter(
   objective: QuestObjectiveTemplate,
-  characterId: string
+  characterId: string,
+  sessionStats?: SessionStats,
+  sessionQuests?: SessionQuestInstance[],
+  templates?: QuestTemplate[]
 ): boolean {
-  // If no filter is configured, objective is visible to all
+  // First check visibility conditions (by_attribute / by_objective)
+  if (sessionStats !== undefined && sessionQuests !== undefined && templates !== undefined) {
+    const visibilityMet = evaluateObjectiveVisibility(objective, sessionStats, sessionQuests, templates);
+    if (!visibilityMet) {
+      return false;
+    }
+  }
+
+  // Then check character filter
   if (!objective.characterFilter?.enabled) {
-    console.log(`[QuestHandler] Objective "${objective.description}" - no filter, visible to all`);
     return true;
   }
   
   const { mode, characterIds } = objective.characterFilter;
   
-  // If no character IDs specified, treat as visible to all
   if (!characterIds || characterIds.length === 0) {
-    console.log(`[QuestHandler] Objective "${objective.description}" - no characterIds in filter, visible to all`);
     return true;
   }
   
   const isInList = characterIds.includes(characterId);
-  
-  // include mode: only characters in the list can see it
-  // exclude mode: all characters EXCEPT those in the list can see it
-  const isVisible = mode === 'include' ? isInList : !isInList;
-  
-  console.log(`[QuestHandler] Objective "${objective.description}" - filter: ${JSON.stringify(objective.characterFilter)}, characterId: ${characterId}, isInList: ${isInList}, mode: ${mode}, isVisible: ${isVisible}`);
-  
-  return isVisible;
+  return mode === 'include' ? isInList : !isInList;
 }
 
 /**
- * Filter objectives for a specific character
- * Returns only objectives that the character can see
+ * Filter objectives for a specific character, considering both
+ * character filter and visibility conditions
  */
 export function filterObjectivesForCharacter(
   objectives: QuestObjectiveTemplate[],
-  characterId: string | undefined
+  characterId: string | undefined,
+  sessionStats?: SessionStats,
+  sessionQuests?: SessionQuestInstance[],
+  templates?: QuestTemplate[]
 ): QuestObjectiveTemplate[] {
-  // If no character ID specified, return all objectives (no filtering)
   if (!characterId) {
+    // Still need to filter by visibility even without character ID
+    if (sessionStats && sessionQuests && templates) {
+      return objectives.filter(obj => evaluateObjectiveVisibility(obj, sessionStats, sessionQuests, templates));
+    }
     return objectives;
   }
   
-  return objectives.filter(obj => isObjectiveVisibleForCharacter(obj, characterId));
+  return objectives.filter(obj => isObjectiveVisibleForCharacter(obj, characterId, sessionStats, sessionQuests, templates));
 }
 
 /**
@@ -414,11 +629,17 @@ function buildNarratorQuestSection(
   templates: QuestTemplate[],
   sessionQuests: SessionQuestInstance[],
   templateStr: string,
-  questSettings?: QuestSettings
+  questSettings?: QuestSettings,
+  sessionStats?: SessionStats
 ): string {
   // Get active and available quests
   const activeQuests = sessionQuests.filter(q => q.status === 'active');
-  const availableQuests = sessionQuests.filter(q => q.status === 'available');
+  // Filter available quests by activation conditions
+  const availableQuests = sessionQuests.filter(q => q.status === 'available').filter(q => {
+    const questTemplate = templates.find(t => t.id === q.templateId);
+    if (!questTemplate) return false;
+    return evaluateActivationConditions(questTemplate, sessionStats, sessionQuests, templates);
+  });
 
   const sections: string[] = [];
 
@@ -508,13 +729,14 @@ export function buildQuestPromptSection(
   templateStr: string,
   characterId?: string,
   isForNarrator: boolean = false,
-  questSettings?: QuestSettings
+  questSettings?: QuestSettings,
+  sessionStats?: SessionStats
 ): string {
   console.log(`[QuestHandler] buildQuestPromptSection called with characterId: ${characterId}, isForNarrator: ${isForNarrator}, hasPrefix: ${!!questSettings?.objectiveCompletionPrefix}, templates: ${templates.length}, sessionQuests: ${sessionQuests.length}`);
 
   // For narrator, show different format with both active and available quests
   if (isForNarrator) {
-    return buildNarratorQuestSection(templates, sessionQuests, templateStr, questSettings);
+    return buildNarratorQuestSection(templates, sessionQuests, templateStr, questSettings, sessionStats);
   }
 
   // Regular character format - shows ONLY active quests
@@ -532,10 +754,13 @@ export function buildQuestPromptSection(
     const objectives = questTemplate.objectives || [];
     console.log(`[QuestHandler] Processing quest "${questTemplate.name}" with ${objectives.length} objectives`);
 
-    // Filter objectives for this character first
+    // Filter objectives for this character AND by visibility conditions
     const visibleObjectives = filterObjectivesForCharacter(
       objectives,
-      characterId
+      characterId,
+      sessionStats,
+      sessionQuests,
+      templates
     );
 
     console.log(`[QuestHandler] Quest "${questTemplate.name}" - visible objectives: ${visibleObjectives.length} of ${objectives.length}`);
@@ -564,6 +789,17 @@ export function buildQuestPromptSection(
 
       // Skip completed objectives - they should not appear
       if (isCompleted) continue;
+
+      // Note: Visibility is already handled by filterObjectivesForCharacter() above,
+      // which evaluates conditions at runtime. The sessionObj.isVisible flag is a
+      // pre-computed cache but filterObjectivesForCharacter is the source of truth
+      // for the prompt. We still check isVisible as a safety net for edge cases.
+      if (sessionObj && sessionObj.isVisible === false) {
+        // Double-check: if runtime evaluation says visible but cache says hidden,
+        // trust the runtime evaluation (the cache may not have been refreshed yet)
+        const runtimeVisible = evaluateObjectiveVisibility(obj, sessionStats, sessionQuests, templates);
+        if (!runtimeVisible) continue;
+      }
 
       const currentCount = sessionObj?.currentCount || 0;
       const progress = obj.targetCount > 1
@@ -729,7 +965,63 @@ export function clearQuestHandlerState(state: QuestHandlerState): void {
 }
 
 // ============================================
+// Quest Activation Conditions Evaluation
+// ============================================
+
+/**
+ * Evaluate activation conditions for a quest template.
+ * Similar to evaluateObjectiveVisibility but for quest activation.
+ * Returns true if the quest can be activated, false if conditions are not met.
+ *
+ * - normal: Always returns true (quest is always activatable if available)
+ * - by_attribute: Returns true only if attribute conditions are met
+ * - by_objective: Returns true only if objective conditions are met
+ */
+export function evaluateActivationConditions(
+  template: QuestTemplate,
+  sessionStats: SessionStats | undefined,
+  sessionQuests: SessionQuestInstance[],
+  templates: QuestTemplate[]
+): boolean {
+  const activationType = template.activation?.activationType || 'normal';
+  if (activationType === 'normal') return true;
+
+  // If no conditions defined, default to activatable
+  if (!template.activation?.activationConditions) return true;
+
+  const conditions = template.activation.activationConditions;
+  const logic = conditions.logic || 'and';
+
+  // Collect results for all conditions
+  const results: boolean[] = [];
+
+  // Evaluate attribute conditions
+  if (conditions.attributeConditions && conditions.attributeConditions.length > 0) {
+    for (const cond of conditions.attributeConditions) {
+      results.push(evaluateAttributeCondition(cond, sessionStats));
+    }
+  }
+
+  // Evaluate objective conditions
+  if (conditions.objectiveConditions && conditions.objectiveConditions.length > 0) {
+    for (const cond of conditions.objectiveConditions) {
+      results.push(evaluateObjectiveCondition(cond, sessionQuests, templates));
+    }
+  }
+
+  // No conditions = activatable
+  if (results.length === 0) return true;
+
+  // Apply logic
+  if (logic === 'and') {
+    return results.every(r => r);
+  } else {
+    return results.some(r => r);
+  }
+}
+
+// ============================================
 // Export Index
 // ============================================
 
-export type { QuestHandlerState, QuestTriggerContext, QuestHandlerResult };
+// Types are already exported at their declaration sites above

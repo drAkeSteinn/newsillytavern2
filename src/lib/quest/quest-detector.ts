@@ -28,7 +28,9 @@ import type {
   QuestNumberOperator,
   QuestTextOperator,
   QuestSettings,
+  SessionStats,
 } from '@/types';
+import { evaluateActivationConditions } from '@/lib/triggers/handlers/quest-handler';
 
 // ============================================
 // Types
@@ -531,7 +533,8 @@ export function detectQuestActivations(
   text: string,
   templates: QuestTemplate[],
   sessionQuests: SessionQuestInstance[],
-  questSettings?: QuestSettings
+  questSettings?: QuestSettings,
+  sessionStats?: SessionStats
 ): QuestActivationDetection[] {
   const detections: QuestActivationDetection[] = [];
   
@@ -557,6 +560,13 @@ export function detectQuestActivations(
     // Skip if activation method is not 'keyword'
     if (template.activation.method !== 'keyword') {
       console.log(`[QuestDetector] Template "${template.name}" activation method is "${template.activation.method}", skipping`);
+      continue;
+    }
+    
+    // Check activation conditions (by_attribute / by_objective)
+    const canActivate = evaluateActivationConditions(template, sessionStats, sessionQuests, templates);
+    if (!canActivate) {
+      console.log(`[QuestDetector] Template "${template.name}" activation conditions not met, skipping`);
       continue;
     }
     
@@ -744,9 +754,10 @@ export function detectQuestEvents(
   text: string,
   templates: QuestTemplate[],
   sessionQuests: SessionQuestInstance[],
-  questSettings?: QuestSettings
+  questSettings?: QuestSettings,
+  sessionStats?: SessionStats
 ): QuestDetectionResult {
-  const activations = detectQuestActivations(text, templates, sessionQuests, questSettings);
+  const activations = detectQuestActivations(text, templates, sessionQuests, questSettings, sessionStats);
   const objectiveProgress = detectObjectiveProgress(text, templates, sessionQuests, questSettings);
   const completions = detectQuestCompletions(text, templates, sessionQuests, questSettings);
   
@@ -768,7 +779,8 @@ export function detectQuestEvents(
 export function checkTurnBasedActivation(
   currentTurn: number,
   templates: QuestTemplate[],
-  sessionQuests: SessionQuestInstance[]
+  sessionQuests: SessionQuestInstance[],
+  sessionStats?: SessionStats
 ): QuestActivationDetection[] {
   const activations: QuestActivationDetection[] = [];
   
@@ -782,6 +794,10 @@ export function checkTurnBasedActivation(
     
     // Skip if activation method is not 'turn'
     if (template.activation.method !== 'turn') continue;
+
+    // Check activation conditions (by_attribute / by_objective)
+    const canActivate = evaluateActivationConditions(template, sessionStats, sessionQuests, templates);
+    if (!canActivate) continue;
     
     const turnInterval = template.activation.turnInterval || 1;
     
@@ -893,7 +909,8 @@ export class QuestDetectionState {
     newText: string,
     fullText: string,
     templates: QuestTemplate[],
-    sessionQuests: SessionQuestInstance[]
+    sessionQuests: SessionQuestInstance[],
+    sessionStats?: SessionStats
   ): QuestDetectionResult {
     // Only process NEW content
     const newContent = fullText.slice(this.processedLength);
@@ -909,7 +926,7 @@ export class QuestDetectionState {
     }
     
     // Detect in new content
-    const rawResult = detectQuestEvents(newContent, templates, sessionQuests);
+    const rawResult = detectQuestEvents(newContent, templates, sessionQuests, undefined, sessionStats);
     
     // Adjust positions to be relative to full text
     for (const d of rawResult.activations) {
@@ -1009,6 +1026,7 @@ export interface QuestTriggerContext {
   templates: QuestTemplate[];
   sessionQuests: SessionQuestInstance[];
   turnCount: number;
+  sessionStats?: SessionStats;
 }
 
 /**
@@ -1058,11 +1076,14 @@ export function checkQuestTriggersInText(
     handlerState.detectionStates.set(sessionId, state);
   }
   
+  // Get sessionStats from context
+  const sessionStats = context.sessionStats;
+  
   // Process new text
-  const detections = state.processNewText(fullText, fullText, templates, sessionQuests);
+  const detections = state.processNewText(fullText, fullText, templates, sessionQuests, sessionStats);
   
   // Also check turn-based activations
-  const turnActivations = checkTurnBasedActivation(turnCount, templates, sessionQuests);
+  const turnActivations = checkTurnBasedActivation(turnCount, templates, sessionQuests, sessionStats);
   
   // Filter turn activations that haven't been processed
   const newTurnActivations = turnActivations.filter(d => {

@@ -675,6 +675,7 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
         sessionQuests: activeSession?.sessionQuests ?? [],
         questSettings: store.questSettings ?? { enabled: false },
         turnCount: activeSession?.turnCount ?? 0,
+        sessionStats: activeSession?.sessionStats,
         activateQuest: store.activateQuest?.bind(store),
         progressQuestObjective: store.progressQuestObjective?.bind(store),
         completeQuest: store.completeQuest?.bind(store),

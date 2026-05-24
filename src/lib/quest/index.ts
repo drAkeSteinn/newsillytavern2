@@ -96,6 +96,7 @@ export type {
   QuestPriority,
   QuestObjectiveType,
   QuestActivationConfig,
+  QuestActivationType,
   QuestCompletionConfig,
   QuestChainConfig,
   QuestSettings,

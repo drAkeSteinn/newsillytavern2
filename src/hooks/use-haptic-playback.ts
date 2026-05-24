@@ -99,41 +99,65 @@ function readHapticEnabled(): boolean {
 // ============================================
 // Server Time Sync
 // ============================================
-// Simple NTP-style sync: get server time and compute offset
-// For more precision, the reference client does 30 samples with outlier removal,
-// but for timeline playback a single sample is adequate.
+// NTP-style sync with multiple samples and outlier removal.
+// The reference client (handy-rest-api-v3-client.js) uses 30 samples
+// with 5 outliers removed. We use 8 samples with 2 outliers removed
+// for a good balance of accuracy and startup time.
 
 let serverTimeOffset: number | null = null;
 let serverTimeLastSync: number = 0;
+const SYNC_SAMPLES = 8;
+const SYNC_OUTLIERS = 2;
 
 async function syncServerTime(): Promise<number> {
-  try {
-    const startLocal = Date.now();
-    const response = await fetch('/api/handy/servertime', {
-      method: 'GET',
-      signal: AbortSignal.timeout(5000),
-    });
-    const endLocal = Date.now();
-    const data = await response.json();
-    const serverTime = data?.result ?? data;
+  const samples: Array<{ offset: number; rtd: number }> = [];
 
-    if (typeof serverTime === 'number' && serverTime > 0) {
-      // Estimate one-way latency and compute offset
-      const rtd = endLocal - startLocal;
-      const estimatedLocalAtServer = startLocal + rtd / 2;
-      serverTimeOffset = serverTime - estimatedLocalAtServer;
-      serverTimeLastSync = Date.now();
+  for (let i = 0; i < SYNC_SAMPLES; i++) {
+    try {
+      const startLocal = Date.now();
+      const response = await fetch('/api/handy/servertime', {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000),
+      });
+      const endLocal = Date.now();
+      const data = await response.json();
+      // Handy API v3 /servertime returns: { result: { server_time: number } }
+      const serverTime = data?.result?.server_time ?? data?.result ?? data;
+
+      if (typeof serverTime === 'number' && serverTime > 0) {
+        const rtd = endLocal - startLocal;
+        const estimatedLocalAtServer = startLocal + rtd / 2;
+        const offset = serverTime - estimatedLocalAtServer;
+        samples.push({ offset, rtd });
+      }
+    } catch {
+      // Skip failed samples
     }
-  } catch {
-    // If sync fails, use offset 0 (less precise but still works)
+  }
+
+  if (samples.length > 0) {
+    // Sort by round-trip delay and remove worst outliers (highest RTD = least reliable)
+    samples.sort((a, b) => a.rtd - b.rtd);
+    const trimmed = samples.slice(0, Math.max(1, samples.length - SYNC_OUTLIERS));
+
+    // Average the offsets from remaining samples
+    let offsetAccum = 0;
+    for (const s of trimmed) {
+      offsetAccum += s.offset;
+    }
+    serverTimeOffset = offsetAccum / trimmed.length;
+    serverTimeLastSync = Date.now();
+  } else {
+    // If all samples failed, use offset 0 (less precise but still works)
     serverTimeOffset = serverTimeOffset ?? 0;
   }
   return serverTimeOffset ?? 0;
 }
 
 function estimateServerTime(): number {
-  if (serverTimeOffset === null) return Date.now();
-  return Date.now() + serverTimeOffset;
+  if (serverTimeOffset === null) return Math.round(Date.now());
+  // Per Handy API v3 reference: estimate = Math.round(Date.now() + offset)
+  return Math.round(Date.now() + serverTimeOffset);
 }
 
 // ============================================
@@ -377,10 +401,9 @@ export function useHapticPlayback({
     const { appId, connectionKey } = config;
 
     try {
-      // 1. Sync server time
+      // 1. Sync server time (multiple samples with outlier removal)
       onLog?.('🕐 Sincronizando tiempo del servidor...');
       await syncServerTime();
-      const serverTime = estimateServerTime();
       onLog?.(`🕐 Offset: ${serverTimeOffset}ms`);
 
       // 2. Set device mode to HSP (mode 4)
@@ -453,6 +476,10 @@ export function useHapticPlayback({
       }
 
       // 6. HSP play - start playback
+      // Use current estimated server time directly (like the reference implementation).
+      // The initial 10 points give the device enough data to start playing immediately,
+      // while remaining points are sent in parallel batches.
+      const playServerTime = estimateServerTime();
       onLog?.(`▶️ Iniciando reproducción HSP (${points.length} pts, loop=${loop})...`);
       const playResponse = await fetch('/api/handy/hsp/play', {
         method: 'PUT',
@@ -460,7 +487,7 @@ export function useHapticPlayback({
         body: JSON.stringify({
           appId,
           connectionKey,
-          server_time: serverTime + 200, // 200ms delay to allow remaining points to be sent
+          server_time: playServerTime,
           start_time: 0,
           loop,
           playback_rate: playbackRate,

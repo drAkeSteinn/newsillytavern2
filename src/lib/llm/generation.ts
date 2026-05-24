@@ -29,7 +29,7 @@ export async function generateResponse(
       console.log('[generateResponse] Using TEST-MOCK provider');
       const mockSummaryResponse = `The conversation covered various topics between ${characterName} and the user. Key points were discussed and decisions were made about future plans.`;
       return {
-        content: mockSummaryResponse,
+        message: mockSummaryResponse,
         usage: {
           promptTokens: 100,
           completionTokens: 50,

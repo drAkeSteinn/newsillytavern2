@@ -22,6 +22,15 @@
       "questTitle": "Seduccion",
       "type": "objective_complete",
       "message": "Objetivo completado: Sacar la verga de {{user}} del pantalón",
+      "id": "notif-1779503709336-qkpfo573s",
+      "timestamp": "2026-05-23T02:35:09.336Z",
+      "read": true
+    },
+    {
+      "questId": "mision-boca-vacia",
+      "questTitle": "Seduccion",
+      "type": "objective_complete",
+      "message": "Objetivo completado: Sacar la verga de {{user}} del pantalón",
       "id": "notif-1778448414373-uegmz2gzi",
       "timestamp": "2026-05-10T21:26:54.373Z",
       "read": true
@@ -500,15 +509,6 @@
       "message": "¡Nueva misión activada: Mision imposible!",
       "id": "notif-1774042708442-1blx4y0fs",
       "timestamp": "2026-03-20T21:38:28.442Z",
-      "read": true
-    },
-    {
-      "questId": "asd",
-      "questName": "Mision imposible",
-      "type": "quest_activated",
-      "message": "Quest \"Mision imposible\" activated",
-      "id": "notif-1774042662108-4gsz8b4g8",
-      "timestamp": "2026-03-20T21:37:42.108Z",
       "read": true
     }
   ]

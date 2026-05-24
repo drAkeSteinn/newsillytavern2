@@ -226,6 +226,33 @@ export async function POST(request: NextRequest) {
 
     // Route to appropriate provider
     switch (llmConfig.provider) {
+      case 'test-mock': {
+        // Test mode: Return a mock response for testing without a real LLM
+        console.log('[Generate Route] Using TEST-MOCK provider');
+        const mockResponse = llmConfig.mockResponse || `*El personaje te mira con interés*
+
+¡Hola! Me alegra verte por aquí. Tenía algo que pedirte...
+
+[peticion_madera]
+
+¿Podrías conseguirme algo de madera para construir un refugio?
+
+También puedo ofrecerte algunos sonidos:
+
+|glohg|
+
+Y cambiar mi expresión:
+
+[sprite:alegre]`;
+
+        response = {
+          message: mockResponse,
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          model: 'test-mock',
+        };
+        break;
+      }
+
       case 'z-ai': {
         // Z.ai uses its own SDK
         let chatMessages = buildChatMessages(
