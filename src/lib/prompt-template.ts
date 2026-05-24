@@ -145,66 +145,76 @@ export function processExampleDialogue(
     return '';
   }
 
-  // First, replace template variables in the entire text
+  // NOTE: We do NOT replace {{user}}/{{char}} here anymore.
+  // Template variable resolution is handled by resolveAllKeys() which runs
+  // AFTER this function via resolveSectionsKeys() in buildSystemPrompt().
+  // This ensures that ALL template variables ({{user}}, {{char}}, {{stats}},
+  // {{descripcion}}, {{activeQuests}}, etc.) are resolved consistently
+  // in one place, including lorebook attribute keys.
   let processed = mesExample;
-  processed = processed.replace(/\{\{user\}\}/gi, userName);
-  processed = processed.replace(/\{\{char\}\}/gi, charName);
 
   // Split by <START> tags
   const blocks = processed.split(/<START>/gi).filter(block => block.trim());
   
   if (blocks.length === 0) {
-    // No <START> tags found, return as-is (with variables replaced)
+    // No <START> tags found, return as-is (variables will be resolved later)
     return processed.trim();
   }
 
-  // Process each block
+  // Process each block into formatted instruction/response pairs
   const formattedBlocks: string[] = [];
   
   for (const block of blocks) {
     const trimmedBlock = block.trim();
     if (!trimmedBlock) continue;
     
-    // Parse the block into instruction (user lines) and response (char lines)
     const lines = trimmedBlock.split('\n').filter(line => line.trim());
     
     if (lines.length === 0) continue;
     
     const userLines: string[] = [];
     const charLines: string[] = [];
+    const otherLines: string[] = [];  // Lines that aren't "Name: content" dialogue
     
-    // Regex to match "Name: content" pattern
-    const linePattern = new RegExp(`^(${escapeRegExp(userName)}|${escapeRegExp(charName)})\\s*:\\s*(.*)`, 'i');
+    // Regex to match "{{user}}: content" or "{{char}}: content" pattern
+    // Also match the already-replaced forms (userName/charName) for backward compat
+    const userPattern = new RegExp(`^(\\{\\{user\\}\\}|${escapeRegExp(userName)})\\s*:\\s*(.*)`, 'i');
+    const charPattern = new RegExp(`^(\\{\\{char\\}\\}|${escapeRegExp(charName)})\\s*:\\s*(.*)`, 'i');
     
     let lastSpeaker: 'user' | 'char' | null = null;
     
     for (const line of lines) {
-      const match = line.match(linePattern);
+      const userMatch = line.match(userPattern);
+      const charMatch = line.match(charPattern);
       
-      if (match) {
-        const speaker = match[1].toLowerCase() === userName.toLowerCase() ? 'user' : 'char';
-        const content = match[2].trim();
-        
-        if (speaker === 'user') {
-          userLines.push(`${userName}: ${content}`);
-          lastSpeaker = 'user';
-        } else {
-          charLines.push(`${charName}: ${content}`);
-          lastSpeaker = 'char';
-        }
+      if (userMatch) {
+        userLines.push(line.trim());
+        lastSpeaker = 'user';
+      } else if (charMatch) {
+        charLines.push(line.trim());
+        lastSpeaker = 'char';
       } else if (lastSpeaker) {
-        // Continuation of previous line
+        // Continuation of previous line (multi-line dialogue or narrative)
         if (lastSpeaker === 'user') {
-          userLines[userLines.length - 1] += ' ' + line.trim();
+          userLines[userLines.length - 1] += '\n' + line.trim();
         } else {
-          charLines[charLines.length - 1] += ' ' + line.trim();
+          charLines[charLines.length - 1] += '\n' + line.trim();
         }
+      } else {
+        // No speaker identified yet - this is a narrative/action line or key content
+        // Keep it as context before the dialogue
+        otherLines.push(line.trim());
       }
     }
     
     // Format the block
-    if (userLines.length > 0 || charLines.length > 0) {
+    if (userLines.length > 0 || charLines.length > 0 || otherLines.length > 0) {
       let formattedBlock = '';
+      
+      // Narrative/context lines first
+      if (otherLines.length > 0) {
+        formattedBlock += otherLines.join('\n') + '\n\n';
+      }
       
       if (userLines.length > 0) {
         formattedBlock += `### Instruction:\n${userLines.join('\n')}\n\n`;

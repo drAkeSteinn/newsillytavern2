@@ -1007,7 +1007,7 @@ export async function POST(request: NextRequest) {
                     const zaiAccumulator = createToolCallAccumulator(charAvailableTools);
                     let zaiRoundContent = '';
                     
-                    for await (const chunk of streamZAIWithTools(finalChatMessages, llmConfig.apiKey || '', charAvailableTools, zaiAccumulator)) {
+                    for await (const chunk of streamZAIWithTools(finalChatMessages, charAvailableTools, zaiAccumulator, llmConfig.apiKey || undefined)) {
                       zaiRoundContent += chunk;
                       fullContent += chunk;
                     }
@@ -1035,7 +1035,7 @@ export async function POST(request: NextRequest) {
                         
                         fullContent = '';
                         let zaiFollowUpContent = '';
-                        for await (const chunk of streamZAI(followUpMessages as any, llmConfig.apiKey)) {
+                        for await (const chunk of streamZAI(followUpMessages as any)) {
                           zaiFollowUpContent += chunk;
                         }
                         const cleanedZaiFollowUp = cleanModelArtifacts(zaiFollowUpContent);
@@ -1055,7 +1055,7 @@ export async function POST(request: NextRequest) {
                       }
                     }
                   } else {
-                    generator = streamZAI(finalChatMessages, llmConfig.apiKey);
+                    generator = streamZAI(finalChatMessages);
                   }
                   break;
                 }

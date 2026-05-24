@@ -223,7 +223,12 @@ export async function callGrok(
   const content = data.choices?.[0]?.message?.content || '';
 
   return {
-    content,
-    finishReason: data.choices?.[0]?.finish_reason || 'stop',
+    message: content,
+    usage: {
+      promptTokens: data.usage?.prompt_tokens || 0,
+      completionTokens: data.usage?.completion_tokens || 0,
+      totalTokens: data.usage?.total_tokens || 0,
+    },
+    model: data.model,
   };
 }

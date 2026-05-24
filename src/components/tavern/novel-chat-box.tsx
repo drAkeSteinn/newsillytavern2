@@ -93,6 +93,8 @@ type ChatboxTab = 'chat' | 'solicitudes' | 'misiones' | 'memorias';
 interface NovelChatBoxProps {
   onSendMessage: (message: string) => void;
   isGenerating: boolean;
+  /** Whether a proactive message is being generated (separate from isGenerating) */
+  isGeneratingProactive?: boolean;
   onStopGeneration?: () => void;
   onResetChat?: () => void;
   onClearChat?: () => void;
@@ -194,11 +196,12 @@ function MemoryItem({ memory, onDelete }: {
   );
 }
 
-export function NovelChatBox({ 
-  onSendMessage, 
-  isGenerating, 
+export function NovelChatBox({
+  onSendMessage,
+  isGenerating,
+  isGeneratingProactive = false,
   onStopGeneration,
-  onResetChat, 
+  onResetChat,
   onClearChat,
   onRegenerate,
   onEdit,
@@ -219,6 +222,9 @@ export function NovelChatBox({
   const [input, setInput] = useState('');
   // Global audio mute state
   const [globalMuted, setGlobalMutedState] = useState(false);
+
+  // Combined generation state: either regular or proactive generation is active
+  const isAnyGenerating = isGenerating || isGeneratingProactive;
 
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
@@ -527,7 +533,7 @@ export function NovelChatBox({
     if (settings.autoScroll && messagesEndRef.current && activeTab === 'chat') {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [activeSession?.messages, settings.autoScroll, isGenerating, streamingContent, activeTab]);
+  }, [activeSession?.messages, settings.autoScroll, isAnyGenerating, streamingContent, activeTab]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -690,7 +696,7 @@ export function NovelChatBox({
   }, [globalMuted]);
 
   const handleSend = () => {
-    if (!input.trim() || isGenerating) return;
+    if (!input.trim() || isAnyGenerating) return;
     onSendMessage(input.trim());
     setInput('');
   };
@@ -715,7 +721,7 @@ export function NovelChatBox({
   // Hotkeys for regenerate and swipe (global)
   useHotkeys(hotkeys, {
     onRegenerate: () => {
-      if (!isGenerating && activeSession && activeSession.messages.length > 0) {
+      if (!isAnyGenerating && activeSession && activeSession.messages.length > 0) {
         // Get last assistant message
         const lastAssistantMsg = [...activeSession.messages].reverse().find(m => m.role === 'assistant' && !m.isDeleted);
         if (lastAssistantMsg) {
@@ -731,10 +737,10 @@ export function NovelChatBox({
     onSwipeRight: () => {
       // Could be used for message swiping in future
     }
-  }, !isGenerating);
+  }, !isAnyGenerating);
 
   const handleQuickReply = (item: { label: string; response: string }) => {
-    if (isGenerating || !item.response.trim()) return;
+    if (isAnyGenerating || !item.response.trim()) return;
     onSendMessage(item.response.trim());
     setInput('');
   };
@@ -1548,7 +1554,7 @@ export function NovelChatBox({
                   })}
 
                   {/* Streaming Message or Typing Indicator */}
-                  {isGenerating && (
+                  {isAnyGenerating && (
                     <div className="flex gap-2 py-2 animate-in fade-in-0 slide-in-from-bottom-2 duration-200">
                       {/* Avatar */}
                       <div 
@@ -1612,6 +1618,12 @@ export function NovelChatBox({
                               ? (streamingCharacter?.name || 'Preparando...')
                               : activeCharacter?.name || 'Assistant'}
                           </span>
+                          {isGeneratingProactive && (
+                            <Badge variant="outline" className="text-[9px] py-0 h-3.5 px-1 gap-0.5 border-amber-500/30 text-amber-400/70 bg-amber-500/5">
+                              <Sparkles className="w-2 h-2" />
+                              Proactivo
+                            </Badge>
+                          )}
                           {streamingProgress && (
                             <span className="text-[10px] text-muted-foreground">
                               ({streamingProgress.current}/{streamingProgress.total})
@@ -1678,7 +1690,7 @@ export function NovelChatBox({
                       variant="outline"
                       size="sm"
                       className="h-6 px-2 text-xs flex-shrink-0 disabled:opacity-50 max-w-[120px]"
-                      disabled={isGenerating}
+                      disabled={isAnyGenerating}
                       onClick={() => handleQuickReply(item)}
                       title={item.response !== item.label ? item.response : undefined}
                     >
@@ -1720,7 +1732,7 @@ export function NovelChatBox({
                       fontSize: safeAppearance.input.fontSize === 'sm' ? '0.75rem' : 
                                safeAppearance.input.fontSize === 'lg' ? '1.125rem' : '1rem',
                     }}
-                    disabled={isGenerating || isTranscribing}
+                    disabled={isAnyGenerating || isTranscribing}
                     rows={1}
                   />
                   {/* Voice Recording Button */}
@@ -1734,7 +1746,7 @@ export function NovelChatBox({
                       permissionStatus === 'denied' && "border-amber-500 hover:bg-amber-500/10"
                     )}
                     onClick={handleRecordingClick}
-                    disabled={isGenerating || isTranscribing}
+                    disabled={isAnyGenerating || isTranscribing}
                     title={
                       permissionStatus === 'denied' 
                         ? 'Clic para solicitar permiso de micrófono'
@@ -1766,7 +1778,7 @@ export function NovelChatBox({
                       kwsActive && !kwsPausedByTTS && "animate-pulse bg-green-600 hover:bg-green-700"
                     )}
                     onClick={handleKWSToggle}
-                    disabled={isGenerating || isTranscribing}
+                    disabled={isAnyGenerating || isTranscribing}
                     title={
                       kwsPausedByTTS
                         ? 'KWS en pausa (TTS reproduciendo)'
@@ -1885,10 +1897,10 @@ export function NovelChatBox({
                   <Button
                     size="icon"
                     className="h-8 w-8 flex-shrink-0"
-                    onClick={isGenerating ? onStopGeneration : handleSend}
-                    disabled={!isGenerating && (!input.trim() || isTranscribing)}
+                    onClick={isAnyGenerating ? onStopGeneration : handleSend}
+                    disabled={!isAnyGenerating && (!input.trim() || isTranscribing)}
                   >
-                    {isGenerating ? (
+                    {isAnyGenerating ? (
                       <Square className="w-4 h-4 fill-current" />
                     ) : (
                       <Send className="w-4 h-4" />

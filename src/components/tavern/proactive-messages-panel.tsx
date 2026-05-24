@@ -337,15 +337,66 @@ export function ProactiveMessagesPanel({
                 />
                 <div className="mt-2 p-2.5 rounded-md bg-muted/30 border border-border/30">
                   <p className="text-[11px] text-muted-foreground">
-                    <strong>Si se deja vacío</strong>, se usa la instrucción predeterminada:
-                  </p>
-                  <p className="text-[10px] text-muted-foreground/70 mt-1 italic">
-                    "Reacciona naturalmente a la situación. Puedes comentar algo del entorno, expresar un pensamiento, 
-                    iniciar un nuevo tema o preguntar algo al usuario. Mantén el mensaje breve y natural."
+                    <strong>Si se deja vacío</strong>, se usa la instrucción predeterminada.
                   </p>
                 </div>
               </CardContent>
             </Card>
+
+            {/* ─── Nudge Template ─── */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Send className="w-4 h-4 text-emerald-500" />
+                  Mensaje de Impulso (Nudge)
+                </CardTitle>
+                <CardDescription>
+                  Mensaje que se envía como si fuera del usuario para "impulsar" al personaje a responder. Se procesa con las mismas variables de plantilla que el resto del prompt.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  className="min-h-[80px] text-xs"
+                  placeholder="[La escena continúa] {{user}} parece distraído así que {{char}} decide hacer o decir algo para que todo continúe."
+                  value={settings.nudgeTemplate || ''}
+                  onChange={(e) => updateSettings({ nudgeTemplate: e.target.value })}
+                />
+                <div className="mt-2 p-2.5 rounded-md bg-muted/30 border border-border/30">
+                  <p className="text-[11px] text-muted-foreground">
+                    <strong>Si se deja vacío</strong>, se usa el nudge predeterminado:
+                  </p>
+                  <p className="text-[10px] text-muted-foreground/70 mt-1 italic font-mono">
+                    [La escena continúa] {'{{user}}'} parece distraído así que {'{{char}}'} decide hacer o decir algo para que todo continúe.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* ─── Template Variables Reference ─── */}
+            <div className="p-3 rounded-lg border bg-card">
+              <div className="flex items-center gap-2 mb-2">
+                <HelpCircle className="w-4 h-4 text-muted-foreground" />
+                <h3 className="text-xs font-semibold">Variables de Plantilla Disponibles</h3>
+              </div>
+              <p className="text-[11px] text-muted-foreground mb-2">
+                Puedes usar estas variables tanto en la instrucción personalizada como en el mensaje de impulso. Se reemplazan automáticamente con los valores correspondientes:
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                {[
+                  { var: '{{char}}', desc: 'Nombre del personaje' },
+                  { var: '{{user}}', desc: 'Nombre del usuario' },
+                  { var: '{{userpersona}}', desc: 'Descripción del usuario' },
+                  { var: '{{stats}}', desc: 'Estadísticas del personaje' },
+                  { var: '{{activeQuests}}', desc: 'Misiones activas' },
+                  { var: '{{outlet::*}}', desc: 'Secciones del Lorebook' },
+                ].map(item => (
+                  <div key={item.var} className="flex items-start gap-1.5 p-1.5 rounded bg-muted/30">
+                    <code className="text-[10px] font-mono text-amber-500 bg-amber-500/10 px-1 py-0.5 rounded shrink-0">{item.var}</code>
+                    <span className="text-[10px] text-muted-foreground leading-tight">{item.desc}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             {/* ─── Status Summary ─── */}
             <div className="p-4 rounded-lg border bg-card">

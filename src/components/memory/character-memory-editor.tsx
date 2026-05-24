@@ -296,7 +296,19 @@ export function CharacterMemoryEditor({
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                          onClick={() => removeMemoryEvent(characterId, event.id)}
+                          onClick={() => {
+                            // Remove from Zustand store
+                            removeMemoryEvent(characterId, event.id);
+                            // Also delete corresponding LanceDB embedding if it exists
+                            const embeddingId = (event as any).embeddingId;
+                            if (embeddingId) {
+                              fetch(`/api/embeddings/${encodeURIComponent(embeddingId)}`, {
+                                method: 'DELETE',
+                              }).catch(err => {
+                                console.warn('[CharacterMemory] Failed to delete embedding:', err);
+                              });
+                            }
+                          }}
                         >
                           <Trash2 className="w-3 h-3" />
                         </Button>

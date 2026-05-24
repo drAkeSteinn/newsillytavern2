@@ -71,7 +71,7 @@ export function saveConfig(config: Partial<EmbeddingsConfig>): EmbeddingsConfig 
       updatedAt: new Date().toISOString(),
     };
 
-    newConfig.similarityThreshold = Math.max(0, Math.min(1, newConfig.similarityThreshold));
+    newConfig.similarityThreshold = Math.max(0.15, Math.min(1, newConfig.similarityThreshold));
     newConfig.maxResults = Math.max(1, Math.min(100, newConfig.maxResults));
 
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(newConfig, null, 2), 'utf-8');

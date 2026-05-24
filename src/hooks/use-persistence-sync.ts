@@ -89,7 +89,20 @@ export function usePersistenceSync() {
 
         // LLM & TTS
         if (data.llmConfigs && Array.isArray(data.llmConfigs)) {
-          updates.llmConfigs = data.llmConfigs;
+          // Ensure at least one LLM config is active after loading from server
+          const hasActiveConfig = data.llmConfigs.some((c: any) => c.isActive === true);
+          if (!hasActiveConfig && data.llmConfigs.length > 0) {
+            // If no config is active, activate the first non-test-mock provider, or the first one
+            const firstRealProvider = data.llmConfigs.find((c: any) => c.provider !== 'test-mock');
+            const configToActivate = firstRealProvider || data.llmConfigs[0];
+            updates.llmConfigs = data.llmConfigs.map((c: any) => ({
+              ...c,
+              isActive: c.id === configToActivate.id,
+            }));
+            console.log('[Persistence] No active LLM config found, activated:', configToActivate.name || configToActivate.provider);
+          } else {
+            updates.llmConfigs = data.llmConfigs;
+          }
         }
         if (data.ttsConfigs && Array.isArray(data.ttsConfigs)) {
           updates.ttsConfigs = data.ttsConfigs;

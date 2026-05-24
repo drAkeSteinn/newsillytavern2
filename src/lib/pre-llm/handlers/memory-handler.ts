@@ -2,7 +2,7 @@
 // Memory Handler - Handles memory/summary injection for Pre-LLM
 // ============================================
 
-import type { CharacterMemory, MemoryEvent, MemoryRelationship } from '@/types';
+import type { CharacterMemory, RelationshipMemory } from '@/types';
 import type { PreLLMHandler, PreLLMContext, PreLLMMatchResult } from '../types';
 import { estimateTokens } from '../scanner';
 

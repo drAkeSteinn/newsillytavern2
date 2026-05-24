@@ -833,6 +833,7 @@ export interface ProactiveMessagesConfig {
   minMessagesBeforeStart: number;     // Minimum messages in the chat before proactive starts
   maxPerSession: number;              // Max proactive messages per session (0 = unlimited)
   customPrompt?: string;              // Optional custom instruction for proactive message generation
+  nudgeTemplate?: string;             // Optional nudge message template (replaces default "[La escena continúa] {{user}} parece distraído...")
   allowedStates: ('idle' | 'user_away')[];  // When to trigger (idle = no user activity, user_away = tab not focused)
 }
 
@@ -842,6 +843,7 @@ export const DEFAULT_PROACTIVE_MESSAGES_CONFIG: ProactiveMessagesConfig = {
   minMessagesBeforeStart: 5,          // Wait for at least 5 messages
   maxPerSession: 0,                   // Unlimited
   customPrompt: '',
+  nudgeTemplate: '',
   allowedStates: ['idle'],
 };
 

@@ -8,7 +8,7 @@
 // - All sections are processed consistently
 
 import { NextRequest } from 'next/server';
-import type { ChatMessage, CharacterCard, LLMConfig, Persona, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestSettings, QuestTemplate, SessionQuestInstance, SessionSummary, SoundTrigger, AppSettings, CharacterStatsConfig } from '@/types';
+import type { ChatMessage, CharacterCard, LLMConfig, Persona, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestSettings, QuestTemplate, SessionQuestInstance, SessionSummary, SoundTrigger, AppSettings, CharacterStatsConfig, CharacterMemory } from '@/types';
 import { DEFAULT_QUEST_SETTINGS } from '@/types';
 import {
   DEFAULT_CHARACTER,
@@ -29,6 +29,7 @@ import {
   streamTextGenerationWebUI,
   streamGrok,
   buildLorebookSectionForPrompt,
+  buildMemorySection,
   buildHUDContextSection,
   injectHUDContextIntoMessages,
   injectHUDContextIntoSections,
@@ -289,6 +290,9 @@ export async function POST(request: NextRequest) {
     const sessionId: string | undefined = body.sessionId;
     const characterId: string | undefined = body.characterId;
     
+    // Extract character memory (events, relationships, notes from Zustand store)
+    const characterMemory: CharacterMemory | undefined = body.characterMemory;
+    
     // Extract tools settings for tool/action system (native tool calling only)
     const toolsSettings: ToolsSettings = {
       enabled: body.toolsSettings?.enabled ?? true,
@@ -300,6 +304,24 @@ export async function POST(request: NextRequest) {
 
     if (!llmConfig) {
       return createErrorResponse('No LLM configuration provided', 400);
+    }
+
+    // Validate API key for providers that require one
+    const providersRequiringApiKey = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'grok'];
+    if (providersRequiringApiKey.includes(llmConfig.provider) && !llmConfig.apiKey) {
+      return createErrorResponse(
+        `API Key is required for ${llmConfig.provider} provider. Please configure it in Settings.`,
+        400
+      );
+    }
+
+    // Validate endpoint for providers that require one
+    const providersRequiringEndpoint = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama', 'text-generation-webui', 'koboldcpp'];
+    if (providersRequiringEndpoint.includes(llmConfig.provider) && !llmConfig.endpoint) {
+      return createErrorResponse(
+        `Endpoint URL is required for ${llmConfig.provider} provider. Please configure it in Settings.`,
+        400
+      );
     }
 
     // If using Z.ai provider, collect gateway-forwarded auth headers
@@ -505,15 +527,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Combine all sections in order for prompt viewer
-    // Order: System -> Summary -> Quest -> [CONTEXTO] non-memory -> [MEMORIA] memory -> Chat History -> Post-History
+    // Order: System -> Summary -> Quest -> Character Memory -> [CONTEXTO] non-memory -> [MEMORIA] memory -> Chat History -> Post-History
     const personaIndex = systemSections.findIndex(s => s.type === 'persona');
     const prePersonaSections = personaIndex >= 0 ? systemSections.slice(0, personaIndex + 1) : systemSections;
     const postPersonaSections = personaIndex >= 0 ? systemSections.slice(personaIndex + 1) : [];
+
+    // Build character memory section from Zustand store data (events, relationships, notes)
+    const characterMemorySection = characterMemory
+      ? buildMemorySection(characterMemory, effectiveCharacter.name || 'Character')
+      : null;
 
     let allPromptSections: PromptSection[] = [
       ...prePersonaSections,
       ...postPersonaSections,
       ...(summarySection ? [summarySection] : []),
+      ...(characterMemorySection ? [characterMemorySection] : []),  // Character memory: before embeddings
       ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []),  // Non-memory: before chat
       ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []),  // Memory: before chat
       ...chatHistorySections,
@@ -525,9 +553,15 @@ export async function POST(request: NextRequest) {
       allPromptSections = injectHUDContextIntoSections(allPromptSections, hudContextSection, hudContext.position);
     }
 
-    // Build combined embeddings context: [CONTEXTO RELEVANTE] then [MEMORIA RELEVANTE]
-    // Both injected before chat history (not in system prompt)
+    // Build combined embeddings context: Character Memory -> [CONTEXTO RELEVANTE] -> [MEMORIA RELEVANTE]
+    // All injected before chat history (not in system prompt)
     const contextParts: string[] = [];
+
+    // Add character memory content first (events, relationships, notes from Zustand store)
+    if (characterMemorySection) {
+      contextParts.push(characterMemorySection.content);
+    }
+
     if (embeddingsResult.nonMemoryContextString?.trim()) {
       contextParts.push(embeddingsResult.nonMemoryContextString);
     }

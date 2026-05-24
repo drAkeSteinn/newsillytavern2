@@ -40,7 +40,7 @@ export async function generateResponse(
     }
 
     case 'z-ai': {
-      return callZAI(chatMessages, config.apiKey);
+      return callZAI(chatMessages);
     }
 
     case 'openai':

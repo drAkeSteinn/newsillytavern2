@@ -3,7 +3,7 @@
 // ============================================
 
 import { NextRequest } from 'next/server';
-import type { CharacterCard, PromptSection, Lorebook, SessionStats, HUDContextConfig, EmbeddingsChatSettings, QuestTemplate, SessionQuestInstance, QuestSettings } from '@/types';
+import type { CharacterCard, PromptSection, Lorebook, SessionStats, HUDContextConfig, EmbeddingsChatSettings, QuestTemplate, SessionQuestInstance, QuestSettings, CharacterMemory } from '@/types';
 import { DEFAULT_QUEST_SETTINGS } from '@/types';
 import {
   DEFAULT_CHARACTER,
@@ -25,6 +25,7 @@ import {
   streamTextGenerationWebUI,
   streamGrok,
   buildLorebookSectionForPrompt,
+  buildMemorySection,
   buildHUDContextSection,
   injectHUDContextIntoMessages,
   injectHUDContextIntoSections,
@@ -84,6 +85,7 @@ function validateRegenerateRequest(data: unknown) {
       hudContext: obj.hudContext as HUDContextConfig | undefined,
       allCharacters: Array.isArray(obj.allCharacters) ? obj.allCharacters : [],
       embeddingsChat: obj.embeddingsChat as Partial<EmbeddingsChatSettings> | undefined,
+      characterMemory: obj.characterMemory as CharacterMemory | undefined,
       summary: obj.summary as Record<string, unknown> | undefined,
       sessionQuests: Array.isArray(obj.sessionQuests) ? obj.sessionQuests : [],
       questTemplates: Array.isArray(obj.questTemplates) ? obj.questTemplates : [],
@@ -117,6 +119,7 @@ export async function POST(request: NextRequest) {
       hudContext,
       allCharacters = [],
       embeddingsChat,
+      characterMemory,
       summary,
       sessionQuests = [],
       questTemplates = [],
@@ -266,14 +269,20 @@ export async function POST(request: NextRequest) {
     const postHistorySection = buildPostHistorySection(processedCharacter.postHistoryInstructions, keyContext);
 
     // Combine all sections in order
-    // Order: System -> [CONTEXTO] non-memory -> [MEMORIA] memory -> Chat History -> Post-History
+    // Order: System -> Character Memory -> [CONTEXTO] non-memory -> [MEMORIA] memory -> Chat History -> Post-History
     const personaIndex = systemSections.findIndex(s => s.type === 'persona');
     const prePersonaSections = personaIndex >= 0 ? systemSections.slice(0, personaIndex + 1) : systemSections;
     const postPersonaSections = personaIndex >= 0 ? systemSections.slice(personaIndex + 1) : [];
 
+    // Build character memory section from Zustand store data (events, relationships, notes)
+    const characterMemorySection = characterMemory
+      ? buildMemorySection(characterMemory, effectiveCharacter.name || 'Character')
+      : null;
+
     let allPromptSections: PromptSection[] = [
       ...prePersonaSections,
       ...postPersonaSections,
+      ...(characterMemorySection ? [characterMemorySection] : []),  // Character memory: before embeddings
       ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []),  // Non-memory: before chat
       ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []),  // Memory: before chat
       ...chatHistorySections,
@@ -285,9 +294,15 @@ export async function POST(request: NextRequest) {
       allPromptSections = injectHUDContextIntoSections(allPromptSections, hudContextSection, hudContext.position);
     }
 
-    // Build combined embeddings context: [CONTEXTO RELEVANTE] then [MEMORIA RELEVANTE]
-    // Both injected before chat history (not in system prompt)
+    // Build combined embeddings context: Character Memory -> [CONTEXTO RELEVANTE] -> [MEMORIA RELEVANTE]
+    // All injected before chat history (not in system prompt)
     const contextParts: string[] = [];
+
+    // Add character memory content first (events, relationships, notes from Zustand store)
+    if (characterMemorySection) {
+      contextParts.push(characterMemorySection.content);
+    }
+
     if (embeddingsResult.nonMemoryContextString?.trim()) {
       contextParts.push(embeddingsResult.nonMemoryContextString);
     }

@@ -153,6 +153,7 @@ export function ChatPanel() {
   const setSessionSummary = useTavernStore((state) => state.setSessionSummary);
   const resetMessageCount = useTavernStore((state) => state.resetMessageCount);
   const initSessionTracking = useTavernStore((state) => state.initSessionTracking);
+  const getCharacterMemory = useTavernStore((state) => state.getCharacterMemory);
   const deleteMessagesUpTo = useTavernStore((state) => state.deleteMessagesUpTo);
 
   // Ref to track ongoing generation and prevent race conditions
@@ -285,6 +286,21 @@ export function ChatPanel() {
     triggerNow: triggerProactiveNow,
   } = useProactiveMessages({
     isGenerating,
+    onProactiveStreamStart: useCallback((characterId: string, characterName: string) => {
+      // Find the character and set streaming state
+      const char = characters.find(c => c.id === characterId) || activeCharacter;
+      if (char) {
+        setStreamingCharacter(char);
+        setStreamingContent('');
+      }
+    }, [characters, activeCharacter]),
+    onProactiveStreamToken: useCallback((token: string) => {
+      setStreamingContent(prev => prev + token);
+    }, []),
+    onProactiveStreamEnd: useCallback(() => {
+      setStreamingContent('');
+      setStreamingCharacter(null);
+    }, []),
   });
   
   // Track current streaming message key for triggers
@@ -959,6 +975,7 @@ export function ChatPanel() {
             allCharacters: allCharactersWithPersona,  // Pass all characters + persona for peticiones/solicitudes
             soundTriggers,  // Pass sound triggers for {{sonidos}} resolution
             settings,  // Pass settings for {{sonidos}} template
+            characterMemory: activeCharacter ? getCharacterMemory(activeCharacter.id) : undefined,  // Pass character memory (events, relationships, notes)
             embeddingsChat: {
               ...settings.embeddingsChat,
               customNamespaces: activeCharacter?.embeddingNamespaces,
@@ -1236,7 +1253,8 @@ export function ChatPanel() {
             sessionQuests: currentSessionQuests,  // Pass session quests (freshly read)
             questTemplates: latestQuestTemplates,  // Pass quest templates (freshly read)
             questSettings: latestQuestSettings,  // Pass quest settings (freshly read)
-            hudContext: activeHUDContext  // Pass HUD context for prompt injection
+            hudContext: activeHUDContext,  // Pass HUD context for prompt injection
+            characterMemory: activeCharacter ? getCharacterMemory(activeCharacter.id) : undefined  // Pass character memory
           })
         });
 
@@ -1393,6 +1411,7 @@ export function ChatPanel() {
           questTemplates,  // Pass quest templates
           questSettings,  // Pass quest settings
           hudContext: activeHUDContext,  // Pass HUD context for prompt injection
+          characterMemory: activeCharacter ? getCharacterMemory(activeCharacter.id) : undefined,  // Pass character memory
           embeddingsChat: settings.embeddingsChat,  // Pass embeddings chat settings
           summary: currentSession?.summary  // Pass summary for memory/context
         })
@@ -1697,7 +1716,7 @@ export function ChatPanel() {
           characterName={activeCharacter.name}
           avatarUrl={activeCharacter.avatar}
           character={activeCharacter}
-          isStreaming={isGenerating}
+          isStreaming={isGenerating || isGeneratingProactive}
           hasContent={!!streamingContent}
           isTTSPlaying={isTTSPlaying}
         />
@@ -1710,7 +1729,7 @@ export function ChatPanel() {
             (activeGroup.members?.map(m => m.characterId) || activeGroup.characterIds || []).includes(c.id)
           )}
           activeCharacterId={streamingCharacter?.id || null}
-          isStreaming={isGenerating && !!streamingContent}
+          isStreaming={(isGenerating || isGeneratingProactive) && !!streamingContent}
           isTTSPlaying={isTTSPlaying}
           activeGroup={activeGroup}
         />
@@ -1775,6 +1794,7 @@ export function ChatPanel() {
       <NovelChatBox 
         onSendMessage={(msg) => handleSend(msg)}
         isGenerating={isGenerating}
+        isGeneratingProactive={isGeneratingProactive}
         onStopGeneration={handleStopGeneration}
         onResetChat={handleResetChat}
         onClearChat={handleClearChat}

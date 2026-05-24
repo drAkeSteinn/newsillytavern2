@@ -1105,6 +1105,28 @@ export function EmbeddingsSettingsPanel() {
       await fetchConfig();
       if (mounted) {
         await Promise.all([loadNamespaces(), loadStats()]);
+        // Auto-check Ollama connection to show status immediately
+        try {
+          const currentConfig = config; // Use the config just loaded
+          const res = await fetch(currentConfig.ollamaUrl + '/api/tags', { signal: AbortSignal.timeout(5000) });
+          if (mounted) {
+            if (res.ok) {
+              const data = await res.json();
+              const models = (data.models || []).map((m: any) => m.name);
+              setOllamaModels(models);
+              setOllamaStatus('ok');
+              setOllamaError(undefined);
+            } else {
+              setOllamaStatus('error');
+              setOllamaError(`HTTP ${res.status}`);
+            }
+          }
+        } catch {
+          if (mounted) {
+            setOllamaStatus('error');
+            setOllamaError('Servidor no disponible');
+          }
+        }
       }
     };
     init();
@@ -1514,6 +1536,28 @@ export function EmbeddingsSettingsPanel() {
           </div>
         </div>
       </div>
+
+      {/* Ollama Warning Banner - shown when Ollama is not available */}
+      {ollamaStatus === 'error' && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="text-sm font-medium text-amber-600 dark:text-amber-400">
+                Ollama no disponible
+              </h4>
+              <p className="text-xs text-muted-foreground mt-1">
+                El servidor de Ollama no se puede alcanzar en <code className="bg-muted px-1 rounded text-xs">{config.ollamaUrl}</code>.
+                Sin Ollama, no se pueden crear embeddings vectoriales ni extraer memorias automáticamente.
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                <strong>Soluciones:</strong> Instala y ejecuta Ollama localmente, o cambia la URL en Configuración.
+                La <strong>memoria del personaje</strong> (eventos, relaciones, notas) funciona sin Ollama.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Tabs - 7 tabs */}
       <Tabs defaultValue="configuracion" onValueChange={handleTabChange}>

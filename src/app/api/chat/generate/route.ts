@@ -3,7 +3,7 @@
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import type { CharacterCard, Lorebook, SessionStats, HUDContextConfig, QuestTemplate, SessionQuestInstance, QuestSettings } from '@/types';
+import type { CharacterCard, Lorebook, SessionStats, HUDContextConfig, QuestTemplate, SessionQuestInstance, QuestSettings, CharacterMemory } from '@/types';
 import { DEFAULT_QUEST_SETTINGS } from '@/types';
 import {
   DEFAULT_CHARACTER,
@@ -21,6 +21,7 @@ import {
   callGrok,
   GenerateResponse,
   buildLorebookSectionForPrompt,
+  buildMemorySection,
   buildHUDContextSection,
   injectHUDContextIntoMessages,
   buildKeyResolutionContext,
@@ -82,6 +83,7 @@ export async function POST(request: NextRequest) {
     const embeddingsChat: Partial<EmbeddingsChatSettings> = body.embeddingsChat || {};
     const sessionId: string | undefined = body.sessionId;
     const characterId: string | undefined = body.characterId;
+    const characterMemory: CharacterMemory | undefined = body.characterMemory;
 
     // Cast sessionStats to proper type
     const typedSessionStats = sessionStats as SessionStats | undefined;
@@ -149,6 +151,15 @@ export async function POST(request: NextRequest) {
     // Build combined embeddings context: [CONTEXTO RELEVANTE] then [MEMORIA RELEVANTE]
     // Both injected before chat history (not in system prompt)
     const contextParts: string[] = [];
+
+    // Add character memory section first (events, relationships, notes from Zustand store)
+    if (characterMemory) {
+      const memorySection = buildMemorySection(characterMemory, effectiveCharacter.name || 'Character');
+      if (memorySection) {
+        contextParts.push(memorySection.content);
+      }
+    }
+
     if (embeddingsResult.nonMemoryContextString?.trim()) {
       contextParts.push(embeddingsResult.nonMemoryContextString);
     }
@@ -270,7 +281,7 @@ Y cambiar mi expresión:
         if (hudContextSection && hudContext) {
           chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
         }
-        response = await callZAI(chatMessages, llmConfig.apiKey);
+        response = await callZAI(chatMessages);
         break;
       }
 
