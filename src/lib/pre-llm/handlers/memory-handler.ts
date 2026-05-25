@@ -52,15 +52,19 @@ export function createMemoryHandler(): PreLLMHandler {
 
       // Process events
       if (memory.events && memory.events.length > 0) {
+        // Helper: normalize importance to 1-5 scale (supports old 0-1 and new 1-5)
+        const normalizeImportance = (imp: number) => imp > 1 ? imp : Math.round(imp * 5);
+
         const importantEvents = memory.events
-          .filter(e => e.importance >= 0.5) // Only important events
-          .sort((a, b) => b.importance - a.importance) // Most important first
+          .filter(e => normalizeImportance(e.importance) >= 3) // Only important events (3+ on 1-5 scale)
+          .sort((a, b) => normalizeImportance(b.importance) - normalizeImportance(a.importance)) // Most important first
           .slice(0, maxEvents);
 
         if (importantEvents.length > 0) {
           const eventContent = importantEvents
             .map(e => {
-              const importance = e.importance >= 0.7 ? '⭐ ' : '';
+              const imp = normalizeImportance(e.importance);
+              const importance = imp >= 4 ? '⭐ ' : '';
               return `${importance}${e.content}`;
             })
             .join('\n');

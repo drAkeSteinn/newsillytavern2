@@ -98,6 +98,8 @@ function emptyResult(): EmbeddingsContextResult {
  * @param characterId - The active character's ID (for character strategy)
  * @param sessionId - The active session's ID (for session strategy)
  * @param settings - EmbeddingsChatSettings from the store
+ * @param groupId - The group ID (for group strategy)
+ * @param existingMemoryEvents - Character Memory events from Zustand store, used to deduplicate memory-type embeddings
  * @returns EmbeddingsContextResult with separate non-memory and memory sections
  */
 export async function retrieveEmbeddingsContext(
@@ -106,6 +108,7 @@ export async function retrieveEmbeddingsContext(
   sessionId?: string,
   settings?: Partial<EmbeddingsChatSettings>,
   groupId?: string,
+  existingMemoryEvents?: Array<{ content: string; importance: number }>,
 ): Promise<EmbeddingsContextResult> {
   if (!settings?.enabled) {
     return emptyResult();
@@ -177,7 +180,48 @@ export async function retrieveEmbeddingsContext(
 
     // Sort by similarity (highest first)
     allResults.sort((a, b) => b.similarity - a.similarity);
-    const trimmed = allResults.slice(0, maxResults);
+    let trimmed = allResults.slice(0, maxResults);
+
+    // Deduplicate: Remove memory-type embeddings that overlap with existing Character Memory events.
+    // Only memory-type (source_type='memory') results are deduplicated — lore/world content is never filtered.
+    if (existingMemoryEvents && existingMemoryEvents.length > 0) {
+      const eventContents = existingMemoryEvents.map(e => e.content.toLowerCase().trim());
+      const beforeCount = trimmed.filter(r => r.source_type === 'memory').length;
+
+      trimmed = trimmed.filter(r => {
+        if (r.source_type !== 'memory') return true; // Only deduplicate memory-type embeddings
+
+        const embeddingContent = r.content.toLowerCase().trim();
+
+        for (const eventContent of eventContents) {
+          // Calculate word-level overlap (words longer than 3 chars to avoid stop-word noise)
+          const eventWords = new Set(eventContent.split(/\s+/).filter(w => w.length > 3));
+          const embeddingWords = new Set(embeddingContent.split(/\s+/).filter(w => w.length > 3));
+
+          if (eventWords.size === 0 || embeddingWords.size === 0) continue;
+
+          let overlapCount = 0;
+          for (const word of embeddingWords) {
+            if (eventWords.has(word)) overlapCount++;
+          }
+
+          const overlapRatio = overlapCount / Math.max(eventWords.size, embeddingWords.size);
+
+          // If >60% word overlap, consider it a duplicate and skip
+          if (overlapRatio > 0.6) {
+            console.log(`[Dedup] Skipping duplicate embedding: "${r.content.slice(0, 60)}..." (overlaps with Character Memory, ratio=${overlapRatio.toFixed(2)})`);
+            return false;
+          }
+        }
+
+        return true;
+      });
+
+      const afterCount = trimmed.filter(r => r.source_type === 'memory').length;
+      if (beforeCount !== afterCount) {
+        console.log(`[Dedup] Removed ${beforeCount - afterCount} duplicate memory embedding(s) (Character Memory overlap)`);
+      }
+    }
 
     // Load namespace info to get types for grouping
     const namespaceTypes = await getNamespaceTypesMap(trimmed);

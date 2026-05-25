@@ -66,6 +66,8 @@ export interface ToolContext {
   sessionStats?: SessionStats;
   /** All characters for resolving invitations/solicitudes across characters */
   allCharacters?: CharacterCard[];
+  /** Character Memory data from Zustand store (events, relationships, notes) */
+  characterMemory?: import('@/types').CharacterMemory;
 }
 
 /** Result from tool execution */
@@ -105,6 +107,33 @@ export interface ToolExecutionResult {
     description?: string;
     completionDescription?: string;
     peticionKey?: string;
+  };
+  /** Special result for memory tools — syncs to client-side Character Memory */
+  memoryActivation?: {
+    type: 'save_memory' | 'update_relationship' | 'save_note' | 'delete_memory';
+    characterId: string;
+    /** For save_memory: the event data to add to Character Memory */
+    eventData?: {
+      id: string;
+      type: string;
+      content: string;
+      importance: number;
+      embeddingId?: string;
+      sessionId?: string;
+    };
+    /** For update_relationship: the relationship data */
+    relationshipData?: {
+      targetId: string;
+      targetName: string;
+      relationship: string;
+      sentiment: number;
+      notes: string;
+    };
+    /** For save_note: the note content */
+    noteContent?: string;
+    /** For delete_memory: the event/embedding ID to delete */
+    deleteEventId?: string;
+    deleteEmbeddingId?: string;
   };
 }
 

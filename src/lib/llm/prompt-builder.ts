@@ -21,7 +21,7 @@ import type {
   QuestSettings,
 } from '@/types';
 import type { ChatApiMessage, CompletionPromptConfig, GroupPromptBuildResult } from './types';
-import { processExampleDialogue } from '@/lib/prompt-template';
+import { processExampleDialogue, parseExampleDialogueToMessages } from '@/lib/prompt-template';
 import {
   buildLorebookInjectionPlan,
   resolveLorebookAttributeKeys,
@@ -365,7 +365,7 @@ export function buildSystemPrompt(
   sessionQuests?: SessionQuestInstance[],
   questSettings?: QuestSettings,
   lorebookAttributeKeys?: Record<string, string>
-): { prompt: string; sections: PromptSection[]; lorebookChatInjections: LorebookChatInjection[] } {
+): { prompt: string; sections: PromptSection[]; lorebookChatInjections: LorebookChatInjection[]; exampleMessages: ChatApiMessage[] } {
   const sections: PromptSection[] = [];
 
   // Resolve stats for the persona FIRST (user attributes like {{resistencia}})
@@ -475,22 +475,10 @@ export function buildSystemPrompt(
     });
   }
 
-  // Add example messages (important for few-shot learning)
-  // Format them with SillyTavern-style <START> blocks
-  // NOTE: According to SillyTavern docs, Example Dialogue comes AFTER Character Notes
-  if (character.mesExample) {
-    const formattedExamples = processExampleDialogue(
-      character.mesExample,
-      userName,
-      character.name
-    );
-    sections.push({
-      type: 'example_dialogue',
-      label: 'Example Dialogue',
-      content: formattedExamples,
-      color: SECTION_COLORS.example_dialogue
-    });
-  }
+  // NOTE: Example dialogue is NO LONGER added as a system prompt section.
+  // Instead, it's parsed into actual user/assistant chat message pairs
+  // (SillyTavern style) and injected before the real chat history.
+  // See: exampleMessages in the return value
 
   // Lorebook position 5: At top of chat (before chat history)
   if (lorebookPlan?.position5Section) {
@@ -522,7 +510,21 @@ export function buildSystemPrompt(
   // Build the prompt string from processed sections
   const prompt = processedSections.map(s => `[${s.label}]\n${s.content}`).join('\n\n');
 
-  return { prompt, sections: processedSections, lorebookChatInjections: lorebookPlan?.chatInjections || [] };
+  // Parse example dialogue into chat messages (SillyTavern style)
+  // These messages are injected BEFORE the real chat history as few-shot examples.
+  // Key resolution is applied to each message's content since they bypass
+  // the section-based key resolution pipeline.
+  let exampleMessages: ChatApiMessage[] = [];
+  if (character.mesExample) {
+    const parsed = parseExampleDialogueToMessages(character.mesExample, userName, character.name);
+    // Apply key resolution to each message's content
+    exampleMessages = parsed.map(msg => ({
+      ...msg,
+      content: resolveAllKeys(msg.content, keyContext)
+    }));
+  }
+
+  return { prompt, sections: processedSections, lorebookChatInjections: lorebookPlan?.chatInjections || [], exampleMessages };
 }
 
 /**
@@ -547,7 +549,13 @@ export function buildLorebookSectionForPrompt(
   }
 
   // Build injection plan for traditional entries only (attribute entries are skipped by scanner)
-  const plan = buildLorebookInjectionPlan(messages, lorebooks, options);
+  // Pass userName/charName for <START> dialogue formatting in lorebook entries
+  const lorebookOptions = {
+    ...options,
+    userName: options?.userName,
+    charName: options?.charName,
+  };
+  const plan = buildLorebookInjectionPlan(messages, lorebooks, lorebookOptions);
 
   // Combine all system-level sections into one for backward compat with callers that only need a single section
   const allSystemSections = [
@@ -740,7 +748,8 @@ export function buildChatMessages(
   authorNote?: string,
   useSystemRole: boolean = false,
   embeddingsContext?: string,  // embeddings injected before chat history
-  lorebookChatInjections?: LorebookChatInjection[]  // positions 1-4: inject into specific messages
+  lorebookChatInjections?: LorebookChatInjection[],  // positions 1-4: inject into specific messages
+  exampleMessages?: ChatApiMessage[]  // SillyTavern-style example dialogue as chat messages
 ): ChatApiMessage[] {
   // =============================================
   // Step 1: Build all system content as ONE message
@@ -781,7 +790,16 @@ export function buildChatMessages(
   }
 
   // =============================================
-  // Step 2: Build chat history with proper alternation
+  // Step 2: Inject example dialogue as chat messages (SillyTavern style)
+  // =============================================
+  // These go between the system message and the actual chat history
+  // They serve as few-shot examples for the LLM
+  if (exampleMessages && exampleMessages.length > 0) {
+    chatMessages.push(...exampleMessages);
+  }
+
+  // =============================================
+  // Step 3: Build chat history with proper alternation
   // =============================================
   // Merge consecutive same-role messages and ensure
   // strict user/assistant alternation for OpenAI-compatible APIs.
@@ -819,10 +837,22 @@ export function buildChatMessages(
     finalHistory.push(msg);
   }
 
+  // Bridge between example messages and chat history if needed
+  // If the last example message has the same role as the first chat message,
+  // insert a bridging message to maintain proper user/assistant alternation
+  if (finalHistory.length > 0 && chatMessages.length > 0) {
+    const lastExistingMsg = chatMessages[chatMessages.length - 1];
+    const firstChatMsg = finalHistory[0];
+    if (lastExistingMsg.role === firstChatMsg.role) {
+      const bridgeRole = firstChatMsg.role === 'user' ? 'assistant' : 'user';
+      chatMessages.push({ role: bridgeRole, content: '*continúa*' });
+    }
+  }
+
   chatMessages.push(...finalHistory);
 
   // =============================================
-  // Step 3: Inject lorebook chat-level content (positions 1-4)
+  // Step 4: Inject lorebook chat-level content (positions 1-4)
   // =============================================
   if (lorebookChatInjections?.length) {
     applyChatInjections(chatMessages, lorebookChatInjections);
@@ -842,7 +872,7 @@ export function buildChatMessages(
  * 5. Assistant prefix
  */
 export function buildCompletionPrompt(config: CompletionPromptConfig): string {
-  const { systemPrompt, messages, character, userName, postHistoryInstructions, authorNote, embeddingsContext } = config;
+  const { systemPrompt, messages, character, userName, postHistoryInstructions, authorNote, embeddingsContext, exampleMessages } = config;
   const parts: string[] = [];
 
   parts.push(systemPrompt);
@@ -852,6 +882,18 @@ export function buildCompletionPrompt(config: CompletionPromptConfig): string {
   if (embeddingsContext?.trim()) {
     parts.push(embeddingsContext);
     parts.push('\n---\n');
+  }
+
+  // Example dialogue as text (for completion-style APIs)
+  // Injected before chat history, after embeddings, as few-shot examples
+  if (exampleMessages && exampleMessages.length > 0) {
+    for (const msg of exampleMessages) {
+      if (msg.role === 'user') {
+        parts.push(`${userName}: ${msg.content}`);
+      } else if (msg.role === 'assistant') {
+        parts.push(`${character.name}: ${msg.content}`);
+      }
+    }
   }
 
   // Exclude narrator messages from prompt
@@ -902,7 +944,7 @@ export function buildGroupSystemPrompt(
   sessionQuests?: SessionQuestInstance[],
   questSettings?: QuestSettings,
   lorebookAttributeKeys?: Record<string, string>
-): { prompt: string; sections: PromptSection[]; lorebookChatInjections: LorebookChatInjection[] } {
+): { prompt: string; sections: PromptSection[]; lorebookChatInjections: LorebookChatInjection[]; exampleMessages: ChatApiMessage[] } {
   const sections: PromptSection[] = [];
 
   // Resolve stats for the persona FIRST (user attributes like {{resistencia}})
@@ -1018,21 +1060,10 @@ export function buildGroupSystemPrompt(
     });
   }
 
-  // Add example messages (formatted with SillyTavern-style <START> blocks)
-  // NOTE: According to SillyTavern docs, Example Dialogue comes AFTER Character Notes
-  if (character.mesExample) {
-    const formattedExamples = processExampleDialogue(
-      character.mesExample,
-      userName,
-      character.name
-    );
-    sections.push({
-      type: 'example_dialogue',
-      label: `Example Dialogue for ${character.name}`,
-      content: formattedExamples,
-      color: SECTION_COLORS.example_dialogue
-    });
-  }
+  // NOTE: Example dialogue is NO LONGER added as a system prompt section.
+  // Instead, it's parsed into actual user/assistant chat message pairs
+  // (SillyTavern style) and injected before the real chat history.
+  // See: exampleMessages in the return value
 
   // Lorebook position 5: At top of chat (before chat history)
   if (lorebookPlan?.position5Section) {
@@ -1060,7 +1091,19 @@ export function buildGroupSystemPrompt(
   // Build the prompt string from processed sections
   const prompt = processedSections.map(s => `[${s.label}]\n${s.content}`).join('\n\n');
 
-  return { prompt, sections: processedSections, lorebookChatInjections: lorebookPlan?.chatInjections || [] };
+  // Parse example dialogue into chat messages (SillyTavern style)
+  // These messages are injected BEFORE the real chat history as few-shot examples.
+  let exampleMessages: ChatApiMessage[] = [];
+  if (character.mesExample) {
+    const parsed = parseExampleDialogueToMessages(character.mesExample, userName, character.name);
+    // Apply key resolution to each message's content
+    exampleMessages = parsed.map(msg => ({
+      ...msg,
+      content: resolveAllKeys(msg.content, keyContext)
+    }));
+  }
+
+  return { prompt, sections: processedSections, lorebookChatInjections: lorebookPlan?.chatInjections || [], exampleMessages };
 }
 
 /**
@@ -1086,7 +1129,8 @@ export function buildGroupChatMessages(
   authorNote?: string,
   isForNarrator: boolean = false,
   embeddingsContext?: string,  // embeddings injected before chat history
-  lorebookChatInjections?: LorebookChatInjection[]  // positions 1-4: inject into specific messages
+  lorebookChatInjections?: LorebookChatInjection[],  // positions 1-4: inject into specific messages
+  exampleMessages?: ChatApiMessage[]  // SillyTavern-style example dialogue as chat messages
 ): GroupPromptBuildResult {
   // =============================================
   // Step 1: Build all system content as ONE message
@@ -1117,7 +1161,16 @@ export function buildGroupChatMessages(
   }
 
   // =============================================
-  // Step 2: Build chat history with proper alternation
+  // Step 2: Inject example dialogue as chat messages (SillyTavern style)
+  // =============================================
+  // These go between the system message and the actual chat history
+  // They serve as few-shot examples for the LLM
+  if (exampleMessages && exampleMessages.length > 0) {
+    chatMessages.push(...exampleMessages);
+  }
+
+  // =============================================
+  // Step 3: Build chat history with proper alternation
   // =============================================
   const visibleMessages = isForNarrator
     ? messages.filter(m => !m.isDeleted)
@@ -1171,6 +1224,16 @@ export function buildGroupChatMessages(
       finalHistory.push({ role: bridgeRole, content: '*continúa*' });
     }
     finalHistory.push(msg);
+  }
+
+  // Bridge between example messages and chat history if needed
+  if (finalHistory.length > 0 && chatMessages.length > 0) {
+    const lastExistingMsg = chatMessages[chatMessages.length - 1];
+    const firstChatMsg = finalHistory[0];
+    if (lastExistingMsg.role === firstChatMsg.role) {
+      const bridgeRole = firstChatMsg.role === 'user' ? 'assistant' : 'user';
+      chatMessages.push({ role: bridgeRole, content: '*continúa*' });
+    }
   }
 
   chatMessages.push(...finalHistory);
@@ -1308,11 +1371,19 @@ export function buildMemorySection(memory: CharacterMemory, characterName: strin
 
   const parts: string[] = [];
 
-  // Add events
+  // Add events (sorted by importance, highest first)
   if (memory.events.length > 0) {
     parts.push(`[Key Events and Facts]`);
-    for (const event of memory.events) {
-      const importance = event.importance >= 0.7 ? '⭐' : '';
+    const sortedEvents = [...memory.events].sort((a, b) => {
+      // Support both old (0-1) and new (1-5) importance scales
+      const impA = a.importance > 1 ? a.importance : Math.round(a.importance * 5);
+      const impB = b.importance > 1 ? b.importance : Math.round(b.importance * 5);
+      return impB - impA;
+    });
+    for (const event of sortedEvents) {
+      // Support both old (0-1) and new (1-5) importance scales
+      const normalizedImportance = event.importance > 1 ? event.importance : Math.round(event.importance * 5);
+      const importance = normalizedImportance >= 4 ? '⭐' : '';
       parts.push(`${importance} ${event.content}`);
     }
   }

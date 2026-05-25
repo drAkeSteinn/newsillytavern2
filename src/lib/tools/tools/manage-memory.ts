@@ -94,6 +94,9 @@ export async function manageMemoryExecutor(
   const importance = params.importance !== undefined ? Math.max(1, Math.min(5, Math.round(Number(params.importance)))) : 3;
   const narrative = params.narrative ? String(params.narrative) : '';
 
+  // Data for client-side Character Memory sync (populated by each action)
+  let memoryActivationData: ToolExecutionResult['memoryActivation'] = undefined;
+
   try {
     switch (action) {
       case 'save_memory':
@@ -132,7 +135,7 @@ export async function manageMemoryExecutor(
           });
           
           // Save the memory as an embedding
-          await client.createEmbedding({
+          const embeddingResult = await client.createEmbedding({
             content: memoryContent,
             namespace,
             source_type: 'memory',
@@ -152,6 +155,30 @@ export async function manageMemoryExecutor(
           });
           
           console.log(`[manage_memory] Saved memory to namespace "${namespace}": ${memoryContent.slice(0, 50)}...`);
+
+          // Map embedding memory_type back to UI event type for Character Memory sync
+          const mapMemoryTypeToEventType = (mType: string): 'fact' | 'relationship' | 'event' | 'emotion' | 'location' | 'item' | 'state_change' => {
+            const map: Record<string, 'fact' | 'relationship' | 'event' | 'emotion' | 'location' | 'item' | 'state_change'> = {
+              hecho: 'fact', relacion: 'relationship', evento: 'event',
+              preferencia: 'fact', secreto: 'fact', otro: 'emotion',
+            };
+            return map[mType] || 'fact';
+          };
+
+          // Include memoryActivation for client-side Character Memory sync
+          const eventId = `tool-mem-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          memoryActivationData = {
+            type: 'save_memory',
+            characterId: context.characterId,
+            eventData: {
+              id: eventId,
+              type: mapMemoryTypeToEventType(memoryType),
+              content: memoryContent,
+              importance: importance,
+              embeddingId: embeddingResult?.id,
+              sessionId: sessionId,
+            },
+          };
         } catch (embedErr) {
           console.error('[manage_memory] Failed to save embedding:', embedErr);
           // Continue with success response but log the error
@@ -187,6 +214,7 @@ export async function manageMemoryExecutor(
             namespace,
           },
           displayMessage: lines.join('\n'),
+          memoryActivation: memoryActivationData,
         };
       }
 
@@ -255,6 +283,19 @@ export async function manageMemoryExecutor(
           });
           
           console.log(`[manage_memory] Saved relationship to namespace "${namespace}": ${subject}`);
+
+          // Include memoryActivation for client-side Character Memory relationship sync
+          memoryActivationData = {
+            type: 'update_relationship',
+            characterId: context.characterId,
+            relationshipData: {
+              targetId: `target-${subject.toLowerCase().replace(/\s+/g, '-')}`,
+              targetName: subject,
+              relationship: sentimentLabel,
+              sentiment: sentiment,
+              notes: narrative || '',
+            },
+          };
         } catch (embedErr) {
           console.error('[manage_memory] Failed to save relationship embedding:', embedErr);
         }
@@ -286,6 +327,7 @@ export async function manageMemoryExecutor(
             namespace,
           },
           displayMessage: lines.join('\n'),
+          memoryActivation: memoryActivationData,
         };
       }
 

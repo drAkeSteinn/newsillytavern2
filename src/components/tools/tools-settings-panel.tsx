@@ -189,7 +189,7 @@ const BUILT_IN_TOOLS: ToolDefinition[] = [
         content: { type: 'string', description: 'Contenido de la memoria', required: false },
         subject: { type: 'string', description: 'Personaje, lugar u objeto relacionado', required: false },
         sentiment: { type: 'number', description: 'Cambio de sentimiento (-100 a +100) para relaciones', required: false },
-        importance: { type: 'number', description: 'Importancia de 0.0 a 1.0', required: false },
+        importance: { type: 'number', description: 'Importancia de 1 a 5', required: false },
         narrative: { type: 'string', description: 'Descripción narrativa', required: false },
       },
       required: ['action'],

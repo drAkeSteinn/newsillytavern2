@@ -100,6 +100,7 @@ export interface CompletionPromptConfig {
   postHistoryInstructions?: string;
   authorNote?: string;
   embeddingsContext?: string;
+  exampleMessages?: ChatApiMessage[];  // SillyTavern-style example dialogue as chat messages
 }
 
 // Prompt build result for group chats

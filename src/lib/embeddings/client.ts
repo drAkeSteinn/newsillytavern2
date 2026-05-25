@@ -221,6 +221,24 @@ export class EmbeddingClient {
     return this.db.getNamespaceEmbeddings(namespace, limit);
   }
 
+  /**
+   * Lightweight version of getNamespaceEmbeddings that does NOT load vector data.
+   * Much more memory-efficient for operations that only need metadata/content.
+   */
+  async getNamespaceEmbeddingsMetadata(namespace: string, options?: {
+    limit?: number;
+    sourceType?: string;
+  }) {
+    return this.db.getNamespaceEmbeddingsMetadata(namespace, options);
+  }
+
+  /**
+   * Count embeddings in a namespace filtered by source_type, without loading data.
+   */
+  async countByNamespaceAndSourceType(namespace: string, sourceType?: string): Promise<number> {
+    return this.db.countByNamespaceAndSourceType(namespace, sourceType);
+  }
+
   async searchInNamespace(params: {
     namespace: string;
     query: string;

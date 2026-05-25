@@ -845,8 +845,8 @@ export function NovelChatBox({
   // ============================================
   // MEMORIES TAB - Load, Add & Delete memories
   // ============================================
-  const loadMemories = useCallback(async () => {
-    if (memoriesLoaded) return;
+  const loadMemories = useCallback(async (forceRefresh = false) => {
+    if (memoriesLoaded && !forceRefresh) return;
     setMemoriesLoading(true);
     try {
       const sessionSuffix = sessionId ? `-${sessionId}` : '';
@@ -985,7 +985,7 @@ export function NovelChatBox({
         
         // Refresh memories list
         setMemoriesLoaded(false);
-        loadMemories();
+        loadMemories(true);
       } else {
         console.error('[NovelChatBox] Failed to add memory:', response.status);
       }
@@ -1028,11 +1028,12 @@ export function NovelChatBox({
       // Extraction just finished — refresh memories after a delay
       const timer = setTimeout(() => {
         setMemoriesLoaded(false);
+        loadMemories(true);
       }, 3000);
       return () => clearTimeout(timer);
     }
     prevExtractingRef.current = memoryExtracting;
-  }, [memoryExtracting]);
+  }, [memoryExtracting, loadMemories]);
 
   // Get character name for a namespace
   const getCharacterNameForNamespace = useCallback((ns: string) => {
@@ -2448,19 +2449,31 @@ export function NovelChatBox({
                   <Brain className="w-4 h-4 text-violet-500" />
                   <h4 className="font-medium text-sm">Memorias del Personaje</h4>
                   {memories.length > 0 && (
-                    <Badge variant="secondary" className="ml-auto text-xs">
+                    <Badge variant="secondary" className="text-xs">
                       {memories.length}
                     </Badge>
                   )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs gap-1"
-                    onClick={() => setAddMemoryOpen(true)}
-                  >
-                    <Plus className="w-3 h-3" />
-                    Agregar
-                  </Button>
+                  <div className="ml-auto flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0"
+                      onClick={() => { setMemoriesLoaded(false); loadMemories(true); }}
+                      title="Recargar memorias"
+                      disabled={memoriesLoading}
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${memoriesLoading ? 'animate-spin' : ''}`} />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => setAddMemoryOpen(true)}
+                    >
+                      <Plus className="w-3 h-3" />
+                      Agregar
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Group mode: Character selector for adding memory */}
@@ -2539,14 +2552,31 @@ export function NovelChatBox({
                   </div>
                 )}
 
-                {/* Info Footer */}
-                {!memoriesLoading && memories.length > 0 && (
+                {/* Namespace Info - Always visible */}
+                {!memoriesLoading && (
                   <div className="pt-2 border-t mt-2 space-y-2">
+                    <div className="bg-violet-500/5 rounded-lg p-2 space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <Database className="w-3 h-3 text-violet-400" />
+                        <span className="text-[10px] font-medium text-violet-400">Namespace Activo</span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground font-mono break-all" title={isGroupMode && activeGroup ? `memory-group-${activeGroup.id}${sessionId ? `-${sessionId}` : ''}` : activeCharacter ? `memory-character-${activeCharacter.id}${sessionId ? `-${sessionId}` : ''}` : ''}>
+                        {isGroupMode && activeGroup 
+                          ? `memory-group-${activeGroup.id}${sessionId ? `-${sessionId.slice(0, 8)}...` : ''}`
+                          : activeCharacter 
+                            ? `memory-character-${activeCharacter.id.slice(0, 8)}...${sessionId ? `-${sessionId.slice(0, 8)}...` : ''}`
+                            : '—'
+                        }
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {isGroupMode 
+                          ? `Las memorias se guardan por personaje del grupo en esta sesión`
+                          : `Las memorias de ${activeCharacter?.name || 'este personaje'} se guardan aquí`
+                        }
+                      </p>
+                    </div>
                     <p className="text-[10px] text-muted-foreground text-center">
-                      🧠 Namespace: <code className="text-violet-400">{isGroupMode && activeGroup ? `memory-group-${activeGroup.id}${sessionId ? `-${sessionId.slice(0, 8)}` : ''}` : activeCharacter ? `memory-character-${activeCharacter.id}${sessionId ? `-${sessionId.slice(0, 8)}` : ''}` : '—'}</code>
-                    </p>
-                    <p className="text-[10px] text-muted-foreground text-center">
-                      💡 Usa "Agregar" para guardar memorias manualmente o Configuración → Embeddings → Examinar
+                      💡 Usa "Agregar" para guardar memorias manualmente o déjalas extraer automáticamente
                     </p>
                   </div>
                 )}
@@ -2582,6 +2612,17 @@ export function NovelChatBox({
                     : `Guarda una memoria para ${activeCharacter?.name || 'el personaje'}.`
                   }
                 </DialogDescription>
+                <div className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground bg-violet-500/5 rounded px-2 py-1">
+                  <Database className="w-3 h-3 text-violet-400 shrink-0" />
+                  <span className="font-mono truncate">
+                    {(() => {
+                      const targetCharId = isGroupMode && addMemoryCharacterId ? addMemoryCharacterId : activeCharacter?.id;
+                      return targetCharId 
+                        ? `memory-character-${targetCharId.slice(0, 8)}...${sessionId ? `-${sessionId.slice(0, 8)}...` : ''}`
+                        : '—';
+                    })()}
+                  </span>
+                </div>
               </DialogHeader>
               <div className="space-y-4 py-2">
                 {/* Character selector for group mode */}

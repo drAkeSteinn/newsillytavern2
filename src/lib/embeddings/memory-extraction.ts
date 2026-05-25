@@ -18,6 +18,57 @@ import type { CreateEmbeddingParams } from '@/lib/embeddings/types';
 import { DEFAULT_MEMORY_EXTRACTION_PROMPT, DEFAULT_GROUP_DYNAMICS_PROMPT } from './memory-extraction-prompts';
 
 // ============================================
+// Extraction Model Config Helper
+// ============================================
+
+/** Fields from embeddingsChat settings for extraction model */
+export interface ExtractionModelConfig {
+  extractionModelEnabled?: boolean;
+  extractionModelProvider?: string;
+  extractionModelEndpoint?: string;
+  extractionModelApiKey?: string;
+  extractionModelName?: string;
+}
+
+/**
+ * Build an LLMConfig for memory extraction, using a separate extraction model
+ * if configured, otherwise falling back to the chat model's config.
+ *
+ * @param chatLlmConfig - The chat model's LLM config (fallback)
+ * @param extractionConfig - Extraction model settings from embeddingsChat
+ * @returns LLMConfig to use for extraction/consolidation
+ */
+export function buildExtractionLlmConfig(
+  chatLlmConfig: LLMConfig,
+  extractionConfig?: ExtractionModelConfig,
+): LLMConfig {
+  if (!extractionConfig?.extractionModelEnabled) {
+    return chatLlmConfig;
+  }
+
+  const provider = extractionConfig.extractionModelProvider || 'ollama';
+  const endpoint = extractionConfig.extractionModelEndpoint || '';
+  const apiKey = extractionConfig.extractionModelApiKey || '';
+  const model = extractionConfig.extractionModelName || 'llama3.1:8b';
+
+  // Build extraction LLM config with same parameter structure but different model
+  return {
+    ...chatLlmConfig,
+    id: `extraction-${provider}`,
+    name: `Extraction: ${model}`,
+    provider: provider as LLMConfig['provider'],
+    endpoint,
+    apiKey: apiKey || undefined,
+    model,
+    parameters: {
+      ...chatLlmConfig.parameters,
+      temperature: 0.1,  // Low temperature for consistent extraction
+      maxTokens: 512,    // Enough for JSON array output
+    },
+  };
+}
+
+// ============================================
 // Types
 // ============================================
 
@@ -43,6 +94,8 @@ export interface MemoryExtractionResult {
   namespace: string;
   /** IDs of the created embeddings */
   embeddingIds: string[];
+  /** The subset of facts that were actually saved (filtered by importance) */
+  savedFacts: MemoryFact[];
 }
 
 /** Settings for memory extraction */
@@ -345,15 +398,15 @@ export async function saveMemoriesAsEmbeddings(
   sessionId: string,
   groupId?: string,
   minImportance: number = 2,
-): Promise<{ saved: number; embeddingIds: string[]; namespace: string }> {
+): Promise<{ saved: number; embeddingIds: string[]; namespace: string; savedFacts: MemoryFact[] }> {
   if (facts.length === 0) {
-    return { saved: 0, embeddingIds: [], namespace: '' };
+    return { saved: 0, embeddingIds: [], namespace: '', savedFacts: [] };
   }
 
   // Filter by minimum importance
   const validFacts = facts.filter(f => f.importancia >= minImportance);
   if (validFacts.length === 0) {
-    return { saved: 0, embeddingIds: [], namespace: '' };
+    return { saved: 0, embeddingIds: [], namespace: '', savedFacts: [] };
   }
 
   // Determine namespace (include sessionId to isolate memories per session)
@@ -367,6 +420,7 @@ export async function saveMemoriesAsEmbeddings(
 
   const sourceId = sessionId || 'unknown';
   const embeddingIds: string[] = [];
+  const savedFacts: MemoryFact[] = [];
 
   try {
     const client = getEmbeddingClient();
@@ -411,6 +465,7 @@ export async function saveMemoriesAsEmbeddings(
 
         const id = await client.createEmbedding(params);
         embeddingIds.push(id);
+        savedFacts.push(fact);
       } catch (err) {
         console.warn('[Memory] Failed to save individual memory:', err);
       }
@@ -421,7 +476,7 @@ export async function saveMemoriesAsEmbeddings(
     console.error('[Memory] Failed to save memories:', error);
   }
 
-  return { saved: embeddingIds.length, embeddingIds, namespace };
+  return { saved: embeddingIds.length, embeddingIds, namespace, savedFacts };
 }
 
 // ============================================
@@ -500,6 +555,7 @@ export async function extractAndSaveMemories(
     saved: 0,
     namespace: '',
     embeddingIds: [],
+    savedFacts: [],
   };
 
   try {
@@ -511,7 +567,7 @@ export async function extractAndSaveMemories(
     }
 
     // Step 2: Save as embeddings
-    const { saved, embeddingIds, namespace } = await saveMemoriesAsEmbeddings(
+    const { saved, embeddingIds, namespace, savedFacts } = await saveMemoriesAsEmbeddings(
       facts,
       characterId,
       sessionId,
@@ -525,6 +581,7 @@ export async function extractAndSaveMemories(
       saved,
       namespace,
       embeddingIds,
+      savedFacts,
     };
   } catch (error) {
     console.error('[Memory] extractAndSaveMemories failed:', error);

@@ -631,6 +631,86 @@ export class LanceDBWrapper {
     }));
   }
 
+  /**
+   * Lightweight version of getNamespaceEmbeddings that does NOT load vector data.
+   * Much more memory-efficient when only metadata/content is needed.
+   * Returns a subset of the Embedding type without the vector field.
+   */
+  static async getNamespaceEmbeddingsMetadata(
+    namespace: string,
+    options?: {
+      limit?: number;
+      sourceType?: string;
+    }
+  ): Promise<Array<Omit<Embedding, 'vector'> & { vector?: never }>> {
+    const table = await getEmbeddingsTable();
+    const limit = options?.limit ?? 1000;
+    const sourceType = options?.sourceType;
+
+    // Build the filter expression
+    let filter = `namespace = '${escapeFilterValue(namespace)}'`;
+    if (sourceType) {
+      filter += ` AND source_type = '${escapeFilterValue(sourceType)}'`;
+    }
+
+    // Use select() to exclude the vector column for memory efficiency
+    // Each vector can be 4-16KB, so skipping it saves 40-160MB for 10K embeddings
+    try {
+      const results = await table
+        .query()
+        .where(filter)
+        .select(['id', 'content', 'metadata', 'namespace', 'source_type', 'source_id', 'model_name', 'created_at', 'updated_at'])
+        .limit(limit)
+        .toArray();
+
+      return results.map((row: any) => ({
+        id: row.id,
+        content: row.content,
+        metadata: parseMetadata(row.metadata),
+        namespace: row.namespace || 'default',
+        source_type: row.source_type,
+        source_id: row.source_id,
+        model_name: row.model_name,
+        created_at: new Date(row.created_at),
+        updated_at: new Date(row.updated_at),
+      }));
+    } catch {
+      // Fallback: if select() fails (older LanceDB), use the filter approach
+      // and manually strip the vector field
+      const results = await tableFilter(table, filter);
+      return results.slice(0, limit).map((row: any) => ({
+        id: row.id,
+        content: row.content,
+        metadata: parseMetadata(row.metadata),
+        namespace: row.namespace || 'default',
+        source_type: row.source_type,
+        source_id: row.source_id,
+        model_name: row.model_name,
+        created_at: new Date(row.created_at),
+        updated_at: new Date(row.updated_at),
+      }));
+    }
+  }
+
+  /**
+   * Count embeddings in a namespace filtered by source_type, without loading full data.
+   */
+  static async countByNamespaceAndSourceType(namespace: string, sourceType?: string): Promise<number> {
+    const table = await getEmbeddingsTable();
+    let filter = `namespace = '${escapeFilterValue(namespace)}'`;
+    if (sourceType) {
+      filter += ` AND source_type = '${escapeFilterValue(sourceType)}'`;
+    }
+    try {
+      const results = await table.query().where(filter).select(['id']).toArray();
+      return results.length;
+    } catch {
+      // Fallback
+      const results = await tableFilter(table, filter);
+      return results.length;
+    }
+  }
+
   static async searchInNamespace(params: {
     namespace: string;
     queryVector: number[];

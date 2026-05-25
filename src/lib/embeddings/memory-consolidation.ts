@@ -5,14 +5,19 @@
  * intelligently consolidates them to keep the context relevant:
  *
  * Architecture:
- *   1. Rank embeddings by importance + recency
- *   2. Keep high-importance and recent memories intact (protected zone)
- *   3. Group older/low-importance memories by type using LLM
- *   4. Replace grouped memories with concise consolidated summaries
- *   5. Delete the originals that were consolidated
+ *   1. Check namespace count using lightweight count method (no vectors loaded)
+ *   2. Load ONLY metadata (id, content, metadata) — skip vector data
+ *   3. Rank embeddings by importance + recency
+ *   4. Keep high-importance and recent memories intact (protected zone)
+ *   5. Group older/low-importance memories by type using LLM
+ *   6. Replace grouped memories with concise consolidated summaries
+ *   7. Delete the originals that were consolidated
  *
- * This prevents unbounded growth while preserving the most
- * critical character/group knowledge.
+ * OPTIMIZED: Never loads full vector data into memory.
+ * Uses countByNamespaceAndSourceType() for threshold checks and
+ * getNamespaceEmbeddingsMetadata() for metadata-only access.
+ * This reduces memory usage from ~160MB (10K × 16KB vectors)
+ * to ~2MB (10K × ~200B metadata).
  */
 
 import { generateResponse } from '@/lib/llm/generation';
@@ -91,12 +96,16 @@ Ahora consolida estos hechos del grupo "{groupName}":
 /**
  * Consolidate memories in a single namespace.
  *
+ * OPTIMIZED: Uses lightweight metadata-only queries instead of loading
+ * full vector data. This reduces memory usage by ~98%.
+ *
  * Strategy:
- * 1. Load all embeddings in namespace (with source_type='memory')
- * 2. Separate into protected (recent + high importance) and candidates
- * 3. Group candidates by memory_type
- * 4. Ask LLM to consolidate each group
- * 5. Save consolidated embeddings, delete originals
+ * 1. Count memory embeddings using lightweight count method
+ * 2. Load ONLY metadata (no vectors) for sorting and partitioning
+ * 3. Separate into protected (recent + high importance) and candidates
+ * 4. Group candidates by memory_type
+ * 5. Ask LLM to consolidate each group
+ * 6. Save consolidated embeddings, delete originals
  */
 async function consolidateNamespace(
   namespace: string,
@@ -105,17 +114,26 @@ async function consolidateNamespace(
 ): Promise<{ removed: number; created: number }> {
   const client = getEmbeddingClient();
 
-  // Step 1: Get all memory embeddings in this namespace
-  const allEmbeddings = await client.getNamespaceEmbeddings(namespace, 10000);
-  const memoryEmbeddings = allEmbeddings.filter(e => e.source_type === 'memory');
+  // Step 1: Count memory embeddings using lightweight method (no vectors loaded)
+  const memoryCount = await client.countByNamespaceAndSourceType(namespace, 'memory');
+
+  if (memoryCount <= settings.threshold) {
+    return { removed: 0, created: 0 };
+  }
+
+  console.log(`[Consolidation] Namespace "${namespace}" has ${memoryCount} memory embeddings (threshold: ${settings.threshold})`);
+
+  // Step 2: Load only metadata (no vectors!) for sorting and partitioning
+  const memoryEmbeddings = await client.getNamespaceEmbeddingsMetadata(namespace, {
+    limit: 10000,
+    sourceType: 'memory',
+  });
 
   if (memoryEmbeddings.length <= settings.threshold) {
     return { removed: 0, created: 0 };
   }
 
-  console.log(`[Consolidation] Namespace "${namespace}" has ${memoryEmbeddings.length} memory embeddings (threshold: ${settings.threshold})`);
-
-  // Step 2: Sort by importance (desc) then by recency (desc)
+  // Step 3: Sort by importance (desc) then by recency (desc)
   const sorted = [...memoryEmbeddings].sort((a, b) => {
     const impA = a.metadata?.importance || 3;
     const impB = b.metadata?.importance || 3;
@@ -126,7 +144,7 @@ async function consolidateNamespace(
     return dateB - dateA; // More recent first
   });
 
-  // Step 3: Separate protected vs candidates
+  // Step 4: Separate protected vs candidates
   const protectedList: typeof sorted = [];
   const candidates: typeof sorted = [];
 
@@ -147,7 +165,7 @@ async function consolidateNamespace(
     return { removed: 0, created: 0 };
   }
 
-  // Step 4: Group candidates by memory_type
+  // Step 5: Group candidates by memory_type
   const groups: Record<string, typeof candidates> = {};
   for (const emb of candidates) {
     const type = emb.metadata?.memory_type || 'otro';
@@ -155,7 +173,7 @@ async function consolidateNamespace(
     groups[type].push(emb);
   }
 
-  // Step 5: Consolidate each group (limit batch size)
+  // Step 6: Consolidate each group (limit batch size)
   let totalRemoved = 0;
   let totalCreated = 0;
 
@@ -273,7 +291,7 @@ async function consolidateGroup(
 
 /**
  * Check if a namespace needs consolidation.
- * Counts only memory-type embeddings (source_type='memory').
+ * OPTIMIZED: Uses lightweight count method (no vector data loaded).
  */
 export async function needsConsolidation(
   namespace: string,
@@ -281,16 +299,17 @@ export async function needsConsolidation(
 ): Promise<boolean> {
   if (!settings.enabled) return false;
 
-  // Count only memory embeddings in this namespace
+  // Count only memory embeddings using lightweight method
   const client = getEmbeddingClient();
-  const allEmbeddings = await client.getNamespaceEmbeddings(namespace, 10000);
-  const memoryCount = allEmbeddings.filter(e => e.source_type === 'memory').length;
+  const memoryCount = await client.countByNamespaceAndSourceType(namespace, 'memory');
   return memoryCount > settings.threshold;
 }
 
 /**
  * Consolidate memories across multiple namespaces.
  * This is the main entry point.
+ *
+ * OPTIMIZED: Uses lightweight count and metadata methods throughout.
  */
 export async function consolidateMemories(
   namespaces: string[],
@@ -320,9 +339,8 @@ export async function consolidateMemories(
 
   for (const namespace of namespaces) {
     try {
-      // Count only memory embeddings (consistent with consolidateNamespace)
-      const allEmbs = await client.getNamespaceEmbeddings(namespace, 10000);
-      const memoryCount = allEmbs.filter(e => e.source_type === 'memory').length;
+      // Count only memory embeddings using lightweight method (no vectors loaded)
+      const memoryCount = await client.countByNamespaceAndSourceType(namespace, 'memory');
       if (memoryCount <= settings.threshold) continue;
 
       totalBefore += memoryCount;
@@ -332,8 +350,8 @@ export async function consolidateMemories(
       totalRemoved += removed;
       totalCreated += created;
 
-      const afterEmbs = await client.getNamespaceEmbeddings(namespace, 10000);
-      const afterMemoryCount = afterEmbs.filter(e => e.source_type === 'memory').length;
+      // Re-count after consolidation
+      const afterMemoryCount = await client.countByNamespaceAndSourceType(namespace, 'memory');
       totalAfter += afterMemoryCount;
     } catch (err) {
       console.warn(`[Consolidation] Failed to consolidate namespace "${namespace}":`, err);
@@ -353,6 +371,8 @@ export async function consolidateMemories(
 /**
  * Auto-consolidate after memory extraction.
  * Checks the target namespace and consolidates if needed.
+ *
+ * OPTIMIZED: Uses lightweight count method for threshold check.
  */
 export async function autoConsolidateAfterExtraction(
   namespace: string,
@@ -366,10 +386,9 @@ export async function autoConsolidateAfterExtraction(
 
   if (!fullSettings.enabled) return null;
 
-  // Count only memory embeddings for threshold check
+  // Count only memory embeddings using lightweight method
   const client = getEmbeddingClient();
-  const allEmbs = await client.getNamespaceEmbeddings(namespace, 10000);
-  const currentMemoryCount = allEmbs.filter(e => e.source_type === 'memory').length;
+  const currentMemoryCount = await client.countByNamespaceAndSourceType(namespace, 'memory');
 
   if (currentMemoryCount <= fullSettings.threshold) return null;
 

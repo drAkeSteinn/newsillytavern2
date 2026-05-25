@@ -114,6 +114,15 @@ export const defaultSettings: AppSettings = {
     searchContextDepth: 1,
     // Group dynamics extraction (extracts inter-character relationships in group chats)
     groupDynamicsExtraction: false,
+    // Separate extraction model (uses a different LLM for memory extraction/consolidation)
+    extractionModelEnabled: false,
+    extractionModelProvider: 'ollama',
+    extractionModelEndpoint: 'http://localhost:11434',
+    extractionModelApiKey: '',
+    extractionModelName: 'llama3.1:8b',
+    // Memory reinforcement settings
+    memoryReinforcementEnabled: false,
+    memoryReinforcementThreshold: 0.7,
   },
   handy: DEFAULT_HANDY_SETTINGS,
 };

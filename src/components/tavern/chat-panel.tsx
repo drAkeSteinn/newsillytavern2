@@ -613,6 +613,9 @@ export function ChatPanel() {
         let buffer = '';
         let currentCharacterContent = '';
         let currentCharacter: CharacterCard | null = null;
+        // Track group extraction flag from 'done' event
+        let groupShouldExtract = false;
+        let groupResponses: Array<{ characterId: string; characterName: string; content: string }> = [];
 
         try {
           while (true) {
@@ -759,6 +762,36 @@ export function ChatPanel() {
                     );
                     toast.success(`✅ Solicitud completada: ${parsed.solicitudKey}`);
                   }
+                } else if (parsed.type === 'memory_activation') {
+                  // Memory tool activation - sync to client-side Character Memory (Zustand)
+                  console.log('[ChatPanel] Memory activation from tool:', parsed.toolName, parsed.activationType);
+                  const store = useTavernStore.getState();
+                  if (parsed.activationType === 'save_memory' && parsed.eventData) {
+                    store.addMemoryEvent(parsed.characterId, {
+                      id: parsed.eventData.id,
+                      type: parsed.eventData.type as any,
+                      content: parsed.eventData.content,
+                      importance: parsed.eventData.importance,
+                      timestamp: new Date().toISOString(),
+                      embeddingId: parsed.eventData.embeddingId,
+                      sessionId: parsed.eventData.sessionId,
+                    });
+                    toast.success(`🧠 Memoria guardada: ${parsed.eventData.content.slice(0, 50)}...`);
+                  } else if (parsed.activationType === 'update_relationship' && parsed.relationshipData) {
+                    store.updateRelationship(parsed.characterId, {
+                      targetId: parsed.relationshipData.targetId,
+                      targetName: parsed.relationshipData.targetName,
+                      relationship: parsed.relationshipData.relationship,
+                      sentiment: parsed.relationshipData.sentiment,
+                      notes: parsed.relationshipData.notes,
+                      lastUpdated: new Date().toISOString(),
+                    });
+                    toast.success(`💜 Relación actualizada: ${parsed.relationshipData.targetName}`);
+                  } else if (parsed.activationType === 'save_note' && parsed.noteContent) {
+                    const existingMemory = store.getCharacterMemory(parsed.characterId);
+                    store.setCharacterNotes(parsed.characterId, 
+                      existingMemory?.notes ? `${existingMemory.notes}\n${parsed.noteContent}` : parsed.noteContent);
+                  }
                 } else if (parsed.type === 'character_start') {
                   currentCharacterContent = '';
                   const char = groupCharacters.find(c => c.id === parsed.characterId);
@@ -846,6 +879,10 @@ export function ChatPanel() {
                       swipeIndex: 0
                     });
                   }
+                } else if (parsed.type === 'done') {
+                  // Group stream done - capture shouldExtract flag and responses
+                  groupShouldExtract = !!parsed.shouldExtract;
+                  groupResponses = (parsed.responses || []) as Array<{ characterId: string; characterName: string; content: string }>;
                 } else if (parsed.type === 'error') {
                   // Preserve any accumulated group content before throwing
                   if (accumulatedContent.trim() && activeSessionId && isStillActive()) {
@@ -869,6 +906,161 @@ export function ChatPanel() {
         }
         
         setStreamingProgress(null);
+        
+        // Client-side memory extraction for group chat
+        // Triggered after the stream is fully processed, if server flagged shouldExtract
+        if (groupShouldExtract && isStillActive() && activeSessionId) {
+          const extractableChars = groupResponses.filter(r => r.content && r.content.length > 50);
+          if (extractableChars.length > 0) {
+            const charNames = extractableChars.map(r => r.characterName).join(', ');
+            setMemoryExtractingInfo({ active: true, characterNames: charNames });
+            
+            // Run extraction asynchronously (don't block the UI)
+            (async () => {
+              try {
+                const state = useTavernStore.getState();
+                const currentLLMConfig = state.llmConfigs.find(c => c.isActive);
+                const embeddingsChat = state.settings.embeddingsChat;
+                const currentSession = state.sessions.find(s => s.id === activeSessionId);
+                const sessionMsgs = currentSession?.messages || [];
+                const personaName = activePersona?.name || 'User';
+                
+                if (!currentLLMConfig) return;
+                
+                // Build chat context for context-aware extraction
+                const extractionContextDepth = embeddingsChat.memoryExtractionContextDepth || 0;
+                let chatContextForExtraction: string | undefined;
+                if (extractionContextDepth > 0) {
+                  const contextMessages = sessionMsgs
+                    .filter(m => !m.isDeleted && m.content?.trim())
+                    .slice(-(extractionContextDepth * 2 + 1));
+                  if (contextMessages.length > 0) {
+                    chatContextForExtraction = contextMessages
+                      .map(m => {
+                        const role = m.role === 'user' ? 'Jugador' : 'Personaje';
+                        return `${role}: ${m.content.trim().slice(0, 300)}`;
+                      })
+                      .join('\n  ');
+                  }
+                }
+                
+                let totalSaved = 0;
+                
+                for (const resp of extractableChars) {
+                  try {
+                    const extractionResponse = await fetch('/api/embeddings/extract-memory', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        lastMessage: resp.content,
+                        characterName: resp.characterName,
+                        characterId: resp.characterId,
+                        sessionId: activeSessionId,
+                        groupId: activeGroupId,
+                        userName: personaName,
+                        llmConfig: {
+                          provider: currentLLMConfig.provider,
+                          endpoint: currentLLMConfig.endpoint,
+                          apiKey: currentLLMConfig.apiKey,
+                          model: currentLLMConfig.model,
+                          parameters: currentLLMConfig.parameters,
+                        },
+                        minImportance: embeddingsChat.memoryExtractionMinImportance || 2,
+                        customPrompt: embeddingsChat.groupMemoryExtractionPrompt || embeddingsChat.memoryExtractionPrompt,
+                        chatContext: chatContextForExtraction,
+                        consolidationSettings: embeddingsChat.memoryConsolidationEnabled ? {
+                          enabled: true,
+                          threshold: embeddingsChat.memoryConsolidationThreshold || 50,
+                          keepRecent: embeddingsChat.memoryConsolidationKeepRecent || 10,
+                          keepHighImportance: embeddingsChat.memoryConsolidationKeepHighImportance || 4,
+                        } : undefined,
+                        extractionModelConfig: embeddingsChat.extractionModelEnabled ? {
+                          extractionModelEnabled: true,
+                          extractionModelProvider: embeddingsChat.extractionModelProvider,
+                          extractionModelEndpoint: embeddingsChat.extractionModelEndpoint,
+                          extractionModelApiKey: embeddingsChat.extractionModelApiKey,
+                          extractionModelName: embeddingsChat.extractionModelName,
+                        } : undefined,
+                      }),
+                    });
+                    
+                    if (extractionResponse.ok) {
+                      const result = await extractionResponse.json();
+                      if (result.success) {
+                        totalSaved += result.saved || 0;
+                        console.log(`[Memory] Group extraction result for ${resp.characterName}: extracted=${result.count}, saved=${result.saved}`);
+                        
+                        // Sync memoryActivations to Character Memory
+                        if (result.memoryActivations && result.memoryActivations.length > 0) {
+                          const store = useTavernStore.getState();
+                          for (const activation of result.memoryActivations) {
+                            store.addMemoryEvent(activation.characterId, {
+                              id: activation.eventData.id,
+                              type: activation.eventData.type as any,
+                              content: activation.eventData.content,
+                              importance: activation.eventData.importance,
+                              timestamp: new Date().toISOString(),
+                              embeddingId: activation.eventData.embeddingId,
+                              sessionId: activation.eventData.sessionId,
+                            });
+                          }
+                        }
+                      }
+                    }
+                  } catch (err) {
+                    console.warn(`[Memory] Group extraction failed for ${resp.characterName}:`, err);
+                  }
+                }
+                
+                // Also trigger group dynamics extraction if enabled
+                if (embeddingsChat.groupDynamicsExtraction && extractableChars.length > 1) {
+                  try {
+                    const turnLines: string[] = [];
+                    const lastUserMsg = sessionMsgs.filter(m => m.role === 'user' && !m.isDeleted).slice(-1)[0];
+                    if (lastUserMsg) {
+                      turnLines.push(`Jugador: ${lastUserMsg.content.trim().slice(0, 500)}`);
+                    }
+                    for (const resp of extractableChars) {
+                      turnLines.push(`${resp.characterName}: ${resp.content.trim().slice(0, 500)}`);
+                    }
+                    const fullTurnContext = turnLines.join('\n');
+                    
+                    if (fullTurnContext.length > 100) {
+                      await fetch('/api/embeddings/extract-group-dynamics', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          turnContext: fullTurnContext,
+                          groupId: activeGroupId,
+                          sessionId: activeSessionId,
+                          llmConfig: {
+                            provider: currentLLMConfig.provider,
+                            endpoint: currentLLMConfig.endpoint,
+                            apiKey: currentLLMConfig.apiKey,
+                            model: currentLLMConfig.model,
+                            parameters: currentLLMConfig.parameters,
+                          },
+                          minImportance: embeddingsChat.memoryExtractionMinImportance || 2,
+                        }),
+                      });
+                    }
+                  } catch (dynErr) {
+                    console.warn('[Memory] Group dynamics extraction failed (non-blocking):', dynErr);
+                  }
+                }
+                
+                if (totalSaved > 0) {
+                  toast.success(`🧠 ${totalSaved} memorias extraídas automáticamente`);
+                }
+              } catch (err) {
+                console.warn('[Memory] Group client-side extraction failed:', err);
+              } finally {
+                setMemoryExtractingInfo(prev => ({ ...prev, active: false }));
+              }
+            })();
+          }
+        }
+        
         return;
       }
 
@@ -1156,6 +1348,36 @@ export function ChatPanel() {
                     );
                     toast.success(`✅ Solicitud completada: ${parsed.solicitudKey}`);
                   }
+                } else if (parsed.type === 'memory_activation') {
+                  // Memory tool activation - sync to client-side Character Memory (Zustand)
+                  console.log('[ChatPanel] Memory activation from tool:', parsed.toolName, parsed.activationType);
+                  const store = useTavernStore.getState();
+                  if (parsed.activationType === 'save_memory' && parsed.eventData) {
+                    store.addMemoryEvent(parsed.characterId, {
+                      id: parsed.eventData.id,
+                      type: parsed.eventData.type as any,
+                      content: parsed.eventData.content,
+                      importance: parsed.eventData.importance,
+                      timestamp: new Date().toISOString(),
+                      embeddingId: parsed.eventData.embeddingId,
+                      sessionId: parsed.eventData.sessionId,
+                    });
+                    toast.success(`🧠 Memoria guardada: ${parsed.eventData.content.slice(0, 50)}...`);
+                  } else if (parsed.activationType === 'update_relationship' && parsed.relationshipData) {
+                    store.updateRelationship(parsed.characterId, {
+                      targetId: parsed.relationshipData.targetId,
+                      targetName: parsed.relationshipData.targetName,
+                      relationship: parsed.relationshipData.relationship,
+                      sentiment: parsed.relationshipData.sentiment,
+                      notes: parsed.relationshipData.notes,
+                      lastUpdated: new Date().toISOString(),
+                    });
+                    toast.success(`💜 Relación actualizada: ${parsed.relationshipData.targetName}`);
+                  } else if (parsed.activationType === 'save_note' && parsed.noteContent) {
+                    const existingMemory = store.getCharacterMemory(parsed.characterId);
+                    store.setCharacterNotes(parsed.characterId, 
+                      existingMemory?.notes ? `${existingMemory.notes}\n${parsed.noteContent}` : parsed.noteContent);
+                  }
                 } else if (parsed.type === 'token' && parsed.content) {
                   accumulatedContent += parsed.content;
                   setStreamingContent(accumulatedContent);
@@ -1221,6 +1443,113 @@ export function ChatPanel() {
                     });
                   }
                   setStreamingContent('');
+                  
+                  // Client-side memory extraction for single chat
+                  // Triggered after the stream is fully processed, if server flagged shouldExtract
+                  if (parsed.shouldExtract && cleanedMessage && isStillActive()) {
+                    setMemoryExtractingInfo({ active: true, characterNames: activeCharacter.name });
+                    
+                    // Run extraction asynchronously (don't block the UI)
+                    const extractionMessage = cleanedMessage;
+                    const extractionCharacterId = activeCharacter.id;
+                    const extractionCharacterName = activeCharacter.name;
+                    (async () => {
+                      try {
+                        const state = useTavernStore.getState();
+                        const currentLLMConfig = state.llmConfigs.find(c => c.isActive);
+                        const embeddingsChat = state.settings.embeddingsChat;
+                        const currentSession = state.sessions.find(s => s.id === activeSessionId);
+                        const sessionMsgs = currentSession?.messages || [];
+                        const personaName = activePersona?.name || 'User';
+                        
+                        if (!currentLLMConfig) return;
+                        
+                        // Build chat context for context-aware extraction
+                        const extractionContextDepth = embeddingsChat.memoryExtractionContextDepth || 0;
+                        let chatContextForExtraction: string | undefined;
+                        if (extractionContextDepth > 0) {
+                          const contextMessages = sessionMsgs
+                            .filter(m => !m.isDeleted && m.content?.trim())
+                            .slice(-(extractionContextDepth * 2 + 1));
+                          if (contextMessages.length > 0) {
+                            chatContextForExtraction = contextMessages
+                              .map(m => {
+                                const role = m.role === 'user' ? 'Jugador' : extractionCharacterName;
+                                const content = m.content.trim().slice(0, 300);
+                                return `${role}: ${content}`;
+                              })
+                              .join('\n  ');
+                          }
+                        }
+                        
+                        const extractionResponse = await fetch('/api/embeddings/extract-memory', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            lastMessage: extractionMessage,
+                            characterName: extractionCharacterName,
+                            characterId: extractionCharacterId,
+                            sessionId: activeSessionId,
+                            userName: personaName,
+                            llmConfig: {
+                              provider: currentLLMConfig.provider,
+                              endpoint: currentLLMConfig.endpoint,
+                              apiKey: currentLLMConfig.apiKey,
+                              model: currentLLMConfig.model,
+                              parameters: currentLLMConfig.parameters,
+                            },
+                            minImportance: embeddingsChat.memoryExtractionMinImportance || 2,
+                            customPrompt: embeddingsChat.memoryExtractionPrompt,
+                            chatContext: chatContextForExtraction,
+                            consolidationSettings: embeddingsChat.memoryConsolidationEnabled ? {
+                              enabled: true,
+                              threshold: embeddingsChat.memoryConsolidationThreshold || 50,
+                              keepRecent: embeddingsChat.memoryConsolidationKeepRecent || 10,
+                              keepHighImportance: embeddingsChat.memoryConsolidationKeepHighImportance || 4,
+                            } : undefined,
+                            extractionModelConfig: embeddingsChat.extractionModelEnabled ? {
+                              extractionModelEnabled: true,
+                              extractionModelProvider: embeddingsChat.extractionModelProvider,
+                              extractionModelEndpoint: embeddingsChat.extractionModelEndpoint,
+                              extractionModelApiKey: embeddingsChat.extractionModelApiKey,
+                              extractionModelName: embeddingsChat.extractionModelName,
+                            } : undefined,
+                          }),
+                        });
+                        
+                        if (extractionResponse.ok) {
+                          const result = await extractionResponse.json();
+                          if (result.success) {
+                            console.log(`[Memory] Extraction result for ${extractionCharacterName}: extracted=${result.count}, saved=${result.saved}`);
+                            
+                            // Sync memoryActivations to Character Memory
+                            if (result.memoryActivations && result.memoryActivations.length > 0) {
+                              const store = useTavernStore.getState();
+                              for (const activation of result.memoryActivations) {
+                                store.addMemoryEvent(activation.characterId, {
+                                  id: activation.eventData.id,
+                                  type: activation.eventData.type as any,
+                                  content: activation.eventData.content,
+                                  importance: activation.eventData.importance,
+                                  timestamp: new Date().toISOString(),
+                                  embeddingId: activation.eventData.embeddingId,
+                                  sessionId: activation.eventData.sessionId,
+                                });
+                              }
+                            }
+                            
+                            if (result.saved > 0) {
+                              toast.success(`🧠 ${result.saved} memorias extraídas automáticamente`);
+                            }
+                          }
+                        }
+                      } catch (err) {
+                        console.warn('[Memory] Client-side extraction failed:', err);
+                      } finally {
+                        setMemoryExtractingInfo(prev => ({ ...prev, active: false }));
+                      }
+                    })();
+                  }
                 }
               } catch (parseError) {
                 if (parseError instanceof Error && !parseError.message.includes('JSON')) {

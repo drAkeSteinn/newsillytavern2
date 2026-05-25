@@ -2064,7 +2064,9 @@ export interface MemoryEvent {
   content: string;           // Description of what happened/was learned
   characterId?: string;      // Related character (if any)
   timestamp: string;
-  importance: number;        // 0-1, how important to remember
+  importance: number;        // 1-5, how important to remember (1=minor, 5=critical)
+  embeddingId?: string;      // Link to the corresponding LanceDB embedding
+  sessionId?: string;        // Which session this memory belongs to
   metadata?: Record<string, unknown>;
 }
 

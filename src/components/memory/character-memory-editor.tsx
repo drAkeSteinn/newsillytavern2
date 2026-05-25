@@ -62,19 +62,22 @@ export function CharacterMemoryEditor({
     getCharacterMemory, 
     addMemoryEvent, 
     removeMemoryEvent,
+    updateMemoryEvent,
     updateRelationship,
     removeRelationship,
-    setCharacterNotes
+    setCharacterNotes,
+    activeSessionId,
   } = useTavernStore();
   const { toast } = useToast();
   
   const memory = getCharacterMemory(characterId);
   const [addEventOpen, setAddEventOpen] = useState(false);
   const [addRelationOpen, setAddRelationOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [newEvent, setNewEvent] = useState<Partial<MemoryEvent>>({
     type: 'fact',
     content: '',
-    importance: 0.5
+    importance: 3  // 1-5 scale (3 = moderate)
   });
   const [newEventSubject, setNewEventSubject] = useState<'usuario' | 'personaje' | 'otro'>('personaje');
   const [newRelation, setNewRelation] = useState<Partial<RelationshipMemory>>({
@@ -94,6 +97,75 @@ export function CharacterMemoryEditor({
     return map[uiType] || 'hecho';
   };
 
+  // Map embedding memory types back to UI event types
+  const mapEmbeddingType = (embType: string): MemoryEventType => {
+    const map: Record<string, MemoryEventType> = {
+      hecho: 'fact', relacion: 'relationship', evento: 'event',
+      preferencia: 'fact', secreto: 'fact', otro: 'emotion',
+    };
+    return map[embType] || 'fact';
+  };
+
+  // Sync memories from LanceDB into Character Memory
+  const handleSyncFromLanceDB = useCallback(async () => {
+    setIsSyncing(true);
+    try {
+      const sessionId = activeSessionId || '';
+      const namespace = sessionId 
+        ? `memory-character-${characterId}-${sessionId}` 
+        : `character-${characterId}`;
+
+      const res = await fetch(`/api/embeddings/namespaces/${encodeURIComponent(namespace)}?limit=200`);
+      if (!res.ok) {
+        toast({ title: 'Sin memorias en LanceDB', description: 'No se encontraron embeddings para sincronizar', variant: 'default' });
+        return;
+      }
+      const data = await res.json();
+      const embeddings: Array<{ id: string; content: string; metadata: Record<string, any>; source_type?: string }> = data.data?.embeddings || data.embeddings || [];
+
+      // Filter to only memory-type embeddings
+      const memoryEmbeddings = embeddings.filter(e => e.source_type === 'memory');
+      if (memoryEmbeddings.length === 0) {
+        toast({ title: 'Sin memorias', description: 'No hay memorias tipo "memory" en LanceDB para sincronizar' });
+        return;
+      }
+
+      // Get existing event embeddingIds to avoid duplicates
+      const existingEmbeddingIds = new Set(
+        (memory?.events || []).map(e => e.embeddingId).filter(Boolean)
+      );
+
+      let synced = 0;
+      for (const emb of memoryEmbeddings) {
+        // Skip if already in Character Memory (by embeddingId)
+        if (existingEmbeddingIds.has(emb.id)) continue;
+
+        const eventId = `synced-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        addMemoryEvent(characterId, {
+          id: eventId,
+          type: mapEmbeddingType(emb.metadata?.memory_type || 'hecho'),
+          content: emb.content,
+          importance: emb.metadata?.importance || 3,
+          timestamp: emb.metadata?.extracted_at || new Date().toISOString(),
+          embeddingId: emb.id,
+          sessionId: emb.metadata?.session_id || sessionId,
+        });
+        synced++;
+      }
+
+      if (synced > 0) {
+        toast({ title: `🧠 ${synced} memorias sincronizadas`, description: `Se importaron ${synced} memorias desde LanceDB a la memoria local` });
+      } else {
+        toast({ title: 'Memorias actualizadas', description: 'Todas las memorias de LanceDB ya estaban sincronizadas' });
+      }
+    } catch (err) {
+      console.warn('[CharacterMemory] Sync from LanceDB failed:', err);
+      toast({ title: 'Error de sincronización', description: 'No se pudieron importar las memorias desde LanceDB', variant: 'destructive' });
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [characterId, activeSessionId, memory?.events, addMemoryEvent, toast]);
+
   const handleAddEvent = useCallback(async () => {
     if (!newEvent.content?.trim()) return;
     
@@ -103,7 +175,7 @@ export function CharacterMemoryEditor({
       type: newEvent.type || 'fact',
       content: newEvent.content,
       timestamp: new Date().toISOString(),
-      importance: newEvent.importance || 0.5
+      importance: newEvent.importance || 3
     };
 
     // Save to Zustand immediately
@@ -118,42 +190,62 @@ export function CharacterMemoryEditor({
         characterId,
         characterName,
         memoryType: mapEventType(newEvent.type || 'fact'),
-        importance: Math.round((newEvent.importance || 0.5) * 5), // Convert 0-1 to 1-5
+        importance: newEvent.importance || 3, // Already on 1-5 scale
         memorySubject: newEventSubject,
+        sessionId: activeSessionId || undefined,
       }),
     }).then(res => res.json()).then(result => {
       if (result.success) {
-        // Store embedding ID so we can delete it later
-        // We add it as a hidden property on the event
-        addMemoryEvent(characterId, {
-          ...eventData,
-          embeddingId: result.data.id,
-        } as any);
+        // Store embedding ID on the event for future deletion
+        updateMemoryEvent(characterId, eventData.id, { embeddingId: result.data.id } as Partial<MemoryEvent>);
       }
     }).catch(err => {
       console.warn('[CharacterMemory] Failed to create embedding (memory saved locally):', err);
     });
 
-    setNewEvent({ type: 'fact', content: '', importance: 0.5 });
+    setNewEvent({ type: 'fact', content: '', importance: 3 });
     setNewEventSubject('personaje');
     setAddEventOpen(false);
-  }, [characterId, newEvent, addMemoryEvent, characterName, newEventSubject]);
+  }, [characterId, newEvent, addMemoryEvent, updateMemoryEvent, characterName, newEventSubject]);
 
   const handleAddRelation = useCallback(() => {
     if (!newRelation.targetName?.trim() || !newRelation.relationship?.trim()) return;
     
+    const targetId = newRelation.targetId || `target-${Date.now()}`;
+    
     updateRelationship(characterId, {
-      targetId: newRelation.targetId || `target-${Date.now()}`,
+      targetId,
       targetName: newRelation.targetName,
       relationship: newRelation.relationship,
       sentiment: newRelation.sentiment || 0,
       notes: newRelation.notes || '',
       lastUpdated: new Date().toISOString()
     });
+
+    // Also create as embedding in LanceDB (async, non-blocking)
+    const sentimentChange = (newRelation.sentiment || 0) > 0 ? `+${newRelation.sentiment || 0}` : `${newRelation.sentiment || 0}`;
+    const relationshipContent = newRelation.notes
+      ? `Relación con ${newRelation.targetName}: ${newRelation.notes} (sentimiento: ${sentimentChange})`
+      : `Relación con ${newRelation.targetName}: ${newRelation.relationship} (sentimiento: ${sentimentChange})`;
+
+    fetch('/api/embeddings/manual-memory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: relationshipContent,
+        characterId,
+        characterName,
+        memoryType: 'relacion',
+        importance: Math.abs(newRelation.sentiment || 0) > 50 ? 4 : 3,
+        memorySubject: 'otro',
+      }),
+    }).catch(err => {
+      console.warn('[CharacterMemory] Failed to create relationship embedding (saved locally):', err);
+    });
     
     setNewRelation({ targetId: '', targetName: '', relationship: '', sentiment: 0, notes: '' });
     setAddRelationOpen(false);
-  }, [characterId, newRelation, updateRelationship]);
+  }, [characterId, newRelation, updateRelationship, characterName]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -179,13 +271,14 @@ export function CharacterMemoryEditor({
                 Momentos importantes de la conversación con {characterName}
               </CardDescription>
             </div>
-            <Dialog open={addEventOpen} onOpenChange={setAddEventOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm" variant="outline">
-                  <Plus className="w-4 h-4 mr-1" />
-                  Agregar
-                </Button>
-              </DialogTrigger>
+            <div className="flex items-center gap-2">
+              <Dialog open={addEventOpen} onOpenChange={setAddEventOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" variant="outline">
+                    <Plus className="w-4 h-4 mr-1" />
+                    Agregar
+                  </Button>
+                </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Agregar Memoria</DialogTitle>
@@ -246,13 +339,13 @@ export function CharacterMemoryEditor({
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Importancia: {Math.round((newEvent.importance || 0.5) * 100)}%</Label>
+                    <Label>Importancia: {'★'.repeat(newEvent.importance || 3)}{'☆'.repeat(5 - (newEvent.importance || 3))} ({newEvent.importance || 3}/5)</Label>
                     <input
                       type="range"
-                      min="0"
-                      max="1"
-                      step="0.1"
-                      value={newEvent.importance || 0.5}
+                      min="1"
+                      max="5"
+                      step="1"
+                      value={newEvent.importance || 3}
                       onChange={(e) => setNewEvent(prev => ({ ...prev, importance: parseFloat(e.target.value) }))}
                       className="w-full"
                     />
@@ -263,6 +356,17 @@ export function CharacterMemoryEditor({
                 </div>
               </DialogContent>
             </Dialog>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={handleSyncFromLanceDB}
+                disabled={isSyncing}
+                title="Importar memorias desde LanceDB"
+              >
+                <Sparkles className="w-4 h-4 mr-1" />
+                {isSyncing ? 'Sincronizando...' : 'Sincronizar'}
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -300,7 +404,7 @@ export function CharacterMemoryEditor({
                             // Remove from Zustand store
                             removeMemoryEvent(characterId, event.id);
                             // Also delete corresponding LanceDB embedding if it exists
-                            const embeddingId = (event as any).embeddingId;
+                            const embeddingId = event.embeddingId;
                             if (embeddingId) {
                               fetch(`/api/embeddings/${encodeURIComponent(embeddingId)}`, {
                                 method: 'DELETE',
@@ -449,7 +553,16 @@ export function CharacterMemoryEditor({
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                      onClick={() => removeRelationship(characterId, rel.targetId)}
+                      onClick={() => {
+                        removeRelationship(characterId, rel.targetId);
+                        // Try to find and delete corresponding LanceDB embedding
+                        // Search for relationship embeddings about this target
+                        fetch(`/api/embeddings/manual-memory?searchTarget=${encodeURIComponent(rel.targetName)}`, {
+                          method: 'DELETE',
+                        }).catch(err => {
+                          console.warn('[CharacterMemory] Failed to delete relationship embedding:', err);
+                        });
+                      }}
                     >
                       <Trash2 className="w-3 h-3" />
                     </Button>

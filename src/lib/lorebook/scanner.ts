@@ -487,10 +487,13 @@ export function applyTokenBudget(
 
 /**
  * Format lorebook entries with their comment headers and optional role prefixes.
+ * Also detects and formats <START>-style dialogue in entry content.
  * This is used when building the final content to inject into the prompt.
  */
 export function formatEntriesWithComments(
-  results: LorebookScanResult[]
+  results: LorebookScanResult[],
+  userName?: string,
+  charName?: string
 ): string {
   const ROLE_LABELS: Record<number, string> = {
     0: 'System',
@@ -513,8 +516,92 @@ export function formatEntriesWithComments(
       }
 
       const header = parts.length > 0 ? parts.join(' ') + '\n' : '';
-      return header + r.entry.content;
+      
+      // Process entry content: detect <START>-formatted dialogue
+      let content = r.entry.content;
+      if (/<START>/gi.test(content) && userName && charName) {
+        // Import processExampleDialogue dynamically to avoid circular deps
+        // Instead, we do simple inline formatting here
+        content = formatStartDialogueInLorebook(content, userName, charName);
+      }
+      
+      return header + content;
     })
     .filter(content => content.trim())
     .join('\n\n');
+}
+
+/**
+ * Format <START>-dialogue content within a lorebook entry.
+ * Preserves the natural conversation flow with speaker labels visible.
+ * Improves separation between dialogue blocks and fixes the bug where
+ * lastSpeaker was incorrectly reset on continuation lines.
+ */
+function formatStartDialogueInLorebook(content: string, userName: string, charName: string): string {
+  // Split by <START> tags (case-insensitive)
+  const blocks = content.split(/<START>/gi).filter(block => block.trim());
+
+  if (blocks.length === 0) return content;
+
+  const userPattern = new RegExp(`^(\\{\\{user\\}\\}|${escapeRegExp(userName)})\\s*:\\s*(.*)`, 'i');
+  const charPattern = new RegExp(`^(\\{\\{char\\}\\}|${escapeRegExp(charName)})\\s*:\\s*(.*)`, 'i');
+
+  const formattedBlocks: string[] = [];
+
+  for (const block of blocks) {
+    const trimmedBlock = block.trim();
+    if (!trimmedBlock) continue;
+
+    const lines = trimmedBlock.split('\n');
+    const dialogueLines: Array<{speaker: 'user' | 'char' | 'narrative', content: string}> = [];
+    let lastSpeaker: 'user' | 'char' | null = null;
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+
+      const userMatch = line.match(userPattern);
+      const charMatch = line.match(charPattern);
+
+      if (userMatch) {
+        dialogueLines.push({ speaker: 'user', content: line });
+        lastSpeaker = 'user';
+      } else if (charMatch) {
+        dialogueLines.push({ speaker: 'char', content: line });
+        lastSpeaker = 'char';
+      } else if (lastSpeaker && dialogueLines.length > 0) {
+        // Continuation line — append to previous line (keep same speaker)
+        dialogueLines[dialogueLines.length - 1].content += '\n' + line;
+        // DON'T reset lastSpeaker - continuation lines belong to the same speaker
+      } else {
+        dialogueLines.push({ speaker: 'narrative', content: line });
+        lastSpeaker = null;
+      }
+    }
+
+    if (dialogueLines.length > 0) {
+      // Group consecutive same-speaker lines with double newline between different speakers
+      const parts: string[] = [];
+      let currentSpeaker: string | null = null;
+
+      for (const dl of dialogueLines) {
+        if (dl.speaker !== currentSpeaker && parts.length > 0) {
+          parts.push('');  // Empty line between different speakers
+        }
+        parts.push(dl.content);
+        currentSpeaker = dl.speaker;
+      }
+
+      formattedBlocks.push(parts.join('\n'));
+    }
+  }
+
+  return formattedBlocks.join('\n\n');
+}
+
+/**
+ * Escape special regex characters
+ */
+function escapeRegExp(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

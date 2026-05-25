@@ -202,6 +202,12 @@ const DEFAULT_EMBEDDINGS_CHAT = {
   groupDynamicsExtraction: false,
   memoryReinforcementEnabled: false,
   memoryReinforcementThreshold: 0.7,
+  // Separate extraction model
+  extractionModelEnabled: false,
+  extractionModelProvider: 'ollama',
+  extractionModelEndpoint: 'http://localhost:11434',
+  extractionModelApiKey: '',
+  extractionModelName: 'llama3.1:8b',
 };
 
 // ============================================
@@ -435,6 +441,143 @@ function EmbeddingsChatIntegrationContent() {
                 </div>
               )}
             </div>
+
+            <Separator />
+
+            {/* Separate Extraction Model Section */}
+            {embeddingsChat.memoryExtractionEnabled && (
+              <>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm flex items-center gap-1.5">
+                        <Settings className="w-3.5 h-3.5 text-teal-500" />
+                        Modelo de Extracción Separado
+                      </Label>
+                      <p className="text-[10px] text-muted-foreground">
+                        Usa un modelo diferente (más rápido/barato) para extracción y consolidación de memoria
+                      </p>
+                    </div>
+                    <Switch
+                      checked={!!embeddingsChat.extractionModelEnabled}
+                      onCheckedChange={(enabled) => {
+                        updateSettings({
+                          embeddingsChat: { ...embeddingsChat, extractionModelEnabled: enabled },
+                        });
+                      }}
+                    />
+                  </div>
+
+                  {embeddingsChat.extractionModelEnabled && (
+                    <div className="space-y-3 pl-1 border-l-2 border-teal-300/30">
+                      <div className="space-y-2">
+                        <Label className="text-xs">Proveedor</Label>
+                        <Select
+                          value={embeddingsChat.extractionModelProvider || 'ollama'}
+                          onValueChange={(v) => {
+                            updateSettings({
+                              embeddingsChat: { ...embeddingsChat, extractionModelProvider: v },
+                            });
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ollama">Ollama (Local)</SelectItem>
+                            <SelectItem value="openai">OpenAI</SelectItem>
+                            <SelectItem value="grok">Grok (xAI)</SelectItem>
+                            <SelectItem value="anthropic">Anthropic</SelectItem>
+                            <SelectItem value="z-ai">Z-AI</SelectItem>
+                            <SelectItem value="lm-studio">LM Studio</SelectItem>
+                            <SelectItem value="text-generation-webui">Text Generation WebUI</SelectItem>
+                            <SelectItem value="custom">Custom</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Endpoint (for providers that need it) */}
+                      {!['z-ai'].includes(embeddingsChat.extractionModelProvider || 'ollama') && (
+                        <div className="space-y-2">
+                          <Label className="text-xs">Endpoint</Label>
+                          <Input
+                            type="text"
+                            value={embeddingsChat.extractionModelEndpoint || 'http://localhost:11434'}
+                            onChange={(e) => {
+                              updateSettings({
+                                embeddingsChat: { ...embeddingsChat, extractionModelEndpoint: e.target.value },
+                              });
+                            }}
+                            className="h-8 text-sm"
+                            placeholder="http://localhost:11434"
+                          />
+                          <p className="text-[10px] text-muted-foreground">
+                            URL del servidor del modelo de extracción
+                          </p>
+                        </div>
+                      )}
+
+                      {/* API Key (for providers that need it) */}
+                      {['openai', 'grok', 'anthropic', 'custom'].includes(embeddingsChat.extractionModelProvider || 'ollama') && (
+                        <div className="space-y-2">
+                          <Label className="text-xs">API Key</Label>
+                          <Input
+                            type="password"
+                            value={embeddingsChat.extractionModelApiKey || ''}
+                            onChange={(e) => {
+                              updateSettings({
+                                embeddingsChat: { ...embeddingsChat, extractionModelApiKey: e.target.value },
+                              });
+                            }}
+                            className="h-8 text-sm"
+                            placeholder="sk-..."
+                          />
+                          <p className="text-[10px] text-muted-foreground">
+                            Clave API para el proveedor seleccionado
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Model name */}
+                      <div className="space-y-2">
+                        <Label className="text-xs">Modelo</Label>
+                        <Input
+                          type="text"
+                          value={embeddingsChat.extractionModelName || 'llama3.1:8b'}
+                          onChange={(e) => {
+                            updateSettings({
+                              embeddingsChat: { ...embeddingsChat, extractionModelName: e.target.value },
+                            });
+                          }}
+                          className="h-8 text-sm"
+                          placeholder="llama3.1:8b"
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                          Nombre del modelo para extracción. Se recomienda un modelo rápido y barato (ej: llama3.1:8b, gpt-4o-mini)
+                        </p>
+                      </div>
+
+                      <div className="bg-teal-500/5 border border-teal-500/20 rounded-lg p-3">
+                        <div className="flex items-start gap-2">
+                          <Settings className="w-4 h-4 text-teal-500 mt-0.5 shrink-0" />
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-teal-600 dark:text-teal-400">Modelo Separado</p>
+                            <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
+                              <li>La extracción y consolidación de memoria usan este modelo en lugar del modelo de chat</li>
+                              <li>Ideal para usar un modelo local (Ollama) o barato (gpt-4o-mini) para tareas de fondo</li>
+                              <li>Ahorra tokens y costo al no usar el modelo principal de chat para extracción</li>
+                              <li>El modelo de extracción solo necesita entender texto y generar JSON</li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <Separator />
+              </>
+            )}
 
             <Separator />
 

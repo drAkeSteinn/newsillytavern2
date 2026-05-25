@@ -107,6 +107,7 @@ async function executeToolCallsAndContinue(
   statsConfig?: CharacterStatsConfig,
   sessionStats?: SessionStats,
   allCharacters?: CharacterCard[],
+  characterMemory?: CharacterMemory,
 ): Promise<{ newContent: string; shouldContinue: boolean; toolResults: Array<{ success: boolean; displayMessage: string }>; questActivations: QuestActivation[]; toolsUsed: Array<{ name: string; label: string; icon: string; success: boolean }> }> {
   if (toolCalls.length === 0 || currentRound >= maxRounds) {
     return { newContent: '', shouldContinue: false, toolResults: [], questActivations: [], toolsUsed: [] };
@@ -148,6 +149,7 @@ async function executeToolCallsAndContinue(
         statsConfig: character.statsConfig,
         sessionStats,
         allCharacters,
+        characterMemory,
       },
     );
 
@@ -211,6 +213,24 @@ async function executeToolCallsAndContinue(
         description: sol.description,
         completionDescription: sol.completionDescription,
         peticionKey: sol.peticionKey,
+      }));
+    }
+
+    // Check for memory activation (sync to client-side Character Memory)
+    if (toolResult.memoryActivation) {
+      const mem = toolResult.memoryActivation;
+      console.log(`[Tools] Memory activation from ${tc.name}:`, mem.type);
+      
+      controller.enqueue(createSSEJSON({
+        type: 'memory_activation',
+        toolName: tc.name,
+        activationType: mem.type,
+        characterId: mem.characterId,
+        eventData: mem.eventData,
+        relationshipData: mem.relationshipData,
+        noteContent: mem.noteContent,
+        deleteEventId: mem.deleteEventId,
+        deleteEmbeddingId: mem.deleteEmbeddingId,
       }));
     }
 
@@ -363,6 +383,8 @@ export async function POST(request: NextRequest) {
       lorebooks,
       {
         scanDepth: contextConfig.scanDepth,
+        userName: effectiveUserName,
+        charName: effectiveCharacter?.name,
       },
       { sessionStats, characterId: effectiveCharacter?.id, characters: allCharacters }
     );
@@ -404,11 +426,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Retrieve relevant embeddings based on enriched query and settings
+    // Pass Character Memory events for deduplication (avoid duplicate memory in prompt)
+    const existingMemoryEvents = characterMemory?.events?.map(e => ({
+      content: e.content,
+      importance: e.importance,
+    }));
+
     const embeddingsResult = await retrieveEmbeddingsContext(
       enrichedSearchQuery,
       characterId || effectiveCharacter.id,
       sessionId,
-      embeddingsChat
+      embeddingsChat,
+      undefined, // groupId
+      existingMemoryEvents, // for deduplication
     );
     
     if (embeddingsResult.found) {
@@ -423,7 +453,7 @@ export async function POST(request: NextRequest) {
     // - Stats keys: {{resistencia}}, {{habilidades}}, etc.
     // - Sound keys: {{sonidos}}
     // - All sections including post-history instructions
-    const { prompt: systemPrompt, sections: systemSections, lorebookChatInjections } = buildSystemPrompt(
+    const { prompt: systemPrompt, sections: systemSections, lorebookChatInjections, exampleMessages } = buildSystemPrompt(
       effectiveCharacter,
       effectiveUserName,
       persona,
@@ -750,7 +780,8 @@ Y cambiar mi expresión:
                   effectiveUserName,
                   effectiveCharacter.postHistoryInstructions?.trim(),
                   undefined, true, embeddingsContext,
-                  lorebookChatInjections
+                  lorebookChatInjections,
+                  exampleMessages
                 );
                 if (hudContextSection && hudContext) {
                   chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
@@ -782,7 +813,7 @@ Y cambiar mi expresión:
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
                       sessionQuests, questTemplates,
-                      effectiveCharacter.statsConfig, sessionStats, allCharacters
+                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
                     );
                     allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                     allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -815,7 +846,7 @@ Y cambiar mi expresión:
                         textToolCalls, availableTools, toolRound, maxToolRounds,
                         effectiveCharacter, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        effectiveCharacter.statsConfig, sessionStats, allCharacters
+                        effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
                       );
                       allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                       allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -870,7 +901,8 @@ Y cambiar mi expresión:
                   effectiveUserName,
                   effectiveCharacter.postHistoryInstructions?.trim(),
                   undefined, true, embeddingsContext,
-                  lorebookChatInjections
+                  lorebookChatInjections,
+                  exampleMessages
                 );
                 if (hudContextSection && hudContext) {
                   chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
@@ -906,7 +938,7 @@ Y cambiar mi expresión:
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
                       sessionQuests, questTemplates,
-                      effectiveCharacter.statsConfig, sessionStats, allCharacters
+                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
                     );
                     allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                     allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -955,7 +987,7 @@ Y cambiar mi expresión:
                         nativeCalls, availableTools, toolRound, maxToolRounds,
                         effectiveCharacter, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        effectiveCharacter.statsConfig, sessionStats, allCharacters
+                        effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
                       );
                       allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                       allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -1010,7 +1042,8 @@ Y cambiar mi expresión:
                   effectiveUserName,
                   effectiveCharacter.postHistoryInstructions?.trim(),
                   undefined, true, embeddingsContext,
-                  lorebookChatInjections
+                  lorebookChatInjections,
+                  exampleMessages
                 );
                 if (hudContextSection && hudContext) {
                   chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
@@ -1039,7 +1072,7 @@ Y cambiar mi expresión:
                       toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
                       sessionQuests, questTemplates,
-                      effectiveCharacter.statsConfig, sessionStats, allCharacters
+                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
                     );
                     allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                     allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -1078,7 +1111,7 @@ Y cambiar mi expresión:
                         nativeCalls, availableTools, toolRound, maxToolRounds,
                         effectiveCharacter, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        effectiveCharacter.statsConfig, sessionStats, allCharacters
+                        effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
                       );
                       allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                       allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -1125,7 +1158,8 @@ Y cambiar mi expresión:
                     effectiveUserName,
                     effectiveCharacter.postHistoryInstructions?.trim(),
                     undefined, true, embeddingsContext,
-                    lorebookChatInjections
+                    lorebookChatInjections,
+                  exampleMessages
                   );
                   if (hudContextSection && hudContext) {
                     chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
@@ -1153,7 +1187,7 @@ Y cambiar mi expresión:
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
                       sessionQuests, questTemplates,
-                      effectiveCharacter.statsConfig, sessionStats, allCharacters
+                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
                     );
                     allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                     allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -1188,7 +1222,7 @@ Y cambiar mi expresión:
                         nativeCalls, availableTools, toolRound, maxToolRounds,
                         effectiveCharacter, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        effectiveCharacter.statsConfig, sessionStats, allCharacters
+                        effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
                       );
                       allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                       allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -1231,7 +1265,8 @@ Y cambiar mi expresión:
                     character: effectiveCharacter,
                     userName: effectiveUserName,
                     postHistoryInstructions: effectiveCharacter.postHistoryInstructions?.trim(),
-                    embeddingsContext: embeddingsContext
+                    embeddingsContext: embeddingsContext,
+                    exampleMessages: exampleMessages
                   });
                   generator = streamOllama(prompt, llmConfig);
                 }
@@ -1247,7 +1282,8 @@ Y cambiar mi expresión:
                   effectiveUserName,
                   effectiveCharacter.postHistoryInstructions?.trim(),
                   undefined, true, embeddingsContext,
-                  lorebookChatInjections
+                  lorebookChatInjections,
+                  exampleMessages
                 );
                 if (hudContextSection && hudContext) {
                   chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
@@ -1276,7 +1312,7 @@ Y cambiar mi expresión:
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
                       sessionQuests, questTemplates,
-                      effectiveCharacter.statsConfig, sessionStats, allCharacters
+                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
                     );
                     allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                     allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -1308,7 +1344,7 @@ Y cambiar mi expresión:
                         textToolCalls, availableTools, toolRound, maxToolRounds,
                         effectiveCharacter, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        effectiveCharacter.statsConfig, sessionStats, allCharacters
+                        effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
                       );
                       allToolsUsed = [...allToolsUsed, ...textToolResult.toolsUsed];
                       allQuestActivations = [...allQuestActivations, ...textToolResult.questActivations];
@@ -1353,7 +1389,8 @@ Y cambiar mi expresión:
                     effectiveUserName,
                     effectiveCharacter.postHistoryInstructions?.trim(),
                     undefined, true, embeddingsContext,
-                    lorebookChatInjections
+                    lorebookChatInjections,
+                  exampleMessages
                   );
                   if (hudContextSection && hudContext) {
                     chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
@@ -1380,7 +1417,7 @@ Y cambiar mi expresión:
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
                       sessionQuests, questTemplates,
-                      effectiveCharacter.statsConfig, sessionStats, allCharacters
+                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
                     );
                     allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                     allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -1421,7 +1458,8 @@ Y cambiar mi expresión:
                     character: effectiveCharacter,
                     userName: effectiveUserName,
                     postHistoryInstructions: effectiveCharacter.postHistoryInstructions?.trim(),
-                    embeddingsContext: embeddingsContext
+                    embeddingsContext: embeddingsContext,
+                    exampleMessages: exampleMessages
                   });
                   generator = streamTextGenerationWebUI(prompt, llmConfig);
                 }
@@ -1435,7 +1473,8 @@ Y cambiar mi expresión:
                   character: effectiveCharacter,
                   userName: effectiveUserName,
                   postHistoryInstructions: effectiveCharacter.postHistoryInstructions?.trim(),
-                  embeddingsContext: embeddingsContext
+                  embeddingsContext: embeddingsContext,
+                  exampleMessages: exampleMessages
                 });
                 generator = streamTextGenerationWebUI(prompt, llmConfig);
                 break;
@@ -1538,10 +1577,10 @@ Y cambiar mi expresión:
             }
           }
 
-          // Check if memory extraction should trigger BEFORE closing stream
+          // Check if memory extraction should trigger
           // Count by TURNS (user messages) instead of individual messages.
           // A turn = 1 user message + N assistant responses.
-          // This gives consistent extraction frequency in both normal and group chats.
+          // The client will handle the actual extraction call after receiving 'done'.
           const userMessages = messages.filter(m => m.role === 'user' && !m.isDeleted);
           const turnCount = userMessages.length;
           const extractionFrequency = embeddingsChat.memoryExtractionFrequency || 5;
@@ -1553,90 +1592,16 @@ Y cambiar mi expresión:
             turnCount % extractionFrequency === 0 &&
             !!llmConfig;
 
-          // Debug logging for extraction decision
           console.log(`[Memory] Normal chat extraction check: enabled=${extractionEnabled}, turns=${turnCount}, freq=${extractionFrequency}, contentLen=${accumulatedContent.length}, shouldExtract=${shouldExtract}`);
 
-          if (shouldExtract) {
-            controller.enqueue(createSSEJSON({
-              type: 'memory_extracting',
-              characterName: effectiveCharacter.name,
-            }));
-          }
-
-          // Send done signal with toolsUsed and questActivations info
+          // Send done signal with shouldExtract flag so client can trigger extraction
           controller.enqueue(createSSEJSON({ 
             type: 'done',
             toolsUsed: allToolsUsed,
-            questActivations: allQuestActivations 
+            questActivations: allQuestActivations,
+            shouldExtract,
           }));
           controller.close();
-
-          // Async: Extract memory from response (fire-and-forget, don't block)
-          if (shouldExtract) {
-            setTimeout(async () => {
-              try {
-                // Build chat context for context-aware extraction
-                const extractionContextDepth = embeddingsChat.memoryExtractionContextDepth || 0;
-                let chatContextForExtraction: string | undefined;
-                if (extractionContextDepth > 0) {
-                  const contextMessages = messages
-                    .filter(m => !m.isDeleted && m.content?.trim())
-                    .slice(-(extractionContextDepth * 2 + 1));
-                  
-                  if (contextMessages.length > 0) {
-                    chatContextForExtraction = contextMessages
-                      .map(m => {
-                        const role = m.role === 'user' ? 'Jugador' : effectiveCharacter.name;
-                        const content = m.content.trim().slice(0, 300); // limit per message
-                        return `${role}: ${content}`;
-                      })
-                      .join('\n  ');
-                  }
-                }
-
-                const response = await fetch('/api/embeddings/extract-memory', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    lastMessage: accumulatedContent,
-                    characterName: effectiveCharacter.name,
-                    characterId: effectiveCharacter.id,
-                    sessionId: sessionId || '',
-                    userName: effectiveUserName,
-                    llmConfig: {
-                      provider: llmConfig.provider,
-                      endpoint: llmConfig.endpoint,
-                      apiKey: llmConfig.apiKey,
-                      model: llmConfig.model,
-                      parameters: llmConfig.parameters,
-                    },
-                    minImportance: embeddingsChat.memoryExtractionMinImportance || 2,
-                    customPrompt: embeddingsChat.memoryExtractionPrompt,
-                    chatContext: chatContextForExtraction, // NEW: pass recent context
-                    consolidationSettings: embeddingsChat.memoryConsolidationEnabled ? {
-                      enabled: true,
-                      threshold: embeddingsChat.memoryConsolidationThreshold || 50,
-                      keepRecent: embeddingsChat.memoryConsolidationKeepRecent || 10,
-                      keepHighImportance: embeddingsChat.memoryConsolidationKeepHighImportance || 4,
-                    } : undefined,
-                  }),
-                });
-                if (response.ok) {
-                  const result = await response.json();
-                  if (result.success) {
-                    console.log(`[Memory] Extraction result for ${effectiveCharacter.name}: extracted=${result.count}, saved=${result.saved}, namespace="${result.namespace}"${result.consolidation ? `, consolidated: -${result.consolidation.removed} +${result.consolidation.created}` : ''}`);
-                  } else {
-                    console.warn(`[Memory] Extraction failed for ${effectiveCharacter.name}:`, result.error);
-                  }
-                } else {
-                  const errorText = await response.text().catch(() => 'unknown');
-                  console.warn(`[Memory] Extract-memory API error ${response.status}:`, errorText);
-                }
-              } catch (err) {
-                console.warn('[Memory] Async extraction failed:', err);
-              }
-            }, 0);
-          }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           controller.enqueue(createSSEJSON({ type: 'error', error: errorMessage }));

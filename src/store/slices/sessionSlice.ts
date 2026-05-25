@@ -942,6 +942,46 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     try {
       (get() as any).refreshAllActivationConditions?.(sessionId);
     } catch { /* non-critical */ }
+
+    // Clean up memory namespaces and re-create them empty
+    // This prevents stale memories from being retrieved after clearing the chat
+    try {
+      const characterId = session.characterId;
+      const groupId = session.groupId;
+      let memberIds: string[] | undefined;
+      if (groupId) {
+        const group = get().getGroupById?.(groupId);
+        if (group?.members) {
+          memberIds = group.members.map((m: any) => m.characterId).filter((id: string) => !!id);
+        }
+      }
+
+      // Delete old namespace embeddings first, then re-create empty namespaces
+      fetch('/api/embeddings/delete-session-namespaces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ characterId, groupId, sessionId, memberIds }),
+      }).then(() => {
+        // Re-create empty namespaces for the session
+        return fetch('/api/embeddings/ensure-namespace', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            characterId,
+            characterName: character?.name || '',
+            groupId,
+            groupName: groupId ? get().getGroupById?.(groupId)?.name : undefined,
+            memberIds,
+            memberNames: memberIds?.map((mid: string) => get().getCharacterById(mid)?.name).filter(Boolean),
+            sessionId,
+          }),
+        });
+      }).catch((err) => {
+        console.warn('[clearChat] Failed to reset memory namespaces:', err);
+      });
+    } catch (err) {
+      console.warn('[clearChat] Failed to reset memory namespaces:', err);
+    }
   },
 
   // Message Actions

@@ -77,6 +77,8 @@ export interface LorebookInjectOptions {
   caseSensitive?: boolean;       // Case sensitivity override
   matchWholeWords?: boolean;     // Whole word matching override
   includeConstants?: boolean;    // Include constant entries
+  userName?: string;             // User name for <START> dialogue formatting
+  charName?: string;             // Character name for <START> dialogue formatting
 }
 
 // ============================================
@@ -163,19 +165,19 @@ export function buildLorebookInjectionPlan(
   // Position 0: After system prompt
   const pos0Entries = positionGroups.get(0);
   const position0Section = pos0Entries?.length
-    ? buildPromptSection('World Info (after system)', pos0Entries)
+    ? buildPromptSection('World Info (after system)', pos0Entries, options.userName, options.charName)
     : null;
 
   // Position 5: At top of chat (before chat history)
   const pos5Entries = positionGroups.get(5);
   const position5Section = pos5Entries?.length
-    ? buildPromptSection('World Info (top of chat)', pos5Entries)
+    ? buildPromptSection('World Info (top of chat)', pos5Entries, options.userName, options.charName)
     : null;
 
   // Position 6: At bottom of chat (after all messages)
   const pos6Entries = positionGroups.get(6);
   const position6Section = pos6Entries?.length
-    ? buildPromptSection('World Info (bottom)', pos6Entries)
+    ? buildPromptSection('World Info (bottom)', pos6Entries, options.userName, options.charName)
     : null;
 
   // Position 7: Outlets (may be multiple, grouped by outletName)
@@ -186,7 +188,9 @@ export function buildLorebookInjectionPlan(
     for (const [outletName, entries] of outlets) {
       outletSections.push(buildPromptSection(
         `World Info (${outletName})`,
-        entries
+        entries,
+        options.userName,
+        options.charName
       ));
     }
     // Also handle position 7 entries without an outlet name
@@ -194,7 +198,9 @@ export function buildLorebookInjectionPlan(
     if (entriesWithoutOutlet.length > 0) {
       outletSections.push(buildPromptSection(
         'World Info (outlet)',
-        entriesWithoutOutlet
+        entriesWithoutOutlet,
+        options.userName,
+        options.charName
       ));
     }
   }
@@ -205,7 +211,7 @@ export function buildLorebookInjectionPlan(
     if (pos >= 1 && pos <= 4) {
       chatInjections.push({
         position: pos as 1 | 2 | 3 | 4,
-        content: formatEntriesWithComments(entries),
+        content: formatEntriesWithComments(entries, options.userName, options.charName),
         label: 'World Info'
       });
     }
@@ -235,12 +241,14 @@ export function buildLorebookInjectionPlan(
  */
 function buildPromptSection(
   label: string,
-  results: LorebookScanResult[]
+  results: LorebookScanResult[],
+  userName?: string,
+  charName?: string
 ): PromptSection {
   return {
     type: 'lorebook',
     label,
-    content: formatEntriesWithComments(results),
+    content: formatEntriesWithComments(results, userName, charName),
     color: LOREBOOK_COLOR
   };
 }

@@ -8,7 +8,7 @@
 // - All sections are processed consistently
 
 import { NextRequest } from 'next/server';
-import type { ChatMessage, CharacterCard, CharacterGroup, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestTemplate, SessionQuestInstance, SessionSummary, SolicitudInstance, CharacterStatsConfig } from '@/types';
+import type { ChatMessage, CharacterCard, CharacterGroup, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestTemplate, SessionQuestInstance, SessionSummary, SolicitudInstance, CharacterStatsConfig, CharacterMemory } from '@/types';
 import type { LorebookInjectionPlan, LorebookChatInjection } from '@/lib/lorebook';
 import { DEFAULT_QUEST_SETTINGS } from '@/types';
 import {
@@ -346,6 +346,7 @@ async function executeGroupToolCalls(
   statsConfig?: CharacterStatsConfig,
   sessionStats?: SessionStats,
   allCharacters?: CharacterCard[],
+  characterMemory?: CharacterMemory,
 ): Promise<{ results: string; shouldContinue: boolean; questActivations: QuestActivation[]; toolsUsed: Array<{ name: string; label: string; icon: string; success: boolean }> }> {
   if (toolCalls.length === 0) {
     return { results: '', shouldContinue: false, questActivations: [], toolsUsed: [] };
@@ -386,6 +387,7 @@ async function executeGroupToolCalls(
         statsConfig: character.statsConfig,
         sessionStats,
         allCharacters,
+        characterMemory,
       },
     );
 
@@ -520,6 +522,7 @@ export async function POST(request: NextRequest) {
     // Extract embeddings chat settings
     const embeddingsChat: Partial<EmbeddingsChatSettings> = body.embeddingsChat || {};
     const sessionId: string | undefined = body.sessionId;
+    const characterMemory: CharacterMemory | undefined = body.characterMemory;
 
     // Extract tools settings for tool/action system (native tool calling only)
     const toolsSettings: ToolsSettings = {
@@ -538,6 +541,9 @@ export async function POST(request: NextRequest) {
 
     // Extract per-character lorebook map for when group has no lorebooks
     const characterLorebooksMap: Record<string, string[]> = body.characterLorebooksMap || {};
+
+    // Extract per-character memory map for deduplication (characterId → CharacterMemory)
+    const characterMemoryMap: Record<string, CharacterMemory> = body.characterMemoryMap || {};
 
     // Determine if we should use per-character lorebooks
     const useGroupLorebooks = lorebooks.length > 0;
@@ -634,6 +640,8 @@ export async function POST(request: NextRequest) {
         {
           scanDepth: contextConfig.scanDepth,
           // tokenBudget: let the injector use the lorebook's own setting
+          userName: effectiveUserName,
+          charName: undefined, // group-level lorebook has no specific character
         },
         { sessionStats: typedSessionStats, characters: allCharacters }
       );
@@ -717,6 +725,10 @@ export async function POST(request: NextRequest) {
               sessionId,
               effectiveEmbeddingsChat,
               group.id,
+              characterMemoryMap[responder.id]?.events?.map(e => ({
+                content: e.content,
+                importance: e.importance,
+              })), // for deduplication with Character Memory
             );
             
             if (embeddingsResult.found) {
@@ -738,6 +750,8 @@ export async function POST(request: NextRequest) {
                     {
                       scanDepth: contextConfig.scanDepth,
                       // tokenBudget: let the injector use the lorebook's own setting
+                      userName: effectiveUserName,
+                      charName: responder.name,
                     },
                     { sessionStats: typedSessionStats, characterId: responder.id, characters: allCharacters }
                   );
@@ -755,7 +769,7 @@ export async function POST(request: NextRequest) {
             // - Template variables: {{user}}, {{char}}, {{userpersona}}
             // - Stats keys: {{resistencia}}, {{habilidades}}, etc.
             // - All sections including post-history instructions
-            const { prompt: systemPrompt, sections: promptSections, lorebookChatInjections } = buildGroupSystemPrompt(
+            const { prompt: systemPrompt, sections: promptSections, lorebookChatInjections, exampleMessages } = buildGroupSystemPrompt(
               responder,
               group,
               effectiveUserName,
@@ -943,7 +957,8 @@ export async function POST(request: NextRequest) {
               undefined,  // authorNote
               isResponderNarrator,  // If responder is narrator, they see all messages
               embeddingsContext,  // Memory embeddings before chat history
-              lorebookChatInjections  // Lorebook chat-level injections (positions 1-4)
+              lorebookChatInjections,  // Lorebook chat-level injections (positions 1-4)
+              exampleMessages  // SillyTavern-style example dialogue as chat messages
             );
 
             // Combine prompt sections with chat history for the viewer
@@ -1023,7 +1038,7 @@ export async function POST(request: NextRequest) {
                       const { results: displayMessages, shouldContinue, questActivations, toolsUsed } = await executeGroupToolCalls(
                         zaiAccumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (shouldContinue) {
@@ -1094,7 +1109,7 @@ export async function POST(request: NextRequest) {
                       const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (shouldContinue) {
@@ -1143,7 +1158,7 @@ export async function POST(request: NextRequest) {
                         const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
                           nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                         if (shouldContinue) {
                           fullContent = '';
@@ -1224,7 +1239,7 @@ export async function POST(request: NextRequest) {
                         const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                           nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                         allQuestActivations = [...allQuestActivations, ...questActivations];
                         if (shouldContinue) {
@@ -1267,7 +1282,7 @@ export async function POST(request: NextRequest) {
                         const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                           nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                         allQuestActivations = [...allQuestActivations, ...questActivations];
                         if (shouldContinue) {
@@ -1345,7 +1360,7 @@ export async function POST(request: NextRequest) {
                       const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (shouldContinue) {
@@ -1391,7 +1406,7 @@ export async function POST(request: NextRequest) {
                         const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                           nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                         allQuestActivations = [...allQuestActivations, ...questActivations];
                         if (shouldContinue) {
@@ -1443,7 +1458,8 @@ export async function POST(request: NextRequest) {
                       character: responder,
                       userName: effectiveUserName,
                       postHistoryInstructions: resolvedPostHistoryInstructions,
-                      embeddingsContext: embeddingsContext
+                      embeddingsContext: embeddingsContext,
+                      exampleMessages: exampleMessages
                     });
                     generator = streamOllama(prompt, llmConfig);
                   }
@@ -1479,7 +1495,7 @@ export async function POST(request: NextRequest) {
                       const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (shouldContinue) {
@@ -1522,7 +1538,7 @@ export async function POST(request: NextRequest) {
                             rawArguments: JSON.stringify(tc.arguments)
                           })), charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                         allQuestActivations = [...allQuestActivations, ...questActivations];
                         if (shouldContinue) {
@@ -1596,7 +1612,7 @@ export async function POST(request: NextRequest) {
                       const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (shouldContinue) {
@@ -1634,7 +1650,8 @@ export async function POST(request: NextRequest) {
                       character: responder,
                       userName: effectiveUserName,
                       postHistoryInstructions: resolvedPostHistoryInstructions,
-                      embeddingsContext: embeddingsContext
+                      embeddingsContext: embeddingsContext,
+                      exampleMessages: exampleMessages
                     });
                     generator = streamTextGenerationWebUI(prompt, llmConfig);
                   }
@@ -1648,7 +1665,8 @@ export async function POST(request: NextRequest) {
                     character: responder,
                     userName: effectiveUserName,
                     postHistoryInstructions: resolvedPostHistoryInstructions,
-                    embeddingsContext: embeddingsContext
+                    embeddingsContext: embeddingsContext,
+                    exampleMessages: exampleMessages
                   });
                   generator = streamTextGenerationWebUI(prompt, llmConfig);
                   break;
@@ -1745,9 +1763,9 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // Check if memory extraction should trigger BEFORE closing stream
+          // Check if memory extraction should trigger
           // Count by TURNS (user messages) instead of individual messages.
-          // A turn = 1 user message + N assistant responses.
+          // The client will handle the actual extraction call after receiving 'done'.
           const userMessages = messages.filter(m => m.role === 'user' && !m.isDeleted);
           const turnCount = userMessages.length;
           const extractionFrequency = embeddingsChat.memoryExtractionFrequency || 5;
@@ -1759,143 +1777,16 @@ export async function POST(request: NextRequest) {
             turnCount % extractionFrequency === 0 &&
             !!llmConfig;
 
-          // Debug logging for extraction decision
           console.log(`[Memory] Group chat extraction check: enabled=${extractionEnabled}, turns=${turnCount}, freq=${extractionFrequency}, responders=${responsesThisTurn.length}, shouldExtract=${shouldExtractGroupMemory}`);
 
-          if (shouldExtractGroupMemory) {
-            const extractableChars = responsesThisTurn
-              .filter(r => r.content && r.content.length > 50)
-              .map(r => r.characterName);
-            if (extractableChars.length > 0) {
-              controller.enqueue(createSSEJSON({
-                type: 'memory_extracting',
-                characterNames: extractableChars,
-              }));
-            }
-          }
-
-          // Send final done event with all responses and quest activations
+          // Send final done event with shouldExtract flag so client can trigger extraction
           controller.enqueue(createSSEJSON({
             type: 'done',
             responses: responsesThisTurn,
-            questActivations: allQuestActivations
+            questActivations: allQuestActivations,
+            shouldExtract: shouldExtractGroupMemory,
           }));
           controller.close();
-
-          // Async: Extract memory from each responder's response (fire-and-forget)
-          if (shouldExtractGroupMemory) {
-            setTimeout(async () => {
-              try {
-                // Build full turn context for context-aware extraction
-                const extractionCtxDepth = embeddingsChat.memoryExtractionContextDepth || 0;
-                let groupChatContext: string | undefined;
-                if (extractionCtxDepth > 0) {
-                  const recentForCtx = messages
-                    .filter(m => !m.isDeleted && m.content?.trim())
-                    .slice(-(extractionCtxDepth * 2 + 1));
-                  if (recentForCtx.length > 0) {
-                    groupChatContext = recentForCtx
-                      .map(m => {
-                        const role = m.role === 'user' ? 'Jugador' : m.role === 'assistant' ? 'Personaje' : m.role;
-                        return `${role}: ${m.content.trim().slice(0, 300)}`;
-                      })
-                      .join('\n  ');
-                  }
-                }
-
-                // Build current turn context (user message + all responses)
-                const turnLines: string[] = [];
-                turnLines.push(`Jugador: ${sanitizedMessage}`);
-                for (const resp of responsesThisTurn) {
-                  if (resp.content) {
-                    turnLines.push(`${resp.characterName}: ${resp.content.trim().slice(0, 500)}`);
-                  }
-                }
-                const fullTurnContext = turnLines.join('\n');
-
-                // Extract individual character memories with turn context
-                for (const resp of responsesThisTurn) {
-                  if (resp.content && resp.content.length > 50) {
-                    // Build character-specific context: include the full turn so the LLM sees all responses
-                    const characterContext = groupChatContext || fullTurnContext;
-
-                    const response = await fetch('/api/embeddings/extract-memory', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        lastMessage: resp.content,
-                        characterName: resp.characterName,
-                        characterId: resp.characterId,
-                        sessionId: sessionId || '',
-                        groupId: group.id,
-                        userName: effectiveUserName,
-                        llmConfig: {
-                          provider: llmConfig.provider,
-                          endpoint: llmConfig.endpoint,
-                          apiKey: llmConfig.apiKey,
-                          model: llmConfig.model,
-                          parameters: llmConfig.parameters,
-                        },
-                        minImportance: embeddingsChat.memoryExtractionMinImportance || 2,
-                        customPrompt: embeddingsChat.groupMemoryExtractionPrompt || embeddingsChat.memoryExtractionPrompt,
-                        chatContext: characterContext, // NEW: pass turn context
-                        consolidationSettings: embeddingsChat.memoryConsolidationEnabled ? {
-                          enabled: true,
-                          threshold: embeddingsChat.memoryConsolidationThreshold || 50,
-                          keepRecent: embeddingsChat.memoryConsolidationKeepRecent || 10,
-                          keepHighImportance: embeddingsChat.memoryConsolidationKeepHighImportance || 4,
-                        } : undefined,
-                      }),
-                    });
-                    if (response.ok) {
-                      const result = await response.json();
-                      if (result.success) {
-                        console.log(`[Memory] Group extraction result for ${resp.characterName}: extracted=${result.count}, saved=${result.saved}, namespace="${result.namespace}"${result.consolidation ? `, consolidated: -${result.consolidation.removed} +${result.consolidation.created}` : ''}`);
-                      } else {
-                        console.warn(`[Memory] Group extraction failed for ${resp.characterName}:`, result.error);
-                      }
-                    } else {
-                      const errorText = await response.text().catch(() => 'unknown');
-                      console.warn(`[Memory] Group extract-memory API error ${response.status}:`, errorText);
-                    }
-                  }
-                }
-
-                // Extract group dynamics if enabled
-                if (embeddingsChat.groupDynamicsExtraction && responsesThisTurn.length > 1 && fullTurnContext.length > 100) {
-                  try {
-                    const dynResponse = await fetch('/api/embeddings/extract-group-dynamics', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        turnContext: fullTurnContext,
-                        groupId: group.id,
-                        sessionId: sessionId || '',
-                        llmConfig: {
-                          provider: llmConfig.provider,
-                          endpoint: llmConfig.endpoint,
-                          apiKey: llmConfig.apiKey,
-                          model: llmConfig.model,
-                          parameters: llmConfig.parameters,
-                        },
-                        minImportance: embeddingsChat.memoryExtractionMinImportance || 2,
-                      }),
-                    });
-                    if (dynResponse.ok) {
-                      const dynResult = await dynResponse.json();
-                      if (dynResult.success && dynResult.saved > 0) {
-                        console.log(`[Memory] Extracted ${dynResult.saved} group dynamics for group ${group.id}`);
-                      }
-                    }
-                  } catch (dynErr) {
-                    console.warn('[Memory] Group dynamics extraction failed (non-blocking):', dynErr);
-                  }
-                }
-              } catch (err) {
-                console.warn('[Memory] Async group extraction failed:', err);
-              }
-            }, 0);
-          }
 
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';

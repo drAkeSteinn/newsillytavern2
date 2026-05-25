@@ -173,6 +173,8 @@ export async function POST(request: NextRequest) {
       {
         scanDepth: ctxConfig.scanDepth,
         // tokenBudget: let the injector use the lorebook's own setting
+        userName: effectiveUserName,
+        charName: effectiveCharacter?.name,
       },
       { sessionStats: typedSessionStats, characterId: effectiveCharacter?.id, characters: allCharacters }
     );
@@ -184,11 +186,19 @@ export async function POST(request: NextRequest) {
     const lastUserMessage = [...messagesBeforeRegenerate].reverse().find((m: { role: string }) => m.role === 'user');
     const queryMessage = lastUserMessage ? sanitizeInput((lastUserMessage as { content: string }).content || '') : '';
 
+    // Pass Character Memory events for deduplication (avoid duplicate memory in prompt)
+    const existingMemoryEvents = characterMemory?.events?.map(e => ({
+      content: e.content,
+      importance: e.importance,
+    }));
+
     const embeddingsResult = await retrieveEmbeddingsContext(
       queryMessage,
       characterId || effectiveCharacter.id,
       sessionId,
-      embeddingsChat
+      embeddingsChat,
+      undefined, // groupId
+      existingMemoryEvents, // for deduplication
     );
 
     if (embeddingsResult.found) {
@@ -196,7 +206,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Build system prompt with persona and lorebook (using processed character)
-    const { prompt: systemPrompt, sections: systemSections, lorebookChatInjections } = buildSystemPrompt(
+    const { prompt: systemPrompt, sections: systemSections, lorebookChatInjections, exampleMessages } = buildSystemPrompt(
       processedCharacter,
       effectiveUserName,
       persona,
@@ -375,7 +385,8 @@ Y cambiar mi expresión:
                 undefined,  // authorNote
                 false,      // useSystemRole
                 embeddingsContext,  // Combined embeddings context before chat history
-                lorebookChatInjections
+                lorebookChatInjections,
+                exampleMessages
               );
               // Inject HUD context into chat messages if enabled
               if (hudContextSection && hudContext) {
@@ -401,7 +412,8 @@ Y cambiar mi expresión:
                 undefined,  // authorNote
                 true,       // useSystemRole
                 embeddingsContext,  // Combined embeddings context before chat history
-                lorebookChatInjections
+                lorebookChatInjections,
+                exampleMessages
               );
               // Inject HUD context into chat messages if enabled
               if (hudContextSection && hudContext) {
@@ -424,7 +436,8 @@ Y cambiar mi expresión:
                 undefined,  // authorNote
                 true,       // useSystemRole
                 embeddingsContext,  // Combined embeddings context before chat history
-                lorebookChatInjections
+                lorebookChatInjections,
+                exampleMessages
               );
               // Inject HUD context into chat messages if enabled
               if (hudContextSection && hudContext) {
@@ -441,7 +454,8 @@ Y cambiar mi expresión:
                 character: processedCharacter,
                 userName: effectiveUserName,
                 postHistoryInstructions: processedCharacter.postHistoryInstructions,
-                embeddingsContext: embeddingsContext  // Memory embeddings before chat history
+                embeddingsContext: embeddingsContext,  // Memory embeddings before chat history
+                exampleMessages: exampleMessages
               });
               generator = streamOllama(prompt, llmConfig);
               break;
@@ -457,7 +471,8 @@ Y cambiar mi expresión:
                 undefined,
                 true,
                 embeddingsContext,
-                lorebookChatInjections
+                lorebookChatInjections,
+                exampleMessages
               );
               if (hudContextSection && hudContext) {
                 chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
@@ -475,7 +490,8 @@ Y cambiar mi expresión:
                 character: processedCharacter,
                 userName: effectiveUserName,
                 postHistoryInstructions: processedCharacter.postHistoryInstructions,
-                embeddingsContext: embeddingsContext  // Memory embeddings before chat history
+                embeddingsContext: embeddingsContext,  // Memory embeddings before chat history
+                exampleMessages: exampleMessages
               });
               generator = streamTextGenerationWebUI(prompt, llmConfig);
               break;
