@@ -56,6 +56,7 @@ const translations: Record<Language, TranslationDictionary> = {
     'nav.backgroundGallery': 'Galería de fondos',
     'nav.lorebooks': 'Lorebooks',
     'nav.soundTriggers': 'Triggers de sonido',
+    'nav.inventory': 'Inventario',
     
     // === Chat Panel ===
     'chat.title': 'Chat',
@@ -337,6 +338,7 @@ const translations: Record<Language, TranslationDictionary> = {
     'nav.backgroundGallery': 'Background Gallery',
     'nav.lorebooks': 'Lorebooks',
     'nav.soundTriggers': 'Sound Triggers',
+    'nav.inventory': 'Inventory',
     
     // === Chat Panel ===
     'chat.title': 'Chat',

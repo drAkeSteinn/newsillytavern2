@@ -1,71 +1,138 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Search,
   Plus,
   Package,
   Gem,
   Settings2,
-  Filter,
-  SortAsc,
   Sparkles,
+  FlaskConical,
   Shield,
-  Sword,
-  BookOpen,
-  Key,
-  Wrench,
-  Shirt,
-  Wine,
+  ShoppingCart,
+  Coins,
+  Trash2,
+  Clock,
+  X,
+  Target,
+  User,
 } from 'lucide-react';
 import { useTavernStore } from '@/store/tavern-store';
 import { ItemCard } from './item-card';
 import { ItemEditor } from './item-editor';
-import type { 
-  Item, 
-  InventoryEntry, 
-  ItemCategory, 
-  ItemRarity,
-  InventorySettings,
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import type {
+  Item,
+  InventoryV2Settings,
+  ActiveConsumableEffect,
+  PersonaInventoryEntry,
 } from '@/types';
-import { DEFAULT_INVENTORY_SETTINGS, getCategoryIcon, getRarityColor } from '@/store/slices/inventorySlice';
+import {
+  getRarityColor,
+  getRarityBgColor,
+  getItemTypeIcon,
+  getItemTypeLabel,
+} from '@/store/slices/inventorySlice';
+import { cn } from '@/lib/utils';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // ============================================
-// Constants
+// Active Effect Badge
 // ============================================
 
-const CATEGORIES: { value: ItemCategory | 'all'; label: string; icon: React.ReactNode }[] = [
-  { value: 'all', label: 'Todos', icon: <Package className="w-4 h-4" /> },
-  { value: 'weapon', label: 'Armas', icon: <Sword className="w-4 h-4" /> },
-  { value: 'armor', label: 'Armadura', icon: <Shield className="w-4 h-4" /> },
-  { value: 'accessory', label: 'Accesorios', icon: <Sparkles className="w-4 h-4" /> },
-  { value: 'consumable', label: 'Consumibles', icon: <Wine className="w-4 h-4" /> },
-  { value: 'material', label: 'Materiales', icon: <Package className="w-4 h-4" /> },
-  { value: 'key', label: 'Quest', icon: <Key className="w-4 h-4" /> },
-  { value: 'book', label: 'Libros', icon: <BookOpen className="w-4 h-4" /> },
-  { value: 'tool', label: 'Herramientas', icon: <Wrench className="w-4 h-4" /> },
-  { value: 'treasure', label: 'Tesoros', icon: <Gem className="w-4 h-4" /> },
-  { value: 'clothing', label: 'Ropa', icon: <Shirt className="w-4 h-4" /> },
-  { value: 'misc', label: 'Otros', icon: <Package className="w-4 h-4" /> },
-];
+function ActiveEffectBadge({ effect, onRemove }: { effect: ActiveConsumableEffect; onRemove: () => void }) {
+  return (
+    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 text-xs">
+      <Clock className="w-3 h-3 text-amber-500 shrink-0" />
+      <span className="truncate font-medium text-amber-600 dark:text-amber-400">
+        {effect.itemName}
+      </span>
+      <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4 shrink-0">
+        {effect.remainingTurns}/{effect.totalTurns}
+      </Badge>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-4 w-4 p-0 shrink-0"
+        onClick={onRemove}
+      >
+        <X className="w-3 h-3" />
+      </Button>
+    </div>
+  );
+}
 
-const SORT_OPTIONS = [
-  { value: 'recent', label: 'Más recientes' },
-  { value: 'name', label: 'Nombre' },
-  { value: 'rarity', label: 'Rareza' },
-  { value: 'category', label: 'Categoría' },
-  { value: 'value', label: 'Valor' },
-];
+// ============================================
+// Shop Item Row
+// ============================================
+
+function ShopItemRow({
+  item,
+  canAfford,
+  currencyIcon,
+  onBuy,
+}: {
+  item: Item;
+  canAfford: boolean;
+  currencyIcon: string;
+  onBuy: () => void;
+}) {
+  const rarityColor = getRarityColor(item.rarity);
+  const typeIcon = item.icon || getItemTypeIcon(item.type || 'consumable');
+  const typeLabel = getItemTypeLabel(item.type || 'consumable');
+
+  return (
+    <div className={cn('flex items-center gap-2.5 p-2.5 rounded-lg border', getRarityBgColor(item.rarity))}>
+      <div className={cn('w-8 h-8 rounded-md flex items-center justify-center text-base shrink-0', getRarityBgColor(item.rarity))}>
+        {typeIcon}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={cn('font-medium text-sm truncate', rarityColor)}>{item.name}</p>
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span>{typeLabel}</span>
+          {item.description && (
+            <>
+              <span>•</span>
+              <span className="truncate">{item.description}</span>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1 text-sm font-medium">
+          <span>{item.price}</span>
+          <span>{currencyIcon}</span>
+        </div>
+        <Button
+          size="sm"
+          className="h-7 px-2 text-xs"
+          disabled={!canAfford}
+          onClick={onBuy}
+        >
+          <ShoppingCart className="w-3.5 h-3.5 mr-1" />
+          Comprar
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 // ============================================
 // Inventory Panel Component
@@ -74,258 +141,425 @@ const SORT_OPTIONS = [
 export function InventoryPanel() {
   const {
     items,
-    containers,
-    currencies,
+    activeConsumableEffects,
     inventorySettings,
+    inventoryNotifications,
+    pendingEquipAction,
     addItem,
     updateItem,
     deleteItem,
-    addToInventory,
-    removeFromInventory,
-    setInventorySettings,
-    sortInventory,
-    addCurrency,
-    updateCurrency,
-    deleteCurrency,
+    getActivePersona,
+    addToPersona,
+    removeFromPersona,
+    getPersonaItems,
+    equipItem,
+    unequipItem,
+    getEquippedItems,
+    useConsumable: consumeItem,
+    removeEffect,
     adjustCurrency,
+    canAfford,
+    purchaseItem,
+    getShopItems,
+    searchItems,
+    getItemsByType,
+    setInventorySettings,
+    addInventoryNotification,
+    clearInventoryNotifications,
+    requestEquipItem,
+    requestUseItem,
+    clearPendingEquipAction,
+    executeEquipWithTarget,
+    executeUseWithTarget,
   } = useTavernStore();
-  
+
+  // Characters for target selection
+  const characters = useTavernStore(state => state.characters);
+  const activeSessionId = useTavernStore(state => state.activeSessionId);
+  const sessions = useTavernStore(state => state.sessions);
+  const getGroupById = useTavernStore(state => state.getGroupById);
+  const getCharacterById = useTavernStore(state => state.getCharacterById);
+
   // Local state
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<ItemCategory | 'all'>('all');
-  const [selectedRarity, setSelectedRarity] = useState<ItemRarity | 'all'>('all');
-  const [showEquipped, setShowEquipped] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
-  const [activeTab, setActiveTab] = useState<'inventory' | 'registry' | 'currency' | 'settings'>('inventory');
-  
-  // Get default container entries
-  const defaultContainer = containers.find(c => c.isDefault);
-  const inventoryEntries = defaultContainer?.entries || [];
-  
-  // Filter and sort inventory
-  const filteredInventory = useMemo(() => {
-    let result = inventoryEntries.map(entry => {
-      const item = items.find(i => i.id === entry.itemId);
-      return { entry, item };
-    }).filter(({ item }) => item !== undefined) as Array<{ entry: InventoryEntry; item: Item }>;
-    
-    // Apply search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(({ item }) =>
-        item.name.toLowerCase().includes(query) ||
-        item.description.toLowerCase().includes(query) ||
-        item.tags?.some(tag => tag.toLowerCase().includes(query))
-      );
-    }
-    
-    // Apply category filter
-    if (selectedCategory !== 'all') {
-      result = result.filter(({ item }) => item.category === selectedCategory);
-    }
-    
-    // Apply rarity filter
-    if (selectedRarity !== 'all') {
-      result = result.filter(({ item }) => item.rarity === selectedRarity);
-    }
-    
-    // Apply equipped filter
-    if (!showEquipped) {
-      result = result.filter(({ entry }) => !entry.equipped);
-    }
-    
-    // Sort
-    switch (inventorySettings.sortMode) {
-      case 'name':
-        result.sort((a, b) => a.item.name.localeCompare(b.item.name));
-        break;
-      case 'rarity': {
-        const rarityOrder: ItemRarity[] = ['legendary', 'unique', 'epic', 'rare', 'uncommon', 'common', 'cursed'];
-        result.sort((a, b) => rarityOrder.indexOf(a.item.rarity) - rarityOrder.indexOf(b.item.rarity));
-        break;
+  const [activeTab, setActiveTab] = useState<string>('inventory');
+  const [targetPickerOpen, setTargetPickerOpen] = useState(false);
+  const [targetPickerAction, setTargetPickerAction] = useState<'equip' | 'use' | null>(null);
+  const [targetPickerItemId, setTargetPickerItemId] = useState<string>('');
+  const [selectedTargetId, setSelectedTargetId] = useState<string>('__user__');
+
+  // Build target options from active session characters
+  const targetOptions = useMemo(() => {
+    const options = [{ value: '__user__', label: 'Persona (usuario)', icon: '👤' }];
+
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    if (activeSession) {
+      const sessionCharIds: string[] = [];
+
+      if (activeSession.groupId) {
+        const group = getGroupById?.(activeSession.groupId);
+        if (group?.members) {
+          for (const member of group.members) {
+            sessionCharIds.push(member.characterId);
+          }
+        }
+      } else if (activeSession.characterId) {
+        sessionCharIds.push(activeSession.characterId);
       }
-      case 'category':
-        result.sort((a, b) => a.item.category.localeCompare(b.item.category));
-        break;
-      case 'value':
-        result.sort((a, b) => (b.item.value ?? 0) - (a.item.value ?? 0));
-        break;
-      case 'recent':
-      default:
-        result.sort((a, b) => new Date(b.entry.updatedAt).getTime() - new Date(a.entry.updatedAt).getTime());
+
+      for (const charId of sessionCharIds) {
+        const char = getCharacterById?.(charId);
+        if (char) {
+          options.push({ value: char.id, label: char.name || 'Personaje', icon: '🎭' });
+        }
+      }
+    } else {
+      for (const char of characters) {
+        options.push({ value: char.id, label: char.name || 'Personaje', icon: '🎭' });
+      }
     }
-    
-    return result;
-  }, [inventoryEntries, items, searchQuery, selectedCategory, selectedRarity, showEquipped, inventorySettings.sortMode]);
-  
-  // Filter items registry
-  const filteredItems = useMemo(() => {
+
+    return options;
+  }, [characters, activeSessionId, sessions, getGroupById, getCharacterById]);
+
+  // Check if an item needs a target picker dialog
+  const itemNeedsTargetPicker = useCallback((item: Item): boolean => {
+    if (!item.attributeEffects || item.attributeEffects.length === 0) return false;
+    // Show picker if any effect targets a character (not just __user__)
+    return item.attributeEffects.some(e => e.targetId !== '__user__');
+  }, []);
+
+  // Get active persona
+  const persona = getActivePersona();
+  const personaId = persona?.id ?? '';
+
+  // Persona items
+  const personaItems = useMemo(
+    () => (personaId ? getPersonaItems(personaId) : []),
+    [personaId, getPersonaItems, persona?.inventoryItems]
+  );
+
+  const equippedItems = useMemo(
+    () => (personaId ? getEquippedItems(personaId) : []),
+    [personaId, getEquippedItems, persona?.inventoryItems]
+  );
+
+  // Active effects for this persona
+  const activeEffects = useMemo(
+    () => activeConsumableEffects.filter(e => e.personaId === personaId),
+    [activeConsumableEffects, personaId]
+  );
+
+  // Shop items
+  const shopItems = useMemo(() => getShopItems(), [items]);
+
+  // Filter persona items by search
+  const filteredPersonaItems = useMemo(() => {
+    if (!searchQuery) return personaItems;
+    const q = searchQuery.toLowerCase();
+    return personaItems.filter(({ item }) =>
+      item.name.toLowerCase().includes(q) ||
+      item.description.toLowerCase().includes(q) ||
+      item.tags?.some(t => t.toLowerCase().includes(q))
+    );
+  }, [personaItems, searchQuery]);
+
+  // Filter registry items by search
+  const filteredRegistryItems = useMemo(() => {
     let result = items;
-    
     if (searchQuery) {
-      const query = searchQuery.toLowerCase();
+      const q = searchQuery.toLowerCase();
       result = result.filter(item =>
-        item.name.toLowerCase().includes(query) ||
-        item.description.toLowerCase().includes(query)
+        item.name.toLowerCase().includes(q) ||
+        item.description.toLowerCase().includes(q) ||
+        item.tags?.some(t => t.toLowerCase().includes(q))
       );
     }
-    
-    if (selectedCategory !== 'all') {
-      result = result.filter(item => item.category === selectedCategory);
-    }
-    
-    if (selectedRarity !== 'all') {
-      result = result.filter(item => item.rarity === selectedRarity);
-    }
-    
     return result;
-  }, [items, searchQuery, selectedCategory, selectedRarity]);
-  
+  }, [items, searchQuery]);
+
+  // Filter shop items by search
+  const filteredShopItems = useMemo(() => {
+    if (!searchQuery) return shopItems;
+    const q = searchQuery.toLowerCase();
+    return shopItems.filter(item =>
+      item.name.toLowerCase().includes(q) ||
+      item.description.toLowerCase().includes(q)
+    );
+  }, [shopItems, searchQuery]);
+
+  // Stats
+  const totalItems = personaItems.reduce((sum, { entry }) => sum + entry.quantity, 0);
+  const equippedCount = equippedItems.length;
+  const unreadNotifications = inventoryNotifications.filter(n => !n.read).length;
+
   // Handlers
-  const handleCreateItem = (itemData: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const newItem: Item = {
-      ...itemData,
-      id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    addItem(newItem);
+  const handleCreateItem = (itemData: Item) => {
+    addItem(itemData);
     setEditingItem(null);
   };
-  
-  const handleUpdateItem = (itemData: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>) => {
+
+  const handleUpdateItem = (itemData: Item) => {
     if (!editingItem) return;
     updateItem(editingItem.id, itemData);
     setEditingItem(null);
   };
-  
+
   const handleDeleteItem = () => {
     if (!editingItem) return;
     deleteItem(editingItem.id);
     setEditingItem(null);
     setEditorOpen(false);
   };
-  
-  const handleAddToInventory = (item: Item) => {
-    addToInventory(item.id, 1);
+
+  const handleUseConsumable = (itemId: string) => {
+    if (!personaId) return;
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+
+    if (itemNeedsTargetPicker(item)) {
+      // Show target picker dialog
+      setTargetPickerAction('use');
+      setTargetPickerItemId(itemId);
+      setSelectedTargetId(item.attributeEffects?.[0]?.targetId || '__user__');
+      setTargetPickerOpen(true);
+    } else {
+      consumeItem(personaId, itemId);
+    }
   };
-  
-  // Calculate stats
-  const totalItems = inventoryEntries.reduce((sum, e) => sum + e.quantity, 0);
-  const equippedCount = inventoryEntries.filter(e => e.equipped).length;
-  
+
+  const handleEquipItem = (itemId: string) => {
+    if (!personaId) return;
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+
+    if (itemNeedsTargetPicker(item)) {
+      // Show target picker dialog
+      setTargetPickerAction('equip');
+      setTargetPickerItemId(itemId);
+      setSelectedTargetId(item.attributeEffects?.[0]?.targetId || '__user__');
+      setTargetPickerOpen(true);
+    } else {
+      equipItem(personaId, itemId);
+    }
+  };
+
+  const handleTargetPickerConfirm = () => {
+    if (!personaId || !targetPickerAction) return;
+    if (targetPickerAction === 'equip') {
+      executeEquipWithTarget(personaId, targetPickerItemId, selectedTargetId);
+    } else {
+      executeUseWithTarget(personaId, targetPickerItemId, selectedTargetId);
+    }
+    setTargetPickerOpen(false);
+    setTargetPickerAction(null);
+    setTargetPickerItemId('');
+  };
+
+  const handleTargetPickerCancel = () => {
+    setTargetPickerOpen(false);
+    setTargetPickerAction(null);
+    setTargetPickerItemId('');
+    clearPendingEquipAction();
+  };
+
+  const handleUnequipItem = (itemId: string) => {
+    if (!personaId) return;
+    unequipItem(personaId, itemId);
+  };
+
+  const handleRemoveFromPersona = (itemId: string) => {
+    if (!personaId) return;
+    removeFromPersona(personaId, itemId);
+  };
+
+  const handleBuyItem = (itemId: string) => {
+    if (!personaId) return;
+    purchaseItem(personaId, itemId);
+  };
+
+  const handleAdjustCurrency = (amount: number) => {
+    if (!personaId) return;
+    adjustCurrency(personaId, amount);
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between p-3 border-b shrink-0">
+        <div className="flex items-center gap-2">
           <Package className="w-5 h-5 text-muted-foreground" />
           <h2 className="text-lg font-semibold">Inventario</h2>
-          <Badge variant="secondary">{totalItems} items</Badge>
+          <Badge variant="secondary" className="text-xs">{totalItems} items</Badge>
           {equippedCount > 0 && (
-            <Badge variant="outline">{equippedCount} equipados</Badge>
+            <Badge variant="outline" className="text-xs">
+              <Shield className="w-3 h-3 mr-1" />
+              {equippedCount}
+            </Badge>
           )}
         </div>
-        <Button size="sm" onClick={() => { setEditingItem(null); setEditorOpen(true); }}>
+        <Button
+          size="sm"
+          onClick={() => { setEditingItem(null); setEditorOpen(true); }}
+        >
           <Plus className="w-4 h-4 mr-1" />
-          Nuevo Item
+          Nuevo
         </Button>
       </div>
-      
+
+      {/* Currency Bar */}
+      {persona && (
+        <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">{persona.currencyIcon || '💰'}</span>
+            <span className="font-bold text-lg">{persona.currency ?? 0}</span>
+            <span className="text-sm text-muted-foreground">{persona.currencyName || 'Divisa'}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 text-xs"
+              onClick={() => handleAdjustCurrency(-10)}
+              title="-10"
+            >
+              −
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 text-xs"
+              onClick={() => handleAdjustCurrency(-1)}
+              title="-1"
+            >
+              −1
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 text-xs"
+              onClick={() => handleAdjustCurrency(1)}
+              title="+1"
+            >
+              +1
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 text-xs"
+              onClick={() => handleAdjustCurrency(10)}
+              title="+10"
+            >
+              +
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Active Effects */}
+      {activeEffects.length > 0 && (
+        <div className="px-3 py-2 border-b bg-amber-500/5 shrink-0">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+              Efectos Activos
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {activeEffects.map(effect => (
+              <ActiveEffectBadge
+                key={effect.id}
+                effect={effect}
+                onRemove={() => removeEffect(effect.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="flex-1 flex flex-col">
-        <div className="px-4 pt-2 border-b">
-          <TabsList>
-            <TabsTrigger value="inventory">Inventario</TabsTrigger>
-            <TabsTrigger value="registry">Registro</TabsTrigger>
-            <TabsTrigger value="currency">Divisa</TabsTrigger>
-            <TabsTrigger value="settings">Config</TabsTrigger>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+        <div className="px-3 pt-2 border-b shrink-0">
+          <TabsList className="w-full">
+            <TabsTrigger value="inventory" className="flex-1 text-xs">
+              Inventario
+            </TabsTrigger>
+            <TabsTrigger value="registry" className="flex-1 text-xs">
+              Registro
+            </TabsTrigger>
+            <TabsTrigger value="shop" className="flex-1 text-xs">
+              Tienda
+            </TabsTrigger>
+            <TabsTrigger value="config" className="flex-1 text-xs">
+              Config
+            </TabsTrigger>
           </TabsList>
         </div>
-        
-        {/* Inventory Tab */}
+
+        {/* ===== Inventario Tab ===== */}
         <TabsContent value="inventory" className="flex-1 overflow-hidden m-0">
-          <div className="h-full flex flex-col p-4 gap-4">
-            {/* Filters */}
-            <div className="flex flex-wrap gap-2">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Buscar items..."
-                  className="pl-9"
-                />
-              </div>
-              
-              <Select value={selectedCategory} onValueChange={(v) => setSelectedCategory(v as typeof selectedCategory)}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map(cat => (
-                    <SelectItem key={cat.value} value={cat.value}>
-                      <div className="flex items-center gap-2">
-                        {cat.icon}
-                        {cat.label}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              <Select value={inventorySettings.sortMode} onValueChange={(v) => {
-                setInventorySettings({ sortMode: v as InventorySettings['sortMode'] });
-              }}>
-                <SelectTrigger className="w-[140px]">
-                  <SortAsc className="w-4 h-4 mr-1" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SORT_OPTIONS.map(opt => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="h-full flex flex-col p-3 gap-3">
+            {/* Search */}
+            <div className="relative shrink-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar items..."
+                className="pl-9"
+              />
             </div>
-            
+
             {/* Items List */}
             <ScrollArea className="flex-1">
-              {filteredInventory.length === 0 ? (
+              {filteredPersonaItems.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <Package className="w-16 h-16 mx-auto mb-3 opacity-50" />
                   <p className="text-lg font-medium">Inventario vacío</p>
                   <p className="text-sm mt-1">Los items aparecerán aquí cuando los obtengas</p>
                 </div>
               ) : (
-                <div className="grid gap-2 pr-4">
-                  {filteredInventory.map(({ entry, item }) => (
-                    <ItemCard
-                      key={entry.id}
-                      item={item}
-                      entry={entry}
-                      showQuantity
-                      onEdit={() => { setEditingItem(item); setEditorOpen(true); }}
-                    />
-                  ))}
+                <div className="grid gap-2 pr-3">
+                  <AnimatePresence mode="popLayout">
+                    {filteredPersonaItems.map(({ entry, item }) => (
+                      <motion.div
+                        key={entry.itemId}
+                        layout
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, x: -20 }}
+                      >
+                        <ItemCard
+                          item={item}
+                          entry={entry}
+                          showQuantity
+                          showActions
+                          onUse={item.type === 'consumable' ? () => handleUseConsumable(item.id) : undefined}
+                          onEquip={item.type === 'equipment' && !entry.equipped ? () => handleEquipItem(item.id) : undefined}
+                          onUnequip={item.type === 'equipment' && entry.equipped ? () => handleUnequipItem(item.id) : undefined}
+                          onRemove={() => handleRemoveFromPersona(item.id)}
+                          onEdit={() => { setEditingItem(item); setEditorOpen(true); }}
+                        />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
                 </div>
               )}
             </ScrollArea>
           </div>
         </TabsContent>
-        
-        {/* Registry Tab */}
+
+        {/* ===== Registro Tab ===== */}
         <TabsContent value="registry" className="flex-1 overflow-hidden m-0">
-          <div className="h-full flex flex-col p-4 gap-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <BookOpen className="w-4 h-4" />
-              <span>Registro de items definidos ({filteredItems.length})</span>
+          <div className="h-full flex flex-col p-3 gap-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground shrink-0">
+              <Package className="w-4 h-4" />
+              <span>Items definidos ({filteredRegistryItems.length})</span>
             </div>
-            
-            <div className="relative">
+
+            <div className="relative shrink-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 value={searchQuery}
@@ -334,39 +568,67 @@ export function InventoryPanel() {
                 className="pl-9"
               />
             </div>
-            
+
             <ScrollArea className="flex-1">
-              {filteredItems.length === 0 ? (
+              {filteredRegistryItems.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <Package className="w-16 h-16 mx-auto mb-3 opacity-50" />
                   <p className="text-lg font-medium">Registro vacío</p>
                   <p className="text-sm mt-1">Crea items para el sistema de inventario</p>
                 </div>
               ) : (
-                <div className="grid gap-2 pr-4">
-                  {filteredItems.map(item => {
-                    const inInventory = inventoryEntries.some(e => e.itemId === item.id);
+                <div className="grid gap-2 pr-3">
+                  {filteredRegistryItems.map(item => {
+                    const inInventory = persona?.inventoryItems?.some(e => e.itemId === item.id);
+                    const typeIcon = item.icon || getItemTypeIcon(item.type || 'consumable');
+                    const typeLabel = getItemTypeLabel(item.type || 'consumable');
+
                     return (
                       <div
                         key={item.id}
-                        className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                        className={cn(
+                          'flex items-center gap-2.5 p-2.5 rounded-lg border',
+                          getRarityBgColor(item.rarity)
+                        )}
                       >
-                        <span className="text-xl">{item.icon || getCategoryIcon(item.category)}</span>
+                        <div className={cn('w-8 h-8 rounded-md flex items-center justify-center text-base shrink-0', getRarityBgColor(item.rarity))}>
+                          {typeIcon}
+                        </div>
                         <div className="flex-1 min-w-0">
-                          <p className={`font-medium truncate ${getRarityColor(item.rarity)}`}>
+                          <p className={cn('font-medium text-sm truncate', getRarityColor(item.rarity))}>
                             {item.name}
                           </p>
-                          <p className="text-xs text-muted-foreground capitalize">
-                            {item.category} • {item.rarity}
-                          </p>
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
+                              {typeLabel}
+                            </Badge>
+                            <span>{item.rarity}</span>
+                            {inInventory && (
+                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                                En inventario
+                              </Badge>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1">
-                          {!inInventory && (
-                            <Button variant="ghost" size="sm" onClick={() => handleAddToInventory(item)}>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {personaId && !inInventory && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => addToPersona(personaId, item.id, 1)}
+                              title="Agregar al inventario"
+                            >
                               <Plus className="w-4 h-4" />
                             </Button>
                           )}
-                          <Button variant="ghost" size="sm" onClick={() => { setEditingItem(item); setEditorOpen(true); }}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => { setEditingItem(item); setEditorOpen(true); }}
+                            title="Editar item"
+                          >
                             <Settings2 className="w-4 h-4" />
                           </Button>
                         </div>
@@ -378,86 +640,87 @@ export function InventoryPanel() {
             </ScrollArea>
           </div>
         </TabsContent>
-        
-        {/* Currency Tab */}
-        <TabsContent value="currency" className="flex-1 overflow-hidden m-0">
-          <div className="h-full flex flex-col p-4 gap-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Divisas</h3>
-              <Button size="sm" onClick={() => addCurrency({ name: 'Nueva Divisa', amount: 0 })}>
-                <Plus className="w-4 h-4 mr-1" />
-                Agregar
-              </Button>
-            </div>
-            
-            {currencies.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <Gem className="w-16 h-16 mx-auto mb-3 opacity-50" />
-                <p className="text-lg font-medium">Sin divisas</p>
-                <p className="text-sm mt-1">Añade divisas como Oro, Plata, Gemas, etc.</p>
+
+        {/* ===== Tienda Tab ===== */}
+        <TabsContent value="shop" className="flex-1 overflow-hidden m-0">
+          <div className="h-full flex flex-col p-3 gap-3">
+            {/* Currency display */}
+            {persona && (
+              <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 shrink-0">
+                <Coins className="w-5 h-5 text-amber-500" />
+                <span className="font-bold">{persona.currency ?? 0}</span>
+                <span className="text-sm text-muted-foreground">{persona.currencyName || 'Divisa'}</span>
               </div>
-            ) : (
-              <ScrollArea className="flex-1">
-                <div className="space-y-2 pr-4">
-                  {currencies.map(currency => (
-                    <div
-                      key={currency.id}
-                      className="flex items-center gap-3 p-3 rounded-lg bg-muted/50"
-                    >
-                      <span className="text-xl">{currency.icon || '💰'}</span>
-                      <div className="flex-1">
-                        <p className="font-medium">{currency.name}</p>
-                        <p className="text-lg font-bold">{currency.amount}</p>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => adjustCurrency(currency.id, -10)}>
-                          -10
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => adjustCurrency(currency.id, 10)}>
-                          +10
-                        </Button>
-                      </div>
-                    </div>
+            )}
+
+            <div className="relative shrink-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar en la tienda..."
+                className="pl-9"
+              />
+            </div>
+
+            <ScrollArea className="flex-1">
+              {filteredShopItems.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <ShoppingCart className="w-16 h-16 mx-auto mb-3 opacity-50" />
+                  <p className="text-lg font-medium">Tienda vacía</p>
+                  <p className="text-sm mt-1">Define precios en los items para que aparezcan aquí</p>
+                </div>
+              ) : (
+                <div className="grid gap-2 pr-3">
+                  {filteredShopItems.map(item => (
+                    <ShopItemRow
+                      key={item.id}
+                      item={item}
+                      canAfford={personaId ? canAfford(personaId, item.price ?? 0) : false}
+                      currencyIcon={persona?.currencyIcon ?? '💰'}
+                      onBuy={() => handleBuyItem(item.id)}
+                    />
                   ))}
                 </div>
-              </ScrollArea>
-            )}
+              )}
+            </ScrollArea>
           </div>
         </TabsContent>
-        
-        {/* Settings Tab */}
-        <TabsContent value="settings" className="flex-1 overflow-hidden m-0">
-          <ScrollArea className="h-full p-4">
-            <div className="space-y-6">
+
+        {/* ===== Config Tab ===== */}
+        <TabsContent value="config" className="flex-1 overflow-hidden m-0">
+          <ScrollArea className="h-full p-3">
+            <div className="space-y-6 pr-3">
+              {/* General Settings */}
               <div className="space-y-4">
-                <h3 className="font-semibold">Detección Automática</h3>
-                
+                <h3 className="font-semibold text-sm">General</h3>
+
                 <div className="flex items-center justify-between">
                   <div>
-                    <Label>Habilitar detección</Label>
+                    <Label>Sistema habilitado</Label>
                     <p className="text-xs text-muted-foreground">
-                      Detectar items en mensajes automáticamente
+                      Activar el sistema de inventario
                     </p>
                   </div>
                   <Switch
-                    checked={inventorySettings.autoDetect}
-                    onCheckedChange={(v) => setInventorySettings({ autoDetect: v })}
+                    checked={inventorySettings.enabled}
+                    onCheckedChange={(v) => setInventorySettings({ enabled: v })}
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <div>
-                    <Label>Detectar en tiempo real</Label>
+                    <Label>Mostrar en chat</Label>
                     <p className="text-xs text-muted-foreground">
-                      Detectar durante el streaming del mensaje
+                      Mostrar mini HUD en el área de chat
                     </p>
                   </div>
                   <Switch
-                    checked={inventorySettings.realtimeEnabled}
-                    onCheckedChange={(v) => setInventorySettings({ realtimeEnabled: v })}
+                    checked={inventorySettings.showInChat}
+                    onCheckedChange={(v) => setInventorySettings({ showInChat: v })}
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <div>
                     <Label>Notificaciones</Label>
@@ -470,89 +733,137 @@ export function InventoryPanel() {
                     onCheckedChange={(v) => setInventorySettings({ showNotifications: v })}
                   />
                 </div>
-              </div>
-              
-              <Separator />
-              
-              <div className="space-y-4">
-                <h3 className="font-semibold">Visualización</h3>
-                
+
                 <div className="flex items-center justify-between">
                   <div>
-                    <Label>Colores por rareza</Label>
+                    <Label>Detección automática</Label>
                     <p className="text-xs text-muted-foreground">
-                      Colorear items según su rareza
+                      Detectar items en mensajes automáticamente
                     </p>
                   </div>
                   <Switch
-                    checked={inventorySettings.showRarityColors}
-                    onCheckedChange={(v) => setInventorySettings({ showRarityColors: v })}
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Vista compacta</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Mostrar items en formato compacto
-                    </p>
-                  </div>
-                  <Switch
-                    checked={inventorySettings.compactView}
-                    onCheckedChange={(v) => setInventorySettings({ compactView: v })}
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Mostrar valor</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Mostrar valor de los items
-                    </p>
-                  </div>
-                  <Switch
-                    checked={inventorySettings.showItemValue}
-                    onCheckedChange={(v) => setInventorySettings({ showItemValue: v })}
+                    checked={inventorySettings.autoDetect}
+                    onCheckedChange={(v) => setInventorySettings({ autoDetect: v })}
                   />
                 </div>
               </div>
-              
+
               <Separator />
-              
+
+              {/* Prompt Settings */}
               <div className="space-y-4">
-                <h3 className="font-semibold">Equipo</h3>
-                
+                <h3 className="font-semibold text-sm">Integración con Prompt</h3>
+
                 <div className="flex items-center justify-between">
                   <div>
-                    <Label>Sistema de equipo</Label>
+                    <Label>Incluir en prompt</Label>
                     <p className="text-xs text-muted-foreground">
-                      Permitir equipar items
+                      Agregar inventario al prompt del LLM
                     </p>
                   </div>
                   <Switch
-                    checked={inventorySettings.enableEquipment}
-                    onCheckedChange={(v) => setInventorySettings({ enableEquipment: v })}
+                    checked={inventorySettings.promptInclude}
+                    onCheckedChange={(v) => setInventorySettings({ promptInclude: v })}
                   />
                 </div>
-                
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Mostrar equipados</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Mostrar items equipados en el inventario
-                    </p>
+
+                <div className="space-y-2">
+                  <Label>Plantilla del prompt</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Variables: {'{{activeItems}}'}, {'{{activeEffects}}'}, {'{{equippedItems}}'}, {'{{currency}}'}
+                  </p>
+                  <Textarea
+                    value={inventorySettings.promptTemplate}
+                    onChange={(e) => setInventorySettings({ promptTemplate: e.target.value })}
+                    rows={6}
+                    className="font-mono text-xs"
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Currency Settings */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-sm">Divisa</h3>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Nombre</Label>
+                    <Input
+                      value={inventorySettings.currencyName}
+                      onChange={(e) => setInventorySettings({ currencyName: e.target.value })}
+                      placeholder="Divisa"
+                    />
                   </div>
-                  <Switch
-                    checked={inventorySettings.showEquippedInInventory}
-                    onCheckedChange={(v) => setInventorySettings({ showEquippedInInventory: v })}
-                  />
+                  <div className="space-y-2">
+                    <Label>Icono</Label>
+                    <Input
+                      value={inventorySettings.currencyIcon}
+                      onChange={(e) => setInventorySettings({ currencyIcon: e.target.value })}
+                      placeholder="💰"
+                      className="w-20"
+                      maxLength={4}
+                    />
+                  </div>
                 </div>
+              </div>
+
+              <Separator />
+
+              {/* Notifications */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-sm">
+                    Notificaciones
+                    {unreadNotifications > 0 && (
+                      <Badge variant="secondary" className="ml-2 text-[10px]">
+                        {unreadNotifications}
+                      </Badge>
+                    )}
+                  </h3>
+                  {inventoryNotifications.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={clearInventoryNotifications}
+                    >
+                      <Trash2 className="w-3 h-3 mr-1" />
+                      Limpiar
+                    </Button>
+                  )}
+                </div>
+
+                {inventoryNotifications.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Sin notificaciones
+                  </p>
+                ) : (
+                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                    {inventoryNotifications.slice(0, 20).map(notif => (
+                      <div
+                        key={notif.id}
+                        className={cn(
+                          'text-xs p-2 rounded-md',
+                          notif.read ? 'text-muted-foreground' : 'bg-muted/50 font-medium'
+                        )}
+                      >
+                        <span className="text-muted-foreground">
+                          {new Date(notif.timestamp).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {' '}
+                        {notif.message}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </ScrollArea>
         </TabsContent>
       </Tabs>
-      
+
       {/* Item Editor Dialog */}
       <ItemEditor
         open={editorOpen}
@@ -561,6 +872,62 @@ export function InventoryPanel() {
         onSave={editingItem ? handleUpdateItem : handleCreateItem}
         onDelete={editingItem ? handleDeleteItem : undefined}
       />
+
+      {/* Target Picker Dialog */}
+      <Dialog open={targetPickerOpen} onOpenChange={(open) => { if (!open) handleTargetPickerCancel(); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5" />
+              Seleccionar Objetivo
+            </DialogTitle>
+            <DialogDescription>
+              {targetPickerAction === 'equip'
+                ? 'Elige quién recibe los efectos al equipar este item'
+                : 'Elige quién recibe los efectos al usar este consumible'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 py-2">
+            {targetOptions.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                className={cn(
+                  'w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors',
+                  selectedTargetId === opt.value
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border hover:bg-muted/50'
+                )}
+                onClick={() => setSelectedTargetId(opt.value)}
+              >
+                <span className="text-lg shrink-0">{opt.icon}</span>
+                <span className="font-medium text-sm">{opt.label}</span>
+                {selectedTargetId === opt.value && (
+                  <Badge variant="default" className="ml-auto text-[10px]">
+                    Seleccionado
+                  </Badge>
+                )}
+              </button>
+            ))}
+
+            {targetOptions.length === 1 && (
+              <p className="text-xs text-muted-foreground text-center py-2">
+                No hay personajes en la sesión actual. Los efectos se aplicarán a la persona.
+              </p>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t">
+            <Button variant="outline" onClick={handleTargetPickerCancel}>
+              Cancelar
+            </Button>
+            <Button onClick={handleTargetPickerConfirm}>
+              {targetPickerAction === 'equip' ? 'Equipar' : 'Usar'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

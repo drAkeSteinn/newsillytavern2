@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
         character_id: characterId,
         session_id: sessionId || undefined,
         manual: true,
+        manually_created: true,
       },
     });
 

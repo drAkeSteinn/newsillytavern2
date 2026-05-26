@@ -8,7 +8,8 @@
 // - All sections are processed consistently
 
 import { NextRequest } from 'next/server';
-import type { ChatMessage, CharacterCard, CharacterGroup, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestTemplate, SessionQuestInstance, SessionSummary, SolicitudInstance, CharacterStatsConfig, CharacterMemory } from '@/types';
+import type { ChatMessage, CharacterCard, CharacterGroup, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestTemplate, SessionQuestInstance, SessionSummary, SolicitudInstance, CharacterStatsConfig, CharacterMemory, InventoryV2Settings } from '@/types';
+
 import type { LorebookInjectionPlan, LorebookChatInjection } from '@/lib/lorebook';
 import { DEFAULT_QUEST_SETTINGS } from '@/types';
 import {
@@ -29,11 +30,13 @@ import {
   streamTextGenerationWebUI,
   buildLorebookSectionForPrompt,
   buildHUDContextSection,
+  buildInventorySection,
   injectHUDContextIntoMessages,
   injectHUDContextIntoSections,
   resolveAllKeys,
   buildKeyResolutionContext,
   resolveStats,
+  type InventoryPromptData,
 } from '@/lib/llm';
 import {
   validateRequest,
@@ -41,6 +44,7 @@ import {
 } from '@/lib/validations';
 import {
   selectContextMessages,
+  estimateContentTokens,
   type ContextConfig
 } from '@/lib/context-manager';
 import { detectMentions } from '@/lib/mention-detector';
@@ -533,6 +537,9 @@ export async function POST(request: NextRequest) {
       disabledTools: body.toolsSettings?.disabledTools || [],
     };
 
+    // Extract inventory data for Inventory V2 system
+    const inventoryData: InventoryPromptData | undefined = body.inventoryData;
+
     // Cast sessionStats to proper type
     const typedSessionStats = sessionStats as SessionStats | undefined;
 
@@ -719,6 +726,11 @@ export async function POST(request: NextRequest) {
               }
             }
 
+            // Extract last assistant message for bidirectional search
+            const lastAssistantMsg = messages
+              .filter(m => !m.isDeleted && m.role === 'assistant')
+              .pop()?.content;
+
             const embeddingsResult = await retrieveEmbeddingsContext(
               groupEnrichedQuery,
               responder.id,
@@ -729,6 +741,7 @@ export async function POST(request: NextRequest) {
                 content: e.content,
                 importance: e.importance,
               })), // for deduplication with Character Memory
+              lastAssistantMsg, // bidirectional search with last assistant message
             );
             
             if (embeddingsResult.found) {
@@ -781,23 +794,27 @@ export async function POST(request: NextRequest) {
               questTemplates, // Pass quest templates for {{activeQuests}} key resolution
               sessionQuests,  // Pass session quests for {{activeQuests}} key resolution
               questSettings,   // Pass quest settings for {{activeQuests}} key resolution
-              lorebookAttributeKeys
+              lorebookAttributeKeys,
+              inventoryData     // Pass inventory data for Inventory V2 section
             );
 
             // Build key resolution context for this character
-            // Includes lorebookAttributeKeys so {{injectionKey}} resolves in HUD, post-history, etc.
+            // Session stats now already include item effects (applied directly to SessionStats
+            // when items are activated/equipped in the store). No need for virtual overlay.
+            const effectiveGroupSessionStats = typedSessionStats;
+
             let groupPersonaResolvedStats: import('@/types').ResolvedStats | null = null;
-            if (persona?.statsConfig?.enabled && typedSessionStats) {
+            if (persona?.statsConfig?.enabled && effectiveGroupSessionStats) {
               groupPersonaResolvedStats = resolveStats({
                 characterId: '__user__',
                 statsConfig: persona.statsConfig,
-                sessionStats: typedSessionStats,
+                sessionStats: effectiveGroupSessionStats,
               });
             }
             const resolvedStats = resolveStats({
               characterId: responder.id,
               statsConfig: responder.statsConfig,
-              sessionStats: typedSessionStats,
+              sessionStats: effectiveGroupSessionStats,
               allCharacters: allCharacters,
               userName: effectiveUserName,
               characterName: responder.name,
@@ -821,7 +838,7 @@ export async function POST(request: NextRequest) {
               effectiveUserName,
               persona,
               resolvedStats,
-              typedSessionStats,  // sessionStats for {{eventos}} key resolution
+              effectiveGroupSessionStats,  // sessionStats (with inventory effects) for {{eventos}} key resolution
               undefined,          // soundTriggers
               undefined,          // soundSettings
               groupPersonaResolvedStats,  // persona resolved stats
@@ -829,7 +846,8 @@ export async function POST(request: NextRequest) {
               sessionQuests,      // session quests for {{activeQuests}}
               questSettings,      // quest settings
               outletSections,     // outlet sections for {{outlet::name}}
-              lorebookAttributeKeys  // lorebook attribute keys for {{injectionKey}}
+              lorebookAttributeKeys,  // lorebook attribute keys for {{injectionKey}}
+              inventoryData       // inventory data for {{inventory}} and {{currency}} key resolution
             );
 
             // Build HUD context section for this character (resolves keys!)
@@ -859,6 +877,22 @@ export async function POST(request: NextRequest) {
               contextParts.push(embeddingsResult.memoryContextString);
             }
             const embeddingsContext = contextParts.length > 0 ? contextParts.join('\n\n') : undefined;
+
+            // Re-evaluate context window with reserved tokens for summary + embeddings
+            // This reduces chat history when summary/embeddings use significant budget
+            const gSummaryTokens = summary?.content ? estimateContentTokens(`[RECUERDOS ANTERIORES]\n${summary.content}`) : 0;
+            const gEmbeddingsTokens = embeddingsContext ? estimateContentTokens(embeddingsContext) : 0;
+            const gReservedTokens = gSummaryTokens + gEmbeddingsTokens;
+            
+            let groupContextWindow = contextWindow;
+            if (gReservedTokens > 200) {
+              const adjustedGroupConfig: Partial<ContextConfig> = {
+                ...contextConfig,
+                reservedTokens: gReservedTokens,
+              };
+              groupContextWindow = selectContextMessages(messages, llmConfig, adjustedGroupConfig);
+              console.log(`[Group Context Budget] Reserved ${gReservedTokens} tokens (summary: ${gSummaryTokens}, embeddings: ${gEmbeddingsTokens}). Chat messages: ${contextWindow.messages.length} → ${groupContextWindow.messages.length}`);
+            }
 
             // Build the final system prompt (quest content resolved via {{activeQuests}} key)
             let finalSystemPrompt = systemPrompt;
@@ -905,7 +939,7 @@ export async function POST(request: NextRequest) {
             }));
 
             // Check if the last message is already the user's current message
-            const lastMessage = contextWindow.messages[contextWindow.messages.length - 1];
+            const lastMessage = groupContextWindow.messages[groupContextWindow.messages.length - 1];
             const isLastMessageCurrentUser = lastMessage?.role === 'user' &&
               lastMessage?.content === sanitizedMessage;
 
@@ -913,7 +947,7 @@ export async function POST(request: NextRequest) {
             const summaryMessage = summary ? {
               id: 'summary-' + Date.now(),
               role: 'assistant' as const,
-              content: `[Previous Conversation Summary]\n${summary.content}`,
+              content: `[RECUERDOS ANTERIORES]\n${summary.content}`,
               characterId: responder.id,
               isDeleted: false,
               timestamp: summary.createdAt,
@@ -923,8 +957,8 @@ export async function POST(request: NextRequest) {
 
             // Build messages: summary (if exists) + context window messages + user message
             let baseMessages = isLastMessageCurrentUser
-              ? contextWindow.messages
-              : [...contextWindow.messages, createUserMessage(sanitizedMessage)];
+              ? groupContextWindow.messages
+              : [...groupContextWindow.messages, createUserMessage(sanitizedMessage)];
             
             // Inject summary at the START of chat history
             const messagesForPrompt = summaryMessage 

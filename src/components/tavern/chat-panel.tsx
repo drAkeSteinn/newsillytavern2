@@ -14,6 +14,7 @@ import { useProactiveMessages } from '@/hooks/use-proactive-messages';
 import { GroupSprites } from './group-sprites';
 import { HUDDisplay } from './hud-display';
 import { QuestNotifications } from './quest-notifications';
+import { InventoryHUD } from '@/components/inventory/inventory-hud';
 import { TTSFloatingIndicator } from './tts-playback-controls';
 import { Sparkles } from 'lucide-react';
 import type { CharacterCard, SummaryData, ChatMessage } from '@/types';
@@ -331,6 +332,10 @@ export function ChatPanel() {
     return undefined;
   }, [hudTemplates, hudSessionState.activeTemplateId]);
 
+  // Pending item message (inventory → chat injection)
+  const pendingItemMessage = useTavernStore((state) => state.pendingItemMessage);
+  const clearPendingItemMessage = useTavernStore((state) => state.clearPendingItemMessage);
+
   // Sync ref with store state
   useEffect(() => {
     if (!isGenerating && isGenerationInProgressRef.current) {
@@ -598,6 +603,22 @@ export function ChatPanel() {
               ...settings.embeddingsChat,
               customNamespaces: activeGroup?.embeddingNamespaces,
             },  // Pass embeddings chat settings + group namespace override
+            inventoryData: (() => {
+              const invState = useTavernStore.getState();
+              const invSettings = invState.inventorySettings;
+              if (!invSettings.enabled || !invSettings.promptInclude) return undefined;
+              const personaId = activePersona?.id || 'default';
+              return {
+                personaItems: invState.getPersonaItems(personaId),
+                equippedItems: invState.getEquippedItems(personaId),
+                activeEffects: invState.activeConsumableEffects.filter(e => e.personaId === personaId),
+                pendingFallbacks: invState.pendingFallbacks || [],
+                currency: activePersona?.currency ?? 0,
+                currencyName: activePersona?.currencyName || invSettings.currencyName,
+                currencyIcon: activePersona?.currencyIcon || invSettings.currencyIcon,
+                inventorySettings: invSettings,
+              };
+            })(),  // Pass inventory data for prompt injection
           })
         });
 
@@ -846,6 +867,18 @@ export function ChatPanel() {
                         promptData: parsed.promptSections || []
                       }
                     });
+
+                    // Tick inventory consumable effects after each character response in group
+                    const invState = useTavernStore.getState();
+                    if (invState.inventorySettings.enabled && activePersona?.id) {
+                      const expiredMessages = invState.tickEffects(activePersona.id);
+                      if (expiredMessages.length > 0) {
+                        invState.removeExpiredEffects(activePersona.id);
+                        for (const msg of expiredMessages) {
+                          toast.info(msg);
+                        }
+                      }
+                    }
                   }
                   
                   // UNIFIED SPRITE SYSTEM: End sprite generation for this character
@@ -946,6 +979,11 @@ export function ChatPanel() {
                 
                 let totalSaved = 0;
                 
+                // Extract last user message for user-memory extraction
+                const lastUserMsg = sessionMsgs
+                  .filter(m => m.role === 'user' && !m.isDeleted)
+                  .slice(-2, -1)[0]?.content;
+                
                 for (const resp of extractableChars) {
                   try {
                     const extractionResponse = await fetch('/api/embeddings/extract-memory', {
@@ -958,6 +996,8 @@ export function ChatPanel() {
                         sessionId: activeSessionId,
                         groupId: activeGroupId,
                         userName: personaName,
+                        extractFromUser: embeddingsChat.memoryExtractionFromUserEnabled === true,
+                        lastUserMessage: lastUserMsg,
                         llmConfig: {
                           provider: currentLLMConfig.provider,
                           endpoint: currentLLMConfig.endpoint,
@@ -1173,6 +1213,22 @@ export function ChatPanel() {
               customNamespaces: activeCharacter?.embeddingNamespaces,
             },  // Pass embeddings chat settings + character namespace override
             toolsSettings: settings.tools,  // Pass tool calling configuration
+            inventoryData: (() => {
+              const invState = useTavernStore.getState();
+              const invSettings = invState.inventorySettings;
+              if (!invSettings.enabled || !invSettings.promptInclude) return undefined;
+              const personaId = activePersona?.id || 'default';
+              return {
+                personaItems: invState.getPersonaItems(personaId),
+                equippedItems: invState.getEquippedItems(personaId),
+                activeEffects: invState.activeConsumableEffects.filter(e => e.personaId === personaId),
+                pendingFallbacks: invState.pendingFallbacks || [],
+                currency: activePersona?.currency ?? 0,
+                currencyName: activePersona?.currencyName || invSettings.currencyName,
+                currencyIcon: activePersona?.currencyIcon || invSettings.currencyIcon,
+                inventorySettings: invSettings,
+              };
+            })(),  // Pass inventory data for prompt injection
           })
         });
 
@@ -1441,6 +1497,19 @@ export function ChatPanel() {
                         toolsUsed: parsed.toolsUsed || []
                       }
                     });
+
+                    // Tick inventory consumable effects (decrement turns)
+                    const invState = useTavernStore.getState();
+                    if (invState.inventorySettings.enabled && activePersona?.id) {
+                      const expiredMessages = invState.tickEffects(activePersona.id);
+                      if (expiredMessages.length > 0) {
+                        // Remove expired effects and show notifications
+                        invState.removeExpiredEffects(activePersona.id);
+                        for (const msg of expiredMessages) {
+                          toast.info(msg);
+                        }
+                      }
+                    }
                   }
                   setStreamingContent('');
                   
@@ -1482,6 +1551,11 @@ export function ChatPanel() {
                           }
                         }
                         
+                        // Extract last user message for user-memory extraction
+                        const lastUserMsg = sessionMsgs
+                          .filter(m => m.role === 'user' && !m.isDeleted)
+                          .slice(-2, -1)[0]?.content;
+                        
                         const extractionResponse = await fetch('/api/embeddings/extract-memory', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
@@ -1491,6 +1565,8 @@ export function ChatPanel() {
                             characterId: extractionCharacterId,
                             sessionId: activeSessionId,
                             userName: personaName,
+                            extractFromUser: embeddingsChat.memoryExtractionFromUserEnabled === true,
+                            lastUserMessage: lastUserMsg,
                             llmConfig: {
                               provider: currentLLMConfig.provider,
                               endpoint: currentLLMConfig.endpoint,
@@ -1672,6 +1748,75 @@ export function ChatPanel() {
       }
     }
   }, [isGenerating, activeSessionId, activeCharacter, activePersona, isGroupMode, activeGroup, characters, addMessage, setGenerating, processTriggers, resetBgDetection, scanForBackgroundTriggers, activeGroupId, settings.context, lorebooks, effectiveLorebookIds, endSpriteGenerationForCharacterWithTTS, ttsConfig, isTTSConnected]);
+
+  // ============================================
+  // INVENTORY CHAT INJECTION
+  // When items are used/equipped/unequipped, their message
+  // is sent as a user chat message (as if the user typed it)
+  // We add a brief delay to ensure the HUD and attribute changes
+  // are visually rendered BEFORE the message is sent to the LLM
+  // ============================================
+
+  // Use a ref for handleSend to avoid the useEffect cleanup race condition.
+  const handleSendRef = useRef(handleSend);
+  handleSendRef.current = handleSend;
+
+  // Use a ref to track the last processed message and avoid the cleanup race:
+  // Previously, clearPendingItemMessage() was called BEFORE the setTimeout,
+  // which changed pendingItemMessage to null, triggering a re-render that
+  // caused the effect cleanup to cancel the setTimeout before it fired.
+  // Now we clear the message INSIDE the setTimeout callback (after sending),
+  // and use a ref to prevent re-processing the same message.
+  const lastProcessedItemMessageRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!pendingItemMessage) return;
+
+    // Skip if we already processed this exact message (prevents re-triggering)
+    if (lastProcessedItemMessageRef.current === pendingItemMessage) return;
+
+    if (isGenerating || isGenerationInProgressRef.current) {
+      console.log('[ChatPanel] Pending item message waiting (generation in progress)');
+      return;
+    }
+
+    console.log('[ChatPanel] Processing pending item message:', pendingItemMessage);
+
+    // Mark this message as processed (via ref, doesn't trigger re-render)
+    lastProcessedItemMessageRef.current = pendingItemMessage;
+
+    // Perform variable substitution ({{user}} → persona name)
+    const currentPersona = useTavernStore.getState().personas.find(
+      (p: any) => p.id === useTavernStore.getState().activePersonaId
+    );
+    let processedMessage = pendingItemMessage;
+    if (currentPersona) {
+      processedMessage = processedMessage.replace(/\{\{user\}\}/gi, currentPersona.name || 'Usuario');
+    }
+
+    // Delay sending to allow the browser to paint the UI updates
+    // (HUD showing active effects, attribute changes visible, etc.)
+    // before the LLM request starts and potentially blocks rendering.
+    // CRITICAL: clearPendingItemMessage is called INSIDE the callback,
+    // NOT before the setTimeout. Calling it before would trigger a re-render
+    // that causes the effect cleanup to cancel the setTimeout.
+    if (processedMessage.trim()) {
+      console.log('[ChatPanel] Scheduling item message send in 300ms:', processedMessage);
+      const timer = setTimeout(() => {
+        console.log('[ChatPanel] Sending item message to LLM:', processedMessage);
+        // Clear the pending message AFTER the delay, right before sending.
+        // This prevents re-triggering while avoiding the cleanup race condition.
+        clearPendingItemMessage();
+        lastProcessedItemMessageRef.current = null;
+        handleSendRef.current(processedMessage);
+      }, 300);
+      return () => clearTimeout(timer);
+    } else {
+      // Empty message, just clear
+      clearPendingItemMessage();
+      lastProcessedItemMessageRef.current = null;
+    }
+  }, [pendingItemMessage, clearPendingItemMessage, isGenerating]);
 
   // Handle stop generation - cancel the current streaming request
   const handleStopGeneration = useCallback(() => {
@@ -2146,6 +2291,9 @@ export function ChatPanel() {
 
       {/* Quest Notifications */}
       <QuestNotifications />
+
+      {/* Inventory HUD */}
+      <InventoryHUD />
       
       {/* TTS Floating Indicator */}
       <TTSFloatingIndicator />

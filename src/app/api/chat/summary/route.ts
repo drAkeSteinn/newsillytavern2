@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { generateResponse } from '@/lib/llm';
+import { getEmbeddingClient } from '@/lib/embeddings/client';
 import type { ChatMessage, SummaryData, SummarySettings, LLMConfig } from '@/types';
 
 // ============================================
@@ -17,6 +18,8 @@ interface SummaryRequest {
   userName: string;
   settings: SummarySettings;
   previousSummary?: string;
+  characterId?: string;
+  sessionId?: string;
   apiConfig: {
     provider: string;
     endpoint: string;
@@ -44,7 +47,8 @@ function buildSummaryPrompt(
 ): { systemPrompt: string; userPrompt: string } {
   
   const systemPrompt = `You are a memory summarization AI for a roleplay conversation.
-Your task is to create concise, comprehensive summaries that preserve:
+You generate "recuerdos anteriores" (previous memories) that preserve the continuity of the story.
+Your task is to create concise, comprehensive recuerdos anteriores that preserve:
 - Key events and plot developments
 - Important character decisions and motivations
 - Emotional moments and relationship changes
@@ -83,13 +87,13 @@ Guidelines:
   let userPrompt = '';
   
   if (previousSummary) {
-    userPrompt = `Previous Summary:
+    userPrompt = `Resumen anterior:
 ${previousSummary}
 
 New Messages to Integrate:
 ${formattedMessages}
 
-Please update the summary to include the new information while preserving important details from the previous summary.`;
+Please update the recuerdos anteriores to include the new information while preserving important details from the previous summary.`;
   } else {
     userPrompt = customPrompt;
   }
@@ -113,7 +117,7 @@ function estimateTokens(text: string): number {
 export async function POST(request: NextRequest): Promise<NextResponse<SummaryResponse>> {
   try {
     const body: SummaryRequest = await request.json();
-    const { messages, characterName, userName, settings, previousSummary, apiConfig } = body;
+    const { messages, characterName, userName, settings, previousSummary, apiConfig, characterId, sessionId } = body;
 
     if (!settings.enabled) {
       return NextResponse.json({
@@ -194,10 +198,57 @@ export async function POST(request: NextRequest): Promise<NextResponse<SummaryRe
     const summaryContent = response.message || '';
     const tokenCount = estimateTokens(summaryContent);
 
+    // Save summary as embedding in the session namespace for future semantic search
+    try {
+      const client = getEmbeddingClient();
+      const effectiveCharId = characterId || 'default';
+      const effectiveSessId = sessionId || 'unknown';
+      const namespace = `memory-character-${effectiveCharId}-${effectiveSessId}`;
+
+      // Delete any previous summary embedding for this session (keep only the latest)
+      // Use direct metadata query instead of semantic search to avoid accidentally deleting non-summary embeddings
+      try {
+        const { LanceDBWrapper } = await import('@/lib/embeddings/lancedb-db');
+        const existingSummaries = await LanceDBWrapper.getNamespaceEmbeddingsMetadata(namespace, {
+          sourceType: 'summary',
+          limit: 10,
+        });
+        for (const existing of existingSummaries) {
+          if (existing.metadata?.session_id === effectiveSessId) {
+            await client.deleteEmbedding(existing.id);
+            console.log(`[Summary] Deleted previous summary embedding: ${existing.id}`);
+          }
+        }
+      } catch (delErr) {
+        console.warn('[Summary] Could not delete previous summary embedding:', delErr);
+      }
+
+      // Save the new summary as an embedding
+      await client.createEmbedding({
+        content: summaryContent,
+        namespace,
+        source_type: 'summary',
+        source_id: effectiveSessId,
+        metadata: {
+          type: 'summary',
+          character_id: effectiveCharId,
+          session_id: effectiveSessId,
+          message_range_start: 0,
+          message_range_end: visibleMessages.length - 1,
+          tokens: tokenCount,
+          created_at: new Date().toISOString(),
+        },
+      });
+
+      console.log(`[Summary] Saved summary embedding to namespace "${namespace}"`);
+    } catch (embedErr) {
+      console.warn('[Summary] Failed to save summary as embedding (non-blocking):', embedErr);
+    }
+
     // Create summary data
     const summary: SummaryData = {
-      id: `summary-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      sessionId: '',
+      id: `summary-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+      sessionId: sessionId || '',
       content: summaryContent,
       messageRange: {
         start: 0,

@@ -703,14 +703,14 @@ export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
                     <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
-                    <p>Namespaces donde buscar contexto durante el chat grupal. Si no se selecciona ninguno, se usará la estrategia global.</p>
+                    <p>Namespaces adicionales de contexto para el chat grupal. Se añaden a los namespaces automáticos de la sesión y de cada personaje.</p>
                   </TooltipContent>
                 </Tooltip>
               </div>
               <NamespaceSelector
                 value={embeddingNamespaces}
                 onChange={setEmbeddingNamespaces}
-                placeholder="Usar estrategia global"
+                placeholder="Solo namespaces automáticos"
               />
             </div>
           </div>

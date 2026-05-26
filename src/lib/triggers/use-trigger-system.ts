@@ -515,6 +515,10 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
       ...questActivationKeys,
       ...questObjectiveKeys,
       ...questCompletionKeys,
+      // Item trigger keywords from inventory V2
+      ...(store.inventorySettings?.enabled
+        ? (store.items ?? []).flatMap(item => item.triggerKeywords ?? [])
+        : []),
     ];
     
     // DEBUG: Log keyword detection setup
@@ -692,20 +696,21 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
         updateCharacterStat: store.updateCharacterStat.bind(store),
       };
 
-      // Item handler context
+      // Item handler context (V2)
+      const activePersonaId = store.activePersonaId ?? config.activePersona?.id;
       const itemKeyHandlerContext: ItemKeyHandlerContext = {
         ...context,
         sessionId,
         characterId: character?.id,
+        personaId: activePersonaId,
         items: store.items ?? [],
-        inventoryEntries: store.inventoryEntries ?? [],
         inventorySettings: store.inventorySettings ?? { enabled: false },
-        defaultContainerId: store.defaultContainerId,
-        addToInventory: store.addToInventory?.bind(store),
-        removeFromInventory: store.removeFromInventory?.bind(store),
+        addToPersona: store.addToPersona?.bind(store),
+        removeFromPersona: store.removeFromPersona?.bind(store),
         equipItem: store.equipItem?.bind(store),
         unequipItem: store.unequipItem?.bind(store),
-        addNotification: store.addInventoryNotification?.bind(store),
+        consumeItem: store.useConsumable?.bind(store),
+        addInventoryNotification: store.addInventoryNotification?.bind(store),
       };
 
       // Process keys through unified handlers
@@ -1290,16 +1295,16 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
       }
     }
     
-    // Process Item triggers
+    // Process Item triggers (V2 — uses persona-based inventory)
     if (config.inventoryEnabled !== false && store.inventorySettings?.enabled) {
-      const defaultContainer = store.containers.find(c => c.isDefault);
+      const activePersonaId = store.activePersonaId ?? config.activePersona?.id;
       
       const itemContext: ItemTriggerContext = {
         ...context,
         items: store.items,
-        inventoryEntries: defaultContainer?.entries || [],
-        inventorySettings: store.inventorySettings,
-        defaultContainerId: defaultContainer?.id || '',
+        inventoryEntries: [],  // Legacy V1 — not used in V2
+        inventorySettings: store.inventorySettings as any,
+        defaultContainerId: '',
       };
       
       const itemResult = checkItemTriggers(
@@ -1310,26 +1315,21 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
       );
       
       if (itemResult.hits.length > 0) {
-        // Process item trigger hits
+        // Process item trigger hits using V2 store methods
         for (const hit of itemResult.hits) {
           console.log(`[TriggerSystem] Item trigger: ${hit.message}`);
           
+          if (!activePersonaId) continue;
+          
           switch (hit.type) {
             case 'add':
-              store.addToInventory(hit.itemId, hit.quantity);
+              store.addToPersona?.(activePersonaId, hit.itemId, hit.quantity);
               break;
             case 'remove':
-              // Find the entry to remove
-              const entryToRemove = defaultContainer?.entries.find(e => e.itemId === hit.itemId);
-              if (entryToRemove) {
-                store.removeFromInventory(entryToRemove.id, hit.quantity);
-              }
+              store.removeFromPersona?.(activePersonaId, hit.itemId, hit.quantity);
               break;
             case 'equip':
-              const entryToEquip = defaultContainer?.entries.find(e => e.itemId === hit.itemId);
-              if (entryToEquip && hit.item?.slot) {
-                store.equipItem(entryToEquip.id, hit.item.slot);
-              }
+              store.equipItem?.(activePersonaId, hit.itemId);
               break;
           }
           

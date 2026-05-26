@@ -446,6 +446,18 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
       ),
     });
 
+    // Sync currency changes to persona (Inventory V2)
+    // When currency is updated via quest rewards/triggers on __user__,
+    // also update persona.currency so the InventoryPanel/HUD stay in sync
+    if (characterId === '__user__' && attributeKey === 'currency' && typeof clampedValue === 'number') {
+      try {
+        const activePersonaId = (get() as any).activePersonaId;
+        if (activePersonaId) {
+          (get() as any).updatePersona?.(activePersonaId, { currency: clampedValue });
+        }
+      } catch { /* non-critical sync */ }
+    }
+
     // Refresh objective visibility since attribute conditions may have changed
     try {
       (get() as any).refreshAllObjectiveVisibility?.(sessionId);

@@ -1663,10 +1663,10 @@ export function EmbeddingsSettingsPanel() {
           </div>
           <div className="flex-1">
             <h4 className="text-sm font-medium text-purple-600 dark:text-purple-400">
-              Embeddings Vectoriales
+              Base de Conocimiento
             </h4>
             <p className="text-xs text-muted-foreground mt-1">
-              Búsqueda semántica con <strong>Ollama</strong> + <strong>LanceDB</strong>. Almacena embeddings de texto y busca por significado, no solo palabras clave.
+              Infraestructura de búsqueda semántica con <strong>Ollama</strong> + <strong>LanceDB</strong>. Almacena y busca embeddings de texto por significado. Los ajustes de memoria están en la pestaña <strong>Memoria</strong>.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1702,14 +1702,24 @@ export function EmbeddingsSettingsPanel() {
         </div>
       )}
 
-      {/* Main Tabs - 7 tabs */}
+      {/* Cross-link to Memory tab */}
+      <div className="mb-4 p-3 rounded-lg bg-violet-500/5 border border-violet-500/20">
+        <div className="flex items-start gap-2">
+          <Brain className="w-4 h-4 text-violet-500 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-xs font-medium text-violet-600 dark:text-violet-400">Ajustes de memoria y extracción</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              La configuración de extracción automática, consolidación, refuerzo y prompts de memoria se encuentra ahora en <strong>Configuración → Memoria → Extracción</strong>.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Tabs - 5 tabs (memory settings moved to Memoria tab) */}
       <Tabs defaultValue="configuracion" onValueChange={handleTabChange}>
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="configuracion" className="text-xs">
             <Settings className="w-3 h-3 mr-1" />Configuración
-          </TabsTrigger>
-          <TabsTrigger value="integracion" className="text-xs">
-            <MessageSquare className="w-3 h-3 mr-1" />Integración del chat
           </TabsTrigger>
           <TabsTrigger value="search" className="text-xs">
             <Search className="w-3 h-3 mr-1" />Búsqueda
@@ -1722,9 +1732,6 @@ export function EmbeddingsSettingsPanel() {
           </TabsTrigger>
           <TabsTrigger value="embeddings" className="text-xs">
             <Database className="w-3 h-3 mr-1" />Examinar
-          </TabsTrigger>
-          <TabsTrigger value="prompts" className="text-xs">
-            <Pencil className="w-3 h-3 mr-1" />Prompts
           </TabsTrigger>
         </TabsList>
 
@@ -1945,12 +1952,7 @@ export function EmbeddingsSettingsPanel() {
           </Card>
         </TabsContent>
 
-        {/* Tab 2: Integración */}
-        <TabsContent value="integracion" className="space-y-3 mt-3">
-          <EmbeddingsChatIntegrationContent />
-        </TabsContent>
-
-        {/* Tab 3: Búsqueda */}
+        {/* Tab 2: Búsqueda */}
         <TabsContent value="search" className="space-y-3 mt-3">
           <div className="flex gap-2">
             <Input
@@ -2520,10 +2522,6 @@ export function EmbeddingsSettingsPanel() {
           )}
         </TabsContent>
 
-        {/* Tab 7: Prompts */}
-        <TabsContent value="prompts" className="space-y-3 mt-3">
-          <PromptsTabContent />
-        </TabsContent>
       </Tabs>
 
       {/* Create Embedding Dialog */}

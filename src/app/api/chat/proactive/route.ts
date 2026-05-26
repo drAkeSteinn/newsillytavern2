@@ -42,6 +42,7 @@ import {
 import {
   selectContextMessages,
   getContextStats,
+  estimateContentTokens,
   type ContextConfig
 } from '@/lib/context-manager';
 import { retrieveEmbeddingsContext, formatEmbeddingsForSSE } from '@/lib/embeddings/chat-context';
@@ -446,6 +447,11 @@ export async function POST(request: NextRequest) {
       importance: e.importance,
     }));
 
+    // Extract last assistant message for bidirectional search
+    const lastAssistantMsg = messages
+      .filter(m => !m.isDeleted && m.role === 'assistant')
+      .pop()?.content;
+
     const embeddingsResult = await retrieveEmbeddingsContext(
       enrichedSearchQuery,
       characterId || effectiveCharacter.id,
@@ -453,6 +459,7 @@ export async function POST(request: NextRequest) {
       embeddingsChat,
       undefined, // groupId
       existingMemoryEvents, // for deduplication
+      lastAssistantMsg, // bidirectional search with last assistant message
     );
     
     if (embeddingsResult.found) {
@@ -546,21 +553,21 @@ export async function POST(request: NextRequest) {
     if (summary) {
       summarySection = {
         type: 'system',
-        label: 'Conversation Summary',
-        content: `[Previous Conversation Summary]\n${summary.content}`,
+        label: 'Recuerdos Anteriores',
+        content: `[RECUERDOS ANTERIORES]\n${summary.content}`,
         color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
       };
       // Create a synthetic message for chat history injection
       summaryMessage = {
         id: 'summary-' + Date.now(),
         role: 'assistant',
-        content: `[Previous Conversation Summary]\n${summary.content}`,
+        content: `[RECUERDOS ANTERIORES]\n${summary.content}`,
         characterId: effectiveCharacter.id,
         isDeleted: false,
         timestamp: summary.createdAt,
         swipeId: 'summary',
         swipeIndex: 0,
-        swipes: [`[Previous Conversation Summary]\n${summary.content}`]
+        swipes: [`[RECUERDOS ANTERIORES]\n${summary.content}`]
       };
     }
 
@@ -591,10 +598,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Build combined embeddings context
+    // If embeddings found memory results, skip Character Memory content here to avoid duplication
+    // (Character Memory is still shown in the prompt viewer as a separate section)
     const contextParts: string[] = [];
 
-    // Add character memory content first (events, relationships, notes from Zustand store)
-    if (characterMemorySection) {
+    const embeddingsFoundMemory = embeddingsResult.found && embeddingsResult.memoryCount > 0;
+    if (characterMemorySection && !embeddingsFoundMemory) {
       contextParts.push(characterMemorySection.content);
     }
 
@@ -605,6 +614,46 @@ export async function POST(request: NextRequest) {
       contextParts.push(embeddingsResult.memoryContextString);
     }
     const embeddingsContext = contextParts.length > 0 ? contextParts.join('\n\n') : undefined;
+
+    // Re-evaluate context window with reserved tokens for summary + embeddings
+    // This reduces chat history when summary/embeddings use significant budget
+    const pSummaryTokens = summary?.content ? estimateContentTokens(`[RECUERDOS ANTERIORES]\n${summary.content}`) : 0;
+    const pEmbeddingsTokens = embeddingsContext ? estimateContentTokens(embeddingsContext) : 0;
+    const pReservedTokens = pSummaryTokens + pEmbeddingsTokens;
+    
+    let finalContextWindow = contextWindow;
+    if (pReservedTokens > 200) {
+      const adjustedProactiveConfig: Partial<ContextConfig> = {
+        ...contextConfig,
+        reservedTokens: pReservedTokens,
+      };
+      finalContextWindow = selectContextMessages(messages, llmConfig, adjustedProactiveConfig);
+      console.log(`[Proactive Context Budget] Reserved ${pReservedTokens} tokens (summary: ${pSummaryTokens}, embeddings: ${pEmbeddingsTokens}). Chat messages: ${contextWindow.messages.length} → ${finalContextWindow.messages.length}`);
+    }
+
+    // Update prompt viewer sections if context window was re-evaluated
+    let finalChatHistorySections = chatHistorySections;
+    let finalAllPromptSections = allPromptSections;
+    if (finalContextWindow !== contextWindow) {
+      finalChatHistorySections = buildChatHistorySections(
+        finalContextWindow.messages,
+        effectiveCharacter.name,
+        effectiveUserName
+      );
+      finalAllPromptSections = [
+        ...prePersonaSections,
+        ...postPersonaSections,
+        ...(summarySection ? [summarySection] : []),
+        ...(characterMemorySection ? [characterMemorySection] : []),
+        ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []),
+        ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []),
+        ...finalChatHistorySections,
+        ...(postHistorySection ? [postHistorySection] : [])
+      ];
+      if (hudContextSection && hudContext) {
+        finalAllPromptSections = injectHUDContextIntoSections(finalAllPromptSections, hudContextSection, hudContext.position);
+      }
+    }
 
     // Build proactive instruction with template variables (NOT JS interpolation)
     const defaultInstruction = `Estás enviando un mensaje a {{user}} sin que haya hablado primero. La conversación ha estado inactiva por un tiempo. Reacciona de forma natural a la situación. Puedes:
@@ -706,8 +755,8 @@ Mantén tu mensaje breve y natural (1-3 párrafos máximo). NO menciones que est
     // - Context window messages
     // - Nudge message (as the last user message)
     let allMessages: ChatMessage[] = summaryMessage
-      ? [summaryMessage, ...contextWindow.messages]
-      : [...contextWindow.messages];
+      ? [summaryMessage, ...finalContextWindow.messages]
+      : [...finalContextWindow.messages];
 
     // Add nudge as the last user message
     allMessages = [...allMessages, {
@@ -737,7 +786,7 @@ Mantén tu mensaje breve y natural (1-3 párrafos máximo). NO menciones que est
           // Send prompt data
           controller.enqueue(createSSEJSON({
             type: 'prompt_data',
-            promptSections: allPromptSections
+            promptSections: finalAllPromptSections
           }));
 
           // DEBUG: Send lorebook attribute resolution debug data

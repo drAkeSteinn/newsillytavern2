@@ -41,7 +41,7 @@ export { createMemorySlice, DEFAULT_SUMMARY_SETTINGS } from './memorySlice';
 export type { SessionSummaryTracking } from './memorySlice';
 export { createQuestSlice, DEFAULT_QUEST_SETTINGS } from './questSlice';
 export { createDialogueSlice, DEFAULT_DIALOGUE_SETTINGS } from './dialogueSlice';
-export { createInventorySlice, DEFAULT_INVENTORY_SETTINGS, getRarityColor, getCategoryIcon } from './inventorySlice';
+export { createInventorySlice, DEFAULT_INVENTORY_V2_SETTINGS, getRarityColor, getRarityBgColor, getItemTypeIcon, getItemTypeLabel, createConsumableItem, createEquipmentItem, applyItemEffectsToStats, buildInventoryPromptSectionV2, applyInventoryEffectsToSessionStats } from './inventorySlice';
 export { 
   createStatsSlice, 
   evaluateRequirement,

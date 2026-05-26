@@ -111,7 +111,7 @@ export const defaultSettings: AppSettings = {
     // Context depth for memory extraction (0 = only last response, N = include N recent messages)
     memoryExtractionContextDepth: 2,
     // Context depth for embedding search query (0 = only user message, N = include N recent messages)
-    searchContextDepth: 1,
+    searchContextDepth: 2,
     // Group dynamics extraction (extracts inter-character relationships in group chats)
     groupDynamicsExtraction: false,
     // Separate extraction model (uses a different LLM for memory extraction/consolidation)
@@ -123,6 +123,8 @@ export const defaultSettings: AppSettings = {
     // Memory reinforcement settings
     memoryReinforcementEnabled: false,
     memoryReinforcementThreshold: 0.7,
+    // User message extraction settings
+    memoryExtractionFromUserEnabled: false,
   },
   handy: DEFAULT_HANDY_SETTINGS,
 };
@@ -173,6 +175,10 @@ export const defaultPersona: Persona = {
   description: '',
   avatar: '',
   isActive: true,
+  currency: 0,
+  currencyName: 'Divisa',
+  currencyIcon: '💰',
+  inventoryItems: [],
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString()
 };

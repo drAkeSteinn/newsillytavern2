@@ -159,6 +159,26 @@ export function createTargetAttributeReward(
   };
 }
 
+/**
+ * Crea una recompensa de divisa (solo para persona)
+ */
+export function createCurrencyReward(
+  amount: number,
+  options?: {
+    id?: string;
+    condition?: QuestRewardCondition;
+  }
+): QuestReward {
+  return {
+    id: options?.id || generateId(),
+    type: 'currency',
+    currency: {
+      amount,
+    },
+    condition: options?.condition,
+  };
+}
+
 // ============================================
 // Legacy Migration - Convertir formato antiguo al nuevo
 // ============================================
@@ -342,6 +362,16 @@ export function validateReward(reward: QuestReward): { valid: boolean; errors: s
     }
   }
 
+  if (reward.type === 'currency') {
+    if (!reward.currency) {
+      errors.push('Currency reward must have currency config');
+    } else {
+      if (reward.currency.amount === undefined || reward.currency.amount === 0) {
+        errors.push('Currency reward must have non-zero currency.amount');
+      }
+    }
+  }
+
   return {
     valid: errors.length === 0,
     errors,
@@ -450,6 +480,12 @@ export function describeReward(reward: QuestReward): string {
     return `📋 Solicitud: ${sol.solicitudName || sol.solicitudKey}`;
   }
 
+  if (reward.type === 'currency') {
+    const curr = reward.currency;
+    if (!curr) return 'Divisa inválida';
+    return `💰 Divisa: ${curr.amount > 0 ? '+' : ''}${curr.amount}`;
+  }
+
   return 'Recompensa desconocida';
 }
 
@@ -483,6 +519,9 @@ export function normalizeReward(reward: QuestReward): QuestReward {
     return reward;
   }
   if (reward.type === 'target_attribute' && reward.target_attribute) {
+    return reward;
+  }
+  if (reward.type === 'currency' && reward.currency) {
     return reward;
   }
 

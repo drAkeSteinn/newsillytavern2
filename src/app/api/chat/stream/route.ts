@@ -8,7 +8,7 @@
 // - All sections are processed consistently
 
 import { NextRequest } from 'next/server';
-import type { ChatMessage, CharacterCard, LLMConfig, Persona, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestSettings, QuestTemplate, SessionQuestInstance, SessionSummary, SoundTrigger, AppSettings, CharacterStatsConfig, CharacterMemory } from '@/types';
+import type { ChatMessage, CharacterCard, LLMConfig, Persona, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestSettings, QuestTemplate, SessionQuestInstance, SessionSummary, SoundTrigger, AppSettings, CharacterStatsConfig, CharacterMemory, InventoryV2Settings, PersonaInventoryEntry, Item, ActiveConsumableEffect } from '@/types';
 import { DEFAULT_QUEST_SETTINGS } from '@/types';
 import {
   DEFAULT_CHARACTER,
@@ -31,11 +31,13 @@ import {
   buildLorebookSectionForPrompt,
   buildMemorySection,
   buildHUDContextSection,
+  buildInventorySection,
   injectHUDContextIntoMessages,
   injectHUDContextIntoSections,
   resolveAllKeys,
   buildKeyResolutionContext,
   resolveStats,
+  type InventoryPromptData,
 } from '@/lib/llm';
 import {
   validateRequest,
@@ -44,11 +46,13 @@ import {
 import {
   selectContextMessages,
   getContextStats,
+  estimateContentTokens,
   type ContextConfig
 } from '@/lib/context-manager';
 import { retrieveEmbeddingsContext, formatEmbeddingsForSSE } from '@/lib/embeddings/chat-context';
 import { processResponseAndReinforceMemories, isReinforcementEnabled } from '@/lib/embeddings/memory-reinforcement';
 import type { EmbeddingsChatSettings, ToolsSettings } from '@/types';
+
 import {
   getAllToolDefinitions,
   getToolDefinitionsByIds,
@@ -322,6 +326,9 @@ export async function POST(request: NextRequest) {
       disabledTools: body.toolsSettings?.disabledTools || [],
     };
 
+    // Extract inventory data for Inventory V2 system
+    const inventoryData: InventoryPromptData | undefined = body.inventoryData;
+
     if (!llmConfig) {
       return createErrorResponse('No LLM configuration provided', 400);
     }
@@ -432,6 +439,11 @@ export async function POST(request: NextRequest) {
       importance: e.importance,
     }));
 
+    // Extract last assistant message for bidirectional search
+    const lastAssistantMsg = messages
+      .filter(m => !m.isDeleted && m.role === 'assistant')
+      .pop()?.content;
+
     const embeddingsResult = await retrieveEmbeddingsContext(
       enrichedSearchQuery,
       characterId || effectiveCharacter.id,
@@ -439,6 +451,7 @@ export async function POST(request: NextRequest) {
       embeddingsChat,
       undefined, // groupId
       existingMemoryEvents, // for deduplication
+      lastAssistantMsg, // bidirectional search with last assistant message
     );
     
     if (embeddingsResult.found) {
@@ -465,23 +478,27 @@ export async function POST(request: NextRequest) {
       questTemplates,  // Pass quest templates for {{activeQuests}} key resolution
       sessionQuests,   // Pass session quests for {{activeQuests}} key resolution
       questSettings,    // Pass quest settings for {{activeQuests}} key resolution
-      lorebookAttributeKeys
+      lorebookAttributeKeys,
+      inventoryData     // Pass inventory data for Inventory V2 section
     );
 
-    // Build key resolution context for HUD context and quest sections
+    // Session stats now already include item effects (applied directly to SessionStats
+    // when items are activated/equipped in the store). No need for virtual overlay.
+    const effectiveSessionStats = sessionStats;
+
     // Resolve persona stats first for comprehensive key resolution
     let streamPersonaResolvedStats: import('@/types').ResolvedStats | null = null;
-    if (persona?.statsConfig?.enabled && sessionStats) {
+    if (persona?.statsConfig?.enabled && effectiveSessionStats) {
       streamPersonaResolvedStats = resolveStats({
         characterId: '__user__',
         statsConfig: persona.statsConfig,
-        sessionStats,
+        sessionStats: effectiveSessionStats,
       });
     }
     const resolvedStats = resolveStats({
       characterId: effectiveCharacter.id,
       statsConfig: effectiveCharacter.statsConfig,
-      sessionStats: sessionStats,
+      sessionStats: effectiveSessionStats,
       allCharacters,
       userName: effectiveUserName,
       characterName: effectiveCharacter.name,
@@ -512,7 +529,8 @@ export async function POST(request: NextRequest) {
       sessionQuests,   // Pass session quests for {{activeQuests}}
       questSettings,    // Pass quest settings
       outletSections,   // Pass outlet sections for {{outlet::name}}
-      lorebookAttributeKeys  // Pass lorebook attribute keys for {{injectionKey}}
+      lorebookAttributeKeys,  // Pass lorebook attribute keys for {{injectionKey}}
+      inventoryData     // Pass inventory data for {{inventory}} and {{currency}} key resolution
     );
 
     // Build HUD context section if enabled (now resolves keys!)
@@ -539,15 +557,15 @@ export async function POST(request: NextRequest) {
     if (summary) {
       summarySection = {
         type: 'system',
-        label: 'Conversation Summary',
-        content: `[Previous Conversation Summary]\n${summary.content}`,
+        label: 'Recuerdos Anteriores',
+        content: `[RECUERDOS ANTERIORES]\n${summary.content}`,
         color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
       };
       // Create a synthetic message for chat history injection
       summaryMessage = {
         id: 'summary-' + Date.now(),
         role: 'assistant',
-        content: `[Previous Conversation Summary]\n${summary.content}`,
+        content: `[RECUERDOS ANTERIORES]\n${summary.content}`,
         characterId: effectiveCharacter.id,
         isDeleted: false,
         timestamp: summary.createdAt,
@@ -583,12 +601,17 @@ export async function POST(request: NextRequest) {
       allPromptSections = injectHUDContextIntoSections(allPromptSections, hudContextSection, hudContext.position);
     }
 
-    // Build combined embeddings context: Character Memory -> [CONTEXTO RELEVANTE] -> [MEMORIA RELEVANTE]
-    // All injected before chat history (not in system prompt)
+    // Build combined embeddings context
+    // If embeddings found memory results, skip Character Memory content here to avoid duplication
+    // (Character Memory is still shown in the prompt viewer as a separate section)
     const contextParts: string[] = [];
 
-    // Add character memory content first (events, relationships, notes from Zustand store)
-    if (characterMemorySection) {
+    // Only include Character Memory content if embeddings didn't find any memory results,
+    // or if embeddings are disabled. When embeddings ARE active and found memory, the
+    // dedup already ensures we don't have exact duplicates, but there can be semantic overlap.
+    // The [MEMORIA RELEVANTE] section from embeddings is more targeted/relevant.
+    const embeddingsFoundMemory = embeddingsResult.found && embeddingsResult.memoryCount > 0;
+    if (characterMemorySection && !embeddingsFoundMemory) {
       contextParts.push(characterMemorySection.content);
     }
 
@@ -655,19 +678,60 @@ export async function POST(request: NextRequest) {
       console.log(`[Tools] Tools DISABLED. toolsSettings.enabled=${toolsSettings.enabled}, availableTools=${availableTools.length}`);
     }
 
+    // Re-evaluate context window with reserved tokens for summary + embeddings
+    // This reduces chat history when summary/embeddings use significant budget
+    const summaryTokens = summary?.content ? estimateContentTokens(`[RECUERDOS ANTERIORES]\n${summary.content}`) : 0;
+    const embeddingsTokens = embeddingsContext ? estimateContentTokens(embeddingsContext) : 0;
+    const reservedTokens = summaryTokens + embeddingsTokens;
+    
+    let finalContextWindow = contextWindow;
+    if (reservedTokens > 200) {
+      // Re-apply context window with reduced budget
+      const adjustedConfig: Partial<ContextConfig> = {
+        ...contextConfig,
+        reservedTokens,
+      };
+      finalContextWindow = selectContextMessages(messages, llmConfig, adjustedConfig);
+      console.log(`[Context Budget] Reserved ${reservedTokens} tokens (summary: ${summaryTokens}, embeddings: ${embeddingsTokens}). Chat messages: ${contextWindow.messages.length} → ${finalContextWindow.messages.length}`);
+    }
+
+    // Update prompt viewer sections if context window was re-evaluated
+    let finalChatHistorySections = chatHistorySections;
+    let finalAllPromptSections = allPromptSections;
+    if (finalContextWindow !== contextWindow) {
+      finalChatHistorySections = buildChatHistorySections(
+        finalContextWindow.messages,
+        effectiveCharacter.name,
+        effectiveUserName
+      );
+      finalAllPromptSections = [
+        ...prePersonaSections,
+        ...postPersonaSections,
+        ...(summarySection ? [summarySection] : []),
+        ...(characterMemorySection ? [characterMemorySection] : []),
+        ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []),
+        ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []),
+        ...finalChatHistorySections,
+        ...(postHistorySection ? [postHistorySection] : [])
+      ];
+      if (hudContextSection && hudContext) {
+        finalAllPromptSections = injectHUDContextIntoSections(finalAllPromptSections, hudContextSection, hudContext.position);
+      }
+    }
+
     // Prepare messages with new user message (use context-windowed messages)
     // Check if the last message is already the user's current message to avoid duplicates.
     // The frontend adds the message to the store BEFORE sending the request, so the
     // messages array may already contain the user's message. Without this check, the
     // message gets duplicated → buildChatMessages merges them → LLM sees "hola\nhola".
-    const lastCtxMessage = contextWindow.messages[contextWindow.messages.length - 1];
+    const lastCtxMessage = finalContextWindow.messages[finalContextWindow.messages.length - 1];
     const isLastMessageCurrentUser = lastCtxMessage?.role === 'user' &&
       lastCtxMessage?.content === sanitizedMessage;
 
     // Inject summary at the START of chat history if it exists
     let allMessages = summaryMessage
-      ? [summaryMessage, ...contextWindow.messages]
-      : [...contextWindow.messages];
+      ? [summaryMessage, ...finalContextWindow.messages]
+      : [...finalContextWindow.messages];
 
     if (!isLastMessageCurrentUser) {
       allMessages = [...allMessages, createUserMessage(sanitizedMessage)];
@@ -680,7 +744,7 @@ export async function POST(request: NextRequest) {
           // Send prompt data at the start
           controller.enqueue(createSSEJSON({
             type: 'prompt_data',
-            promptSections: allPromptSections
+            promptSections: finalAllPromptSections
           }));
 
           // DEBUG: Send lorebook attribute resolution debug data

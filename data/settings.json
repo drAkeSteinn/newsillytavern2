@@ -58,10 +58,10 @@
   },
   "chatLayout": {
     "novelMode": true,
-    "chatWidth": 51.97724458532525,
-    "chatHeight": 72.63374485596708,
-    "chatX": 60.59504841379601,
-    "chatY": 63.68312757201646,
+    "chatWidth": 52.196324204766725,
+    "chatHeight": 66.1522633744856,
+    "chatX": 48.198102368919315,
+    "chatY": 66.92386831275721,
     "chatOpacity": 0.95,
     "blurBackground": false,
     "showCharacterSprite": true
@@ -70,7 +70,7 @@
     "maxMessages": 10,
     "maxTokens": 4096,
     "keepFirstN": 1,
-    "keepLastN": 20,
+    "keepLastN": 10,
     "enableSummaries": false,
     "summaryThreshold": 40
   },
@@ -173,7 +173,14 @@
     "memoryExtractionContextDepth": 3,
     "searchContextDepth": 1,
     "groupDynamicsExtraction": true,
-    "memoryReinforcementEnabled": true
+    "extractionModelEnabled": false,
+    "extractionModelProvider": "ollama",
+    "extractionModelEndpoint": "http://localhost:11434",
+    "extractionModelApiKey": "",
+    "extractionModelName": "llama3.1:8b",
+    "memoryReinforcementEnabled": true,
+    "memoryReinforcementThreshold": 0.7,
+    "memoryExtractionFromUserEnabled": false
   },
   "handy": {
     "enabled": true,

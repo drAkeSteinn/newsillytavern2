@@ -524,7 +524,7 @@ export interface ToolUsedInfo {
 
 // Prompt section for displaying in prompt viewer
 export interface PromptSection {
-  type: 'system' | 'persona' | 'character_description' | 'personality' | 'scenario' | 'example_dialogue' | 'character_note' | 'lorebook' | 'author_note' | 'post_history' | 'chat_history' | 'instructions' | 'quest' | 'memory' | 'context';
+  type: 'system' | 'persona' | 'character_description' | 'personality' | 'scenario' | 'example_dialogue' | 'character_note' | 'lorebook' | 'author_note' | 'post_history' | 'chat_history' | 'instructions' | 'quest' | 'memory' | 'context' | 'inventory';
   label: string;
   content: string;
   color: string;  // Tailwind color class for the section header
@@ -938,6 +938,11 @@ export interface Persona {
   isActive: boolean;    // Currently selected persona
   // Stats system for user (peticiones/solicitudes)
   statsConfig?: CharacterStatsConfig;
+  // Inventory V2 - Currency & Items
+  currency: number;              // Current currency amount (default: 0)
+  currencyName: string;          // Currency display name (default: 'Divisa')
+  currencyIcon: string;          // Currency icon emoji (default: '💰')
+  inventoryItems: PersonaInventoryEntry[]; // Items this persona owns
   createdAt: string;
   updatedAt: string;
 }
@@ -1603,7 +1608,7 @@ export interface EmbeddingsChatSettings {
   namespaceStrategy: 'global' | 'character' | 'session';
   /** Whether to show retrieved embeddings in the prompt viewer */
   showInPromptViewer: boolean;
-  /** Custom namespaces override from character/group assignment (takes priority over strategy) */
+  /** Additional namespaces to search alongside strategy-determined ones (augmented, not replaced) */
   customNamespaces?: string[];
   /** Enable automatic memory extraction from chat messages */
   memoryExtractionEnabled?: boolean;
@@ -1633,6 +1638,8 @@ export interface EmbeddingsChatSettings {
   memoryReinforcementEnabled?: boolean;
   /** Similarity threshold for memory reinforcement matching (default: 0.7) */
   memoryReinforcementThreshold?: number;
+  /** Enable memory extraction from user messages as well as assistant messages */
+  memoryExtractionFromUserEnabled?: boolean;
 }
 
 // ============ Tools / Actions Settings ============
@@ -2369,7 +2376,7 @@ export interface QuestObjectiveTemplate {
 // Los triggers se ejecutan a través del UnifiedTriggerExecutor,
 // que simula que el TokenDetector encontró la key.
 
-export type QuestRewardType = 'attribute' | 'trigger' | 'objective' | 'solicitud' | 'target_attribute';
+export type QuestRewardType = 'attribute' | 'trigger' | 'objective' | 'solicitud' | 'target_attribute' | 'currency';
 
 // Target mode para grupos
 export type TriggerTargetMode = 'self' | 'all' | 'target';
@@ -2471,6 +2478,9 @@ export interface QuestReward {
 
   // Para type: 'target_attribute' - modifica atributo de otro personaje o persona
   target_attribute?: QuestRewardTargetAttribute;
+
+  // Para type: 'currency' - recompensa de divisa del inventario
+  currency?: QuestRewardCurrency;
 
   // Condiciones opcionales para ejecutar el reward
   condition?: QuestRewardCondition;
@@ -3143,6 +3153,12 @@ export interface Item {
   // Stats & Effects
   stats?: ItemStat[];
   effects?: ItemEffect[];
+
+  // Inventory V2 fields
+  type?: InventoryItemType;               // 'consumable' or 'equipment' (V2 classification)
+  attributeEffects?: ItemAttributeEffect[]; // How item modifies attributes (V2)
+  duration?: number;                       // Consumable duration in turns (V2)
+  price?: number;                          // Shop purchase price (V2)
   
   // Properties
   stackable: boolean;       // Can stack in inventory
@@ -3155,6 +3171,9 @@ export interface Item {
   useAction?: string;       // What happens when used
   consumable?: boolean;     // Consumed on use
   cooldown?: number;        // Cooldown in turns
+  useMessage?: string;      // Message shown when item is used/equipped (V2)
+  expireMessage?: string;   // Message shown when consumable effect expires (V2)
+  unequipMessage?: string;  // Message shown when equipment is unequipped (V2)
   
   // Equipment
   equippable?: boolean;     // Can be equipped
@@ -3302,6 +3321,82 @@ export interface CharacterEquipment {
   characterId: string;
   slots: Record<ItemSlot, InventoryEntry | null>;
   stats: ItemStat[];        // Aggregated stats from equipment
+}
+
+// ============ Inventory V2 - Redesigned System ============
+
+// Item type (simplified: only consumable or equipment)
+export type InventoryItemType = 'consumable' | 'equipment';
+
+// Item attribute effect - how an item modifies a target's attribute
+export interface ItemAttributeEffect {
+  targetId: string;         // '__user__' for persona, characterId for character
+  targetName?: string;      // Display name for UI
+  attributeKey: string;     // e.g., 'vida', 'mana', 'resistencia'
+  attributeName?: string;   // Display name for UI
+  operator: CostOperator;   // '+', '-', '=', etc. (reuse existing CostOperator type)
+  value: number;
+  fallbackValue?: string | number; // Value to revert to when effect expires or item is unequipped
+}
+
+// Active consumable effect (tracked for duration in turns)
+export interface ActiveConsumableEffect {
+  id: string;
+  itemId: string;
+  itemName: string;
+  personaId: string;
+  effects: ItemAttributeEffect[];
+  effectFallbacks: Record<string, string | number>; // attributeKey -> fallbackValue
+  remainingTurns: number;
+  totalTurns: number;       // For display: "2/5 turns remaining"
+  useMessage?: string;      // Message shown when used
+  expireMessage?: string;   // Message shown when expired
+  appliedAt: string;
+}
+
+// Persona inventory entry - items owned by a persona
+export interface PersonaInventoryEntry {
+  itemId: string;
+  quantity: number;
+  equipped: boolean;        // Is this equipment item currently equipped?
+  targetOverrideId?: string; // Override target for effects (persona or character id)
+}
+
+// Inventory V2 Settings (simplified)
+export interface InventoryV2Settings {
+  enabled: boolean;
+  showInChat: boolean;      // Show inventory mini HUD in chat
+  showNotifications: boolean;
+  promptInclude: boolean;   // Include inventory in prompt
+  promptTemplate: string;   // Template for inventory prompt section
+  autoDetect: boolean;      // Auto-detect items in messages
+  currencyName: string;     // Default currency name (e.g., "Divisa")
+  currencyIcon: string;     // Default currency icon (e.g., "💰")
+}
+
+// Default inventory V2 settings
+export const DEFAULT_INVENTORY_V2_SETTINGS: InventoryV2Settings = {
+  enabled: true,
+  showInChat: true,
+  showNotifications: true,
+  promptInclude: true,
+  promptTemplate: `[Inventario Activo]
+{{activeItems}}
+
+[Efectos Activos]
+{{activeEffects}}
+
+[Divisa]
+{{currency}}`,
+  autoDetect: true,
+  currencyName: 'Divisa',
+  currencyIcon: '💰',
+};
+
+// Currency reward for quest system
+export interface QuestRewardCurrency {
+  amount: number;            // Amount of currency to add (negative to subtract)
+  description?: string;      // Optional description
 }
 
 // ============ Character Stats System Types ============

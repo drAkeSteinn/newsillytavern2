@@ -53,6 +53,7 @@ import {
   Brain,
   Trash2,
   Plus,
+  ShoppingCart,
 } from 'lucide-react';
 import {
   Popover,
@@ -78,6 +79,7 @@ import { cn } from '@/lib/utils';
 import type { ChatLayoutSettings, CharacterCard, CharacterGroup, Persona, ChatboxAppearanceSettings } from '@/types';
 import { DEFAULT_CHATBOX_APPEARANCE, THEME_COLOR_PRESETS } from '@/types';
 import { t } from '@/lib/i18n';
+import { getItemTypeLabel, getRarityColor, getRarityBgColor } from '@/store/slices/inventorySlice';
 import { QuickPetitions } from './user-solicitudes';
 import { ThemeEffects, getThemeColors as getThemeColorsUtil } from './theme-effects';
 import { useAudioRecorder, useAudioTranscription } from '@/hooks/use-audio-recorder';
@@ -88,7 +90,7 @@ import { stopAllSoundTriggers } from '@/hooks/use-sound-triggers';
 import { ttsService } from '@/lib/tts';
 
 // Tab type for the chatbox
-type ChatboxTab = 'chat' | 'solicitudes' | 'misiones' | 'memorias';
+type ChatboxTab = 'chat' | 'solicitudes' | 'misiones' | 'memorias' | 'tienda';
 
 interface NovelChatBoxProps {
   onSendMessage: (message: string) => void;
@@ -280,6 +282,9 @@ export function NovelChatBox({
     activateQuest,
     deactivateQuest,
     setQuestSettings,
+    items,
+    purchaseItem,
+    getShopItems,
   } = useTavernStore();
 
   // ASR config state (loaded from API)
@@ -1470,6 +1475,32 @@ export function NovelChatBox({
                 </Badge>
               )}
             </button>
+            
+            {/* Tienda Tab */}
+            <button
+              onClick={() => setActiveTab('tienda')}
+              className={cn(
+                "relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                activeTab === 'tienda' 
+                  ? "text-white shadow-sm" 
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              )}
+              style={activeTab === 'tienda' ? {
+                backgroundColor: themeColors.primary,
+              } : undefined}
+            >
+              <ShoppingCart className="w-3.5 h-3.5" />
+              <span>Tienda</span>
+              <Badge 
+                className="ml-0.5 h-4 min-w-4 px-1 text-[9px] font-bold"
+                style={{ 
+                  backgroundColor: activeTab === 'tienda' ? 'rgba(255,255,255,0.3)' : themeColors.primary,
+                  color: 'white'
+                }}
+              >
+                {activePersona?.currency || 0}
+              </Badge>
+            </button>
           </div>
         )}
       </div>
@@ -2594,6 +2625,107 @@ export function NovelChatBox({
                     </div>
                   </div>
                 )}
+              </div>
+            </ScrollArea>
+          )}
+
+          {/* Tienda Tab Content */}
+          {activeTab === 'tienda' && (
+            <ScrollArea className="flex-1 min-h-0">
+              <div className="p-3 space-y-3">
+                {/* Header with currency */}
+                <div className="flex items-center gap-2 mb-3">
+                  <ShoppingCart className="w-4 h-4 text-amber-500" />
+                  <h4 className="font-medium text-sm">Tienda</h4>
+                  <div className="ml-auto flex items-center gap-1.5 bg-amber-500/10 rounded-full px-2.5 py-1">
+                    <span className="text-sm">{activePersona?.currencyIcon || '💰'}</span>
+                    <span className="text-xs font-medium text-amber-400">{activePersona?.currencyName || 'Divisa'}:</span>
+                    <span className="text-xs font-bold text-amber-300">{activePersona?.currency || 0}</span>
+                  </div>
+                </div>
+
+                {/* Shop Items */}
+                {(() => {
+                  const shopItems = getShopItems();
+                  if (shopItems.length === 0) {
+                    return (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <ShoppingCart className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                        <p className="text-xs">No hay items disponibles en la tienda.</p>
+                        <p className="text-xs mt-1 opacity-70">Configura precios en el registro de items.</p>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-2">
+                      {shopItems.map(item => {
+                        const canAfford = (activePersona?.currency || 0) >= (item.price || 0);
+                        return (
+                          <div
+                            key={item.id}
+                            className={cn(
+                              "group flex items-start gap-2.5 p-2.5 rounded-lg border transition-colors",
+                              getRarityBgColor(item.rarity),
+                              canAfford ? "hover:bg-white/5" : "opacity-60"
+                            )}
+                          >
+                            {/* Rarity color indicator bar */}
+                            <div className={cn("w-1 h-full min-h-[2.5rem] rounded-full flex-shrink-0 mt-0.5", getRarityBgColor(item.rarity).replace('/10', '/40'))} />
+
+                            {/* Item info */}
+                            <div className="flex-1 min-w-0">
+                              {/* Top row: name + type badge */}
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span className="text-xs">{item.icon}</span>
+                                <span className={cn("text-xs font-medium", getRarityColor(item.rarity))}>
+                                  {item.name}
+                                </span>
+                                <span className={cn(
+                                  "text-[9px] font-medium px-1.5 py-0.5 rounded",
+                                  item.type === 'consumable' ? 'bg-blue-500/20 text-blue-400' : 'bg-orange-500/20 text-orange-400'
+                                )}>
+                                  {getItemTypeLabel(item.type)}
+                                </span>
+                              </div>
+
+                              {/* Description snippet */}
+                              {item.description && (
+                                <p className="text-[10px] text-muted-foreground line-clamp-2 mb-1.5">
+                                  {item.description}
+                                </p>
+                              )}
+
+                              {/* Price */}
+                              <div className="flex items-center gap-1 text-[10px]">
+                                <span className="text-amber-400 font-medium">
+                                  {activePersona?.currencyIcon || '💰'} {item.price} {activePersona?.currencyName || 'Divisa'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Buy button */}
+                            <Button
+                              size="sm"
+                              variant={canAfford ? "default" : "ghost"}
+                              className={cn(
+                                "h-7 text-xs px-2.5 flex-shrink-0",
+                                canAfford ? "bg-amber-600 hover:bg-amber-700 text-white" : "text-muted-foreground"
+                              )}
+                              disabled={!canAfford || !activePersona?.id}
+                              onClick={() => {
+                                if (activePersona?.id) {
+                                  purchaseItem(activePersona.id, item.id);
+                                }
+                              }}
+                            >
+                              Comprar
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             </ScrollArea>
           )}

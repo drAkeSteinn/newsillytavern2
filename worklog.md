@@ -1,511 +1,902 @@
 ---
-Task ID: bugfix-characterMemory
-Agent: Main Agent
-Task: Fix "characterMemory is not defined" error when sending messages + Fix memory tab issues
-
-Work Log:
-- Identified root cause: `executeToolCallsAndContinue` function used `characterMemory` in its body but didn't receive it as a parameter
-- Fixed stream/route.ts: Added `characterMemory?: CharacterMemory` param + updated all 11 call sites
-- Fixed proactive/route.ts: Added `characterMemory?: CharacterMemory` param + updated all 11 call sites
-- Fixed group-stream/route.ts: Added `characterMemory?: CharacterMemory` param to `executeGroupToolCalls` + updated all 10 call sites (using `characterMemoryMap[responder.id]`)
-- Fixed memory tab: Namespace info now always visible (not only when memories.length > 0)
-- Fixed race condition: `loadMemories` now accepts `forceRefresh` parameter to bypass stale `memoriesLoaded` check
-- Added refresh button to memory tab header
-- Added namespace display in "Add Memory" dialog
-- All lint checks pass, app compiles successfully
-
-Stage Summary:
-- characterMemory is now properly passed through the entire tool execution chain in all 3 route files
-- Memory tab shows namespace info at all times with visual indicator
-- Users can manually refresh memories with the new refresh button
-- Add Memory dialog shows target namespace before saving
-
----
 Task ID: 1
-Agent: Main Agent
-Task: Clone and set up newsillytavern2 repository
+Agent: main
+Task: Clone and launch the newsillytavern2 repository
 
 Work Log:
-- Cloned https://github.com/drAkeSteinn/newsillytavern2 to /home/z/my-project-temp
-- Analyzed project structure: TavernFlow - a Next.js 16 SillyTavern-like AI character chat platform
-- Copied all source files (src/, data/, public/) from cloned repo to existing /home/z/my-project
-- Updated package.json with additional dependencies (@lancedb/lancedb, @react-three/*, three, etc.)
-- Installed Linux LanceDB binary (@lancedb/lancedb-linux-x64-gnu)
-- Updated next.config.ts with serverExternalPackages for LanceDB and allowedDevOrigins
-- Generated Prisma client and pushed database schema
-- Started the dev server - app compiles and serves correctly at http://localhost:3000
+- Cloned the repository from https://github.com/drAkeSteinn/newsillytavern2
+- Analyzed project structure: Next.js 16 app with Turbopack, Prisma, LanceDB, Three.js/React Three Fiber, and many Radix UI components
+- Copied all source files (src/, public/, data/, prisma/) from cloned repo to /home/z/my-project
+- Updated package.json with missing dependencies: @lancedb/lancedb, three, @react-three/drei/fiber/xr, @types/three, and upgraded prisma/@prisma/client to 6.19.3
+- Ran `bun install` to install all dependencies
+- Generated Prisma client and pushed schema to SQLite database
+- Fixed dev script (removed pipe to `tee` which was causing bun issues)
+- Started the dev server on port 3000 - application is serving correctly
+- Verified all API endpoints respond with HTTP 200
 
 Stage Summary:
-- Project successfully cloned and configured
-- App title: "TavernFlow - AI Character Chat Platform"
-- Key features: Chat panel, character panel, sessions sidebar, settings, background gallery, atmosphere effects, TTS, lorebooks, sprite system, quest system, inventory, HUD, trigger system
-- Dev server starts and compiles successfully but sandbox environment kills background processes after ~30s
-- Created .zscripts/dev.sh for persistent server startup via /start.sh mechanism
-- LanceDB module loading issue (Turbopack can't resolve native module) - configured serverExternalPackages to fix
+- TavernFlow application is running successfully at http://localhost:3000
+- All main features available: Chat panel, Character panel, Sessions sidebar, Settings, Background gallery, Lorebooks, Sound triggers, Atmosphere effects, TTS, Quests, Memory, Tools, HUD, Sprites
+- The application uses Zustand for state management, LanceDB for embeddings/memory, and supports multiple LLM providers (OpenAI, Anthropic, Grok, Ollama, Z-AI)
 
 ---
 Task ID: 2
-Agent: Main Agent
-Task: Fix proactive messages "no LLM configured" false alarm
+Agent: main
+Task: Fix duplicate key error in NamespaceSelector + Unify Memory and Embeddings sections
 
 Work Log:
-- Investigated the proactive messages system: hook, panel, API route, and store
-- Found the root cause: `use-proactive-messages.tsx` line 84 used `state.activeLLMConfigId` which does NOT exist in the store
-- The store uses `isActive: boolean` flag inside each `LLMConfig` object, not a separate `activeLLMConfigId` property
-- Every other component in the codebase uses `llmConfigs.find(c => c.isActive)` - the correct pattern
-- Fixed by replacing the broken lookup with the correct pattern
-- Verified no other files reference `activeLLMConfigId`
-- Lint passes on the fixed file
+- Fixed duplicate namespace key error in namespace-selector.tsx (added dedup via Map)
+- Fixed race condition in upsertNamespace (lancedb-db.ts): reuse existing ID + post-insert duplicate cleanup
+- Added deduplication in getAllNamespaces() to guard against race-condition duplicates
+- Analyzed Memory and Embeddings sections: found they are complementary but with conceptual overlap
+- Memory tab had only summarization settings; Embeddings tab had memory extraction/consolidation/reinforcement buried
+- CharacterMemoryEditor was dead code (exported but never imported)
+- Both tabs used the same Brain icon
+- Rewrote MemorySettingsPanel as unified panel with 4 sub-tabs:
+  - Resúmenes: summary settings + SummaryViewer
+  - Personaje: reactivated CharacterMemoryEditor
+  - Extracción: memory extraction/consolidation/reinforcement/group dynamics/prompts (moved from Embeddings)
+  - Contexto: context limits + embeddings chat context settings
+- Renamed Embeddings tab to "Conocimiento" with Library icon
+- Removed "Integración" and "Prompts" tabs from Embeddings panel (moved to Memory)
+- Added cross-link cards between Memory and Conocimiento tabs
+- Updated settings panel navigation with proper separators
 
 Stage Summary:
-- Bug: `state.activeLLMConfigId` was always `undefined`, causing `llmConfig` to be `undefined`, which always triggered `inactiveReason: 'no_llm'`
-- Fix: Changed `llmConfigs.find((c) => c.id === activeLLMConfigId)` to `llmConfigs.find((c) => c.isActive)` 
-- This matches the pattern used in chat-panel.tsx, settings-panel.tsx, and the store's own `getActiveLLMConfig()` method
-- Now when Grok (or any LLM) is configured as active, the proactive system will correctly detect it
+- Memory section is now a unified hub for all memory-related settings
+- Conocimiento (formerly Embeddings) focuses on infrastructure: Ollama config, namespaces, search, file upload, browsing
+- CharacterMemoryEditor is now accessible from Settings → Memoria → Personaje
+- No more duplicate Brain icons; clear separation of concerns
+- Both sections compile and work correctly
 
 ---
-Task ID: 3
-Agent: Main Agent
-Task: Fix Bad Gateway error and proactive messages bugs
+Task ID: 2a+2b
+Agent: main
+Task: Improve embedding search with updated default context depth and bidirectional search
 
 Work Log:
-- Investigated "Bad Gateway" error when sending chat messages
-- Found multiple critical bugs in the proactive route (api/chat/proactive/route.ts):
-  1. ALL provider function calls had wrong argument types/order (e.g., streamGrok({endpoint,apiKey}, messages, options) instead of streamGrok(messages, config))
-  2. streamZAI was called with an options object instead of a runtime token string
-  3. selectContextMessages returns ContextWindow object but code passed it directly instead of .messages
-  4. callZAI/callOpenAICompatible/etc return GenerateResponse with .message field but code used .content
-- Fixed the proactive route by rewriting the entire provider dispatch section with correct signatures
-- Used non-streaming call* functions (callZAI, callGrok, etc.) for efficiency with streaming fallback
-- Added API key validation in the stream route for providers that require one (grok, openai, anthropic, etc.)
-- Added endpoint URL validation for providers that require one
-- Fixed persistence sync to ensure at least one LLM config is always active after loading from server
-- Fixed streamZAIWithTools argument order in group-stream route
-- Fixed callZAI(chatMessages, config.apiKey) → callZAI(chatMessages) in generation.ts
-- Fixed streamZAI(chatMessages, llmConfig.apiKey) → streamZAI(chatMessages) in group-stream route
-- Updated Caddyfile with flush_interval -1 for SSE streaming (cannot modify system Caddy)
+- Phase 2a: Updated `searchContextDepth` default from 1 to 2 in `src/store/defaults.ts` (line 114), ensuring the default search query includes 2 rounds of recent context (user+assistant pairs) for better semantic matching
+- Phase 2b: Added `lastAssistantMessage?: string` optional parameter to `retrieveEmbeddingsContext()` in `src/lib/embeddings/chat-context.ts`
+- Added bidirectional search block after the main search loop: when `lastAssistantMessage` is provided and >20 chars, performs a secondary search across all namespaces with half the result limit and a 0.1 higher similarity threshold
+- Updated `src/app/api/chat/stream/route.ts`: extracts `lastAssistantMsg` from messages (last non-deleted assistant message) and passes it to `retrieveEmbeddingsContext()`
+- Updated `src/app/api/chat/group-stream/route.ts`: same extraction and parameter passing for group chat context retrieval
+- Lint passes cleanly, dev server compiles and serves correctly
 
 Stage Summary:
-- Critical bug: All provider function signatures in proactive route were wrong
-- Critical bug: GenerateResponse uses .message not .content - caused "Cannot read properties of undefined (reading 'trim')"
-- Critical bug: selectContextMessages returns ContextWindow, not array - needed .messages
-- New feature: API key and endpoint validation in stream route returns helpful error messages
-- Improvement: Persistence sync now auto-activates first non-test-mock LLM config if none is active
-- All lint checks pass
+- Embedding search now uses bidirectional queries: user message + last assistant message
+- Default search context depth increased from 1 to 2 for richer query enrichment
+- Secondary assistant-message search uses conservative parameters (half limit, +0.1 threshold) to avoid noise
+- All three affected files compile without errors
+
+---
+Task ID: 1a
+Agent: main
+Task: Change summary header from [Previous Conversation Summary] to [RECUERDOS ANTERIORES]
+
+Work Log:
+- Edit /home/z/my-project/src/app/api/chat/stream/route.ts:
+  - Line 542: Changed label 'Conversation Summary' → 'Recuerdos Anteriores'
+  - Line 543: Changed `[Previous Conversation Summary]\n${summary.content}` → `[RECUERDOS ANTERIORES]\n${summary.content}`
+  - Line 550: Changed `[Previous Conversation Summary]\n${summary.content}` → `[RECUERDOS ANTERIORES]\n${summary.content}`
+- Edit /home/z/my-project/src/app/api/chat/group-stream/route.ts:
+  - Line 916: Changed `[Previous Conversation Summary]\n${summary.content}` → `[RECUERDOS ANTERIORES]\n${summary.content}`
+- Edit /home/z/my-project/src/app/api/chat/summary/route.ts:
+  - Updated system prompt: added "recuerdos anteriores (previous memories)" context line and changed "summaries" → "recuerdos anteriores" in the task description
+  - Changed `Previous Summary:` label → `Resumen anterior:` in the user prompt
+  - Updated follow-up instruction: "update the summary" → "update the recuerdos anteriores"
+
+Stage Summary:
+- All summary headers now use [RECUERDOS ANTERIORES] instead of [Previous Conversation Summary]
+- Section label in prompt viewer changed to 'Recuerdos Anteriores'
+- Summary generation prompt updated with Spanish context terminology
+
+---
+Task ID: 1b
+Agent: main
+Task: Modify summary generation API to save generated summary as embedding in LanceDB
+
+Work Log:
+- Added `'summary'` to the `SourceType` union in `/home/z/my-project/src/lib/embeddings/types.ts`
+- Modified `/home/z/my-project/src/app/api/chat/summary/route.ts`:
+  - Added `import { getEmbeddingClient } from '@/lib/embeddings/client'`
+  - Added `characterId?: string` and `sessionId?: string` to `SummaryRequest` interface
+  - Extracted `characterId` and `sessionId` from request body destructuring
+  - After summary content generation, added embedding save logic:
+    - Creates embedding client and constructs namespace `memory-character-{characterId}-{sessionId}`
+    - Searches for and deletes any previous summary embedding for the same session (keep only latest)
+    - Saves the new summary as an embedding with `source_type: 'summary'` and metadata including character_id, session_id, message_range, tokens, created_at
+    - Entire embedding save is wrapped in try/catch (non-blocking — failures only log a warning)
+- Modified `/home/z/my-project/src/lib/embeddings/chat-context.ts`:
+  - Added filter after `trimmed = allResults.slice(0, maxResults)` to exclude `source_type === 'summary'` from context injection
+  - This prevents duplicate injection since summaries are already injected separately as [RECUERDOS ANTERIORES]
+
+Stage Summary:
+- Summary embeddings are now saved to LanceDB on every successful summary generation
+- Only the latest summary per session is kept (previous ones are deleted)
+- Summary-type embeddings are filtered out of the embeddings context retrieval to avoid duplication
+- The `'summary'` source type is now part of the SourceType union
+- Lint passes cleanly, dev server running without errors
+
+---
+Task ID: 3a+3b
+Agent: main
+Task: Unify Character Memory with LanceDB embeddings and eliminate duplication
+
+Work Log:
+- Phase 3a: Verified `/home/z/my-project/src/app/api/embeddings/manual-memory/route.ts`
+  - Route already saves to LanceDB with `source_type: 'memory'`, includes `importance` and `memory_subject` in metadata ✓
+  - Was missing `manually_created: true` — only had `manual: true` in metadata
+  - Added `manually_created: true` alongside existing `manual: true` for consistency with `manage-memory.ts` tool and `novel-chat-box.tsx` which already use this field
+  - Now manual memory events can be clearly distinguished from auto-extracted ones by checking `metadata.manually_created`
+
+- Phase 3b: Eliminated duplication between buildMemorySection and embeddings context
+  - Problem: Character Memory events were injected via `buildMemorySection()` AND could also appear as embeddings via `retrieveEmbeddingsContext()`, causing redundant LLM context
+  - The existing dedup in `chat-context.ts` (`existingMemoryEvents` dedup) only filtered exact matches from embeddings — semantic overlap still caused redundancy
+  - Modified `/home/z/my-project/src/app/api/chat/stream/route.ts` (lines 592-612):
+    - Added `embeddingsFoundMemory` flag: `embeddingsResult.found && embeddingsResult.memoryCount > 0`
+    - When embeddings are active AND found memory results → skip Character Memory content from `embeddingsContext` (the combined string injected into the LLM)
+    - When embeddings are inactive or found no memory → fall back to Character Memory section content
+    - Character Memory is ALWAYS shown in the prompt viewer as a separate section (line 580) regardless of embeddings
+  - Verified group-stream route (`group-stream/route.ts`) does NOT build a `characterMemorySection` in `contextParts`, so no change needed there
+  - Lint passes cleanly
+
+Stage Summary:
+- Manual memory events now have `manually_created: true` metadata in LanceDB for clear distinction from auto-extracted memories
+- Duplication eliminated: when embeddings find relevant memory, the more targeted `[MEMORIA RELEVANTE]` section is used instead of the full Character Memory dump
+- Character Memory section remains visible in the prompt viewer at all times for transparency
+- Fallback to Character Memory section when embeddings are inactive or find no memory results
+- No changes needed to group-stream route (already doesn't duplicate Character Memory in contextParts)
+
+---
+Task ID: 5a
+Agent: main
+Task: Extract memories from user messages in addition to assistant messages
+
+Work Log:
+- Added `memoryExtractionFromUserEnabled?: boolean` to `EmbeddingsChatSettings` interface in `/home/z/my-project/src/types/index.ts`
+- Added default value `memoryExtractionFromUserEnabled: false` in `/home/z/my-project/src/store/defaults.ts`
+- Added `DEFAULT_USER_MEMORY_EXTRACTION_PROMPT` in `/home/z/my-project/src/lib/embeddings/memory-extraction-prompts.ts`:
+  - Spanish-language prompt optimized for extracting facts about the player (name, preferences, personal info, intentions, secrets)
+  - Uses "usuario" as subject for player facts, "otro" for world facts
+  - Includes examples showing extraction from rich user messages vs. returning [] for short/generic ones
+  - Variables: {userName}, {lastMessage}
+- Modified `/home/z/my-project/src/app/api/embeddings/extract-memory/route.ts`:
+  - Added `extractFromUser` and `lastUserMessage` to request body destructuring
+  - After existing assistant-message extraction, added a second extraction block for user messages:
+    - Checks `extractFromUser && lastUserMessage && lastUserMessage.trim().length > 20`
+    - Calls `extractMemories()` with default user extraction prompt (no customPrompt override)
+    - Saves user-extracted facts via `saveMemoriesAsEmbeddings()`
+    - Adds user memory activations to `memoryActivations` array with `usermem_` ID prefix
+    - Entire block wrapped in try/catch (non-blocking — failures only log a warning)
+- Modified `/home/z/my-project/src/components/tavern/chat-panel.tsx` (two locations):
+  - Group chat extraction (line ~949): Added `lastUserMsg` extraction from session messages (second-to-last user message) and `extractFromUser`/`lastUserMessage` to request body
+  - Single chat extraction (line ~1492): Same additions for single-character extraction
+- Lint passes cleanly, dev server running without errors
+
+Stage Summary:
+- User message memory extraction is now available as an opt-in feature (`memoryExtractionFromUserEnabled`)
+- When enabled, the extract-memory API performs TWO extraction passes: one for the assistant message and one for the user message
+- User extraction uses a dedicated prompt (`DEFAULT_USER_MEMORY_EXTRACTION_PROMPT`) optimized for player fact extraction
+- User-extracted memories are saved to the same LanceDB namespace as assistant-extracted memories
+- Both group and single chat flows pass the new parameters to the API
+- The feature is disabled by default — users must opt in via settings
 
 ---
 Task ID: 4
-Agent: Main Agent
-Task: Fix callGrok() returning wrong field name - root cause of Proactivo failing with Grok
+Agent: main
+Task: Implement Phase 4 — adaptive context window with priority-based budgeting
 
 Work Log:
-- Investigated how Proactivo feature works end-to-end
-- Found root cause: callGrok() in src/lib/llm/providers/grok.ts returns `{ content, finishReason }` instead of `{ message, usage, model }` matching the GenerateResponse interface
-- All other providers (OpenAI, Anthropic, ZAI, Ollama, TextGenWebUI) correctly return `{ message, usage }`
-- The proactive route at line 297 does `responseContent = result.message` which was undefined from callGrok()
-- This caused responseContent to be undefined, then responseContent.trim() threw TypeError
-- TypeError was caught by outer try-catch → 500 error returned → client showed error toast
-- Fixed callGrok() to return `{ message: content, usage: {...}, model: data.model }` matching GenerateResponse
+- Modified `/home/z/my-project/src/lib/context-manager.ts`:
+  - Added `reservedTokens?: number` field to `ContextConfig` interface — allows specifying tokens reserved for summary/embeddings (not available for chat history)
+  - Added `estimateContentTokens()` function — simple ~4 chars/token estimator for content budgeting (simpler than the CJK-aware `estimateTokens()`)
+  - Modified `selectContextMessages()` to calculate `availableTokens = Math.max(500, effectiveMaxTokens - (config.reservedTokens || 0))` — ensures chat history budget is reduced when summary/embeddings consume significant token budget, with a 500-token minimum floor
+  - Both `applySlidingWindow` and `applyTokenLimit` checks now use `availableTokens` instead of `effectiveMaxTokens`
+
+- Modified `/home/z/my-project/src/app/api/chat/stream/route.ts`:
+  - Added `estimateContentTokens` to the import from `@/lib/context-manager`
+  - Added re-evaluation block AFTER `embeddingsContext` is built (line 670):
+    - Calculates `summaryTokens` from `summary?.content` using `estimateContentTokens()`
+    - Calculates `embeddingsTokens` from `embeddingsContext` using `estimateContentTokens()`
+    - If total `reservedTokens > 200`, re-runs `selectContextMessages()` with `reservedTokens` in the config
+    - Logs the token budget breakdown: `[Context Budget] Reserved N tokens (summary: X, embeddings: Y). Chat messages: A → B`
+  - Added prompt viewer section update (lines 687-709):
+    - When context window was re-evaluated (`finalContextWindow !== contextWindow`), rebuilds `chatHistorySections` and `allPromptSections` with the final message set
+    - This ensures the prompt viewer accurately reflects what the LLM receives
+  - Replaced `contextWindow.messages` with `finalContextWindow.messages` in all subsequent uses:
+    - `lastCtxMessage` check (was line 669)
+    - `allMessages` construction with summary injection (was line 675-676)
+  - Replaced `allPromptSections` with `finalAllPromptSections` in the SSE prompt_data event (was line 736)
+
+- Priority order implemented:
+  1. System prompt (always kept — outside context window budgeting)
+  2. Summary/Recuerdos Anteriores (always kept — counted as reserved tokens)
+  3. Embeddings memory (high relevance — counted as reserved tokens)
+  4. Chat history recent (reduced by budget after reservation)
+  5. Embeddings lore (if budget remains — already part of embeddingsContext)
+
+- Lint passes cleanly, dev server running without errors
 
 Stage Summary:
-- Bug: callGrok() returned `{ content, finishReason }` instead of `{ message, usage, model }`
-- This was the root cause of Proactivo not working with Grok - result.message was undefined
-- Fix: Changed return to `{ message: content, usage: { promptTokens, completionTokens, totalTokens }, model }` 
-- Now matches the GenerateResponse interface used by all other providers
-- Proactive route's `result.message` will now correctly contain the Grok response content
+- Context window now accounts for summary + embeddings token usage before allocating chat history budget
+- When reserved tokens (summary + embeddings) exceed 200, the chat history window is automatically shrunk
+- Minimum floor of 500 tokens ensures at least some chat history is always included
+- Prompt viewer accurately reflects the final context window after budget adjustments
+- The system prioritizes: system prompt > summary > embeddings > chat history > lore (when budget is tight)
+
+---
+Task ID: review-fixes
+Agent: main
+Task: Review and fix bugs in the 5-phase memory system implementation
+
+Work Log:
+- Conducted thorough code review of all Phase 1-5 implementations
+- Found and fixed 10 bugs/inconsistencies:
+  1. HIGH: Summary deletion used fragile semantic search → replaced with getNamespaceEmbeddingsMetadata(sourceType:'summary') for reliable lookup
+  2. HIGH: DEFAULT_USER_MEMORY_EXTRACTION_PROMPT was imported but never used → user extraction was falling back to the character prompt, producing lower quality results
+  3. MEDIUM: searchContextDepth default was 1 in memory-settings-panel.tsx but 2 in store/defaults.ts → aligned to 2
+  4. MEDIUM: Missing memoryExtractionFromUserEnabled in local DEFAULT_EMBEDDINGS_CHAT const → added
+  5. MEDIUM: No UI toggle for memoryExtractionFromUserEnabled → added Switch + info card in ExtraccionTab
+  6. MEDIUM: Missing adaptive context window (reservedTokens) in group-stream route → added gReservedTokens re-evaluation
+  7. MEDIUM: Summary token estimate missing [RECUERDOS ANTERIORES]\n header prefix in group-stream → fixed
+  8. MEDIUM: threshold + 0.1 could exceed 1.0 in bidirectional search → added Math.min(threshold + 0.1, 1.0) cap
+  9. MEDIUM: sessionId: '' in SummaryData response while embedding used effectiveSessId → fixed to use sessionId
+  10. LOW: Summary filter applied after slice in chat-context.ts → swapped to filter-then-slice for better result quality
+- Also fixed minor style issues: body.characterId → characterId in summary route, substr → substring
+- All fixes pass lint, dev server responds correctly
+
+Stage Summary:
+- All 5 phases now have consistent implementation across both single-chat and group-chat routes
+- User memory extraction now uses the correct prompt (not the character prompt)
+- Adaptive context window works in both stream and group-stream routes
+- Bidirectional search is protected against threshold > 1.0 edge case
+- Summary embedding deletion is reliable (no more semantic search accidents)
+- Users can now toggle user message extraction from the settings UI
+
+---
+Task ID: proactive-and-embeddings-fix
+Agent: main
+Task: Fix proactive route parity with stream route + change embeddingNamespaces from REPLACE to AUGMENT
+
+Work Log:
+- Analyzed proactive route (/api/chat/proactive) — found it was missing all Phase 1-5 improvements
+- Fixed 4 bugs in proactive route:
+  1. [Previous Conversation Summary] → [RECUERDOS ANTERIORES] (consistent with stream/group-stream)
+  2. Added bidirectional search (lastAssistantMessage param)
+  3. Added embeddingsFoundMemory dedup for characterMemory
+  4. Added reservedTokens / adaptive context window (estimateContentTokens + selectContextMessages re-evaluation)
+- Changed embeddingNamespaces behavior from REPLACE to AUGMENT:
+  - Previously: selecting namespaces in character/group REPLACED the strategy-determined namespaces entirely
+  - Now: selected namespaces are ADDED on top of the strategy-determined ones
+  - This means session memory (memory-character-{id}-{session}) and character lore (character-{id}) are ALWAYS searched
+  - Additional specialized namespaces can be added without losing the automatic ones
+- Updated UI labels: "Embeddings" → "Colecciones de Contexto" in character editor
+- Updated help tooltips and info text in NamespaceSelector, character-editor, and group-editor
+- Updated type comment in EmbeddingsChatSettings.customNamespaces
+- All changes pass lint, dev server running correctly
+
+Stage Summary:
+- Proactive route now has full parity with stream route (all Phase 1-5 improvements)
+- Character/group embeddingNamespaces now AUGMENT the auto-determined namespaces instead of replacing them
+- Users can add specialized context collections without losing session/character memory search
+- Both proactive and normal chat benefit from the same memory improvements
+---
+Task ID: namespace-selector-filter
+Agent: main
+Task: Filter session/auto namespaces from NamespaceSelector — only show context namespaces
+
+Work Log:
+- Analyzed all namespace creation points to understand which are auto-generated:
+  - memory-character-{charId}-{sessionId}: auto_created=true, session memories
+  - memory-group-{groupId}-{sessionId}: auto_created=true, group session memories
+  - character-{charId}: character lore (auto-included by strategy)
+  - group-{groupId}: group lore (auto-included by strategy)
+  - default, world, world-building: always included by strategy
+- Modified /api/embeddings/namespaces route to classify namespaces:
+  - Added `isSessionNamespace` boolean flag based on: auto_created metadata, pattern matching, and always-included names
+  - Added `sessionReason` field ('always_included', 'auto_created', 'auto_pattern') for debugging
+- Rewrote NamespaceSelector component:
+  - Filters out namespaces where isSessionNamespace=true
+  - Only shows "context" namespaces (manually created for specialized knowledge)
+  - Updated empty state message: explains that session/personaje namespaces are auto-included
+  - Changed "Namespaces disponibles" → "Colecciones disponibles"
+  - Changed "namespace(s) seleccionado(s)" → "colección(es) de contexto"
+  - Added info banner inside dropdown explaining filter behavior
+  - Added tooltip on empty selection explaining which namespaces are auto-included
+  - Updated placeholder text to "Solo namespaces automáticos"
+- Lint passes, dev server responds with HTTP 200
+
+Stage Summary:
+- NamespaceSelector now hides session/auto namespaces by default
+- Only manually-created "context" namespaces appear in the character/group editor selector
+- Auto namespaces (memory-*, character-*, group-*, world, default) are always included by the RAG strategy
+- Both character editor and group editor benefit from the filtered selector
+- Users see a clear distinction between "context collections" (selectable) and "automatic namespaces" (always-on)
+---
+Task ID: 1-3
+Agent: Main
+Task: Complete Inventory System V2 Redesign - Data models, store, prompt integration, and UI
+
+Work Log:
+- Explored existing inventory system: types, store slice, item handlers, UI components
+- Phase 1: Redesigned data models in types/index.ts (InventoryItemType, ItemAttributeEffect, ActiveConsumableEffect, PersonaInventoryEntry, InventoryV2Settings, QuestRewardCurrency)
+- Added currency/inventory fields to Persona type (currency, currencyName, currencyIcon, inventoryItems)
+- Added 'currency' to QuestRewardType and QuestRewardCurrency to QuestReward
+- Completely rewrote inventorySlice.ts with new V2 system: persona-based items, consumable/equipment, active effects, currency management, shop
+- Phase 2: Integrated inventory into prompt builder (buildInventorySection function, new InventoryPromptData parameter)
+- Added inventory key resolution to key-resolver.ts ({{inventory}}, {{currency}})
+- Updated chat stream and group stream API routes to accept inventoryData
+- Added inventoryData to chat-panel.tsx API requests (both normal and group chat)
+- Implemented currency reward execution in quest-reward-executor.ts
+- Added currency validation in quest-reward-utils.ts
+- Phase 3: Rewrote inventory UI components (item-card, item-editor, inventory-panel)
+- Created InventoryHUD (draggable mini HUD in chat)
+- Integrated effect ticking per turn in chat panel
+- Fixed all lint errors (hooks rules, naming conventions)
+
+Stage Summary:
+- Complete Inventory V2 system implemented with consumable/equipment items
+- Currency ("Divisa") integrated into persona and quest reward system
+- Items modify attributes (persona or character) with duration tracking for consumables
+- Equipment provides permanent attribute modifications while equipped
+- Shop system allows buying items with currency
+- Draggable HUD shows currency, active effects, equipped items in chat
+- Inventory data injected into LLM prompts when enabled
+- Consumable effects tick down per turn and expire with notifications
+- All backward compatible - old data preserved, new fields have defaults
+
+---
+Task ID: 4
+Agent: Phase 4 Agent
+Task: Add inventory navigation button and panel to main layout
+
+Work Log:
+- Read page.tsx, settings-panel.tsx, sheet.tsx, inventory-panel.tsx to understand existing patterns
+- Added `nav.inventory` i18n key to both Spanish ('Inventario') and English ('Inventory') sections in /home/z/my-project/src/lib/i18n.ts
+- Added `Package` icon import from lucide-react to page.tsx
+- Added `InventoryPanel` import from `@/components/inventory/inventory-panel`
+- Added `Sheet, SheetContent, SheetHeader, SheetTitle` imports from `@/components/ui/sheet`
+- Added `inventoryOpen` state variable (useState<boolean>) similar to `backgroundGalleryOpen`
+- Added inventory button in header between Sound Triggers and Settings buttons using Package icon with `t('nav.inventory')` title
+- Rendered InventoryPanel inside a Sheet component (slide-over from right side, 400px max-width on desktop, full width on mobile, no padding via `p-0` class)
+- SheetHeader with sr-only class for accessibility (prevents Radix Dialog accessibility warning) containing SheetTitle with translated label
+- Added inventory button to mobile menu overlay (inside SessionsSidebar at bottom with mt-auto and border-t, closes mobile menu and opens inventory on click)
+- ESLint passes cleanly, dev server compiles and serves correctly
+
+Stage Summary:
+- Users can now access the Inventory V2 system from the main header via the Package icon button
+- The inventory panel slides in from the right as a Sheet overlay (similar to settings panel pattern)
+- Mobile users have an inventory button in the hamburger menu overlay
+- i18n support added for the inventory navigation label in both Spanish and English
+---
+Task ID: 5
+Agent: Phase 5 Agent
+Task: Add currency editor and inventory item selector to persona editor
+
+Work Log:
+- Read persona-panel.tsx, types/index.ts, and inventorySlice.ts to understand current types and store methods
+- Added currency, currencyName, currencyIcon fields to editForm state type and initial values
+- Updated handleStartEdit to populate currency fields from persona data
+- Updated handleSaveEdit to persist currency fields via updatePersona
+- Updated handleCancelEdit to reset currency fields to defaults
+- Added new imports: Coins, Minus, PackageOpen, X from lucide-react; Item from types; getItemTypeIcon, getItemTypeLabel, getRarityColor, getRarityBgColor from inventorySlice; Select components from shadcn/ui
+- Added useTavernStore destructures: items, addToPersona, removeFromPersona, getPersonaItems
+- Extended PersonaEditorPanelProps interface with items, addToPersona, removeFromPersona, getPersonaItems props
+- Added "Divisa" section to PersonaEditorPanel after Basic Info with amber/gold theme: emoji icon input (maxLength 4), currency name text input, amount number input with +/- buttons, live preview bar
+- Added "Items del Inventario" section after Divisa with emerald theme: scrollable list of persona items with rarity-colored cards, type badges (Consumible/Equipo), equipped badge, quantity display, remove button per item; Select dropdown to add items from global registry; empty state when no items
+- Updated right sidebar help text to include Divisa and Items descriptions
+- Updated Quick Stats Summary to always show (not gated by statsConfig.enabled): currency amount, items count, equipped count, plus conditional stats rows
+- Fixed editingPersona type: changed from `null` to `undefined` to match PersonaEditorPanelProps
+- Removed unused getItemById prop to keep code clean
+- Verified TypeScript compilation passes with no errors
+
+Stage Summary:
+- Persona editor now fully exposes currency (icon, name, amount) and inventory items (add/remove from global registry)
+- Divisa section uses amber/gold color scheme with Coins icon
+- Inventory section uses emerald color scheme with PackageOpen icon
+- Right sidebar updated with currency/inventory help text and always-visible summary
+- All TypeScript types are correct and compilation succeeds
+
+---
+Task ID: 4
+Agent: main
+Task: Phase 4 — Add inventory navigation button and panel to main layout
+
+Work Log:
+- Added inventory button (Package icon) to page.tsx header between Sound Triggers and Settings
+- Added inventoryOpen state variable following same pattern as backgroundGalleryOpen
+- Rendered InventoryPanel inside a Sheet component (slides from right, sm:max-w-[400px])
+- Added inventory button to mobile menu overlay
+- Added i18n labels: nav.inventory = 'Inventario' (Spanish), 'Inventory' (English)
+
+Stage Summary:
+- Users can now access the Inventory panel from the main header toolbar
+- Panel slides in from right using shadcn/ui Sheet component
+- Mobile menu also includes inventory access
+- Lint passes, app compiles and serves correctly
 
 ---
 Task ID: 5
-Agent: Main Agent
-Task: Implement critical Proactivo improvements (items 1-6 + SSE streaming)
+Agent: main
+Task: Phase 5 — Add currency editor and inventory item selector to persona editor
 
 Work Log:
-- Rewrote `/api/chat/proactive/route.ts` from ~353 lines to ~1626 lines with full SSE streaming
-- Converted from JSON response to SSE streaming (required for tool calling, memory, real-time display)
-- Added ALL missing imports (tools, embeddings, HUD, key resolution, etc.)
-- Added ALL missing request body fields (allCharacters, questTemplates, sessionQuests, toolsSettings, embeddingsChat, hudContext, summary, contextConfig, etc.)
-- Added API key/endpoint validation per provider
-- Added full key resolution system (resolveStats, buildKeyResolutionContext, resolveAllKeys) for all template variables
-- Added embeddings context retrieval (retrieveEmbeddingsContext) with search query enrichment
-- Added full tool/action system with multi-round native tool calling + prompt-based fallback
-- Added HUD context injection (buildHUDContextSection, injectHUDContextIntoMessages)
-- Added summary/context compression support
-- Added memory reinforcement and extraction after streaming completes
-- Fixed proactive instruction to use {{char}}/{{user}} template variables instead of JS interpolation
-- Fixed nudge message to "[La escena continúa] {{user}} parece distraído así que {{char}} decide hacer o decir algo para que todo continúe."
-- Fixed maxTokens to use user's configured value (removed artificial 500 token cap)
-- Fixed temperature to only default to 0.9 if not configured by user
-- Custom proactive prompt (customPrompt) now passes through resolveAllKeys() for template variable resolution
-- Added SSE events: proactive_start, prompt_data, lorebook_debug, embeddings_context, token, tool_call_start, tool_call_result, quest_activation, action_activation, solicitud_activation, memory_extracting, done (with isProactive: true), error
-- Updated `use-proactive-messages.tsx` hook to handle SSE streaming response
-- Hook now sends all required data fields matching stream route
-- Hook handles all SSE event types including tool calls, quest activations, action activations, solicitudes
-- Lint passes on all modified files
+- Added currency, currencyName, currencyIcon fields to editForm state in persona-panel.tsx
+- Added Divisa section (after Basic Info, before Stats) with icon, name, amount inputs and live preview
+- Added Items del Inventario section with item list, add dropdown, and remove functionality
+- Updated right sidebar help text with inventory/currency descriptions
+- Quick Stats Summary now always shows currency and items count
 
 Stage Summary:
-- Proactive route now has FULL feature parity with the stream route
-- SSE streaming enables tool calling, real-time token display, and memory features
-- Template variables ({{char}}, {{user}}, {{stats}}, etc.) are properly resolved everywhere
-- maxTokens respects user configuration instead of artificial cap
-- All 6 critical items implemented + SSE streaming (item 7/8)
+- Persona editor now exposes currency (icon, name, amount) for editing
+- Items can be added from global registry and removed from persona inventory
+- Item display uses rarity colors and type badges
+- All fields persist through save/cancel operations
 
 ---
 Task ID: 6
-Agent: Main Agent
-Task: Implement remaining Proactivo improvements (configurable nudge, streaming display, UI)
+Agent: main
+Task: Phase 6 — Update ItemKeyHandler to V2 and wire into trigger pipeline
 
 Work Log:
-- Added `nudgeTemplate` field to `ProactiveMessagesConfig` type and default config
-- Updated proactive route to use configurable nudge template from proactiveConfig.nudgeTemplate (falls back to default)
-- Added "Mensaje de Impulso (Nudge)" card to proactive-messages-panel.tsx with Textarea for custom nudge template
-- Added "Variables de Plantilla Disponibles" reference section to proactive panel UI (shows {{char}}, {{user}}, {{userpersona}}, {{stats}}, {{activeQuests}}, {{outlet::*}})
-- Added proactive instruction and nudge sections to prompt viewer (allPromptSections) so they appear in the prompt viewer during proactive generation
-- Added streaming callbacks to useProactiveMessages hook: onProactiveStreamStart, onProactiveStreamToken, onProactiveStreamEnd
-- Updated chat-panel.tsx to use streaming callbacks for real-time display of proactive messages (sets streamingCharacter and streamingContent during proactive generation)
-- Verified prompt viewer shows: ✨ Proactive Message Instruction (with resolved template vars) and ✨ Nudge (Proactive User Message)
-- Lint passes, proactive API tested with custom nudge template - works correctly
+- Rewrote ItemKeyHandlerContext to use V2 types: personaId, addToPersona, removeFromPersona, equipItem(personaId,itemId), consumeItem
+- Updated execute() method to use V2 store methods with personaId parameter
+- Added 'use' and 'unequip' action support in type-indicator format
+- Updated keyword detection to determine action based on item type (consumable→use, equipment→add)
+- Updated use-trigger-system.ts itemKeyHandlerContext to pass V2 methods
+- Added item trigger keywords to allKeywords array for plain-word detection
+- Renamed useConsumable → consumeItem to avoid React hooks lint rule
+- Updated legacy item trigger path to use V2 methods (addToPersona, removeFromPersona, equipItem)
 
 Stage Summary:
-- Configurable nudge template: Users can now customize the nudge message in the Proactive settings UI
-- Real-time streaming display: Proactive messages now appear token-by-token in the chat (like normal messages) instead of all at once
-- Prompt viewer: Proactive instruction and nudge message are now visible in the prompt viewer with amber-colored section cards
-- Template variable reference: Users can see available template variables directly in the settings panel
-- All 10 items from the original recommendation list are now implemented
+- ItemKeyHandler fully migrated from V1 (InventoryEntry, addToInventory) to V2 (PersonaInventoryEntry, addToPersona)
+- Handler now supports add/remove/use/equip/unequip actions
+- Consumable items are auto-used when keyword detected; equipment items are auto-added
+- Both unified key detection path and legacy token detection path use V2 methods
+- Lint passes cleanly
 
 ---
-Task ID: 8
-Agent: Main Agent
-Task: Review and fix the Memory (Memoria) system in the app
+Task ID: 7
+Agent: main
+Task: Phase 7 — Stats & Currency Sync integration
 
 Work Log:
-- Investigated the entire Memory system: 2 subsystems (Summary + Embeddings)
-- Summary System: Zustand store + JSON persistence, memory-settings-panel, summary-viewer, chat/summary API
-- Embeddings System: LanceDB + Ollama, 17+ API routes, chat-context retrieval, memory extraction, reinforcement, consolidation
-- Found critical bug: Character Memory (events, relationships, notes from Zustand store) was NEVER injected into the LLM prompt
-- Found broken import: MemoryRelationship → should be RelationshipMemory in memory-handler.ts
-- Found orphaned embeddings: Deleting events from UI didn't delete corresponding LanceDB embeddings
-- Found similarity threshold too low (0.15) in saved config
-- Found Ollama not available: No embeddings can be created without Ollama running
-- Fixed broken import in memory-handler.ts (MemoryRelationship → RelationshipMemory)
-- Fixed orphaned embeddings: Added LanceDB DELETE call when removing events from CharacterMemoryEditor
-- Fixed similarity threshold minimum (0 → 0.15) in config-persistence.ts
-- Fixed CRITICAL bug: Added character memory injection into all chat routes (stream, regenerate, generate, proactive)
-  - Client side: Pass getCharacterMemory(characterId) in request body from chat-panel.tsx and use-proactive-messages.tsx
-  - Server side: Extract characterMemory from body, call buildMemorySection(), inject as PromptSection and into embeddingsContext
-  - Order: Character Memory → [CONTEXTO RELEVANTE] → [MEMORIA RELEVANTE] → Chat History
-- Added Ollama auto-check on component load in embeddings-settings-panel.tsx
-- Added warning banner when Ollama is not available, with solutions and note that character memory works without Ollama
-- All lint checks pass
+- Added applyInventoryEffectsToSessionStats() function to inventorySlice.ts
+- Function creates deep copy of sessionStats and applies equipment + consumable attribute effects
+- Effects can target __user__ (persona) or characterId, modifying attributeValues before stats resolution
+- Integrated in stream/route.ts: effectiveSessionStats used before resolveStats()
+- Integrated in group-stream/route.ts: effectiveGroupSessionStats used before resolveStats()
+- Added currency sync in statsSlice.ts: updateCharacterStat now syncs currency changes on __user__ to persona.currency
+- Updated keyContext in group-stream to use effectiveGroupSessionStats
 
 Stage Summary:
-- CRITICAL FIX: Character memory (events, relationships, notes) was never injected into the LLM prompt
-  - Now injected in stream, regenerate, generate, and proactive routes
-  - Uses buildMemorySection() to format as [Key Events and Facts], [Relationships], [Notes] sections
-- Fixed broken import: MemoryRelationship → RelationshipMemory
-- Fixed orphaned LanceDB embeddings when deleting events from UI
-- Fixed minimum similarity threshold (was 0, now 0.15)
-- Added Ollama auto-check and warning banner in embeddings settings
-- System architecture: Character Memory (Zustand, works without Ollama) + Embeddings Memory (LanceDB+Ollama, auto-extraction)
----
-Task ID: 9
-Agent: Main Agent
-Task: Fix proactive message prompt data saving and display issues
-
-Work Log:
-- Investigated why the Eye icon (prompt viewer) doesn't work for proactive messages
-- Found root cause #1: use-proactive-messages.tsx does NOT handle the `prompt_data` SSE event from the proactive API route
-- Found root cause #2: When saving proactive messages, only `proactiveInfo` was stored in metadata - no `promptData` or `toolsUsed`
-- Found root cause #3: NovelChatBox streaming bubble only renders when `isGenerating` is true, but proactive generation uses a separate `isGeneratingProactive` flag - so streaming was NEVER visible for proactive messages
-- Fixed use-proactive-messages.tsx:
-  - Added `ProactiveMessageMetadata` interface with promptData and toolsUsed fields
-  - Added `promptSections` and `toolsUsed` local variables to track SSE events
-  - Added `case 'prompt_data'` handler to capture prompt sections
-  - Added tool accumulation in `case 'tool_call_result'` handler
-  - Updated `done` handler to include `promptData` and `toolsUsed` in message metadata
-  - Prefers `parsed.toolsUsed` from done event (authoritative server list) over locally accumulated tools
-- Fixed novel-chat-box.tsx:
-  - Added `isGeneratingProactive` prop
-  - Added `isAnyGenerating` combined state = isGenerating || isGeneratingProactive
-  - Updated streaming bubble to render when `isAnyGenerating` is true (not just `isGenerating`)
-  - Updated all input/button disabled states to use `isAnyGenerating`
-  - Updated send/stop button to use `isAnyGenerating`
-  - Updated auto-scroll dependency to use `isAnyGenerating`
-  - Added Sparkles "Proactivo" badge in streaming bubble when `isGeneratingProactive` is true
-- Fixed chat-panel.tsx:
-  - Passed `isGeneratingProactive` prop to NovelChatBox
-  - Updated CharacterSprite `isStreaming` to include `isGeneratingProactive`
-  - Updated GroupSprites `isStreaming` to include `isGeneratingProactive`
-- All lint checks pass
-
-Stage Summary:
-- FIXED: Prompt data now saved for proactive messages - Eye icon will show full prompt sections
-- FIXED: Tools used now saved for proactive messages - tool badges appear on proactive messages
-- FIXED: Streaming bubble now visible during proactive generation (was invisible before)
-- FIXED: UI properly disables input/buttons during proactive generation
-- FIXED: Proactive badge (✨ Proactivo) shown in streaming bubble during proactive generation
-- FIXED: Character sprite animates during proactive generation
-- All LLM providers work with proactive messages (Grok, OpenAI, Anthropic, ZAI, Ollama, etc.)
----
-Task ID: 10
-Agent: Main Agent
-Task: Unify and improve Memory/Embeddings system (P0 + P1 priorities)
-
-Work Log:
-- P0: Fixed `clearChat()` in sessionSlice.ts — now deletes LanceDB namespaces and re-creates empty ones (was leaving stale memories)
-- P0: Unified importance scale from 0-1 → 1-5 in MemoryEvent type
-- P0: Added `embeddingId` and `sessionId` fields to `MemoryEvent` type (was using `as any` cast)
-- P0: Updated `buildMemorySection()` in prompt-builder.ts to support both old (0-1) and new (1-5) scales
-- P0: Updated `memory-handler.ts` with `normalizeImportance()` helper for dual-scale support
-- P0: Updated `character-memory-editor.tsx` — importance slider now 1-5 with star display, uses `updateMemoryEvent()` instead of `addMemoryEvent()` with `as any`, removed all type-unsafe casts
-- P0: Updated `tools-settings-panel.tsx` — importance description updated to "1 a 5"
-- P1: Added `memoryActivation` field to `ToolExecutionResult` type for client-side Character Memory sync
-- P1: Updated `manage-memory.ts` tool — `save_memory` returns `memoryActivation` with eventData, `update_relationship` returns `memoryActivation` with relationshipData
-- P1: Added `memory_activation` SSE event handler in stream route and proactive route
-- P1: Added `memory_activation` SSE event handlers in chat-panel.tsx (both group and normal chat) and use-proactive-messages.tsx
-- P1: Client-side handlers sync to Zustand Character Memory: addMemoryEvent for save_memory, updateRelationship for update_relationship, setCharacterNotes for save_note
-- P1: Completely rewrote `memory-reinforcement.ts` — changed from O(n²) (N searches per namespace) to O(1) (single semantic search per namespace) with word-overlap filtering
-- P1: Reinforcement now uses integer importance scale (1-5) consistently
-- P2: Updated `saveMemoriesAsEmbeddings()` to return `savedFacts` array for future Character Memory sync
-- All lint checks pass, dev server running
-
-Stage Summary:
-- P0 ALL COMPLETE: clearChat namespace cleanup, importance scale unification, embeddingId/sessionId in MemoryEvent
-- P1 ALL COMPLETE: manage_memory tool syncs to Character Memory via SSE, reinforcement O(n²)→O(1)
-- P2 PARTIAL: Auto-extraction returns savedFacts, but post-stream sync not yet implemented (needs separate mechanism since stream is closed before extraction completes)
-- PENDING: Deduplication between embeddings context and character memory in prompt injection
+- Item effects (equipment bonuses, consumable modifiers) now modify session stats BEFORE prompt building
+- This means {{key}} templates in character descriptions resolve to the modified values
+- Quest currency rewards now automatically sync to persona.currency (bidirectional sync)
+- Both single-chat and group-chat routes apply inventory effects
+- All changes pass lint, app compiles and serves correctly
 
 ---
-Task ID: 2-a
-Agent: full-stack-developer
-Task: Make auto-extracted memories sync to Character Memory (P2-1)
+Task ID: export-import-inventory-fix
+Agent: main
+Task: Add missing inventory data to export/import in settings panel
 
 Work Log:
-- Investigated the entire auto-extraction flow: server-side stream routes → setTimeout → fire-and-forget extract-memory API → LanceDB only
-- Root cause: extracted memories were saved to LanceDB but never synced to the client-side Character Memory (Zustand store), so users couldn't see auto-extracted memories in the Character Memory panel
-- Modified `MemoryExtractionResult` type to include `savedFacts: MemoryFact[]` (the subset of facts actually saved, filtered by importance)
-- Updated `extractAndSaveMemories()` to destructure and return `savedFacts` from `saveMemoriesAsEmbeddings()`
-- Modified `/api/embeddings/extract-memory/route.ts`:
-  - Added `MEMORY_TYPE_TO_EVENT_TYPE` mapping (hecho→fact, evento→event, relacion→relationship, preferencia→fact, secreto→fact, otro→emotion)
-  - Added `memoryActivations` array to the response — for each saved fact, generates a `{ type: 'save_memory', characterId, eventData: { id, type, content, importance, embeddingId, sessionId } }` object
-  - The client can use these to call `store.addMemoryEvent()` directly
-- Removed server-side `setTimeout` extraction blocks from all 3 stream routes:
-  - `/api/chat/stream/route.ts` — removed ~65 lines of setTimeout that called extract-memory from server
-  - `/api/chat/group-stream/route.ts` — removed ~115 lines of setTimeout that called extract-memory + group dynamics extraction from server
-  - `/api/chat/proactive/route.ts` — removed ~65 lines of setTimeout that called extract-memory from server
-- Removed `memory_extracting` SSE events from all 3 routes (no longer needed since client handles extraction)
-- Added `shouldExtract` flag to the `done` SSE event in all 3 routes so the client knows when to trigger extraction
-- Added client-side memory extraction in `chat-panel.tsx`:
-  - Single chat: After `done` event, if `parsed.shouldExtract`, calls `/api/embeddings/extract-memory` from the client, syncs `memoryActivations` to Zustand Character Memory via `store.addMemoryEvent()`, shows toast notification
-  - Group chat: Added `done` event handler in group SSE loop to capture `shouldExtract` and `responses`. After reader loop ends, triggers extraction for each character, including group dynamics extraction if enabled
-- Added client-side memory extraction in `use-proactive-messages.tsx`:
-  - After `done` event, if `parsed.shouldExtract`, calls extract-memory from client, syncs to Character Memory, shows toast
-- All lint checks pass
+- Analyzed settings-panel.tsx export/import code for inventory coverage
+- Found gaps in both Config Export/Import and Full Backup Export/Import
+- Config Export was missing: `items`, `activeConsumableEffects`
+- Config Import configKeys was missing: `items`, `activeConsumableEffects`
+- Full Backup Export was missing: `activeConsumableEffects`
+- Full Backup Import allDataKeys was missing: `activeConsumableEffects`
+- Fixed all 4 sections in settings-panel.tsx
+- Added `activeConsumableEffects: []` to inventory defaults in persistence.ts
+- Verified lint passes cleanly
 
 Stage Summary:
-- Auto-extracted memories now sync to Character Memory (Zustand store) in addition to LanceDB
-- Architecture change: extraction moved from server-side (fire-and-forget setTimeout) to client-side (async after stream completes)
-- The `done` SSE event now includes `shouldExtract` flag, removing the need for `memory_extracting` SSE event
-- The extract-memory API now returns `memoryActivations` array with mapped MemoryEvent types for easy client-side sync
-- Three extraction paths updated: single chat, group chat, and proactive messages
+- All inventory V2 data is now properly exported and imported:
+  - Config mode: inventorySettings, items, activeConsumableEffects, inventoryNotifications
+  - Full Backup mode: inventorySettings, items, activeConsumableEffects, containers, currencies, inventoryNotifications
+- Persona-level data (inventoryItems, currency, currencyName, currencyIcon) was already included via `personas` key
+- Server-side persistence defaults updated to include activeConsumableEffects
+
+## Task 1: Add "Tienda" (Shop) tab to chatbox in TavernFlow
+
+**Date:** 2025-03-04
+**Status:** Completed
+
+### Changes Made
+
+**File: `/home/z/my-project/src/components/tavern/novel-chat-box.tsx`**
+
+1. **Updated `ChatboxTab` type** (line 91): Added `'tienda'` to the union type.
+
+2. **Added `ShoppingCart` icon import** from `lucide-react`.
+
+3. **Added imports from `@/store/slices/inventorySlice`**: `getItemTypeLabel`, `getRarityColor`, `getRarityBgColor`.
+
+4. **Added store destructures**: `items`, `purchaseItem`, `getShopItems` to the `useTavernStore()` call.
+
+5. **Added Tienda tab button** after the Memorias tab button (around line 1479):
+   - Uses `ShoppingCart` icon
+   - Shows currency amount as badge (`activePersona?.currency || 0`)
+   - Follows exact same pattern as other tabs with `themeColors.primary` for active state
+   - Badge styling uses `rgba(255,255,255,0.3)` when active, `themeColors.primary` otherwise
+
+6. **Added Tienda tab content section** after the Memorias tab content (around line 2632):
+   - Header showing currency: icon + name + amount in an amber-themed pill
+   - Scrollable shop items list from `getShopItems()`
+   - Each item shows: icon, name (with rarity color), type badge (Consumible/Equipo), description snippet, price
+   - Rarity background color on each item card
+   - Rarity color indicator bar on the left side
+   - "Comprar" (Buy) button that calls `purchaseItem(personaId, itemId)`
+   - Items that can't be afforded are dimmed (opacity-60) and the buy button is disabled
+   - Empty state when no items have prices: "No hay items disponibles en la tienda. Configura precios en el registro de items."
+
+### Lint Results
+- `bun run lint` passed with no errors.
+
+### Dev Server
+- Compiled and served successfully on port 3000.
 
 ---
-Task ID: 2-b
-Agent: full-stack-developer
-Task: Make search_memory tool include Character Memory data (P1-2)
+Task ID: 2
+Agent: main
+Task: Add chat message injection when items are used/equipped/unequipped
 
 Work Log:
-- Added `characterMemory` optional field to `ToolContext` interface in `src/lib/tools/types.ts` with `import('@/types').CharacterMemory` type
-- Updated `executeTool` calls to pass `characterMemory` in tool context in three route files:
-  - `src/app/api/chat/stream/route.ts` — already had `characterMemory` variable from body, just added to context object
-  - `src/app/api/chat/proactive/route.ts` — same as above
-  - `src/app/api/chat/group-stream/route.ts` — added `CharacterMemory` import, added `characterMemory` extraction from body, added to context object
-- Completely rewrote `src/lib/tools/tools/search-memory.ts` to search both LanceDB AND Character Memory:
-  - Part 1: LanceDB search (unchanged logic, but wrapped in try/catch so LanceDB failure doesn't block Character Memory search)
-  - Part 2: Character Memory search (new) — keyword matching on events, relationships, and notes
-  - Deduplication: events with `embeddingId` already found in LanceDB are skipped
-  - Type mapping: Spanish `memory_type` filter values (hecho, evento, relacion, etc.) mapped to Character Memory event types (fact, event, relationship, etc.)
-  - Subject filtering: relationships resolved to "usuario" or "otro" based on targetId
-  - Fixed similarity scores: events=0.8, relationships=0.75, notes=0.7
-  - Source labels in display: `[LanceDB]` for embedding results, `[Memoria Local]` for Character Memory results
-  - `source` field added to result objects for programmatic identification
-- All lint checks pass
+- Read inventorySlice.ts: identified useConsumable (line 390), equipItem (line 306), unequipItem (line 347) methods
+- Read chat-panel.tsx: identified handleSend as the message sending function (line 467), used as onSendMessage callback
+- Added `pendingItemMessage: string | null` field to InventorySlice interface
+- Added `clearPendingItemMessage: () => void` action to InventorySlice interface
+- Added `pendingItemMessage: null` to initial state
+- In equipItem: added `set({ pendingItemMessage: item.useMessage })` when item.useMessage exists
+- In unequipItem: added `set({ pendingItemMessage: item.unequipMessage })` when item.unequipMessage exists
+- In useConsumable: added `set({ pendingItemMessage: item.useMessage })` when item.useMessage exists
+- Added `clearPendingItemMessage: () => set({ pendingItemMessage: null })` implementation
+- In chat-panel.tsx: added store selectors for pendingItemMessage and clearPendingItemMessage
+- Added useEffect that watches pendingItemMessage, performs {{user}} variable substitution, clears pending, and calls handleSend
+- Variable substitution replaces {{user}} with active persona name (case-insensitive)
+- pendingItemMessage is intentionally NOT in partialize config (transient signal, should not persist across reloads)
+- ESLint passes cleanly, dev server compiles and serves correctly
 
 Stage Summary:
-- search_memory tool now searches BOTH LanceDB embeddings AND Character Memory (Zustand store)
-- LanceDB unavailable gracefully falls back to Character Memory only
-- No duplicates between LanceDB and Character Memory results (checked by embeddingId)
-- Results sorted by similarity (LanceDB first due to semantic matching, then Character Memory keyword matches)
-- Display differentiates sources with [LanceDB] and [Memoria Local] labels
+- When a consumable is used, its useMessage is queued as pendingItemMessage
+- When equipment is equipped, its useMessage is queued
+- When equipment is unequipped, its unequipMessage is queued
+- Chat panel watches for pendingItemMessage and sends it as a user chat message via handleSend
+- Template variable {{user}} is substituted with the active persona name before sending
+- The pending message is cleared before calling handleSend to prevent re-triggering
+- Only messages with content after trimming are sent
+- No persistence of pendingItemMessage (it's a transient signal between store and UI)
 
 ---
-Task ID: 2-c
-Agent: full-stack-developer
-Task: Deduplicate between embeddings context and character memory in prompt (P2-2)
+Task ID: 4
+Agent: main
+Task: Add "Divisa" (Currency) reward type to RewardEditor, StatsEditor, and quest-reward-utils
 
 Work Log:
-- Added `existingMemoryEvents` optional parameter to `retrieveEmbeddingsContext()` in `src/lib/embeddings/chat-context.ts`
-  - Type: `Array<{ content: string; importance: number }>`
-  - Backward compatible: undefined by default, no behavior change when not passed
-- Added deduplication logic inside `retrieveEmbeddingsContext()` after sorting and trimming results:
-  - Only deduplicates `source_type === 'memory'` embeddings (lore/world content is never filtered)
-  - Uses word-level overlap comparison (words >3 chars to avoid stop-word noise)
-  - 60% overlap threshold: if word overlap ratio > 0.6, the embedding is considered a duplicate
-  - Logs each skipped embedding with content preview and overlap ratio
-  - Logs total count of removed duplicates
-- Updated all 4 chat routes to pass `existingMemoryEvents` to `retrieveEmbeddingsContext()`:
-  - `src/app/api/chat/stream/route.ts` — maps `characterMemory?.events` → `{ content, importance }[]`
-  - `src/app/api/chat/regenerate/route.ts` — same pattern
-  - `src/app/api/chat/proactive/route.ts` — same pattern
-  - `src/app/api/chat/group-stream/route.ts` — added `characterMemoryMap` extraction from body (Record<string, CharacterMemory>), passes per-responder memory events in the character loop
-- All lint checks pass
+- Modified `/home/z/my-project/src/lib/quest/quest-reward-utils.ts`:
+  - Added `createCurrencyReward()` factory function after `createTargetAttributeReward`
+  - Added currency handling in `describeReward()` — returns `💰 Divisa: +N` or `💰 Divisa: -N`
+  - Removed unused `QuestRewardCurrency` import (type not directly referenced)
+  - `normalizeReward` already handled currency (line 498) — no change needed
+  - `validateReward` already handled currency (line 345) — no change needed
+
+- Modified `/home/z/my-project/src/components/quests/reward-editor.tsx`:
+  - Added `createCurrencyReward` import from quest-reward-utils
+  - Added `Coins` icon import from lucide-react
+  - Added `isCurrency` check alongside `isAttribute` and `isTrigger`
+  - Updated `handleTypeChange` to accept `'currency'` type and create reward via `createCurrencyReward(0, { id: reward.id })`
+  - Added `handleCurrencyChange` handler for currency field updates
+  - Added currency option to type selector in both compact and full modes
+  - Added currency config section in compact mode (simple amount input with label)
+  - Added currency config section in full mode (amount input with help text)
+
+- Modified `/home/z/my-project/src/components/tavern/stats-editor.tsx`:
+  - Added `createCurrencyReward` import from quest-reward-utils
+  - SkillEditor activation rewards section (line ~2277):
+    - Added "💰 Divisa" button after "🔗 Atributo Target" button
+    - Added `isCurrency` type check in reward card
+    - Updated card styling with amber-500/5 bg for currency
+    - Updated Badge text to show "💰 Divisa" for currency type
+    - Added inline currency editor (amount input with "divisa para persona" label)
+  - AttributeEditor onMinReached section (line ~372):
+    - Added "💰 Divisa" button after "Atributo Target" button
+    - Added `isCurrency` type check in reward card
+    - Updated card styling and Badge text for currency
+    - Added inline currency editor with onMinReached rewards update
+  - AttributeEditor onMaxReached section (line ~819):
+    - Added "💰 Divisa" button after "Atributo Target" button
+    - Added `isCurrency` type check in reward card
+    - Updated card styling and Badge text for currency
+    - Added inline currency editor with onMaxReached rewards update
+
+- Lint passes cleanly, dev server running without errors
 
 Stage Summary:
-- Deduplication between Character Memory and LanceDB embeddings now works in all chat routes
-- When Character Memory has an event like "El usuario le gusta el café" and LanceDB also returns a memory embedding with the same content, the LanceDB result is filtered out
-- Only memory-type embeddings are deduplicated; lore/world/event content from embeddings is always included
-- Word-level overlap (60% threshold) handles different wording of the same fact
-- Group chat supports per-character memory deduplication via `characterMemoryMap` (frontend can send this in future)
+- "Divisa" (Currency) reward type is now fully exposed in the UI across all three editors
+- RewardEditor supports creating/editing currency rewards in both compact and full modes
+- StatsEditor SkillEditor section has a "💰 Divisa" button alongside Trigger, Objetivo, Solicitud, and Atributo Target
+- StatsEditor AttributeEditor onMinReached and onMaxReached sections also have "💰 Divisa" buttons
+- All inline editors show a simple amount input with contextual help text
+- createCurrencyReward() factory function available for programmatic reward creation
+- describeReward() now returns human-readable currency descriptions
 
 ---
-Task ID: 11
-Agent: Main Agent
-Task: P2-3 Bidirectional sync LanceDB ↔ Character Memory (UI edits sync back)
 
-Work Log:
-- Analyzed existing bidirectional sync state:
-  - Adding events: ALREADY synced to LanceDB via /api/embeddings/manual-memory (stores embeddingId on event)
-  - Deleting events: ALREADY synced to LanceDB via DELETE /api/embeddings/[id] (uses stored embeddingId)
-  - Adding relationships: NOT synced to LanceDB (only saved to Zustand)
-  - Deleting relationships: NOT synced to LanceDB
-  - Notes: NOT synced to LanceDB (but less important since notes are freeform)
-- Updated /api/embeddings/manual-memory POST to accept `sessionId` parameter:
-  - Uses session-specific namespace `memory-character-{characterId}-{sessionId}` when sessionId provided
-  - Falls back to generic `character-{characterId}` namespace when no sessionId
-  - Adds `session_id` to embedding metadata
-- Updated /api/embeddings/manual-memory DELETE to support two modes:
-  - Mode 1: By embeddingId (existing behavior)
-  - Mode 2: By content search (searchTarget + characterId + memoryType) - finds and deletes all matching embeddings across namespaces
-- Updated character-memory-editor.tsx:
-  - Added `activeSessionId` from store (for session-specific namespace targeting)
-  - Added `sessionId` to manual-memory POST when adding events
-  - Added LanceDB sync for relationship additions (POST with memoryType='relacion')
-  - Added LanceDB sync for relationship deletions (DELETE with searchTarget)
-  - Added `mapEmbeddingType()` function (Spanish→UI type mapping for sync)
-  - Added `handleSyncFromLanceDB()` function - pulls LanceDB memories into Character Memory, skips duplicates by embeddingId
-  - Added "Sincronizar" button next to "Agregar" in events card header
-  - Added `isSyncing` state for loading indicator
-- All lint checks pass
+## Task 7: Make Inventory HUD items clickable for actions (use/equip/unequip)
 
-Stage Summary:
-- Bidirectional sync is now complete:
-  - Events: Add→LanceDB ✅, Delete→LanceDB ✅, Sync from LanceDB ✅
-  - Relationships: Add→LanceDB ✅, Delete→LanceDB ✅
-  - Manual-memory API: Session-specific namespace support ✅, Content-based deletion ✅
-- New "Sincronizar" button in Character Memory Editor allows pulling LanceDB memories into the UI
-- Session-aware: Manual memories go to session-specific namespace when sessionId is available
+**Date:** 2025-03-04
+**File modified:** `/home/z/my-project/src/components/inventory/inventory-hud.tsx`
 
----
-Task ID: 12
-Agent: Main Agent
-Task: P3-1 Optimized consolidation + P3-2 Separate extraction model
+### Changes Made
 
-Work Log:
-- P3-1: Added `getNamespaceEmbeddingsMetadata()` to LanceDB — lightweight method that excludes vector column (saves ~98% memory)
-- P3-1: Added `countByNamespaceAndSourceType()` to LanceDB — counts embeddings by namespace and source_type without loading full data
-- P3-1: Added both new methods to EmbeddingClient wrapper class
-- P3-1: Completely rewrote `memory-consolidation.ts` to use lightweight methods:
-  - `needsConsolidation()` now uses `countByNamespaceAndSourceType()` instead of loading 10K embeddings
-  - `consolidateNamespace()` uses `countByNamespaceAndSourceType()` for threshold check and `getNamespaceEmbeddingsMetadata()` for metadata-only loading
-  - `consolidateMemories()` uses lightweight count methods for before/after counting
-  - `autoConsolidateAfterExtraction()` uses lightweight count method
-  - Memory usage reduced from ~160MB (10K × 16KB vectors) to ~2MB (10K × ~200B metadata)
-- P3-2: Added `ExtractionModelConfig` interface and `buildExtractionLlmConfig()` helper to memory-extraction.ts
-- P3-2: Added extraction model fields to store defaults: extractionModelEnabled, extractionModelProvider, extractionModelEndpoint, extractionModelApiKey, extractionModelName
-- P3-2: Updated DEFAULT_EMBEDDINGS_CHAT in embeddings-settings-panel.tsx with extraction model fields
-- P3-2: Added "Modelo de Extracción Separado" UI section to EmbeddingsChatIntegrationContent — toggle, provider select, endpoint, API key, model name inputs, info box
-- P3-2: Updated extract-memory route to accept `extractionModelConfig` parameter and use `buildExtractionLlmConfig()`
-- P3-2: Updated consolidate-memory route to accept `extractionModelConfig` parameter and use `buildExtractionLlmConfig()`
-- P3-2: Updated all 3 client-side extraction call sites (chat-panel.tsx group chat, chat-panel.tsx normal chat, use-proactive-messages.tsx) to pass extractionModelConfig
-- All lint checks pass, dev server running
+1. **Added store actions** to the HUD component:
+   - `equipItem`, `unequipItem`, `useConsumable` (aliased as `consumeItem` to avoid React hooks lint rule false-positive on "use" prefix)
+   - These are used alongside existing `removeEffect`, `getPersonaItems`, `getEquippedItems`, etc.
 
-Stage Summary:
-- P3-1 COMPLETE: Consolidation no longer loads full vector data into memory
-  - New `getNamespaceEmbeddingsMetadata()` uses LanceDB `.select()` to exclude vector column
-  - New `countByNamespaceAndSourceType()` counts without loading content
-  - ~98% memory reduction for consolidation operations
-- P3-2 COMPLETE: Separate extraction model fully implemented
-  - Users can configure a different LLM (e.g., local Ollama, gpt-4o-mini) for memory extraction/consolidation
-  - UI section appears when memory extraction is enabled
-  - Extraction model config is passed to both extract-memory and consolidate-memory API routes
-  - `buildExtractionLlmConfig()` builds the correct LLMConfig from extraction settings with fallback to chat model
-- ALL P0-P3 PRIORITY ITEMS NOW COMPLETE
+2. **Made equipped items clickable to unequip:**
+   - `CompactEquippedItem` component now accepts `onUnequip` callback
+   - Added `cursor-pointer`, `hover:ring-1 hover:ring-primary/50`, `hover:bg-muted/80` classes for visual feedback
+   - Added `role="button"`, `tabIndex={0}` for accessibility
+   - Added keyboard support (Enter/Space triggers unequip)
+   - Tooltip now shows "Click para desequipar" action hint
+
+3. **Added expire button to active effects:**
+   - `CompactEffectRow` component now accepts `onExpire` callback
+   - Added a small X button that appears on hover (`opacity-0 group-hover:opacity-100`)
+   - Button has `title="Expirar efecto"` tooltip
+   - Row shows subtle amber highlight on hover (`hover:bg-amber-500/10`)
+
+4. **Added Backpack (Mochila) section for unequipped items:**
+   - New section with `Backpack` icon header showing "Mochila (count)"
+   - Shows only items where `entry.equipped === false`
+   - Each item is clickable:
+     - **Consumable** → calls `useConsumable` (with FlaskConical hint icon)
+     - **Equipment** → calls `equipItem` (with Sword hint icon)
+   - `title` attribute shows action tooltip: "Click para usar" / "Click para equipar"
+   - Max height with scroll (`max-h-32 overflow-y-auto`)
+   - Hover feedback: `hover:bg-muted/80`, `hover:ring-1 hover:ring-primary/30`
+
+5. **Visual feedback across all interactive elements:**
+   - Consistent hover backgrounds (`hover:bg-muted/80` or type-specific like `hover:bg-amber-500/10`)
+   - Ring highlights on hover (`hover:ring-1 hover:ring-primary/30` or `hover:ring-primary/50`)
+   - Transition animations (`transition-colors duration-150`, `transition-opacity`)
+   - Keyboard accessible (role="button", tabIndex, onKeyDown handlers)
+   - `title` attributes with Spanish action tooltips
+
+6. **Action handler architecture:**
+   - `handleEquipItem`, `handleUnequipItem`, `handleUseConsumable`, `handleExpireEffect` — all wrapped in `useCallback`
+   - `getItemAction(item, equipped)` utility determines action+tooltip based on item type and state
+   - All click handlers call `e.stopPropagation()` to prevent triggering drag
+
+### Lint Results
+- No new lint errors in modified file
+- Pre-existing lint error in `item-editor.tsx` (unrelated — setState in useEffect)
+- `useConsumable` renamed to `consumeItem` on destructuring to avoid `react-hooks/rules-of-hooks` false positive
+
+### Notes
+- `requestEquipItem`/`requestUseItem` do not exist in the store (Task 3 not implemented); used `equipItem`/`useConsumable` directly as specified
+- The original "Quick Inventory Summary" section that showed ALL items was replaced with the "Mochila" section showing only unequipped items, since equipped items already have their own section
 
 ---
-Task ID: example-dialogue-fix
-Agent: Main Agent
-Task: Review and fix example dialogue section (<START> format) and lorebook dialogue formatting
+Task ID: 3+5
+Agent: main
+Task: Add target selection when equipping items + Character targets in item editor
 
 Work Log:
-- Investigated complete flow of example messages (mesExample) from character card → processExampleDialogue → prompt builder → LLM
-- Identified critical bug: processExampleDialogue was grouping ALL user lines into one `### Instruction:` block and ALL char lines into one `### Response:` block, breaking multi-turn conversations
-- Rewrote processExampleDialogue to preserve natural turn-by-turn conversation flow
-- Removed Alpaca-style `### Instruction:/### Response:` format in favor of preserving original speaker labels ({{user}}/{{char}})
-- Added `containsStartDialogue()` and `processStartDialogueInText()` utility functions
-- Updated `formatEntriesWithComments()` in lorebook scanner to detect and format `<START>` dialogue in lorebook entries
-- Added `userName` and `charName` parameters to `LorebookInjectOptions` interface
-- Updated all 5 calls to `buildLorebookSectionForPrompt()` across route files to pass userName/charName
-- Updated lorebook injector to forward userName/charName through buildPromptSection and formatEntriesWithComments
+- Read all relevant files: types/index.ts, inventorySlice.ts, item-editor.tsx, inventory-panel.tsx
+- Part A: Dynamic character targets in item editor
+  - Added useTargetOptions hook that reads characters from the store and builds target options dynamically from the active session
+  - Replaced static TARGET_OPTIONS constant with the dynamic hook
+  - Updated effect target selector to use targetOptions from the hook
+  - Updated onValueChange handler to resolve targetName from the selected option
+- Part B: Target selection at equip/use time
+  - Added targetOverrideId field to PersonaInventoryEntry type in types/index.ts
+  - Added pendingEquipAction state to InventorySlice interface
+  - Added requestEquipItem, requestUseItem, clearPendingEquipAction, executeEquipWithTarget, executeUseWithTarget actions
+  - Updated applyInventoryEffectsToSessionStats to respect targetOverrideId from equipped item entries
+  - Added target picker dialog in inventory-panel.tsx with persona + session characters as options
+  - Modified handleEquipItem and handleUseConsumable to check if item needs target picker (effects targeting characters)
+  - If item has no effects or all target __user__, skip dialog and equip/use directly
+  - If item has effects targeting characters, show target picker dialog
+  - executeEquipWithTarget stores targetOverrideId on the PersonaInventoryEntry
+  - executeUseWithTarget overrides targetId in consumable effects at creation time
+- Fixed lint error: removed useEffect that was calling setState synchronously inside an effect
+- All lint checks pass cleanly
 
-Stage Summary:
-- Example dialogue now preserves multi-turn conversation order instead of flattening into single Instruction/Response blocks
-- Lorebook entries with <START>-formatted dialogue are automatically detected and formatted
-- All lint checks pass, app compiles successfully
-- Format change: `### Instruction:/### Response:` → natural `{{user}}: / {{char}}:` speaker labels (resolved by key-resolver later)
+Files Changed:
+- src/types/index.ts - Added targetOverrideId to PersonaInventoryEntry
+- src/store/slices/inventorySlice.ts - Added pendingEquipAction state, request/use actions, executeWithTarget actions, updated applyInventoryEffectsToSessionStats
+- src/components/inventory/item-editor.tsx - Added useTargetOptions hook, dynamic character targets in effects editor
+- src/components/inventory/inventory-panel.tsx - Added target picker dialog, modified equip/use handlers to support target selection
+
+Issues: None found
 
 ---
-Task ID: sillynartwern-example-dialogue
-Agent: Main Agent
-Task: Implement SillyTavern-style example dialogue injection as chat messages (not system prompt text) + fix lorebook <START> formatting
+Task ID: 6
+Agent: main
+Task: Add explicit fallback values to ItemAttributeEffect
 
 Work Log:
-- Analyzed SillyTavern's actual behavior: example dialogue is injected as user/assistant chat messages, NOT as system prompt text
-- Created `parseExampleDialogueToMessages()` in prompt-template.ts:
-  - Splits by <START> tags and parses each block into user/assistant message pairs
-  - STRIPS speaker prefixes from content (role field indicates who's speaking)
-  - Resolves {{user}}/{{char}} template variables immediately
-  - Handles continuation lines (appends to previous message, doesn't reset lastSpeaker)
-  - Narrative/context lines become system messages
-- Modified `buildSystemPrompt()` in prompt-builder.ts:
-  - REMOVED example_dialogue section from system prompt (was flat text)
-  - Returns `exampleMessages: ChatApiMessage[]` separately
-  - Applies `resolveAllKeys()` to each message's content
-- Modified `buildGroupSystemPrompt()` - same changes
-- Modified `buildChatMessages()`:
-  - Added `exampleMessages?: ChatApiMessage[]` parameter
-  - Injects example messages BETWEEN system message and chat history
-  - Added bridge message if last example message and first chat message have same role
-- Modified `buildGroupChatMessages()` - same changes
-- Modified `buildCompletionPrompt()`:
-  - Added `exampleMessages` to CompletionPromptConfig type
-  - Formats example messages as `UserName: content\nCharName: content` text for completion APIs
-- Updated ALL 5 route files (stream, proactive, group-stream, generate, regenerate):
-  - Extract `exampleMessages` from buildSystemPrompt() result
-  - Pass to all buildChatMessages() calls
-- Fixed lorebook `formatStartDialogueInLorebook()` in scanner.ts:
-  - Fixed bug: continuation lines no longer reset lastSpeaker (was setting to null)
-  - Added proper separation between different speakers (empty line)
-  - Added typed dialogueLines array with {speaker, content} objects
-  - Blocks separated by double newlines
-- Added `exampleMessages` to `CompletionPromptConfig` in types.ts
-- Dev server compiles and runs correctly
+- Added `fallbackValue?: string | number` field to `ItemAttributeEffect` interface in types/index.ts
+- Added `effectFallbacks: Record<string, string | number>` field to `ActiveConsumableEffect` interface in types/index.ts
+- Added `pendingFallbacks` state field to `InventorySlice` interface and initial state in inventorySlice.ts
+- Updated `useConsumable` action: collects fallbackValues from item's attributeEffects into `effectFallbacks` record when creating ActiveConsumableEffect
+- Updated `removeExpiredEffects` action: when effects expire, collects fallback values from the original item's attributeEffects and appends them to `pendingFallbacks` state
+- Updated `unequipItem` action: when equipment is unequipped, collects fallback values from the item's attributeEffects and appends them to `pendingFallbacks` state
+- Updated `applyInventoryEffectsToSessionStats` function: added optional `pendingFallbacks` parameter; applies pending fallbacks first (sets attribute directly to fallback value) before applying active item effects
+- Added `pendingFallbacks` field to `InventoryPromptData` interface in prompt-builder.ts
+- Updated both callers in stream/route.ts and group-stream/route.ts to pass `inventoryData.pendingFallbacks` to `applyInventoryEffectsToSessionStats`
+- Updated both `inventoryData` construction blocks in chat-panel.tsx to include `pendingFallbacks: invState.pendingFallbacks || []`
+- Added "Estado de regreso" (Fallback Value) input in item-editor.tsx effects section: label, placeholder "Valor original (dejar vacío)", help text explaining the field behavior
+- Lint passes cleanly with exit code 0
 
 Stage Summary:
-- CRITICAL CHANGE: Example dialogue is now injected as actual chat messages (SillyTavern style)
-  - Before: Flat text in system prompt [Example Dialogue] section
-  - After: user/assistant message pairs injected before real chat history
-  - This gives the LLM proper few-shot learning examples instead of just instructions
-- Speaker prefixes are stripped from content (role field carries that information)
-- Template variables ({{user}}, {{char}}, stats, etc.) are resolved on example messages
-- Bridge messages inserted when needed to maintain user/assistant alternation
-- Lorebook <START> dialogue formatting improved: proper speaker separation, fixed continuation line bug
-- All route files updated to pass exampleMessages through the chain
+- `ItemAttributeEffect` now supports optional `fallbackValue` for specifying what an attribute reverts to when an effect expires or equipment is unequipped
+- `ActiveConsumableEffect` stores `effectFallbacks` mapping attributeKey → fallbackValue for quick lookup
+- `pendingFallbacks` in inventory state tracks fallback values that need to be applied on the next prompt build
+- Consumable effect expiration and equipment unequipping both generate pending fallbacks
+- `applyInventoryEffectsToSessionStats` applies pending fallbacks before regular item effects, ensuring correct attribute restoration
+- UI in item editor allows users to optionally set a fallback value per effect with clear Spanish labels and help text
+- All callers (stream, group-stream, chat-panel) properly pass pendingFallbacks through the data pipeline
+
+---
+Task ID: inventory-audit-fixes
+Agent: main
+Task: Complete audit of inventory system against original specification and fix all gaps
+
+Work Log:
+- Conducted thorough audit comparing all 20 specification requirements against codebase
+- Found 9 items that were MISSING or PARTIAL
+- Fixed all 9 gaps with parallel subagent tasks and direct edits:
+
+1. ✅ Shop tab in chatbox (novel-chat-box.tsx): Added 'tienda' tab with ShoppingCart icon, shop items list, buy buttons, currency display, empty state
+2. ✅ Chat message injection (inventorySlice.ts + chat-panel.tsx): Added pendingItemMessage mechanism; useConsumable/equipItem/unequipItem now queue custom messages that chat-panel sends as user messages with {{user}} substitution
+3. ✅ Target selection when equipping (inventorySlice.ts + inventory-panel.tsx + types): Added pendingEquipAction state, requestEquipItem/requestUseItem, executeEquipWithTarget/executeUseWithTarget; target picker dialog shows persona + session characters
+4. ✅ Currency reward in editors (quest-reward-utils.ts + reward-editor.tsx + stats-editor.tsx): Added createCurrencyReward() factory, 💰 Divisa option in RewardEditor (compact+full), StatsEditor (3 locations for skill/attribute rewards)
+5. ✅ Character targets in item editor (item-editor.tsx): Replaced static TARGET_OPTIONS with dynamic useTargetOptions hook that reads session characters from store
+6. ✅ Fallback values for item effects (types + inventorySlice + item-editor + prompt-builder + stream routes): Added fallbackValue to ItemAttributeEffect, effectFallbacks to ActiveConsumableEffect, pendingFallbacks state, applyInventoryEffectsToSessionStats applies fallbacks before effects
+7. ✅ HUD items clickable (inventory-hud.tsx): Equipped items click→unequip, active effects→expire button, new "Mochila" section with unequipped items click→use/equip
+8. ✅ Persist activeConsumableEffects (use-persistence-sync.ts): Added to PERSIST_KEYS, save data, and load data sections
+9. ✅ Multi-select item picker (persona-panel.tsx): Added quick-add buttons for fast multi-selection alongside dropdown selector
+
+Stage Summary:
+- All 20 specification requirements are now COMPLETE
+- Key new features: shop tab in chat, chat message injection on item use, target selection dialog, currency rewards in editors, fallback values for effects, clickable HUD items, proper persistence
+- Lint passes cleanly, dev server compiles and serves correctly
+
+---
+Task ID: item-editor-attribute-dropdown
+Agent: main
+Task: Improve item editor effects section - attribute dropdown and operator filtering by type
+
+Work Log:
+- Analyzed AttributeDefinition type structure: key, name, type (number/text/keyword), icon, etc.
+- Added useTargetAttributes hook to get attributes for a specific target (persona or character)
+- Added targetAttributesCache useMemo that caches attributes per targetId for all effects in the editor
+- Added OPERATORS_BY_TYPE constant that filters operators by attribute type:
+  - number: all 7 operators (+, -, ×, ÷, =, min, max)
+  - text: only = (Establecer)
+  - keyword: only = (Establecer)
+- Added ATTR_TYPE_INFO constant with labels and icons for each attribute type
+- Added ALL_OPERATORS constant as fallback when attribute type is unknown
+- Replaced attribute Key Input with dynamic Select dropdown when target has configured attributes:
+  - Shows each attribute with type icon, custom icon, name, and key
+  - Falls back to free Input when target has no stats configured
+- Added attribute type badge next to the dropdown (🔢 Numérico, 📝 Texto, 🏷️ Keyword)
+- When selecting a new attribute, auto-resets operator to '=' if current operator isn't valid for the new type
+- Value input adapts to attribute type: number input for number attrs, text input for text/keyword attrs
+- Fallback value input also adapts: number input for number attrs, text input for text/keyword attrs
+- Added warning message when a target has no attributes configured
+- When changing target, resets attribute selection to avoid stale references
+- Fixed lint error: useMemo dependency changed from expression to simple variable
+
+Stage Summary:
+- Item editor now shows a dropdown of attributes from the selected target's statsConfig
+- Operators are automatically filtered based on attribute type (number→all, text/keyword→set only)
+- Value and fallback inputs adapt to the attribute type (number vs text)
+- Type badges provide visual feedback about the selected attribute type
+- Warning shown when target has no stats configured
+---
+Task ID: fix-item-attribute-changes
+Agent: main
+Task: Fix item activation not changing the target attribute in the session UI
+
+Work Log:
+- Investigated the full item activation flow and identified the root cause: item effects were only applied as "virtual overlays" at prompt-build time in API routes, but SessionStats in the store were never permanently modified
+- Added helper functions to inventorySlice.ts: applyEffectToSessionStats, applyEffectsToSessionStats, applyFallbackToSessionStats
+- Modified equipItem: applies equipment attribute effects directly to SessionStats via updateCharacterStat, also reverses old slot item effects when slot-swapping
+- Modified executeEquipWithTarget: applies equipment effects with targetOverrideId to SessionStats
+- Modified useConsumable: applies consumable attribute effects directly to SessionStats
+- Modified executeUseWithTarget: applies consumable effects with overridden target to SessionStats
+- Modified unequipItem: applies fallback values directly to SessionStats (using fallbackValue if provided, or reversing operator)
+- Modified removeExpiredEffects: applies fallback values directly to SessionStats instead of queuing pendingFallbacks
+- Modified removeFromPersona: reverses equipment effects when removing an equipped item
+- Modified removeEffect: reverses the specific effect's attribute changes before removing from state
+- Modified clearAllEffects: reverses all active consumable effects before clearing
+- Updated stream/route.ts: removed applyInventoryEffectsToSessionStats virtual overlay (no longer needed, effects are in SessionStats)
+- Updated group-stream/route.ts: same removal of virtual overlay, also cleaned up unused type imports
+- Lint passes cleanly
+
+Stage Summary:
+- Item effects now directly modify SessionStats when items are activated/equipped, so the UI reflects changes immediately
+- Fallback values are applied when effects expire or items are unequipped, restoring attributes
+- If no fallback value is set, the operator is reversed (+ → -, - → +, * → /, / → *) to restore the original value
+- The virtual overlay approach in API routes has been removed to avoid double-application
+- pendingFallbacks state is kept for backward compatibility but no longer populated with new entries
+---
+Task ID: fix-item-editor-empty-reopen
+Agent: main
+Task: Fix items appearing empty when reopening the editor after switching sections
+
+Work Log:
+- Investigated item editor component and identified root cause: useState never re-initializes when the dialog opens programmatically with a different item
+- handleOpenChange callback only fires for user interactions (Radix Dialog behavior), not for programmatic open prop changes
+- Added useEffect in item-editor.tsx that resets state when `open` or `item?.id` changes
+- Added useEffect import to the component
+- Fixed secondary bug: contextKeys was computed but never passed to factory functions, causing it to be silently discarded on save
+- Added contextKeys parameter to createConsumableItem and createEquipmentItem factory functions
+- Added contextKeys: contextKeysList to both handleSave calls in item-editor.tsx
+- Lint passes cleanly
+
+Stage Summary:
+- Bug #1 (PRIMARY): ItemEditor now properly resets its state when the dialog opens or the item changes, via useEffect([item?.id, open])
+- Bug #2 (SECONDARY): contextKeys are now properly saved to items via factory functions and handleSave
+- Both createConsumableItem and createEquipmentItem now accept and return contextKeys in their options
+---
+Task ID: fix-item-activation-timing
+Agent: main
+Task: Fix item effects and HUD not updating before LLM message is sent
+
+Work Log:
+- Analyzed the timing flow: when an item is activated, useEffect for pendingItemMessage fires in the same React commit cycle, calling handleSend immediately
+- This means the browser hasn't had time to paint the HUD/attribute updates before the LLM request starts
+- The user sees changes only AFTER the LLM responds, not before
+- Added a 300ms delay (setTimeout) before calling handleSend in the pendingItemMessage useEffect
+- This gives the browser time to paint: HUD showing active effects, attribute changes visible, etc.
+- The effects are already applied to SessionStats synchronously before the delay, so the LLM still receives correct data
+- Lint passes cleanly
+
+Stage Summary:
+- Item effects now visually update (HUD, stats) BEFORE the chat message is sent to the LLM
+- 300ms delay ensures browser paint cycle completes before handleSend is called
+- Data integrity is preserved: SessionStats updates are synchronous and already committed to the store
+
+---
+Task ID: fix-consumable-activation
+Agent: main
+Task: Fix consumable items not updating attributes and not sending configured message to LLM
+
+Work Log:
+- Investigated the full flow: HUD → useConsumable → applyEffectsToSessionStats → pendingItemMessage → chat-panel useEffect → handleSend
+- Bug #1 (CRITICAL): `applyEffectToSessionStats()` returned early when `getAttributeValue` returned null/undefined for an attribute. This happened when session stats hadn't been initialized for the target (e.g., persona stats added after session creation, or character stats not yet auto-initialized). Fixed by defaulting currentValue to 0 for numeric operations instead of returning early.
+- Bug #2 (CRITICAL): `pendingItemMessage` useEffect had a race condition. After calling `clearPendingItemMessage()`, a re-render would cause `handleSend` to get a new reference (it has many deps). Since `handleSend` was in the useEffect's dependency array, the cleanup function would run, cancelling the `setTimeout(300ms)` before the message was ever sent. Fixed by using a `handleSendRef` (useRef) to always call the latest handleSend without it being in the dependency array.
+- Added comprehensive console.log debugging to useConsumable, applyEffectToSessionStats, and the chat-panel useEffect to help diagnose any remaining issues.
+- Lint passes cleanly, dev server compiles and serves correctly.
+
+Stage Summary:
+- Consumable item effects now apply even when the target attribute doesn't exist yet in session stats (defaults to 0, then applies the operator)
+- pendingItemMessage timeout is no longer cancelled by handleSend reference changes
+- Both bugs prevented consumables from working: attributes never updated, and messages never sent to LLM
+- Debug logging added throughout the activation flow for easier diagnosis
+
+---
+Task ID: consumable-effect-fix
+Agent: main
+Task: Fix consumable/equipment item activation - attributes not updating and messages not being sent to LLM
+
+Work Log:
+- Traced the full activation flow: inventory-panel → useConsumable/equipItem → applyEffectsToSessionStats → updateCharacterStat
+- Identified Bug 1 (pendingItemMessage race condition): In chat-panel.tsx useEffect, clearPendingItemMessage() was called BEFORE the setTimeout, which triggered a re-render causing the effect cleanup to cancel the setTimeout before it fired. The message was NEVER sent.
+- Identified Bug 2 (attribute default value mismatch): When getAttributeValue() returns null (character stats not yet in sessionStats), applyEffectToSessionStats defaulted to 0. But updateCharacterStat auto-initializes with the statsConfig default (e.g., vida=100). So the effect computed 0+10=10 and set vida=10 instead of 100+10=110.
+- Fixed Bug 1: Moved clearPendingItemMessage() INSIDE the setTimeout callback (after 300ms delay, right before handleSend). Added lastProcessedItemMessageRef to prevent re-triggering without causing cleanup races.
+- Fixed Bug 2: Added getDefaultAttributeValue() helper that looks up the default value from the persona's/character's statsConfig when getAttributeValue() returns null. This ensures correct effect computation even when character stats aren't yet in sessionStats.
+- Removed try/catch around updateCharacterStat call in applyEffectToSessionStats and replaced with result checking + explicit warning logs
+- Added verification logging in useConsumable, equipItem, executeEquipWithTarget, executeUseWithTarget: after applying effects, reads back the actual attribute value and logs it for debugging
+
+Stage Summary:
+- pendingItemMessage race condition fixed: messages are now sent to LLM when items are used/equipped
+- Attribute computation fixed: effects now use the correct default value from statsConfig instead of 0 when the attribute hasn't been initialized in session stats yet
+- Comprehensive verification logging added to help diagnose any remaining issues
+- Lint passes cleanly, dev server running without errors

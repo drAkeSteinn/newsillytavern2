@@ -549,7 +549,7 @@ export class LanceDBWrapper {
     const existing = await tableFilter(table, `namespace = '${escapeFilterValue(namespace)}'`);
 
     const nsRecord = {
-      id: uuidv4(),
+      id: existing.length > 0 ? existing[0].id : uuidv4(),
       namespace,
       description,
       metadata: JSON.stringify(metadata),
@@ -557,10 +557,28 @@ export class LanceDBWrapper {
       updated_at: new Date().toISOString(),
     };
 
+    // Always delete all matching rows before inserting to prevent duplicates
+    // caused by race conditions (concurrent upsertNamespace calls).
     if (existing.length > 0) {
       await table.delete(`namespace = '${escapeFilterValue(namespace)}'`);
     }
     await table.add([nsRecord]);
+
+    // Safety net: if a race created extra duplicates, clean them up.
+    // Keep only the row we just inserted (by id).
+    const afterInsert = await tableFilter(table, `namespace = '${escapeFilterValue(namespace)}'`);
+    if (afterInsert.length > 1) {
+      const idsToDelete = afterInsert
+        .filter((row: any) => row.id !== nsRecord.id)
+        .map((row: any) => row.id);
+      if (idsToDelete.length > 0) {
+        const deleteFilter = idsToDelete
+          .map((id: string) => `id = '${escapeFilterValue(id)}'`)
+          .join(' OR ');
+        await table.delete(deleteFilter);
+        console.log(`[LanceDB] Cleaned up ${idsToDelete.length} duplicate namespace row(s) for "${namespace}"`);
+      }
+    }
 
     return {
       id: nsRecord.id,
@@ -575,7 +593,7 @@ export class LanceDBWrapper {
   static async getAllNamespaces(): Promise<RecordNamespace[]> {
     const table = await getNamespacesTable();
     const results = await tableToArray(table);
-    return results.map((row: any) => ({
+    const mapped = results.map((row: any) => ({
       id: row.id,
       namespace: row.namespace,
       description: row.description,
@@ -583,6 +601,18 @@ export class LanceDBWrapper {
       created_at: new Date(row.created_at),
       updated_at: new Date(row.updated_at),
     }));
+
+    // Deduplicate by namespace name — keep the most recently updated entry.
+    // This guards against duplicate rows that can appear due to a race condition
+    // in upsertNamespace (non-atomic delete-then-insert).
+    const deduped = new Map<string, RecordNamespace>();
+    for (const ns of mapped) {
+      const existing = deduped.get(ns.namespace);
+      if (!existing || ns.updated_at > existing.updated_at) {
+        deduped.set(ns.namespace, ns);
+      }
+    }
+    return Array.from(deduped.values());
   }
 
   static async deleteNamespace(namespace: string): Promise<boolean> {

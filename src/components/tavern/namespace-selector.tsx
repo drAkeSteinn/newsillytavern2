@@ -5,9 +5,13 @@
  *
  * Multi-select dropdown for selecting embedding namespaces for a character or group.
  * Fetches available namespaces from the embeddings API.
+ *
+ * Only shows CONTEXT namespaces (manually created for specialized knowledge).
+ * Session/auto namespaces (memory-character-*, character-*, world, etc.) are
+ * automatically included by the RAG strategy and are hidden from selection.
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Select,
   SelectContent,
@@ -17,14 +21,22 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Database, X, Check, Loader2 } from 'lucide-react';
+import { Database, X, Check, Loader2, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface NamespaceInfo {
   namespace: string;
   description?: string;
   metadata?: Record<string, unknown>;
   embedding_count: number;
+  isSessionNamespace?: boolean;
+  sessionReason?: 'always_included' | 'auto_created' | 'auto_pattern';
 }
 
 interface NamespaceSelectorProps {
@@ -36,7 +48,7 @@ interface NamespaceSelectorProps {
 export function NamespaceSelector({
   value = [],
   onChange,
-  placeholder = 'Usar estrategia global',
+  placeholder = 'Solo namespaces automáticos',
 }: NamespaceSelectorProps) {
   const [namespaces, setNamespaces] = useState<NamespaceInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -77,8 +89,37 @@ export function NamespaceSelector({
     onChange([]);
   };
 
-  const selectedNamespaces = namespaces.filter(n => value.includes(n.namespace));
-  const availableToSelect = namespaces.filter(n => !value.includes(n.namespace));
+  // Deduplicate namespaces by name — keeps the entry with the highest
+  // embedding_count when duplicates exist (defence-in-depth for a backend
+  // race condition in upsertNamespace that can produce duplicate rows).
+  const dedupedNamespaces = useMemo(() => {
+    const map = new Map<string, NamespaceInfo>();
+    for (const ns of namespaces) {
+      const existing = map.get(ns.namespace);
+      if (!existing || ns.embedding_count >= existing.embedding_count) {
+        map.set(ns.namespace, ns);
+      }
+    }
+    return Array.from(map.values());
+  }, [namespaces]);
+
+  // Split into context namespaces (selectable) and session namespaces (auto-included)
+  const contextNamespaces = useMemo(
+    () => dedupedNamespaces.filter(ns => !ns.isSessionNamespace),
+    [dedupedNamespaces]
+  );
+
+  const selectedNamespaces = useMemo(
+    () => contextNamespaces.filter(n => value.includes(n.namespace)),
+    [contextNamespaces, value]
+  );
+
+  const availableToSelect = useMemo(
+    () => contextNamespaces.filter(n => !value.includes(n.namespace)),
+    [contextNamespaces, value]
+  );
+
+  const hasContextNamespaces = contextNamespaces.length > 0;
 
   return (
     <div className="space-y-2">
@@ -125,7 +166,7 @@ export function NamespaceSelector({
               <Database className="w-4 h-4" />
               <span>
                 {selectedNamespaces.length > 0
-                  ? `${selectedNamespaces.length} namespace${selectedNamespaces.length > 1 ? 's' : ''} seleccionado${selectedNamespaces.length > 1 ? 's' : ''}`
+                  ? `${selectedNamespaces.length} colección${selectedNamespaces.length > 1 ? 'es' : ''} de contexto`
                   : placeholder
                 }
               </span>
@@ -144,20 +185,33 @@ export function NamespaceSelector({
               <br />
               Configura Ollama en Embeddings primero.
             </div>
-          ) : namespaces.length === 0 ? (
-            <div className="px-2 py-3 text-center text-sm text-muted-foreground">
-              No hay namespaces creados.
-              <br />
-              Crea uno en Configuración → Embeddings → Namespaces
+          ) : !hasContextNamespaces ? (
+            <div className="px-3 py-3 text-center text-sm text-muted-foreground space-y-1">
+              <Info className="w-5 h-5 mx-auto text-muted-foreground/50" />
+              <p>No hay colecciones de contexto disponibles.</p>
+              <p className="text-xs">
+                Los namespaces de sesión y personaje se incluyen automáticamente.
+                <br />
+                Crea un namespace personalizado en{' '}
+                <span className="font-medium">Configuración → Embeddings</span> para
+                agregar contexto especializado.
+              </p>
             </div>
           ) : (
             <div className="max-h-[300px] overflow-y-auto">
+              {/* Info banner at top */}
+              <div className="px-2 py-1.5 border-b bg-muted/30">
+                <p className="text-[10px] text-muted-foreground leading-tight">
+                  Solo se muestran colecciones de contexto. Los namespaces de sesión y personaje se incluyen automáticamente.
+                </p>
+              </div>
+
               {/* Available namespaces (not yet selected) */}
               {availableToSelect.length > 0 && (
                 <div className="px-2 py-1">
                   <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1">
                     <Database className="w-3 h-3" />
-                    Namespaces disponibles
+                    Colecciones disponibles
                   </div>
                   {availableToSelect.map((ns) => (
                     <NamespaceOption
@@ -199,13 +253,28 @@ export function NamespaceSelector({
       {/* Info text */}
       {selectedNamespaces.length > 0 && (
         <p className="text-xs text-muted-foreground">
-          Los embeddings se buscarán solo en estos namespaces al chatear con este personaje/grupo.
+          Estas colecciones se añadirán a los namespaces automáticos de la sesión y del personaje al chatear.
         </p>
       )}
-      {selectedNamespaces.length === 0 && dbAvailable && namespaces.length > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Sin seleccionar — se usará la estrategia definida en la configuración de embeddings.
-        </p>
+      {selectedNamespaces.length === 0 && dbAvailable && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <p className="text-xs text-muted-foreground cursor-help underline decoration-dotted underline-offset-2">
+                Sin seleccionar — se usarán solo los namespaces automáticos (sesión + personaje + mundo).
+              </p>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p>Los namespaces automáticos incluyen:</p>
+              <ul className="text-xs mt-1 space-y-0.5 list-disc list-inside">
+                <li><code className="text-[10px]">memory-character-*</code> — Memorias de sesión</li>
+                <li><code className="text-[10px]">character-*</code> — Lore del personaje</li>
+                <li><code className="text-[10px]">world</code>, <code className="text-[10px]">world-building</code> — Mundo global</li>
+              </ul>
+              <p className="text-xs mt-1">Crea namespaces personalizados para agregar contexto especializado.</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
     </div>
   );

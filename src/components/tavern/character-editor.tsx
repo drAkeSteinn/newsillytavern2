@@ -533,20 +533,20 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
           <div className="space-y-2 md:col-span-2">
             <div className="flex items-center gap-2">
               <Database className="w-4 h-4 text-violet-500" />
-              <Label className="text-sm font-medium">Embeddings</Label>
+              <Label className="text-sm font-medium">Colecciones de Contexto</Label>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs">
-                  <p>Namespaces de embeddings para buscar información relevante.</p>
+                  <p>Namespaces adicionales de embeddings para buscar contexto especializado. Se añaden a los namespaces automáticos de la sesión y del personaje.</p>
                 </TooltipContent>
               </Tooltip>
             </div>
             <NamespaceSelector
               value={character.embeddingNamespaces}
               onChange={(embeddingNamespaces) => setCharacter(prev => ({ ...prev, embeddingNamespaces }))}
-              placeholder="Usar estrategia global"
+              placeholder="Solo namespaces automáticos"
             />
           </div>
         </div>

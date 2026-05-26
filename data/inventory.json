@@ -1,22 +1,91 @@
 {
   "items": [
     {
-      "name": "Pipa",
-      "description": "de crack",
-      "category": "misc",
-      "rarity": "epic",
+      "id": "item-1779807837762-vtol1da",
+      "name": "pildora",
+      "description": "ok",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "uncommon",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "9f395af9-71eb-44ee-ab2b-20ec33ad2776",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "ok",
+          "fallbackValue": "nop"
+        }
+      ],
+      "duration": 2,
       "stackable": false,
       "maxStack": 1,
-      "value": 100,
-      "weight": 1.5,
-      "usable": true,
-      "consumable": true,
-      "equippable": false,
-      "id": "item-1772916773983-8hebwr1xi",
-      "createdAt": "2026-03-07T20:52:53.983Z",
-      "updatedAt": "2026-03-07T20:53:03.252Z"
+      "useMessage": "asdssd",
+      "expireMessage": "asddasd",
+      "price": 10,
+      "createdAt": "2026-05-26T15:03:57.762Z",
+      "updatedAt": "2026-05-26T15:56:22.618Z"
+    },
+    {
+      "id": "item-1779812152844-m30pre4",
+      "name": "Otro",
+      "description": "asd",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "9f395af9-71eb-44ee-ab2b-20ec33ad2776",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "ok2",
+          "fallbackValue": "nop2"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "se envio",
+      "unequipMessage": "no se envio",
+      "price": 15,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-26T16:15:52.844Z",
+      "updatedAt": "2026-05-26T16:15:52.844Z"
+    },
+    {
+      "id": "item-1779812275517-tpj77ff",
+      "name": "Crack",
+      "description": "asd",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "cursed",
+      "icon": "🛡️",
+      "attributeEffects": [
+        {
+          "targetId": "__user__",
+          "targetName": "Persona",
+          "attributeKey": "pene_visible",
+          "attributeName": "Pene visible",
+          "operator": "=",
+          "value": "SI",
+          "fallbackValue": "NO"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "ok",
+      "unequipMessage": "nop",
+      "price": 5,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-26T16:17:55.517Z",
+      "updatedAt": "2026-05-26T16:17:55.517Z"
     }
   ],
+  "activeConsumableEffects": [],
   "containers": [],
   "currencies": [
     {
@@ -36,115 +105,506 @@
     }
   ],
   "inventorySettings": {
-    "enabled": false
+    "enabled": true,
+    "showInChat": true,
+    "showNotifications": true,
+    "autoDetect": true,
+    "promptInclude": false,
+    "currencyName": "Puntos"
   },
   "inventoryNotifications": [
     {
-      "type": "currency_changed",
-      "itemName": "Nueva Divisa",
-      "quantity": 10,
-      "message": "Nueva Divisa: +10 (Total: 40)",
-      "id": "notif-1772916796630-ldx5a6x93",
-      "timestamp": "2026-03-07T20:53:16.630Z",
+      "type": "item_equipped",
+      "itemId": "item-1779812152844-m30pre4",
+      "itemName": "Otro",
+      "quantity": 1,
+      "message": "no se envio",
+      "id": "notif-1779814286552-9m72zdk",
+      "timestamp": "2026-05-26T16:51:26.552Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "item-1779812152844-m30pre4",
+      "itemName": "Otro",
+      "quantity": 1,
+      "message": "se envio",
+      "id": "notif-1779814284066-llyz9vp",
+      "timestamp": "2026-05-26T16:51:24.066Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "item-1779812275517-tpj77ff",
+      "itemName": "Crack",
+      "quantity": 1,
+      "message": "nop",
+      "id": "notif-1779814282188-waqo72m",
+      "timestamp": "2026-05-26T16:51:22.188Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "item-1779812275517-tpj77ff",
+      "itemName": "Crack",
+      "quantity": 1,
+      "message": "ok",
+      "id": "notif-1779814279840-yp5ou93",
+      "timestamp": "2026-05-26T16:51:19.840Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "item-1779812152844-m30pre4",
+      "itemName": "Otro",
+      "quantity": 1,
+      "message": "no se envio",
+      "id": "notif-1779814271261-3436aq0",
+      "timestamp": "2026-05-26T16:51:11.261Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "item-1779812152844-m30pre4",
+      "itemName": "Otro",
+      "quantity": 1,
+      "message": "se envio",
+      "id": "notif-1779814268221-t1mf8hb",
+      "timestamp": "2026-05-26T16:51:08.221Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "item-1779812152844-m30pre4",
+      "itemName": "Otro",
+      "quantity": 1,
+      "message": "no se envio",
+      "id": "notif-1779812971222-zjsnt2u",
+      "timestamp": "2026-05-26T16:29:31.222Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "item-1779812152844-m30pre4",
+      "itemName": "Otro",
+      "quantity": 1,
+      "message": "se envio",
+      "id": "notif-1779812968671-j9mut7h",
+      "timestamp": "2026-05-26T16:29:28.671Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "item-1779812275517-tpj77ff",
+      "itemName": "Crack",
+      "quantity": 1,
+      "message": "nop",
+      "id": "notif-1779812960143-0nxjbdq",
+      "timestamp": "2026-05-26T16:29:20.143Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "item-1779812275517-tpj77ff",
+      "itemName": "Crack",
+      "quantity": 1,
+      "message": "ok",
+      "id": "notif-1779812957429-0xoq58s",
+      "timestamp": "2026-05-26T16:29:17.429Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "item-1779812152844-m30pre4",
+      "itemName": "Otro",
+      "quantity": 1,
+      "message": "no se envio",
+      "id": "notif-1779812948624-fdifu82",
+      "timestamp": "2026-05-26T16:29:08.624Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "item-1779812152844-m30pre4",
+      "itemName": "Otro",
+      "quantity": 1,
+      "message": "se envio",
+      "id": "notif-1779812944686-v13raia",
+      "timestamp": "2026-05-26T16:29:04.686Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "item-1779812275517-tpj77ff",
+      "itemName": "Crack",
+      "quantity": 1,
+      "message": "nop",
+      "id": "notif-1779812294760-mn16emk",
+      "timestamp": "2026-05-26T16:18:14.760Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "item-1779812275517-tpj77ff",
+      "itemName": "Crack",
+      "quantity": 1,
+      "message": "ok",
+      "id": "notif-1779812289178-z04zw1j",
+      "timestamp": "2026-05-26T16:18:09.178Z",
+      "read": false
+    },
+    {
+      "type": "item_added",
+      "itemId": "item-1779812275517-tpj77ff",
+      "itemName": "Crack",
+      "quantity": 1,
+      "message": "Obtuviste Crack",
+      "id": "notif-1779812284259-3f4ts5a",
+      "timestamp": "2026-05-26T16:18:04.259Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "item-1779812152844-m30pre4",
+      "itemName": "Otro",
+      "quantity": 1,
+      "message": "no se envio",
+      "id": "notif-1779812175115-mshvu8r",
+      "timestamp": "2026-05-26T16:16:15.115Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "item-1779812152844-m30pre4",
+      "itemName": "Otro",
+      "quantity": 1,
+      "message": "se envio",
+      "id": "notif-1779812172193-mmenxd3",
+      "timestamp": "2026-05-26T16:16:12.193Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "item-1779812152844-m30pre4",
+      "itemName": "Otro",
+      "quantity": 1,
+      "message": "no se envio",
+      "id": "notif-1779812166066-jj3mmo4",
+      "timestamp": "2026-05-26T16:16:06.066Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "item-1779812152844-m30pre4",
+      "itemName": "Otro",
+      "quantity": 1,
+      "message": "se envio",
+      "id": "notif-1779812161193-gl6ug50",
+      "timestamp": "2026-05-26T16:16:01.193Z",
+      "read": false
+    },
+    {
+      "type": "item_added",
+      "itemId": "item-1779812152844-m30pre4",
+      "itemName": "Otro",
+      "quantity": 1,
+      "message": "Obtuviste Otro",
+      "id": "notif-1779812155190-lutb97c",
+      "timestamp": "2026-05-26T16:15:55.190Z",
+      "read": false
+    },
+    {
+      "type": "item_added",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "pildora",
+      "quantity": 1,
+      "message": "Obtuviste pildora",
+      "id": "notif-1779812098131-jwfq1lc",
+      "timestamp": "2026-05-26T16:14:58.131Z",
+      "read": false
+    },
+    {
+      "type": "item_used",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "pildora",
+      "quantity": 1,
+      "message": "asdssd",
+      "id": "notif-1779812041727-nz6uaps",
+      "timestamp": "2026-05-26T16:14:01.727Z",
+      "read": false
+    },
+    {
+      "type": "item_added",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "pildora",
+      "quantity": 1,
+      "message": "Compraste pildora por 10 divisas",
+      "id": "notif-1779812038472-0alf716",
+      "timestamp": "2026-05-26T16:13:58.472Z",
+      "read": false
+    },
+    {
+      "type": "item_added",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "pildora",
+      "quantity": 1,
+      "message": "Obtuviste pildora",
+      "id": "notif-1779812038447-iuwe32l",
+      "timestamp": "2026-05-26T16:13:58.447Z",
       "read": false
     },
     {
       "type": "currency_changed",
-      "itemName": "Nueva Divisa",
-      "quantity": 10,
-      "message": "Nueva Divisa: +10 (Total: 30)",
-      "id": "notif-1772916796432-zjigkpt7y",
-      "timestamp": "2026-03-07T20:53:16.432Z",
-      "read": false
-    },
-    {
-      "type": "currency_changed",
-      "itemName": "Nueva Divisa",
-      "quantity": 10,
-      "message": "Nueva Divisa: +10 (Total: 20)",
-      "id": "notif-1772916796044-zn3kupctn",
-      "timestamp": "2026-03-07T20:53:16.044Z",
-      "read": false
-    },
-    {
-      "type": "currency_changed",
-      "itemName": "Nueva Divisa",
-      "quantity": 10,
-      "message": "Nueva Divisa: +10 (Total: 10)",
-      "id": "notif-1772916795204-morekn64p",
-      "timestamp": "2026-03-07T20:53:15.204Z",
-      "read": false
-    },
-    {
-      "type": "currency_changed",
-      "itemName": "Nueva Divisa",
+      "itemName": "Puntos",
       "quantity": -10,
-      "message": "Nueva Divisa: -10 (Total: 0)",
-      "id": "notif-1772916794532-3js0v12yj",
-      "timestamp": "2026-03-07T20:53:14.532Z",
+      "message": "Puntos: -10 (Total: 990)",
+      "id": "notif-1779812038398-36t0z13",
+      "timestamp": "2026-05-26T16:13:58.398Z",
+      "read": false
+    },
+    {
+      "type": "item_used",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "pildora",
+      "quantity": 1,
+      "message": "asdssd",
+      "id": "notif-1779811997850-5h0obex",
+      "timestamp": "2026-05-26T16:13:17.850Z",
+      "read": false
+    },
+    {
+      "type": "item_added",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "pildora",
+      "quantity": 1,
+      "message": "Compraste pildora por 10 divisas",
+      "id": "notif-1779810878269-2154cc0",
+      "timestamp": "2026-05-26T15:54:38.269Z",
+      "read": false
+    },
+    {
+      "type": "item_added",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "pildora",
+      "quantity": 1,
+      "message": "Obtuviste pildora",
+      "id": "notif-1779810878241-af8as3b",
+      "timestamp": "2026-05-26T15:54:38.241Z",
       "read": false
     },
     {
       "type": "currency_changed",
-      "itemName": "Nueva Divisa",
+      "itemName": "Puntos",
       "quantity": -10,
-      "message": "Nueva Divisa: -10 (Total: 0)",
-      "id": "notif-1772916793660-ycnkxp0v0",
-      "timestamp": "2026-03-07T20:53:13.660Z",
+      "message": "Puntos: -10 (Total: 490)",
+      "id": "notif-1779810878175-hvsrzp1",
+      "timestamp": "2026-05-26T15:54:38.175Z",
+      "read": false
+    },
+    {
+      "type": "item_used",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "pildora",
+      "quantity": 1,
+      "message": "asdssd",
+      "id": "notif-1779810763479-my7n02u",
+      "timestamp": "2026-05-26T15:52:43.479Z",
+      "read": false
+    },
+    {
+      "type": "item_added",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "pildora",
+      "quantity": 1,
+      "message": "Obtuviste pildora",
+      "id": "notif-1779810756816-h2657tg",
+      "timestamp": "2026-05-26T15:52:36.816Z",
+      "read": false
+    },
+    {
+      "type": "item_used",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "pildora",
+      "quantity": 1,
+      "message": "asdssd",
+      "id": "notif-1779810722312-0n5ckxz",
+      "timestamp": "2026-05-26T15:52:02.312Z",
+      "read": false
+    },
+    {
+      "type": "item_added",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "pildora",
+      "quantity": 1,
+      "message": "Compraste pildora por 100 divisas",
+      "id": "notif-1779810717677-rei0xsn",
+      "timestamp": "2026-05-26T15:51:57.677Z",
+      "read": false
+    },
+    {
+      "type": "item_added",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "pildora",
+      "quantity": 1,
+      "message": "Obtuviste pildora",
+      "id": "notif-1779810717640-z7hge7b",
+      "timestamp": "2026-05-26T15:51:57.640Z",
       "read": false
     },
     {
       "type": "currency_changed",
-      "itemName": "Nueva Divisa",
-      "quantity": -10,
-      "message": "Nueva Divisa: -10 (Total: 0)",
-      "id": "notif-1772463810325-1kl2ws95g",
-      "timestamp": "2026-03-02T15:03:30.325Z",
+      "itemName": "Puntos",
+      "quantity": -100,
+      "message": "Puntos: -100 (Total: 500)",
+      "id": "notif-1779810717586-f76os67",
+      "timestamp": "2026-05-26T15:51:57.586Z",
+      "read": false
+    },
+    {
+      "type": "item_used",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "pildora",
+      "quantity": 1,
+      "message": "asdssd",
+      "id": "notif-1779810706334-tcigq5l",
+      "timestamp": "2026-05-26T15:51:46.334Z",
+      "read": false
+    },
+    {
+      "type": "item_added",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "pildora",
+      "quantity": 1,
+      "message": "Compraste pildora por 100 divisas",
+      "id": "notif-1779810701819-yqhjj0j",
+      "timestamp": "2026-05-26T15:51:41.819Z",
+      "read": false
+    },
+    {
+      "type": "item_added",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "pildora",
+      "quantity": 1,
+      "message": "Obtuviste pildora",
+      "id": "notif-1779810701789-7dcax0l",
+      "timestamp": "2026-05-26T15:51:41.789Z",
       "read": false
     },
     {
       "type": "currency_changed",
-      "itemName": "Nueva Divisa",
-      "quantity": 10,
-      "message": "Nueva Divisa: +10 (Total: 10)",
-      "id": "notif-1772463810010-q3wbbvw0h",
-      "timestamp": "2026-03-02T15:03:30.010Z",
+      "itemName": "Puntos",
+      "quantity": -100,
+      "message": "Puntos: -100 (Total: 600)",
+      "id": "notif-1779810701734-0lxpgz9",
+      "timestamp": "2026-05-26T15:51:41.734Z",
+      "read": false
+    },
+    {
+      "type": "item_used",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "asd",
+      "quantity": 1,
+      "message": "asdssd",
+      "id": "notif-1779810639032-eqwyqiq",
+      "timestamp": "2026-05-26T15:50:39.032Z",
+      "read": false
+    },
+    {
+      "type": "item_added",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "asd",
+      "quantity": 1,
+      "message": "Compraste asd por 100 divisas",
+      "id": "notif-1779810634837-mfqxa5e",
+      "timestamp": "2026-05-26T15:50:34.837Z",
+      "read": false
+    },
+    {
+      "type": "item_added",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "asd",
+      "quantity": 1,
+      "message": "Obtuviste asd",
+      "id": "notif-1779810634806-31m4v56",
+      "timestamp": "2026-05-26T15:50:34.806Z",
       "read": false
     },
     {
       "type": "currency_changed",
-      "itemName": "Nueva Divisa",
-      "quantity": -10,
-      "message": "Nueva Divisa: -10 (Total: 0)",
-      "id": "notif-1772463809725-odo3nrcca",
-      "timestamp": "2026-03-02T15:03:29.725Z",
+      "itemName": "Puntos",
+      "quantity": -100,
+      "message": "Puntos: -100 (Total: 700)",
+      "id": "notif-1779810634748-uoke7q8",
+      "timestamp": "2026-05-26T15:50:34.748Z",
+      "read": false
+    },
+    {
+      "type": "item_used",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "asd",
+      "quantity": 1,
+      "message": "asdssd",
+      "id": "notif-1779810611056-tytiec7",
+      "timestamp": "2026-05-26T15:50:11.056Z",
+      "read": false
+    },
+    {
+      "type": "item_added",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "asd",
+      "quantity": 1,
+      "message": "Compraste asd por 100 divisas",
+      "id": "notif-1779807934495-nxud461",
+      "timestamp": "2026-05-26T15:05:34.495Z",
+      "read": false
+    },
+    {
+      "type": "item_added",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "asd",
+      "quantity": 1,
+      "message": "Obtuviste asd",
+      "id": "notif-1779807934465-rvv9yp2",
+      "timestamp": "2026-05-26T15:05:34.465Z",
       "read": false
     },
     {
       "type": "currency_changed",
-      "itemName": "Nueva Divisa",
-      "quantity": 10,
-      "message": "Nueva Divisa: +10 (Total: 10)",
-      "id": "notif-1772463809433-spp2ky6j7",
-      "timestamp": "2026-03-02T15:03:29.433Z",
+      "itemName": "Puntos",
+      "quantity": -100,
+      "message": "Puntos: -100 (Total: 800)",
+      "id": "notif-1779807934410-j52il8y",
+      "timestamp": "2026-05-26T15:05:34.411Z",
       "read": false
     },
     {
-      "type": "currency_changed",
-      "itemName": "Nueva Divisa",
-      "quantity": -10,
-      "message": "Nueva Divisa: -10 (Total: 0)",
-      "id": "notif-1772463809072-ws55wgq0q",
-      "timestamp": "2026-03-02T15:03:29.072Z",
+      "type": "item_used",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "asd",
+      "quantity": 1,
+      "message": "Usaste asd (1 turnos)",
+      "id": "notif-1779807874152-tmx5wfw",
+      "timestamp": "2026-05-26T15:04:34.152Z",
       "read": false
     },
     {
-      "type": "currency_changed",
-      "itemName": "Nueva Divisa",
-      "quantity": 10,
-      "message": "Nueva Divisa: +10 (Total: 10)",
-      "id": "notif-1772463808724-3s1155prg",
-      "timestamp": "2026-03-02T15:03:28.724Z",
+      "type": "item_added",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "asd",
+      "quantity": 1,
+      "message": "Compraste asd por 100 divisas",
+      "id": "notif-1779807867192-v99h4qv",
+      "timestamp": "2026-05-26T15:04:27.192Z",
+      "read": false
+    },
+    {
+      "type": "item_added",
+      "itemId": "item-1779807837762-vtol1da",
+      "itemName": "asd",
+      "quantity": 1,
+      "message": "Obtuviste asd",
+      "id": "notif-1779807867169-50400pw",
+      "timestamp": "2026-05-26T15:04:27.169Z",
       "read": false
     }
   ]

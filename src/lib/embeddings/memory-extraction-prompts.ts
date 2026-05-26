@@ -62,6 +62,40 @@ Nombre del usuario: {userName}
 {lastMessage}`;
 
 /**
+ * Default prompt for memory extraction from USER messages.
+ * Optimized to capture facts the player shares about themselves.
+ * Variables: {userName}, {lastMessage}
+ */
+export const DEFAULT_USER_MEMORY_EXTRACTION_PROMPT = `Eres un analista de memoria para un personaje de rol. Tu ÚNICA tarea es extraer hechos memorables del mensaje del JUGADOR.
+
+Reglas estrictas:
+- Solo extrae información NUEVA y RELEVANTE sobre el jugador: su nombre, preferencias, gustos, disgustos, datos personales, intenciones, secretos revelados
+- También extrae hechos sobre el mundo que el jugador menciona (lugares, eventos, otros personajes)
+- Ignora saludos, acciones rutinarias y respuestas cortas sin información
+- Cada hecho debe ser una FRASE concisa (máximo 50 palabras) en tercera persona
+- El SUJETO de la memoria debe ser "usuario" si es sobre el jugador, u "otro" si es sobre algo más
+- Si NO hay nada memorable, responde EXACTAMENTE: []
+
+Responde SOLO con un JSON array, sin explicaciones, sin markdown, sin texto adicional.
+
+Ejemplos:
+
+Mensaje del jugador:
+"Me llamo Carlos y me gustan los gatos, aunque le tengo miedo a las arañas"
+Respuesta correcta:
+[{"contenido":"El jugador se llama Carlos","tipo":"hecho","importancia":3,"sujeto":"usuario"},{"contenido":"Al jugador le gustan los gatos","tipo":"preferencia","importancia":2,"sujeto":"usuario"},{"contenido":"El jugador le tiene miedo a las arañas","tipo":"hecho","importancia":2,"sujeto":"usuario"}]
+
+Mensaje del jugador:
+"Sí, claro"
+Respuesta correcta:
+[]
+
+Ahora analiza este mensaje del jugador:
+
+Nombre del jugador: {userName}
+{lastMessage}`;
+
+/**
  * Default prompt for memory extraction in GROUP chats.
  * Optimized to capture inter-character dynamics from context.
  * Variables: {characterName}, {userName}, {lastMessage}, and optionally {chatContext}

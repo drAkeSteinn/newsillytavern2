@@ -19,6 +19,11 @@ import type {
   AppSettings,
   ResolvedStats,
   QuestSettings,
+  Item,
+  PersonaInventoryEntry,
+  ItemAttributeEffect,
+  ActiveConsumableEffect,
+  InventoryV2Settings,
 } from '@/types';
 import type { ChatApiMessage, CompletionPromptConfig, GroupPromptBuildResult } from './types';
 import { processExampleDialogue, parseExampleDialogueToMessages } from '@/lib/prompt-template';
@@ -67,6 +72,7 @@ export const SECTION_COLORS = {
   relationship: 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-300',
   hud_context: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300',
   quest: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  inventory: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300',
 } as const;
 
 // ============================================
@@ -323,8 +329,116 @@ export function injectHUDContextIntoSections(
 }
 
 // ============================================
+// Inventory V2 Section
+// ============================================
+
+/**
+ * Build an inventory section for prompt injection.
+ *
+ * Shows:
+ * - Current currency
+ * - Equipped items and their effects
+ * - Active consumable effects with remaining turns
+ * - Available (non-equipped) items in inventory
+ *
+ * Uses the `promptTemplate` from `inventorySettings` for formatting.
+ * If no template is provided or the template is empty, a default format is used.
+ *
+ * Returns null if inventory data is empty or invalid.
+ */
+export function buildInventorySection(
+  inventoryData: InventoryPromptData,
+  keyContext?: KeyResolutionContext
+): PromptSection | null {
+  const {
+    personaItems,
+    equippedItems,
+    activeEffects,
+    currency,
+    currencyName,
+    currencyIcon,
+    inventorySettings,
+  } = inventoryData;
+
+  // If no items and no effects and no currency, skip section
+  if (personaItems.length === 0 && activeEffects.length === 0 && currency === 0) {
+    return null;
+  }
+
+  // Use the template from inventory settings, or fall back to default
+  const template = inventorySettings.promptTemplate?.trim() || `[Inventario Activo]
+{{activeItems}}
+
+[Efectos Activos]
+{{activeEffects}}
+
+[Divisa]
+{{currency}}`;
+
+  // Build items list (all items in inventory)
+  const itemLines = personaItems.map(({ entry, item }) => {
+    const qty = entry.quantity > 1 ? ` x${entry.quantity}` : '';
+    const eq = entry.equipped ? ' [Equipado]' : '';
+    const effects = (item.attributeEffects && item.attributeEffects.length > 0)
+      ? ` (${item.attributeEffects.map(e => `${e.operator}${e.value} ${e.attributeKey}`).join(', ')})`
+      : '';
+    return `- ${item.icon || ''} ${item.name}${qty}${eq}${effects}`;
+  }).join('\n');
+
+  // Build active effects list
+  const effectLines = activeEffects.map(e => {
+    const turnsLeft = e.remainingTurns > 0 ? ` (${e.remainingTurns}/${e.totalTurns} turnos)` : '';
+    const effectDesc = e.effects.map(ef =>
+      `${ef.operator}${ef.value} ${ef.attributeKey}${ef.targetId !== '__user__' ? ` → ${ef.targetName || ef.targetId}` : ''}`
+    ).join(', ');
+    return `- ${e.itemName}: ${effectDesc}${turnsLeft}`;
+  }).join('\n');
+
+  // Build equipped items list
+  const equipLines = equippedItems.map(({ item }) => {
+    const effects = (item.attributeEffects && item.attributeEffects.length > 0)
+      ? item.attributeEffects.map(e => `${e.operator}${e.value} ${e.attributeKey}`).join(', ')
+      : '';
+    return `- ${item.icon || ''} ${item.name}${item.slot ? ` [${item.slot}]` : ''}${effects ? ` → ${effects}` : ''}`;
+  }).join('\n');
+
+  // Build currency line
+  const currencyLine = `${currencyIcon || '💰'} ${currencyName || 'Divisa'}: ${currency}`;
+
+  // Apply template replacements
+  let content = template
+    .replace('{{activeItems}}', itemLines || 'Vacío')
+    .replace('{{activeEffects}}', effectLines || 'Ninguno')
+    .replace('{{equippedItems}}', equipLines || 'Ninguno')
+    .replace('{{currency}}', currencyLine);
+
+  // Resolve all keys in the inventory content if keyContext is available
+  if (keyContext) {
+    content = resolveAllKeys(content, keyContext);
+  }
+
+  return {
+    type: 'inventory',
+    label: 'Inventory',
+    content,
+    color: SECTION_COLORS.inventory
+  };
+}
+
+// ============================================
 // Extended Build Options
 // ============================================
+
+export interface InventoryPromptData {
+  personaItems: Array<{ entry: PersonaInventoryEntry; item: Item }>;
+  equippedItems: Array<{ entry: PersonaInventoryEntry; item: Item }>;
+  activeEffects: ActiveConsumableEffect[];
+  pendingFallbacks: Array<{ targetId: string; attributeKey: string; fallbackValue: string | number }>;
+  currency: number;
+  currencyName: string;
+  currencyIcon: string;
+  inventorySettings: InventoryV2Settings;
+}
 
 export interface PromptBuildOptions {
   userName?: string;
@@ -338,6 +452,7 @@ export interface PromptBuildOptions {
   questTemplates?: QuestTemplate[];
   sessionQuests?: SessionQuestInstance[];
   questSettings?: QuestSettings;
+  inventoryData?: InventoryPromptData;
 }
 
 // ============================================
@@ -364,7 +479,8 @@ export function buildSystemPrompt(
   questTemplates?: QuestTemplate[],
   sessionQuests?: SessionQuestInstance[],
   questSettings?: QuestSettings,
-  lorebookAttributeKeys?: Record<string, string>
+  lorebookAttributeKeys?: Record<string, string>,
+  inventoryData?: InventoryPromptData
 ): { prompt: string; sections: PromptSection[]; lorebookChatInjections: LorebookChatInjection[]; exampleMessages: ChatApiMessage[] } {
   const sections: PromptSection[] = [];
 
@@ -432,6 +548,15 @@ export function buildSystemPrompt(
       content: persona.description,
       color: SECTION_COLORS.persona
     });
+  }
+
+  // Add inventory section (Inventory V2) - AFTER persona, BEFORE character description
+  // Only inject if inventory is enabled and promptInclude is true
+  if (inventoryData && inventoryData.inventorySettings.enabled && inventoryData.inventorySettings.promptInclude) {
+    const inventorySection = buildInventorySection(inventoryData, keyContext);
+    if (inventorySection) {
+      sections.push(inventorySection);
+    }
   }
 
   // Add character description
@@ -943,7 +1068,8 @@ export function buildGroupSystemPrompt(
   questTemplates?: QuestTemplate[],
   sessionQuests?: SessionQuestInstance[],
   questSettings?: QuestSettings,
-  lorebookAttributeKeys?: Record<string, string>
+  lorebookAttributeKeys?: Record<string, string>,
+  inventoryData?: InventoryPromptData
 ): { prompt: string; sections: PromptSection[]; lorebookChatInjections: LorebookChatInjection[]; exampleMessages: ChatApiMessage[] } {
   const sections: PromptSection[] = [];
 
@@ -1011,6 +1137,15 @@ export function buildGroupSystemPrompt(
       content: persona.description,
       color: SECTION_COLORS.persona
     });
+  }
+
+  // Add inventory section (Inventory V2) - AFTER persona, BEFORE character description
+  // Only inject if inventory is enabled and promptInclude is true
+  if (inventoryData && inventoryData.inventorySettings.enabled && inventoryData.inventorySettings.promptInclude) {
+    const inventorySection = buildInventorySection(inventoryData, keyContext);
+    if (inventorySection) {
+      sections.push(inventorySection);
+    }
   }
 
   // Add this character's details

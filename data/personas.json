@@ -6,7 +6,7 @@
     "avatar": "",
     "isActive": true,
     "createdAt": "2026-03-01T21:37:31.485Z",
-    "updatedAt": "2026-05-03T01:56:23.756Z",
+    "updatedAt": "2026-05-26T16:51:26.528Z",
     "statsConfig": {
       "enabled": true,
       "attributes": [
@@ -91,6 +91,26 @@
         "invitations": "[PETICIONES POSIBLES]",
         "solicitudesRecibidas": "[SOLICITUDES RECIBIDAS]"
       }
-    }
+    },
+    "inventoryItems": [
+      {
+        "itemId": "item-1779807837762-vtol1da",
+        "quantity": 1,
+        "equipped": false
+      },
+      {
+        "itemId": "item-1779812152844-m30pre4",
+        "quantity": 1,
+        "equipped": false
+      },
+      {
+        "itemId": "item-1779812275517-tpj77ff",
+        "quantity": 1,
+        "equipped": false
+      }
+    ],
+    "currency": 990,
+    "currencyName": "Puntos",
+    "currencyIcon": "💰"
   }
 ]

@@ -24,7 +24,7 @@ const PERSIST_KEYS = [
   'summaries', 'summarySettings', 'characterMemories', 'sessionTracking',
   'quests', 'questSettings', 'questNotifications',
   'dialogueSettings',
-  'items', 'containers', 'currencies', 'inventorySettings', 'inventoryNotifications',
+  'items', 'activeConsumableEffects', 'containers', 'currencies', 'inventorySettings', 'inventoryNotifications',
   // Active states
   'activeSessionId', 'activeCharacterId', 'activeGroupId',
   'activeBackground', 'activeOverlayBack', 'activeOverlayFront',
@@ -199,6 +199,9 @@ export function usePersistenceSync() {
           if (data.inventory.items) {
             updates.items = data.inventory.items;
           }
+          if (data.inventory.activeConsumableEffects) {
+            updates.activeConsumableEffects = data.inventory.activeConsumableEffects;
+          }
           if (data.inventory.containers) {
             updates.containers = data.inventory.containers;
           }
@@ -337,6 +340,7 @@ export function usePersistenceSync() {
         },
         inventory: {
           items: state.items,
+          activeConsumableEffects: state.activeConsumableEffects,
           containers: state.containers,
           currencies: state.currencies,
           inventorySettings: state.inventorySettings,

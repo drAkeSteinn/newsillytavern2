@@ -26,6 +26,7 @@ import {
   describeReward,
   createAttributeReward,
   createTriggerReward,
+  createCurrencyReward,
   getActionSymbol,
 } from '@/lib/quest/quest-reward-utils';
 import { cn } from '@/lib/utils';
@@ -51,6 +52,7 @@ import {
   User,
   Crosshair,
   ChevronDown,
+  Coins,
 } from 'lucide-react';
 
 // ============================================
@@ -126,9 +128,10 @@ export function RewardEditor({
   const normalized = normalizeReward(reward);
   const isAttribute = normalized.type === 'attribute';
   const isTrigger = normalized.type === 'trigger';
+  const isCurrency = normalized.type === 'currency';
 
   // Handlers
-  const handleTypeChange = (newType: 'attribute' | 'trigger') => {
+  const handleTypeChange = (newType: 'attribute' | 'trigger' | 'currency') => {
     if (newType === normalized.type) return;
 
     let newReward: QuestReward;
@@ -139,6 +142,8 @@ export function RewardEditor({
         normalized.attribute?.action || 'add',
         { id: reward.id }
       );
+    } else if (newType === 'currency') {
+      newReward = createCurrencyReward(0, { id: reward.id });
     } else {
       newReward = createTriggerReward(
         normalized.trigger?.category || 'sprite',
@@ -172,6 +177,15 @@ export function RewardEditor({
     });
   };
 
+  const handleCurrencyChange = (updates: Partial<NonNullable<QuestReward['currency']>>) => {
+    const currentCurrency = normalized.currency || { amount: 0 };
+    onChange({
+      ...reward,
+      type: 'currency',
+      currency: { ...currentCurrency, ...updates },
+    });
+  };
+
   // Compact mode
   if (compact) {
     return (
@@ -180,7 +194,7 @@ export function RewardEditor({
         <div className="flex items-center gap-2">
           <Select 
             value={normalized.type} 
-            onValueChange={(v) => handleTypeChange(v as 'attribute' | 'trigger')}
+            onValueChange={(v) => handleTypeChange(v as 'attribute' | 'trigger' | 'currency')}
           >
             <SelectTrigger className="bg-background h-6 text-xs w-24">
               <SelectValue />
@@ -188,6 +202,7 @@ export function RewardEditor({
             <SelectContent>
               <SelectItem value="attribute">📊 Atributo</SelectItem>
               <SelectItem value="trigger">⚡ Trigger</SelectItem>
+              <SelectItem value="currency">💰 Divisa</SelectItem>
             </SelectContent>
           </Select>
           <Badge variant="outline" className="text-[10px] flex-1">
@@ -304,6 +319,20 @@ export function RewardEditor({
             )}
           </div>
         )}
+
+        {/* Config currency */}
+        {isCurrency && normalized.currency && (
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              value={normalized.currency.amount}
+              onChange={(e) => handleCurrencyChange({ amount: Number(e.target.value) })}
+              placeholder="Cantidad"
+              className="bg-background h-6 text-xs w-20"
+            />
+            <span className="text-[10px] text-muted-foreground">divisa para persona</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -317,7 +346,7 @@ export function RewardEditor({
           <Label className="text-[10px] text-muted-foreground mb-1 block">Tipo de Recompensa</Label>
           <Select 
             value={normalized.type} 
-            onValueChange={(v) => handleTypeChange(v as 'attribute' | 'trigger')}
+            onValueChange={(v) => handleTypeChange(v as 'attribute' | 'trigger' | 'currency')}
           >
             <SelectTrigger className="bg-background h-9">
               <SelectValue />
@@ -333,6 +362,12 @@ export function RewardEditor({
                 <div className="flex items-center gap-2">
                   <Zap className="w-4 h-4" />
                   Trigger
+                </div>
+              </SelectItem>
+              <SelectItem value="currency">
+                <div className="flex items-center gap-2">
+                  <Coins className="w-4 h-4" />
+                  Divisa
                 </div>
               </SelectItem>
             </SelectContent>
@@ -519,6 +554,29 @@ export function RewardEditor({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* CURRENCY CONFIG */}
+      {isCurrency && normalized.currency && (
+        <div className="p-3 rounded-lg bg-muted/30">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">Cantidad</Label>
+              <Input
+                type="number"
+                value={normalized.currency.amount}
+                onChange={(e) => handleCurrencyChange({ amount: Number(e.target.value) })}
+                className="bg-background h-8"
+                placeholder="Ej: 50, 100, -10"
+              />
+            </div>
+            <div className="flex items-end pb-1">
+              <p className="text-[10px] text-muted-foreground">
+                Cantidad positiva suma divisa a la persona. Negativa resta.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 

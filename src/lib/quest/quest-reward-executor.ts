@@ -59,7 +59,7 @@ export interface RewardExecutionContext {
 
 export interface RewardExecutionResult {
   rewardId: string;
-  type: 'attribute' | 'trigger' | 'objective' | 'solicitud';
+  type: 'attribute' | 'trigger' | 'objective' | 'solicitud' | 'target_attribute' | 'currency';
   success: boolean;
   key: string;
   value?: string | number;
@@ -792,6 +792,49 @@ export function executeReward(
     case 'target_attribute':
       return executeTargetAttributeReward(normalized, context, storeActions);
 
+    case 'currency': {
+      // Currency reward - adds/subtracts persona currency via inventory V2 system
+      const curr = normalized.currency;
+      if (!curr) {
+        return {
+          rewardId: reward.id,
+          type: 'currency',
+          key: 'currency',
+          success: false,
+          error: 'Invalid currency reward structure - missing currency config',
+        };
+      }
+
+      // Currency rewards always target the persona (__user__)
+      // We use updateCharacterStat with the persona's special ID
+      // The 'currency' key is handled specially by the stats system
+      // For now, we store it as a regular attribute on __user__
+      // The inventory system will also track it via persona.currency
+      const personaId = '__user__';
+      const currentCurrency = sessionStats?.characterStats?.[personaId]?.attributeValues?.['currency'];
+      const currentNum = typeof currentCurrency === 'number' ? currentCurrency : (parseFloat(String(currentCurrency)) || 0);
+      const newCurrency = Math.max(0, currentNum + curr.amount);
+
+      // Update via character stat (persona currency is synced)
+      storeActions.updateCharacterStat(
+        sessionId,
+        personaId,
+        'currency',
+        newCurrency,
+        'trigger'
+      );
+
+      const change = curr.amount >= 0 ? `+${curr.amount}` : `${curr.amount}`;
+      return {
+        rewardId: reward.id,
+        type: 'currency',
+        key: 'currency',
+        value: newCurrency,
+        success: true,
+        message: `Divisa: ${change} (Total: ${newCurrency})`,
+      };
+    }
+
     default:
       return {
         rewardId: reward.id,
@@ -948,6 +991,12 @@ export function describeReward(reward: QuestReward): string {
 
   if (normalized.type === 'solicitud' && normalized.solicitud) {
     return `📋 ${normalized.solicitud.solicitudName || normalized.solicitud.solicitudKey}`;
+  }
+
+  if (normalized.type === 'currency' && normalized.currency) {
+    const amount = normalized.currency.amount;
+    const sign = amount >= 0 ? '+' : '';
+    return `💰 Divisa ${sign}${amount}`;
   }
   
   // Fallback for unknown format

@@ -1,12 +1,12 @@
 {
   "summaries": [],
   "summarySettings": {
-    "enabled": false,
+    "enabled": true,
     "autoSummarize": true,
-    "normalChatInterval": 20,
-    "groupChatInterval": 15,
+    "normalChatInterval": 10,
+    "groupChatInterval": 20,
     "triggerThreshold": 20,
-    "keepRecentMessages": 10,
+    "keepRecentMessages": 3,
     "maxSummaryTokens": 500,
     "promptTemplate": "You are a conversation summarizer for a roleplay chat. Your task is to create a concise but comprehensive summary of the conversation.\n\n**Instructions:**\n1. Preserve key events, decisions, and plot developments\n2. Track emotional moments and character development\n3. Note important dialogue exchanges\n4. Keep track of items, locations, and relationships\n5. Maintain chronological order\n\n**Format:**\nWrite a narrative summary (not bullet points) that captures the essence of the conversation.\n\n**Conversation to summarize:**\n{{conversation}}\n\n**Summary:**",
     "summarizeOnTurnEnd": true,
@@ -275,7 +275,85 @@
     },
     "8016c798-29b6-4ed6-b23b-b96a7809b26e": {
       "sessionId": "8016c798-29b6-4ed6-b23b-b96a7809b26e",
-      "messagesSinceLastSummary": 38,
+      "messagesSinceLastSummary": 63,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "98d3aabc-ad0d-4eb7-90fe-32367a978bd7": {
+      "sessionId": "98d3aabc-ad0d-4eb7-90fe-32367a978bd7",
+      "messagesSinceLastSummary": 9,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "79591117-88bc-40de-8e8d-2828f3f60302": {
+      "sessionId": "79591117-88bc-40de-8e8d-2828f3f60302",
+      "messagesSinceLastSummary": 0,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "3ab5f614-bea1-45e5-a536-d95b97d9c79b": {
+      "sessionId": "3ab5f614-bea1-45e5-a536-d95b97d9c79b",
+      "messagesSinceLastSummary": 3,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "a714a80a-e3c7-49f5-bb9f-a308015fb454": {
+      "sessionId": "a714a80a-e3c7-49f5-bb9f-a308015fb454",
+      "messagesSinceLastSummary": 0,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "8217056c-97ab-448b-8343-89e2e098a94e": {
+      "sessionId": "8217056c-97ab-448b-8343-89e2e098a94e",
+      "messagesSinceLastSummary": 0,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "252691d8-5fdf-4977-a45d-c14e98acc43d": {
+      "sessionId": "252691d8-5fdf-4977-a45d-c14e98acc43d",
+      "messagesSinceLastSummary": 4,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "16e34993-44dc-44f2-8878-04f191ed1b75": {
+      "sessionId": "16e34993-44dc-44f2-8878-04f191ed1b75",
+      "messagesSinceLastSummary": 6,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "ce439a5e-3b20-4b00-adef-2725385791a5": {
+      "sessionId": "ce439a5e-3b20-4b00-adef-2725385791a5",
+      "messagesSinceLastSummary": 1,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "846c6f5f-e62d-428b-b9ec-924a018ff824": {
+      "sessionId": "846c6f5f-e62d-428b-b9ec-924a018ff824",
+      "messagesSinceLastSummary": 0,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "80395dcd-70e6-4735-b298-b220a09ba1e7": {
+      "sessionId": "80395dcd-70e6-4735-b298-b220a09ba1e7",
+      "messagesSinceLastSummary": 0,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "cac93c18-5189-4ab3-9129-30ab7ed43c08": {
+      "sessionId": "cac93c18-5189-4ab3-9129-30ab7ed43c08",
+      "messagesSinceLastSummary": 0,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "9e09a307-79fd-4a9b-b7eb-1a62706a344f": {
+      "sessionId": "9e09a307-79fd-4a9b-b7eb-1a62706a344f",
+      "messagesSinceLastSummary": 7,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "e1aa2113-acdd-492d-b602-763e5222df8f": {
+      "sessionId": "e1aa2113-acdd-492d-b602-763e5222df8f",
+      "messagesSinceLastSummary": 0,
       "lastSummaryMessageIndex": 0,
       "isGroupChat": false
     }

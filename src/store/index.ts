@@ -155,12 +155,14 @@ export const useTavernStore = create<TavernState>()(
         questNotifications: state.questNotifications,
         // Dialogue state
         dialogueSettings: state.dialogueSettings,
-        // Inventory state
+        // Inventory state (V2)
         items: state.items,
-        containers: state.containers,
-        currencies: state.currencies,
+        activeConsumableEffects: state.activeConsumableEffects,
         inventorySettings: state.inventorySettings,
         inventoryNotifications: state.inventoryNotifications,
+        // Legacy inventory state (kept for migration)
+        containers: state.containers,
+        currencies: state.currencies,
         // Stats state is stored within sessions.sessionStats
         // Timeline Editor state
         collections: state.collections,
@@ -260,9 +262,15 @@ export const useTavernStore = create<TavernState>()(
 
         // Ensure personas exist with default if not present
         const persistedPersonas = persisted.personas as Persona[] | undefined;
-        const mergedPersonas = persistedPersonas && persistedPersonas.length > 0
+        const mergedPersonas = (persistedPersonas && persistedPersonas.length > 0
           ? persistedPersonas
-          : currentState.personas;
+          : currentState.personas).map(p => ({
+            ...p,
+            currency: p.currency ?? 0,
+            currencyName: p.currencyName ?? 'Divisa',
+            currencyIcon: p.currencyIcon ?? '💰',
+            inventoryItems: p.inventoryItems ?? [],
+          }));
 
         // Migrate groups to new format with members array
         const persistedGroups = persisted.groups as Array<Record<string, unknown>> | undefined;

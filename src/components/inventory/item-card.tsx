@@ -1,70 +1,70 @@
 'use client';
 
 import { useState } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
-  Sword,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  FlaskConical,
   Shield,
-  Gem,
-  Package,
-  Key,
-  BookOpen,
-  Wrench,
-  Shirt,
-  HelpCircle,
+  Sparkles,
   Trash2,
-  Edit3,
   ChevronDown,
   ChevronUp,
-  Sparkles,
-  Star,
+  X,
 } from 'lucide-react';
-import type { 
-  Item, 
-  InventoryEntry, 
-  ItemRarity, 
-  ItemCategory,
-  ItemSlot,
+import { cn } from '@/lib/utils';
+import type {
+  Item,
+  PersonaInventoryEntry,
+  ItemRarity,
+  ItemAttributeEffect,
 } from '@/types';
-import { getRarityColor, getCategoryIcon } from '@/store/slices/inventorySlice';
+import {
+  getRarityColor,
+  getRarityBgColor,
+  getItemTypeIcon,
+  getItemTypeLabel,
+} from '@/store/slices/inventorySlice';
 
 // ============================================
-// Helper Functions
+// Constants
 // ============================================
 
-function getRarityBadgeVariant(rarity: ItemRarity): 'default' | 'secondary' | 'destructive' | 'outline' {
-  switch (rarity) {
-    case 'legendary':
-    case 'unique':
-      return 'default';
-    case 'epic':
-    case 'cursed':
-      return 'secondary';
-    case 'rare':
-      return 'outline';
-    default:
-      return 'secondary';
-  }
-}
+const RARITY_LABELS: Record<ItemRarity, string> = {
+  common: 'Común',
+  uncommon: 'Poco común',
+  rare: 'Raro',
+  epic: 'Épico',
+  legendary: 'Legendario',
+  unique: 'Único',
+  cursed: 'Maldito',
+};
 
-function getSlotLabel(slot: ItemSlot): string {
-  const labels: Record<ItemSlot, string> = {
-    main_hand: 'Mano Principal',
-    off_hand: 'Mano Secundaria',
-    head: 'Cabeza',
-    chest: 'Pecho',
-    legs: 'Piernas',
-    feet: 'Pies',
-    hands: 'Manos',
-    accessory1: 'Accesorio 1',
-    accessory2: 'Accesorio 2',
-    back: 'Espalda',
-    none: 'Sin Slot',
-  };
-  return labels[slot];
+const OPERATOR_LABELS: Record<string, string> = {
+  '+': '+',
+  '-': '−',
+  '*': '×',
+  '/': '÷',
+  '=': '=',
+  set_min: 'mín',
+  set_max: 'máx',
+};
+
+// ============================================
+// Helper
+// ============================================
+
+function formatEffectDescription(effect: ItemAttributeEffect): string {
+  const op = OPERATOR_LABELS[effect.operator] ?? effect.operator;
+  const target = effect.targetId === '__user__' ? '' : ` → ${effect.targetName || effect.targetId}`;
+  const attr = effect.attributeName || effect.attributeKey;
+  return `${op}${effect.value} ${attr}${target}`;
 }
 
 // ============================================
@@ -73,63 +73,73 @@ function getSlotLabel(slot: ItemSlot): string {
 
 interface ItemCardProps {
   item: Item;
-  entry?: InventoryEntry;
+  entry?: PersonaInventoryEntry;
   showQuantity?: boolean;
-  showDetails?: boolean;
+  showActions?: boolean;
   compact?: boolean;
-  onEdit?: () => void;
-  onDelete?: () => void;
+  onUse?: () => void;
   onEquip?: () => void;
   onUnequip?: () => void;
-  onUse?: () => void;
+  onRemove?: () => void;
+  onEdit?: () => void;
 }
 
 export function ItemCard({
   item,
   entry,
   showQuantity = true,
-  showDetails = true,
+  showActions = true,
   compact = false,
-  onEdit,
-  onDelete,
+  onUse,
   onEquip,
   onUnequip,
-  onUse,
+  onRemove,
+  onEdit,
 }: ItemCardProps) {
   const [expanded, setExpanded] = useState(false);
-  
+
   const rarityColor = getRarityColor(item.rarity);
-  const categoryIcon = getCategoryIcon(item.category);
-  
+  const rarityBg = getRarityBgColor(item.rarity);
+  const typeIcon = item.icon || getItemTypeIcon(item.type || 'consumable');
+  const typeLabel = getItemTypeLabel(item.type || 'consumable');
   const quantity = entry?.quantity ?? 1;
   const isEquipped = entry?.equipped ?? false;
-  
+  const isConsumable = item.type === 'consumable';
+  const isEquipment = item.type === 'equipment';
+
+  // Compact mode - single line with tooltip
   if (compact) {
     return (
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <div 
-              className={`
-                flex items-center gap-2 px-2 py-1.5 rounded-md 
-                bg-muted/50 hover:bg-muted transition-colors cursor-pointer
-                ${isEquipped ? 'ring-1 ring-primary' : ''}
-              `}
+            <div
+              className={cn(
+                'flex items-center gap-2 px-2 py-1.5 rounded-md',
+                'bg-muted/50 hover:bg-muted transition-colors cursor-pointer',
+                isEquipped && 'ring-1 ring-primary'
+              )}
             >
-              <span className="text-base">{categoryIcon}</span>
-              <span className={`text-sm font-medium truncate ${rarityColor}`}>
+              <span className="text-base shrink-0">{typeIcon}</span>
+              <span className={cn('text-sm font-medium truncate', rarityColor)}>
                 {item.name}
               </span>
               {showQuantity && quantity > 1 && (
-                <Badge variant="secondary" className="text-xs ml-auto">
+                <Badge variant="secondary" className="text-xs ml-auto shrink-0">
                   x{quantity}
                 </Badge>
+              )}
+              {isEquipped && (
+                <Shield className="w-3 h-3 text-primary ml-auto shrink-0" />
               )}
             </div>
           </TooltipTrigger>
           <TooltipContent side="right" className="max-w-xs">
             <div className="space-y-1">
-              <p className={`font-semibold ${rarityColor}`}>{item.name}</p>
+              <p className={cn('font-semibold', rarityColor)}>{item.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {typeLabel} • {RARITY_LABELS[item.rarity]}
+              </p>
               {item.description && (
                 <p className="text-xs text-muted-foreground">{item.description}</p>
               )}
@@ -139,179 +149,185 @@ export function ItemCard({
       </TooltipProvider>
     );
   }
-  
+
+  // Full card mode
   return (
-    <Card className={`
-      overflow-hidden transition-all hover:shadow-md
-      ${isEquipped ? 'ring-2 ring-primary' : ''}
-    `}>
-      {/* Header */}
-      <div 
-        className={`
-          flex items-center gap-3 p-3 cursor-pointer
-          ${expanded ? 'border-b' : ''}
-        `}
-        onClick={() => showDetails && setExpanded(!expanded)}
+    <div
+      className={cn(
+        'rounded-lg border transition-all',
+        rarityBg,
+        isEquipped && 'ring-2 ring-primary/50',
+        'hover:shadow-sm'
+      )}
+    >
+      {/* Header Row */}
+      <div
+        className="flex items-center gap-2.5 p-3 cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
       >
         {/* Icon */}
-        <div className={`
-          w-10 h-10 rounded-lg flex items-center justify-center text-xl
-          ${item.rarity === 'legendary' ? 'bg-amber-500/20' : ''}
-          ${item.rarity === 'unique' ? 'bg-red-500/20' : ''}
-          ${item.rarity === 'epic' ? 'bg-purple-500/20' : ''}
-          ${item.rarity === 'rare' ? 'bg-blue-500/20' : ''}
-          ${item.rarity === 'uncommon' ? 'bg-green-500/20' : ''}
-          ${item.rarity === 'common' ? 'bg-gray-500/20' : ''}
-          ${item.rarity === 'cursed' ? 'bg-fuchsia-500/20' : ''}
-        `}>
-          {item.icon || categoryIcon}
+        <div
+          className={cn(
+            'w-9 h-9 rounded-md flex items-center justify-center text-lg shrink-0',
+            rarityBg
+          )}
+        >
+          {typeIcon}
         </div>
-        
+
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h4 className={`font-semibold truncate ${rarityColor}`}>
-              {entry?.customName || item.name}
-            </h4>
+          <div className="flex items-center gap-1.5">
+            <span className={cn('font-semibold text-sm truncate', rarityColor)}>
+              {item.name}
+            </span>
             {isEquipped && (
-              <Badge variant="default" className="text-xs">
+              <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 shrink-0">
                 Equipado
               </Badge>
             )}
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="capitalize">{item.category}</span>
-            <span>•</span>
-            <span className="capitalize">{item.rarity}</span>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Badge
+              variant={isConsumable ? 'secondary' : 'outline'}
+              className="text-[10px] px-1.5 py-0 h-4"
+            >
+              {isConsumable ? (
+                <FlaskConical className="w-2.5 h-2.5 mr-0.5" />
+              ) : (
+                <Shield className="w-2.5 h-2.5 mr-0.5" />
+              )}
+              {typeLabel}
+            </Badge>
+            <span className="capitalize">{RARITY_LABELS[item.rarity]}</span>
             {showQuantity && quantity > 1 && (
-              <>
-                <span>•</span>
-                <span>x{quantity}</span>
-              </>
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                x{quantity}
+              </Badge>
             )}
           </div>
         </div>
-        
-        {/* Actions */}
-        <div className="flex items-center gap-1">
-          {onEquip && !isEquipped && item.equippable && (
-            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onEquip(); }}>
-              <Sparkles className="w-4 h-4" />
-            </Button>
-          )}
-          {onUnequip && isEquipped && (
-            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onUnequip(); }}>
-              <Shield className="w-4 h-4" />
-            </Button>
-          )}
-          {onUse && item.usable && (
-            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onUse(); }}>
-              <Package className="w-4 h-4" />
-            </Button>
-          )}
-          {showDetails && (
-            expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                     : <ChevronDown className="w-4 h-4 text-muted-foreground" />
-          )}
-        </div>
+
+        {/* Quick Actions */}
+        {showActions && (
+          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+            {isConsumable && onUse && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={onUse}
+                title="Usar consumible"
+              >
+                <FlaskConical className="w-3.5 h-3.5 mr-1" />
+                Usar
+              </Button>
+            )}
+            {isEquipment && !isEquipped && onEquip && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={onEquip}
+                title="Equipar"
+              >
+                <Shield className="w-3.5 h-3.5 mr-1" />
+                Equipar
+              </Button>
+            )}
+            {isEquipment && isEquipped && onUnequip && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs text-muted-foreground"
+                onClick={onUnequip}
+                title="Desequipar"
+              >
+                <X className="w-3.5 h-3.5 mr-1" />
+                Quitar
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Expand indicator */}
+        {expanded ? (
+          <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+        )}
       </div>
-      
+
       {/* Expanded Details */}
       {expanded && (
-        <CardContent className="pt-3 space-y-3">
+        <div className="px-3 pb-3 pt-0 space-y-2 text-sm border-t border-border/30">
           {/* Description */}
           {item.description && (
-            <p className="text-sm text-muted-foreground">
-              {entry?.customDescription || item.description}
-            </p>
+            <p className="text-muted-foreground pt-2">{item.description}</p>
           )}
-          
-          {/* Stats */}
-          {item.stats && item.stats.length > 0 && (
-            <div className="space-y-1">
-              <h5 className="text-xs font-semibold text-muted-foreground uppercase">
-                Estadísticas
-              </h5>
-              <div className="grid grid-cols-2 gap-1">
-                {item.stats.map((stat, i) => (
-                  <div key={i} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{stat.name}</span>
-                    <span className="font-medium">
-                      {stat.isPercentage ? `${stat.value}%` : stat.value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {/* Effects */}
-          {item.effects && item.effects.length > 0 && (
+
+          {/* Attribute Effects */}
+          {item.attributeEffects && item.attributeEffects.length > 0 && (
             <div className="space-y-1">
               <h5 className="text-xs font-semibold text-muted-foreground uppercase">
                 Efectos
               </h5>
-              <div className="space-y-1">
-                {item.effects.map((effect, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm">
-                    <Badge variant="outline" className="text-xs capitalize">
-                      {effect.type}
-                    </Badge>
-                    <span>{effect.name}</span>
-                    {effect.value && (
-                      <span className="text-muted-foreground">({effect.value})</span>
-                    )}
+              <div className="space-y-0.5">
+                {item.attributeEffects.map((effect, i) => (
+                  <div key={i} className="flex items-center gap-1.5 text-xs">
+                    <Sparkles className="w-3 h-3 text-muted-foreground shrink-0" />
+                    <span>{formatEffectDescription(effect)}</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
-          
+
           {/* Equipment Slot */}
-          {item.equippable && item.slot && (
-            <div className="flex items-center gap-2 text-sm">
+          {isEquipment && item.slot && (
+            <div className="flex items-center gap-1.5 text-xs">
               <span className="text-muted-foreground">Slot:</span>
-              <Badge variant="secondary">{getSlotLabel(item.slot)}</Badge>
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
+                {item.slot}
+              </Badge>
             </div>
           )}
-          
-          {/* Value */}
-          {item.value !== undefined && (
-            <div className="flex items-center gap-2 text-sm">
-              <Gem className="w-4 h-4 text-amber-500" />
-              <span className="text-muted-foreground">Valor:</span>
-              <span className="font-medium">{item.value}</span>
+
+          {/* Duration (Consumable) */}
+          {isConsumable && item.duration && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-muted-foreground">Duración:</span>
+              <span>{item.duration} turno{item.duration !== 1 ? 's' : ''}</span>
             </div>
           )}
-          
-          {/* Entry-specific info */}
-          {entry && (
-            <div className="pt-2 border-t text-xs text-muted-foreground">
-              <p>Obtenido: {new Date(entry.obtainedAt).toLocaleDateString()}</p>
-              {entry.notes && <p className="mt-1 italic">{entry.notes}</p>}
+
+          {/* Price */}
+          {item.price !== undefined && item.price > 0 && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-muted-foreground">Precio:</span>
+              <span className="font-medium">{item.price} 💰</span>
             </div>
           )}
-          
-          {/* Action Buttons */}
-          {(onEdit || onDelete) && (
-            <div className="flex justify-end gap-2 pt-2 border-t">
+
+          {/* Action buttons row */}
+          {(onRemove || onEdit) && (
+            <div className="flex justify-end gap-1.5 pt-1">
               {onEdit && (
-                <Button variant="outline" size="sm" onClick={onEdit}>
-                  <Edit3 className="w-4 h-4 mr-1" />
+                <Button variant="outline" size="sm" className="h-6 text-xs" onClick={onEdit}>
                   Editar
                 </Button>
               )}
-              {onDelete && (
-                <Button variant="destructive" size="sm" onClick={onDelete}>
-                  <Trash2 className="w-4 h-4 mr-1" />
+              {onRemove && (
+                <Button variant="ghost" size="sm" className="h-6 text-xs text-destructive" onClick={onRemove}>
+                  <Trash2 className="w-3 h-3 mr-1" />
                   Eliminar
                 </Button>
               )}
             </div>
           )}
-        </CardContent>
+        </div>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -320,8 +336,8 @@ export function ItemCard({
 // ============================================
 
 interface ItemListProps {
-  items: Array<{ item: Item; entry?: InventoryEntry }>;
-  onItemClick?: (item: Item, entry?: InventoryEntry) => void;
+  items: Array<{ item: Item; entry?: PersonaInventoryEntry }>;
+  onItemClick?: (item: Item, entry?: PersonaInventoryEntry) => void;
   showQuantity?: boolean;
 }
 
@@ -329,17 +345,16 @@ export function ItemList({ items, onItemClick, showQuantity = true }: ItemListPr
   if (items.length === 0) {
     return (
       <div className="text-center py-8 text-muted-foreground">
-        <Package className="w-12 h-12 mx-auto mb-2 opacity-50" />
-        <p>Inventario vacío</p>
+        <p className="text-sm">Inventario vacío</p>
       </div>
     );
   }
-  
+
   return (
     <div className="space-y-1">
       {items.map(({ item, entry }) => (
         <ItemCard
-          key={entry?.id || item.id}
+          key={entry?.itemId || item.id}
           item={item}
           entry={entry}
           compact
@@ -350,9 +365,5 @@ export function ItemList({ items, onItemClick, showQuantity = true }: ItemListPr
     </div>
   );
 }
-
-// ============================================
-// Export
-// ============================================
 
 export default ItemCard;

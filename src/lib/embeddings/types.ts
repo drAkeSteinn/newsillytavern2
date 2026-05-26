@@ -94,6 +94,7 @@ export type SourceType =
   | 'lorebook'
   | 'session'
   | 'memory'
+  | 'summary'
   | 'custom';
 
 /** Embedding configuration (persisted to JSON) */

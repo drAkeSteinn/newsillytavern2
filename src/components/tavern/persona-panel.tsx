@@ -33,6 +33,10 @@ import {
   Settings2,
   ArrowLeft,
   Save,
+  Coins,
+  Minus,
+  PackageOpen,
+  X,
 } from 'lucide-react';
 import { useState, useRef, useMemo } from 'react';
 import type { 
@@ -40,9 +44,23 @@ import type {
   CharacterCard, 
   CharacterStatsConfig, 
   SolicitudDefinition, 
+  Item,
 } from '@/types';
 import { getLogger } from '@/lib/logger';
 import { StatsEditor } from './stats-editor';
+import { 
+  getItemTypeIcon, 
+  getItemTypeLabel, 
+  getRarityColor, 
+  getRarityBgColor,
+} from '@/store/slices/inventorySlice';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const personaLogger = getLogger('persona');
 
@@ -54,7 +72,11 @@ export function PersonaPanel() {
     addPersona, 
     updatePersona, 
     deletePersona, 
-    setActivePersona 
+    setActivePersona,
+    items,
+    addToPersona,
+    removeFromPersona,
+    getPersonaItems,
   } = useTavernStore();
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -63,11 +85,17 @@ export function PersonaPanel() {
     description: string;
     avatar: string;
     statsConfig?: CharacterStatsConfig;
+    currency: number;
+    currencyName: string;
+    currencyIcon: string;
   }>({
     name: '',
     description: '',
     avatar: '',
     statsConfig: undefined,
+    currency: 0,
+    currencyName: 'Divisa',
+    currencyIcon: '💰',
   });
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -130,7 +158,11 @@ export function PersonaPanel() {
       name: 'Nueva Persona',
       description: '',
       avatar: '',
-      isActive: false
+      isActive: false,
+      currency: 0,
+      currencyName: 'Divisa',
+      currencyIcon: '💰',
+      inventoryItems: [],
     };
     addPersona(newPersona);
     // Start editing the new persona
@@ -141,6 +173,9 @@ export function PersonaPanel() {
       description: '',
       avatar: '',
       statsConfig: undefined,
+      currency: 0,
+      currencyName: 'Divisa',
+      currencyIcon: '💰',
     });
   };
 
@@ -151,6 +186,9 @@ export function PersonaPanel() {
       description: persona.description,
       avatar: persona.avatar,
       statsConfig: persona.statsConfig ? { ...persona.statsConfig } : undefined,
+      currency: persona.currency ?? 0,
+      currencyName: persona.currencyName ?? 'Divisa',
+      currencyIcon: persona.currencyIcon ?? '💰',
     });
   };
 
@@ -162,14 +200,17 @@ export function PersonaPanel() {
       description: editForm.description,
       avatar: editForm.avatar,
       statsConfig: editForm.statsConfig,
+      currency: editForm.currency,
+      currencyName: editForm.currencyName,
+      currencyIcon: editForm.currencyIcon,
     });
     setEditingId(null);
-    setEditForm({ name: '', description: '', avatar: '', statsConfig: undefined });
+    setEditForm({ name: '', description: '', avatar: '', statsConfig: undefined, currency: 0, currencyName: 'Divisa', currencyIcon: '💰' });
   };
 
   const handleCancelEdit = () => {
     setEditingId(null);
-    setEditForm({ name: '', description: '', avatar: '', statsConfig: undefined });
+    setEditForm({ name: '', description: '', avatar: '', statsConfig: undefined, currency: 0, currencyName: 'Divisa', currencyIcon: '💰' });
   };
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>, personaId?: string) => {
@@ -230,7 +271,7 @@ export function PersonaPanel() {
   // Stats Config Handlers
   // ============================================
   // Find the persona being edited
-  const editingPersona = editingId ? personas.find(p => p.id === editingId) : null;
+  const editingPersona = editingId ? personas.find(p => p.id === editingId) : undefined;
 
   return (
     <TooltipProvider>
@@ -248,6 +289,10 @@ export function PersonaPanel() {
           handleAvatarUpload={handleAvatarUpload}
           charactersWithSolicitudes={charactersWithSolicitudes}
           availableTargets={availableTargets}
+          items={items}
+          addToPersona={addToPersona}
+          removeFromPersona={removeFromPersona}
+          getPersonaItems={getPersonaItems}
         />
       ) : (
         <div className="h-full flex flex-col gap-4 overflow-hidden">
@@ -452,12 +497,18 @@ interface PersonaEditorPanelProps {
     description: string;
     avatar: string;
     statsConfig?: CharacterStatsConfig;
+    currency: number;
+    currencyName: string;
+    currencyIcon: string;
   };
   setEditForm: React.Dispatch<React.SetStateAction<{
     name: string;
     description: string;
     avatar: string;
     statsConfig?: CharacterStatsConfig;
+    currency: number;
+    currencyName: string;
+    currencyIcon: string;
   }>>;
   uploading: boolean;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
@@ -472,6 +523,10 @@ interface PersonaEditorPanelProps {
     name: string;
     attributes: Array<{ key: string; name: string; type: 'number' | 'keyword' | 'text'; min?: number; max?: number }>;
   }>;
+  items: Item[];
+  addToPersona: (personaId: string, itemId: string, quantity?: number) => void;
+  removeFromPersona: (personaId: string, itemId: string, quantity?: number) => void;
+  getPersonaItems: (personaId: string) => Array<{ entry: { itemId: string; quantity: number; equipped: boolean }; item: Item }>;
 }
 
 function PersonaEditorPanel({
@@ -487,8 +542,19 @@ function PersonaEditorPanel({
   handleAvatarUpload,
   charactersWithSolicitudes,
   availableTargets,
+  items,
+  addToPersona,
+  removeFromPersona,
+  getPersonaItems,
 }: PersonaEditorPanelProps) {
   if (!persona) return null;
+
+  // Get current persona inventory items
+  const personaInventoryItems = getPersonaItems(persona.id);
+  // Items NOT in persona's inventory (available to add)
+  const availableItemsToAdd = items.filter(
+    item => !persona.inventoryItems?.some(e => e.itemId === item.id)
+  );
 
   return (
     <motion.div
@@ -613,6 +679,225 @@ function PersonaEditorPanel({
 
             <Separator className="bg-border/50" />
 
+            {/* Divisa Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <div className="p-1.5 rounded-md bg-amber-500/10">
+                  <Coins className="w-4 h-4 text-amber-500" />
+                </div>
+                Divisa
+              </div>
+              <div className="p-4 rounded-xl border border-amber-500/20 bg-gradient-to-br from-amber-500/5 to-amber-500/10 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Currency Icon */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Icono</Label>
+                    <Input
+                      value={editForm.currencyIcon}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val.length <= 4) {
+                          setEditForm(prev => ({ ...prev, currencyIcon: val }));
+                        }
+                      }}
+                      placeholder="💰"
+                      className="h-10 text-center text-lg"
+                      maxLength={4}
+                      disabled={uploading}
+                    />
+                  </div>
+                  {/* Currency Name */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Nombre</Label>
+                    <Input
+                      value={editForm.currencyName}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, currencyName: e.target.value }))}
+                      placeholder="Divisa"
+                      className="h-10"
+                      disabled={uploading}
+                    />
+                  </div>
+                  {/* Currency Amount */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Cantidad</Label>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-10 w-10 shrink-0 border-amber-500/30 hover:bg-amber-500/10"
+                        onClick={() => setEditForm(prev => ({ ...prev, currency: Math.max(0, prev.currency - 1) }))}
+                        disabled={uploading}
+                      >
+                        <Minus className="w-4 h-4" />
+                      </Button>
+                      <Input
+                        type="number"
+                        value={editForm.currency}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, currency: Math.max(0, parseInt(e.target.value) || 0) }))}
+                        className="h-10 text-center font-mono"
+                        min={0}
+                        disabled={uploading}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-10 w-10 shrink-0 border-amber-500/30 hover:bg-amber-500/10"
+                        onClick={() => setEditForm(prev => ({ ...prev, currency: prev.currency + 1 }))}
+                        disabled={uploading}
+                      >
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                {/* Currency preview */}
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/15">
+                  <span className="text-lg">{editForm.currencyIcon || '💰'}</span>
+                  <span className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                    {editForm.currencyName || 'Divisa'}
+                  </span>
+                  <span className="text-sm font-bold text-amber-600 dark:text-amber-400 ml-auto">
+                    {editForm.currency}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <Separator className="bg-border/50" />
+
+            {/* Inventory Items Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <div className="p-1.5 rounded-md bg-emerald-500/10">
+                  <PackageOpen className="w-4 h-4 text-emerald-500" />
+                </div>
+                Items del Inventario
+                {personaInventoryItems.length > 0 && (
+                  <Badge className="bg-emerald-500/20 text-emerald-400 text-[10px]">
+                    {personaInventoryItems.length} items
+                  </Badge>
+                )}
+              </div>
+              <div className="p-4 rounded-xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/5 to-emerald-500/10 space-y-4">
+                {/* Current inventory items */}
+                {personaInventoryItems.length > 0 ? (
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {personaInventoryItems.map(({ entry, item }) => (
+                      <div
+                        key={entry.itemId}
+                        className={cn(
+                          'flex items-center gap-2.5 p-2.5 rounded-lg border',
+                          getRarityBgColor(item.rarity)
+                        )}
+                      >
+                        <span className="text-lg shrink-0">{item.icon || getItemTypeIcon(item.type || 'consumable')}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className={cn('text-sm font-medium truncate', getRarityColor(item.rarity))}>
+                              {item.name}
+                            </span>
+                            <Badge className={cn('text-[9px] px-1.5 py-0 border', getRarityBgColor(item.rarity))}>
+                              {getItemTypeLabel(item.type || 'consumable')}
+                            </Badge>
+                            {entry.equipped && (
+                              <Badge className="text-[9px] px-1.5 py-0 bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+                                Equipado
+                              </Badge>
+                            )}
+                          </div>
+                          {item.description && (
+                            <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{item.description}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {entry.quantity > 1 && (
+                            <span className="text-xs text-muted-foreground font-mono">x{entry.quantity}</span>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => removeFromPersona(persona.id, entry.itemId)}
+                            disabled={uploading}
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <PackageOpen className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                    <p className="text-sm">Sin items en el inventario</p>
+                    <p className="text-xs mt-1">Agrega items del registro global</p>
+                  </div>
+                )}
+
+                {/* Add item from registry - Multi-add dropdown */}
+                {availableItemsToAdd.length > 0 && (
+                  <div className="space-y-2 pt-2 border-t border-emerald-500/15">
+                    <Label className="text-xs text-muted-foreground">Agregar items del registro</Label>
+                    <div className="relative">
+                      <Select
+                        onValueChange={(itemId) => {
+                          addToPersona(persona.id, itemId, 1);
+                        }}
+                      >
+                        <SelectTrigger className="flex-1 h-10">
+                          <SelectValue placeholder="Seleccionar item para agregar..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableItemsToAdd.map(item => (
+                            <SelectItem key={item.id} value={item.id}>
+                              <span className="flex items-center gap-2">
+                                <span>{item.icon || getItemTypeIcon(item.type || 'consumable')}</span>
+                                <span>{item.name}</span>
+                                <span className="text-xs text-muted-foreground">({getItemTypeLabel(item.type || 'consumable')})</span>
+                                {item.price > 0 && (
+                                  <span className="text-xs text-amber-400 ml-1">💰{item.price}</span>
+                                )}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        Selecciona un item para agregarlo. Puedes agregar varios uno por uno.
+                      </p>
+                    </div>
+                    {/* Quick add buttons for fast multi-selection */}
+                    {availableItemsToAdd.length <= 8 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {availableItemsToAdd.map(item => (
+                          <button
+                            key={item.id}
+                            onClick={() => addToPersona(persona.id, item.id, 1)}
+                            className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                            title={`Agregar ${item.name}`}
+                          >
+                            <span>{item.icon || getItemTypeIcon(item.type || 'consumable')}</span>
+                            <span>{item.name}</span>
+                            <Plus className="w-2.5 h-2.5" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {items.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-2">
+                    No hay items en el registro global. Crea items primero en la sección de Inventario.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <Separator className="bg-border/50" />
+
             {/* Stats System - Uses shared StatsEditor component (same as character editor) */}
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -657,6 +942,12 @@ function PersonaEditorPanel({
               </div>
               <div className="p-4 rounded-xl border border-border/60 bg-gradient-to-br from-muted/30 to-muted/10 space-y-3">
                 <p className="text-xs text-muted-foreground">
+                  <strong>Divisa:</strong> La moneda del persona. Personaliza el icono, nombre y cantidad. Se usa en el sistema de tienda y se incluye en el prompt del inventario.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <strong>Items:</strong> Los objetos que posee el persona. Los consumibles tienen efectos temporales por turnos; el equipo modifica atributos permanentemente mientras está equipado.
+                </p>
+                <p className="text-xs text-muted-foreground">
                   <strong>Atributos:</strong> Propiedades del usuario (vida, resistencia, etc.) que se muestran en el HUD y se resuelven como {'{key}'} en la descripción.
                 </p>
                 <p className="text-xs text-muted-foreground">
@@ -668,42 +959,59 @@ function PersonaEditorPanel({
               </div>
 
               {/* Quick Stats Summary */}
-              {editForm.statsConfig?.enabled && (
-                <>
-                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                    <div className="p-1.5 rounded-md bg-emerald-500/10">
-                      <Settings2 className="w-4 h-4 text-emerald-500" />
-                    </div>
-                    Resumen
+              <>
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <div className="p-1.5 rounded-md bg-emerald-500/10">
+                    <Settings2 className="w-4 h-4 text-emerald-500" />
                   </div>
-                  <div className="p-4 rounded-xl border border-border/60 bg-gradient-to-br from-muted/30 to-muted/10 space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Atributos</span>
-                      <span className="font-medium">{(editForm.statsConfig.attributes?.length || 0)}</span>
-                    </div>
-                    <Separator className="bg-border/30" />
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Acciones</span>
-                      <span className="font-medium">{(editForm.statsConfig.skills?.length || 0)}</span>
-                    </div>
-                    <Separator className="bg-border/30" />
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Intenciones</span>
-                      <span className="font-medium">{(editForm.statsConfig.intentions?.length || 0)}</span>
-                    </div>
-                    <Separator className="bg-border/30" />
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Peticiones</span>
-                      <span className="font-medium">{(editForm.statsConfig.invitations?.length || 0)}</span>
-                    </div>
-                    <Separator className="bg-border/30" />
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Solicitudes</span>
-                      <span className="font-medium">{(editForm.statsConfig.solicitudDefinitions?.length || 0)}</span>
-                    </div>
+                  Resumen
+                </div>
+                <div className="p-4 rounded-xl border border-border/60 bg-gradient-to-br from-muted/30 to-muted/10 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">{editForm.currencyIcon} {editForm.currencyName || 'Divisa'}</span>
+                    <span className="font-medium text-amber-600 dark:text-amber-400">{editForm.currency}</span>
                   </div>
-                </>
-              )}
+                  <Separator className="bg-border/30" />
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Items</span>
+                    <span className="font-medium">{personaInventoryItems.length}</span>
+                  </div>
+                  <Separator className="bg-border/30" />
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Equipados</span>
+                    <span className="font-medium">{personaInventoryItems.filter(({ entry }) => entry.equipped).length}</span>
+                  </div>
+                  {editForm.statsConfig?.enabled && (
+                    <>
+                      <Separator className="bg-border/30" />
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Atributos</span>
+                        <span className="font-medium">{(editForm.statsConfig.attributes?.length || 0)}</span>
+                      </div>
+                      <Separator className="bg-border/30" />
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Acciones</span>
+                        <span className="font-medium">{(editForm.statsConfig.skills?.length || 0)}</span>
+                      </div>
+                      <Separator className="bg-border/30" />
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Intenciones</span>
+                        <span className="font-medium">{(editForm.statsConfig.intentions?.length || 0)}</span>
+                      </div>
+                      <Separator className="bg-border/30" />
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Peticiones</span>
+                        <span className="font-medium">{(editForm.statsConfig.invitations?.length || 0)}</span>
+                      </div>
+                      <Separator className="bg-border/30" />
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Solicitudes</span>
+                        <span className="font-medium">{(editForm.statsConfig.solicitudDefinitions?.length || 0)}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
             </div>
           </div>
         </div>

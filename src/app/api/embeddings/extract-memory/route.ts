@@ -45,6 +45,8 @@ export async function POST(request: NextRequest) {
       chatContext,
       userName,
       extractionModelConfig, // New: separate extraction model config
+      extractFromUser,  // Also extract from the user's last message
+      lastUserMessage,  // The last user message content
     } = body;
 
     if (!lastMessage || !characterName || !characterId) {
@@ -101,6 +103,58 @@ export async function POST(request: NextRequest) {
             sessionId: sessionId || '',
           },
         });
+      }
+    }
+
+    // Optionally extract memories from the last user message too
+    let userMemoryResult = null;
+    if (extractFromUser && lastUserMessage && lastUserMessage.trim().length > 20) {
+      try {
+        const { extractMemories: extractUserMemories, saveMemoriesAsEmbeddings } = await import('@/lib/embeddings/memory-extraction');
+        const { DEFAULT_USER_MEMORY_EXTRACTION_PROMPT } = await import('@/lib/embeddings/memory-extraction-prompts');
+        
+        const userFacts = await extractUserMemories(
+          lastUserMessage,
+          characterName,
+          extractionLlmConfig,
+          DEFAULT_USER_MEMORY_EXTRACTION_PROMPT,  // Use the user-specific prompt, not the character one
+          chatContext,
+          userName,
+        );
+        
+        if (userFacts.length > 0) {
+          userMemoryResult = await saveMemoriesAsEmbeddings(
+            userFacts,
+            characterId,
+            sessionId || '',
+            groupId,
+            minImportance,
+          );
+          
+          // Add user memory activations
+          if (userMemoryResult.savedFacts && userMemoryResult.savedFacts.length > 0 && userMemoryResult.embeddingIds.length > 0) {
+            for (let i = 0; i < userMemoryResult.savedFacts.length && i < userMemoryResult.embeddingIds.length; i++) {
+              const fact = userMemoryResult.savedFacts[i];
+              const embeddingId = userMemoryResult.embeddingIds[i];
+              memoryActivations.push({
+                type: 'save_memory',
+                characterId,
+                eventData: {
+                  id: `usermem_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 8)}`,
+                  type: MEMORY_TYPE_TO_EVENT_TYPE[fact.tipo] || 'fact',
+                  content: fact.contenido,
+                  importance: fact.importancia,
+                  embeddingId,
+                  sessionId: sessionId || '',
+                },
+              });
+            }
+          }
+          
+          console.log(`[extract-memory] Extracted ${userMemoryResult.saved} memories from user message`);
+        }
+      } catch (userExtractErr) {
+        console.warn('[extract-memory] User message extraction failed (non-blocking):', userExtractErr);
       }
     }
 

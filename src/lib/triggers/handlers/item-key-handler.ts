@@ -1,52 +1,44 @@
 // ============================================
-// Item Key Handler - Unified Inventory Trigger System
+// Item Key Handler - Unified Inventory V2 Trigger System
 // ============================================
 //
-// Handles item additions, removals, and equipment
-// Supports XML tags and keyword detection
+// Handles item additions, removals, equipment, and consumable usage
+// Supports keyword detection and type-indicator formats
 //
 // Key formats:
-// - item:add <name> - Add item to inventory
-// - item:remove <id> - Remove item from inventory
+// - item:add <name> - Add item to persona inventory
+// - item:remove <id> - Remove item from persona inventory
 // - item:equip <id> - Equip an item
-// - <item:add name="Sword" rarity="rare"/>
-// - <item:remove id="item-123" quantity="1"/>
+// - item:use <id> - Use a consumable item
+// - Keyword detection via item.triggerKeywords
 
 import type { KeyHandler, TriggerMatch, TriggerMatchResult, RegisteredKey } from '../types';
 import type { DetectedKey } from '../key-detector';
 import type { TriggerContext } from '../trigger-bus';
 import type {
   Item,
-  InventorySettings,
-  InventoryEntry,
-  InventoryTriggerHit,
-  ItemRarity,
-  ItemCategory,
+  InventoryV2Settings,
+  InventoryNotification,
 } from '@/types';
 
 // ============================================
-// Item Key Handler Context
+// Item Key Handler Context (V2)
 // ============================================
 
 export interface ItemKeyHandlerContext extends TriggerContext {
   sessionId?: string;
   characterId?: string;
+  personaId?: string;
   items: Item[];
-  inventoryEntries: InventoryEntry[];
-  inventorySettings: InventorySettings;
-  defaultContainerId?: string;
+  inventorySettings: InventoryV2Settings;
   
-  // Store actions
-  addToInventory?: (itemId: string, quantity: number, containerId?: string) => void;
-  removeFromInventory?: (entryId: string, quantity: number) => void;
-  equipItem?: (entryId: string, slot: string) => void;
-  unequipItem?: (entryId: string) => void;
-  addNotification?: (notification: {
-    type: string;
-    itemName: string;
-    quantity: number;
-    message: string;
-  }) => void;
+  // Store actions (V2)
+  addToPersona?: (personaId: string, itemId: string, quantity?: number) => void;
+  removeFromPersona?: (personaId: string, itemId: string, quantity?: number) => void;
+  equipItem?: (personaId: string, itemId: string) => void;
+  unequipItem?: (personaId: string, itemId: string) => void;
+  consumeItem?: (personaId: string, itemId: string) => { effect: any; message: string } | null;
+  addInventoryNotification?: (notification: Omit<InventoryNotification, 'id' | 'timestamp' | 'read'>) => void;
 }
 
 // ============================================
@@ -62,7 +54,7 @@ export class ItemKeyHandler implements KeyHandler {
   private processedItems: Map<string, Set<string>> = new Map();
   
   // Track triggered positions
-  private triggeredPositions: Map<string, Set<number>> = new Set() as any;
+  private triggeredPositions: Map<string, Set<number>> = new Map();
 
   canHandle(key: DetectedKey, context: ItemKeyHandlerContext): boolean {
     // Check if inventory system is enabled
@@ -89,7 +81,7 @@ export class ItemKeyHandler implements KeyHandler {
   }
 
   handleKey(key: DetectedKey, context: ItemKeyHandlerContext): TriggerMatchResult | null {
-    const { items, inventoryEntries, inventorySettings, messageKey } = context;
+    const { items, inventorySettings, messageKey } = context;
     
     // Skip if already processed this position
     const triggeredPositions = this.triggeredPositions.get(messageKey) ?? new Set();
@@ -108,16 +100,9 @@ export class ItemKeyHandler implements KeyHandler {
 
   private handleTypeIndicator(key: DetectedKey, context: ItemKeyHandlerContext): TriggerMatchResult | null {
     const action = key.value!.toLowerCase();
-    const { items, inventoryEntries } = context;
-    
-    // For add, we need additional info (item name or ID)
-    // This is typically handled via XML tags with attributes
-    // Here we provide basic support
     
     switch (action) {
       case 'add': {
-        // If key has additional value, try to find item by name
-        // Otherwise return a placeholder
         return {
           matched: true,
           trigger: {
@@ -126,7 +111,6 @@ export class ItemKeyHandler implements KeyHandler {
             keyword: key.original || key.key,
             data: {
               action: 'add',
-              type: 'add',
               itemId: null,
               item: null,
               quantity: 1,
@@ -138,8 +122,7 @@ export class ItemKeyHandler implements KeyHandler {
         };
       }
       
-      case 'remove':
-      case 'use': {
+      case 'remove': {
         return {
           matched: true,
           trigger: {
@@ -148,11 +131,30 @@ export class ItemKeyHandler implements KeyHandler {
             keyword: key.original || key.key,
             data: {
               action: 'remove',
-              type: 'remove',
               itemId: null,
               item: null,
               quantity: 1,
               message: 'Item removed from inventory',
+              requiresResolution: true,
+            },
+          },
+          key,
+        };
+      }
+
+      case 'use': {
+        return {
+          matched: true,
+          trigger: {
+            triggerId: `item_use_${Date.now()}`,
+            triggerType: 'item',
+            keyword: key.original || key.key,
+            data: {
+              action: 'use',
+              itemId: null,
+              item: null,
+              quantity: 1,
+              message: 'Item used',
               requiresResolution: true,
             },
           },
@@ -169,11 +171,30 @@ export class ItemKeyHandler implements KeyHandler {
             keyword: key.original || key.key,
             data: {
               action: 'equip',
-              type: 'equip',
               itemId: null,
               item: null,
               quantity: 1,
               message: 'Item equipped',
+              requiresResolution: true,
+            },
+          },
+          key,
+        };
+      }
+
+      case 'unequip': {
+        return {
+          matched: true,
+          trigger: {
+            triggerId: `item_unequip_${Date.now()}`,
+            triggerType: 'item',
+            keyword: key.original || key.key,
+            data: {
+              action: 'unequip',
+              itemId: null,
+              item: null,
+              quantity: 1,
+              message: 'Item unequipped',
               requiresResolution: true,
             },
           },
@@ -187,7 +208,7 @@ export class ItemKeyHandler implements KeyHandler {
   }
 
   private handleKeywordDetection(key: DetectedKey, context: ItemKeyHandlerContext): TriggerMatchResult | null {
-    const { items, inventoryEntries, inventorySettings, messageKey, fullText } = context;
+    const { items, inventorySettings, messageKey, fullText } = context;
     const normalizedKey = key.key.toLowerCase();
     
     // Check items with trigger keywords
@@ -217,20 +238,22 @@ export class ItemKeyHandler implements KeyHandler {
         const processed = this.processedItems.get(messageKey) ?? new Set();
         processed.add(item.id);
         this.processedItems.set(messageKey, processed);
+
+        // Determine action based on item type
+        const action = item.type === 'consumable' ? 'use' : 'add';
         
         return {
           matched: true,
           trigger: {
-            triggerId: `item_add_${item.id}`,
+            triggerId: `item_${action}_${item.id}`,
             triggerType: 'item',
             keyword: key.original || key.key,
             data: {
-              action: 'add',
-              type: 'add',
+              action,
               itemId: item.id,
               item,
               quantity: 1,
-              message: `Found: ${item.name}`,
+              message: action === 'use' ? `Used: ${item.name}` : `Found: ${item.name}`,
             },
           },
           key,
@@ -243,80 +266,81 @@ export class ItemKeyHandler implements KeyHandler {
 
   execute(match: TriggerMatch, context: ItemKeyHandlerContext): void {
     const {
-      addToInventory,
-      removeFromInventory,
+      personaId,
+      addToPersona,
+      removeFromPersona,
       equipItem,
-      addNotification,
-      defaultContainerId,
+      consumeItem,
+      addInventoryNotification,
     } = context;
     
     const data = match.data as {
-      action: 'add' | 'remove' | 'equip' | 'unequip';
-      type: string;
+      action: 'add' | 'remove' | 'use' | 'equip' | 'unequip';
       itemId: string | null;
       item: Item | null;
       quantity: number;
       message: string;
     };
+
+    if (!personaId) {
+      console.warn('[ItemKeyHandler] No personaId in context, cannot execute item action');
+      return;
+    }
     
-    console.log(`[ItemKeyHandler] Executing item action: ${data.action}`);
+    console.log(`[ItemKeyHandler] Executing item action: ${data.action} for persona: ${personaId}`);
+    
+    const notify = (type: string, itemName: string, message: string) => {
+      addInventoryNotification?.({
+        type,
+        itemName,
+        quantity: data.quantity,
+        message,
+      });
+    };
     
     switch (data.action) {
       case 'add':
-        if (data.itemId && addToInventory) {
-          addToInventory(data.itemId, data.quantity, defaultContainerId);
-          addNotification?.({
-            type: 'item_added',
-            itemName: data.item?.name || 'Item',
-            quantity: data.quantity,
-            message: data.message,
-          });
+        if (data.itemId && addToPersona) {
+          addToPersona(personaId, data.itemId, data.quantity);
+          notify('item_added', data.item?.name || 'Item', data.message);
         }
         break;
         
       case 'remove':
-        if (data.itemId && removeFromInventory) {
-          // Find entry by itemId
-          const entry = context.inventoryEntries.find(e => e.itemId === data.itemId);
-          if (entry) {
-            removeFromInventory(entry.id, data.quantity);
-            addNotification?.({
-              type: 'item_removed',
-              itemName: data.item?.name || 'Item',
-              quantity: data.quantity,
-              message: data.message,
-            });
+        if (data.itemId && removeFromPersona) {
+          removeFromPersona(personaId, data.itemId, data.quantity);
+          notify('item_removed', data.item?.name || 'Item', data.message);
+        }
+        break;
+
+      case 'use':
+        if (data.itemId && consumeItem) {
+          const result = consumeItem(personaId, data.itemId);
+          if (result) {
+            notify('item_used', data.item?.name || 'Item', result.message || data.message);
+          } else {
+            // Consumable use failed (no quantity, etc.) — just add the item instead
+            addToPersona?.(personaId, data.itemId, data.quantity);
+            notify('item_added', data.item?.name || 'Item', `Obtained: ${data.item?.name || 'Item'}`);
           }
+        } else if (data.itemId && addToPersona) {
+          // No consumeItem available, just add
+          addToPersona(personaId, data.itemId, data.quantity);
+          notify('item_added', data.item?.name || 'Item', data.message);
         }
         break;
         
       case 'equip':
         if (data.itemId && equipItem) {
-          const entry = context.inventoryEntries.find(e => e.itemId === data.itemId);
-          if (entry && data.item?.equipSlot) {
-            equipItem(entry.id, data.item.equipSlot);
-            addNotification?.({
-              type: 'item_equipped',
-              itemName: data.item.name,
-              quantity: 1,
-              message: `Equipped: ${data.item.name}`,
-            });
-          }
+          equipItem(personaId, data.itemId);
+          notify('item_equipped', data.item?.name || 'Item', `Equipped: ${data.item?.name || 'Item'}`);
         }
         break;
-        
+
       case 'unequip':
         if (data.itemId && context.unequipItem) {
-          const entry = context.inventoryEntries.find(e => e.itemId === data.itemId);
-          if (entry) {
-            context.unequipItem(entry.id);
-            addNotification?.({
-              type: 'item_unequipped',
-              itemName: data.item?.name || 'Item',
-              quantity: 1,
-              message: `Unequipped: ${data.item?.name || 'Item'}`,
-            });
-          }
+          context.unequipItem(personaId, data.itemId);
+          notify('item_unequipped', data.item?.name || 'Item', `Unequipped: ${data.item?.name || 'Item'}`);
         }
         break;
     }
@@ -337,7 +361,7 @@ export class ItemKeyHandler implements KeyHandler {
             key: kw,
             category: 'item',
             config: {
-              action: 'add',
+              action: item.type === 'consumable' ? 'use' : 'add',
               itemId: item.id,
               contextKeys: item.contextKeys,
             },

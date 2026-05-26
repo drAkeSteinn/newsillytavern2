@@ -261,6 +261,7 @@ export const DEFAULT_DATA = {
   },
   inventory: {
     items: [],
+    activeConsumableEffects: [],
     containers: [],
     currencies: [],
     inventorySettings: {

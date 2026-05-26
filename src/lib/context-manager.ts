@@ -14,6 +14,7 @@ export interface ContextConfig {
   keepFirstN: number;            // Always keep first N messages (greeting, etc.)
   keepLastN: number;             // Always keep last N messages
   summaryThreshold: number;      // When to trigger summarization (future)
+  reservedTokens?: number;       // Tokens reserved for summary/embeddings (not chat history)
 }
 
 export interface ContextWindow {
@@ -56,6 +57,16 @@ export const PROVIDER_CONTEXT_LIMITS: Record<string, number> = {
 // ============================================
 // Token Estimation
 // ============================================
+
+/**
+ * Estimate token count for a string.
+ * Uses ~4 chars per token for English/Spanish text.
+ * Simpler version of estimateTokens for content budgeting.
+ */
+export function estimateContentTokens(text: string): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 4);
+}
 
 /**
  * Estimates token count for text
@@ -227,15 +238,19 @@ export function selectContextMessages(
   // Use the lower of config.maxTokens and provider limit
   const effectiveMaxTokens = Math.min(config.maxTokens, providerTokenLimit);
   
+  // Reduce available tokens by reserved amount (for summary + embeddings)
+  // This ensures the context window accounts for non-message content
+  const availableTokens = Math.max(500, effectiveMaxTokens - (config.reservedTokens || 0));
+  
   // Filter out deleted messages first
   const activeMessages = messages.filter(m => !m.isDeleted);
   
   // First apply message-based windowing (fast)
   const windowedResult = applySlidingWindow(activeMessages, config);
   
-  // Then apply token limit if needed (more precise)
-  if (windowedResult.estimatedTokens > effectiveMaxTokens) {
-    return applyTokenLimit(activeMessages, effectiveMaxTokens, config);
+  // Then apply token limit if needed (more precise), using availableTokens (budget minus reserved)
+  if (windowedResult.estimatedTokens > availableTokens) {
+    return applyTokenLimit(activeMessages, availableTokens, config);
   }
   
   return windowedResult;

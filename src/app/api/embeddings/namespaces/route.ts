@@ -19,11 +19,35 @@ export async function GET() {
     const namespaces = await LanceDBWrapper.getAllNamespaces();
     const stats = await LanceDBWrapper.getStats();
 
-    // Enrich namespaces with embedding counts
-    const enriched = namespaces.map(ns => ({
-      ...ns,
-      embedding_count: stats.embeddingsByNamespace[ns.namespace] || 0,
-    }));
+    // Enrich namespaces with embedding counts and auto-session classification
+    const autoPatterns = [
+      /^memory-character-/,      // memory-character-{charId}-{sessionId}
+      /^memory-group-/,           // memory-group-{groupId}-{sessionId}
+      /^character-/,              // character-{charId} (character lore, auto-included by strategy)
+      /^group-/,                  // group-{groupId} (group lore, auto-included by strategy)
+    ];
+    const alwaysIncludedNames = new Set(['default', 'world', 'world-building']);
+
+    const enriched = namespaces.map(ns => {
+      const meta = (ns.metadata as Record<string, unknown>) || {};
+      const isAutoCreated = meta.auto_created === true;
+      const matchesAutoPattern = autoPatterns.some(p => p.test(ns.namespace));
+      const isAlwaysIncluded = alwaysIncludedNames.has(ns.namespace);
+      const isSessionNamespace = isAutoCreated || matchesAutoPattern || isAlwaysIncluded;
+
+      return {
+        ...ns,
+        embedding_count: stats.embeddingsByNamespace[ns.namespace] || 0,
+        isSessionNamespace,
+        sessionReason: isSessionNamespace
+          ? isAlwaysIncluded
+            ? 'always_included'
+            : isAutoCreated
+              ? 'auto_created'
+              : 'auto_pattern'
+          : undefined,
+      };
+    });
 
     return NextResponse.json({ success: true, data: { namespaces: enriched, dbAvailable: true } });
   } catch (error: any) {

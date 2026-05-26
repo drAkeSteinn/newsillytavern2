@@ -14,7 +14,7 @@
 // This ensures that lorebooks injected after template processing
 // still get their keys resolved properly.
 
-import type { CharacterCard, Persona, SessionStats, SoundTrigger, AppSettings, QuestTemplate, SessionQuestInstance, QuestSettings } from '@/types';
+import type { CharacterCard, Persona, SessionStats, SoundTrigger, AppSettings, QuestTemplate, SessionQuestInstance, QuestSettings, Item, PersonaInventoryEntry, ActiveConsumableEffect, InventoryV2Settings } from '@/types';
 import type { ResolvedStats } from '@/types';
 import { resolveStatsInText } from '@/lib/stats/stats-resolver';
 import { buildQuestPromptSection } from '@/lib/triggers/handlers/quest-handler';
@@ -65,6 +65,17 @@ export interface KeyResolutionContext {
   // Lorebook attribute keys resolved from attribute-type entries
   // Map of injectionKey → resolved content (resolved server-side by attribute-resolver)
   lorebookAttributeKeys?: Record<string, string>;
+
+  // Inventory data for {{inventory}} and {{currency}} key resolution
+  inventoryData?: {
+    personaItems: Array<{ entry: PersonaInventoryEntry; item: Item }>;
+    equippedItems: Array<{ entry: PersonaInventoryEntry; item: Item }>;
+    activeEffects: ActiveConsumableEffect[];
+    currency: number;
+    currencyName: string;
+    currencyIcon: string;
+    inventorySettings: InventoryV2Settings;
+  };
 }
 
 // ============================================
@@ -631,6 +642,102 @@ export function resolveLorebookAttributeKeys(
   return result;
 }
 
+// ============================================
+// Phase 6.5: Inventory Key Resolution
+// ============================================
+
+/**
+ * Resolve {{inventory}} and {{currency}} keys in text.
+ *
+ * {{inventory}} - Full inventory section text (items, effects, currency)
+ * {{currency}}  - Currency display string (e.g., "💰 Divisa: 100")
+ *
+ * These keys allow inventory information to be embedded in any section
+ * (character description, lorebooks, author's notes, etc.)
+ */
+export function resolveInventoryKeys(
+  text: string,
+  context: KeyResolutionContext
+): string {
+  if (!text) return text;
+
+  // Early exit if no inventory-related keys are present
+  if (!/\{\{inventory\}\}/gi.test(text) && !/\{\{currency\}\}/gi.test(text)) {
+    return text;
+  }
+
+  const { inventoryData } = context;
+
+  // No inventory data available - remove the keys
+  if (!inventoryData || !inventoryData.inventorySettings.enabled) {
+    return text
+      .replace(/\{\{inventory\}\}/gi, '')
+      .replace(/\{\{currency\}\}/gi, '');
+  }
+
+  let result = text;
+
+  // Resolve {{currency}} - simple currency display
+  if (/\{\{currency\}\}/gi.test(result)) {
+    const currencyDisplay = `${inventoryData.currencyIcon || '💰'} ${inventoryData.currencyName || 'Divisa'}: ${inventoryData.currency}`;
+    result = result.replace(/\{\{currency\}\}/gi, currencyDisplay);
+  }
+
+  // Resolve {{inventory}} - full inventory text
+  if (/\{\{inventory\}\}/gi.test(result)) {
+    const { personaItems, equippedItems, activeEffects, currency, currencyName, currencyIcon, inventorySettings } = inventoryData;
+
+    const parts: string[] = [];
+
+    // Items list
+    const itemLines = personaItems.map(({ entry, item }) => {
+      const qty = entry.quantity > 1 ? ` x${entry.quantity}` : '';
+      const eq = entry.equipped ? ' [Equipado]' : '';
+      const effects = (item.attributeEffects && item.attributeEffects.length > 0)
+        ? ` (${item.attributeEffects.map(e => `${e.operator}${e.value} ${e.attributeKey}`).join(', ')})`
+        : '';
+      return `- ${item.icon || ''} ${item.name}${qty}${eq}${effects}`;
+    }).join('\n');
+
+    if (itemLines) {
+      parts.push(`[Inventario Activo]\n${itemLines}`);
+    }
+
+    // Equipped items
+    const equipLines = equippedItems.map(({ item }) => {
+      const effects = (item.attributeEffects && item.attributeEffects.length > 0)
+        ? item.attributeEffects.map(e => `${e.operator}${e.value} ${e.attributeKey}`).join(', ')
+        : '';
+      return `- ${item.icon || ''} ${item.name}${item.slot ? ` [${item.slot}]` : ''}${effects ? ` → ${effects}` : ''}`;
+    }).join('\n');
+
+    if (equipLines) {
+      parts.push(`[Equipo]\n${equipLines}`);
+    }
+
+    // Active effects
+    const effectLines = activeEffects.map(e => {
+      const turnsLeft = e.remainingTurns > 0 ? ` (${e.remainingTurns}/${e.totalTurns} turnos)` : '';
+      const effectDesc = e.effects.map(ef =>
+        `${ef.operator}${ef.value} ${ef.attributeKey}${ef.targetId !== '__user__' ? ` → ${ef.targetName || ef.targetId}` : ''}`
+      ).join(', ');
+      return `- ${e.itemName}: ${effectDesc}${turnsLeft}`;
+    }).join('\n');
+
+    if (effectLines) {
+      parts.push(`[Efectos Activos]\n${effectLines}`);
+    }
+
+    // Currency
+    parts.push(`${currencyIcon || '💰'} ${currencyName || 'Divisa'}: ${currency}`);
+
+    const inventoryText = parts.join('\n\n');
+    result = result.replace(/\{\{inventory\}\}/gi, inventoryText);
+  }
+
+  return result;
+}
+
 /**
  * Phase 7: Cleanup remaining unresolved {{key}} patterns
  *
@@ -696,6 +803,7 @@ function resolveRemainingKeys(
  * Phase 4: Sound keys ({{sonidos}})
  * Phase 5: Quest keys ({{activeQuests}}, {{availableQuests}})
  * Phase 6: Lorebook attribute keys ({{injectionKey}} from attribute-type entries)
+ * Phase 6.5: Inventory keys ({{inventory}}, {{currency}})
  *
  * This is the main function to use for resolving all keys
  */
@@ -723,6 +831,9 @@ export function resolveAllKeys(
 
   // Phase 6: Resolve lorebook attribute keys
   result = resolveLorebookAttributeKeys(result, context);
+
+  // Phase 6.5: Resolve inventory keys ({{inventory}}, {{currency}})
+  result = resolveInventoryKeys(result, context);
 
   // Phase 7: Cleanup — replace any remaining unresolved {{key}} with empty string
   // This prevents literal {{key}} text from reaching the LLM prompt.
@@ -788,7 +899,8 @@ export function buildKeyResolutionContext(
   sessionQuests?: SessionQuestInstance[],
   questSettings?: QuestSettings,
   outletSections?: Record<string, string>,
-  lorebookAttributeKeys?: Record<string, string>
+  lorebookAttributeKeys?: Record<string, string>,
+  inventoryData?: KeyResolutionContext['inventoryData']
 ): KeyResolutionContext {
   return {
     user: persona?.name || userName,
@@ -807,6 +919,7 @@ export function buildKeyResolutionContext(
     questSettings,
     outletSections,
     lorebookAttributeKeys,
+    inventoryData,
   };
 }
 
@@ -824,9 +937,10 @@ export function buildGroupKeyResolutionContext(
   questTemplates?: QuestTemplate[],
   sessionQuests?: SessionQuestInstance[],
   questSettings?: QuestSettings,
-  lorebookAttributeKeys?: Record<string, string>
+  lorebookAttributeKeys?: Record<string, string>,
+  inventoryData?: KeyResolutionContext['inventoryData']
 ): KeyResolutionContext {
-  return buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, undefined, undefined, personaResolvedStats, questTemplates, sessionQuests, questSettings, undefined, lorebookAttributeKeys);
+  return buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, undefined, undefined, personaResolvedStats, questTemplates, sessionQuests, questSettings, undefined, lorebookAttributeKeys, inventoryData);
 }
 
 // ============================================

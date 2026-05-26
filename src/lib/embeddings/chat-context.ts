@@ -109,6 +109,7 @@ export async function retrieveEmbeddingsContext(
   settings?: Partial<EmbeddingsChatSettings>,
   groupId?: string,
   existingMemoryEvents?: Array<{ content: string; importance: number }>,
+  lastAssistantMessage?: string,  // NEW parameter for bidirectional search
 ): Promise<EmbeddingsContextResult> {
   if (!settings?.enabled) {
     return emptyResult();
@@ -123,15 +124,23 @@ export async function retrieveEmbeddingsContext(
     const config = loadConfig();
 
     // Determine namespaces to search based on strategy
+    // Character/group embeddingNamespaces are AUGMENTED on top of the strategy namespaces,
+    // not replaced. This way the session memory and character lore namespaces are always
+    // searched, plus any additional specialized namespaces the user assigns.
+    const strategyNamespaces = getNamespacesForStrategy(
+      settings.namespaceStrategy || 'character',
+      characterId,
+      sessionId,
+      groupId,
+    );
     const customNamespaces = settings.customNamespaces;
-    const namespaces = (customNamespaces && customNamespaces.length > 0)
-      ? customNamespaces
-      : getNamespacesForStrategy(
-          settings.namespaceStrategy || 'character',
-          characterId,
-          sessionId,
-          groupId,
-        );
+    const namespaceSet = new Set(strategyNamespaces);
+    if (customNamespaces && customNamespaces.length > 0) {
+      for (const ns of customNamespaces) {
+        namespaceSet.add(ns);
+      }
+    }
+    const namespaces = Array.from(namespaceSet);
 
     if (namespaces.length === 0) {
       return emptyResult();
@@ -174,13 +183,53 @@ export async function retrieveEmbeddingsContext(
       }
     }
 
+    // Bidirectional search: Also search with the last assistant message
+    // This captures memories relevant to what the character was talking about,
+    // even when the user's message is short or context-dependent (e.g., "Sí", "Claro")
+    if (lastAssistantMessage && lastAssistantMessage.trim().length > 20) {
+      const assistantQuery = lastAssistantMessage.trim();
+      const assistantThreshold = Math.min(threshold + 0.1, 1.0);  // Cap at 1.0 to avoid disabling search
+      for (const ns of namespaces) {
+        try {
+          let results: SearchResult[];
+          if (ns === '*') {
+            results = await client.searchSimilar({
+              query: assistantQuery,
+              limit: Math.ceil(maxResults / 2),  // Smaller limit for secondary search
+              threshold: assistantThreshold,
+            });
+          } else {
+            results = await client.searchInNamespace({
+              namespace: ns,
+              query: assistantQuery,
+              limit: Math.ceil(maxResults / 2),
+              threshold: assistantThreshold,
+            });
+          }
+
+          for (const r of results) {
+            if (!seenIds.has(r.id)) {
+              seenIds.add(r.id);
+              allResults.push(r);
+            }
+          }
+        } catch (err) {
+          console.warn(`[Embeddings] Assistant search failed for namespace "${ns}":`, err);
+        }
+      }
+    }
+
     if (allResults.length === 0) {
       return emptyResult();
     }
 
     // Sort by similarity (highest first)
     allResults.sort((a, b) => b.similarity - a.similarity);
-    let trimmed = allResults.slice(0, maxResults);
+
+    // Filter out summary-type embeddings — summaries are injected separately as [RECUERDOS ANTERIORES]
+    // Filter BEFORE slicing so we don't lose non-summary results that rank just below summaries
+    const nonSummaryResults = allResults.filter(r => r.source_type !== 'summary');
+    let trimmed = nonSummaryResults.slice(0, maxResults);
 
     // Deduplicate: Remove memory-type embeddings that overlap with existing Character Memory events.
     // Only memory-type (source_type='memory') results are deduplicated — lore/world content is never filtered.

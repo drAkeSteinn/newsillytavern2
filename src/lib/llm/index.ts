@@ -27,6 +27,7 @@ export {
   resolveTemplateVariables,
   resolveStatsKeys,
   resolveLorebookAttributeKeys,
+  resolveInventoryKeys,
   resolveSectionKeys,
   resolveSectionsKeys,
   resolveSectionsKeysWithPasses,

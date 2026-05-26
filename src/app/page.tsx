@@ -6,9 +6,11 @@ import { CharacterPanel } from '@/components/tavern/character-panel';
 import { SessionsSidebar } from '@/components/tavern/sessions-sidebar';
 import { SettingsPanel } from '@/components/tavern/settings-panel';
 import { BackgroundGallery } from '@/components/tavern/background-gallery';
+import { InventoryPanel } from '@/components/inventory/inventory-panel';
 import { SettingsApplier } from '@/components/tavern/settings-applier';
 import { AtmosphereRenderer } from '@/components/atmosphere';
 import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { 
   Menu, 
   Sparkles, 
@@ -19,7 +21,8 @@ import {
   Image as ImageIcon,
   BookOpen,
   Music,
-  Cloud
+  Cloud,
+  Package
 } from 'lucide-react';
 import { useState } from 'react';
 import { useHydration } from '@/hooks/use-hydration';
@@ -33,6 +36,7 @@ export default function TavernFlow() {
   const setSettingsOpen = useTavernStore((s) => s.setSettingsOpen);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [backgroundGalleryOpen, setBackgroundGalleryOpen] = useState(false);
+  const [inventoryOpen, setInventoryOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState('llm');
   const hydrated = useHydration();
 
@@ -116,6 +120,16 @@ export default function TavernFlow() {
             <Music className="w-5 h-5" />
           </Button>
           
+          {/* Inventory Button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setInventoryOpen(true)}
+            title={t('nav.inventory')}
+          >
+            <Package className="w-5 h-5" />
+          </Button>
+          
           {/* Settings Button */}
           <Button
             variant="ghost"
@@ -175,6 +189,18 @@ export default function TavernFlow() {
       {/* Background Gallery */}
       {hydrated && <BackgroundGallery open={backgroundGalleryOpen} onOpenChange={setBackgroundGalleryOpen} />}
 
+      {/* Inventory Panel (Slide-over Sheet) */}
+      {hydrated && (
+        <Sheet open={inventoryOpen} onOpenChange={setInventoryOpen}>
+          <SheetContent side="right" className="w-full sm:max-w-[400px] p-0">
+            <SheetHeader className="sr-only">
+              <SheetTitle>{t('nav.inventory')}</SheetTitle>
+            </SheetHeader>
+            <InventoryPanel />
+          </SheetContent>
+        </Sheet>
+      )}
+
       {/* Mobile Menu Overlay */}
       {hydrated && mobileMenuOpen && (
         <div 
@@ -182,10 +208,21 @@ export default function TavernFlow() {
           onClick={() => setMobileMenuOpen(false)}
         >
           <div 
-            className="absolute left-0 top-0 bottom-0 w-64 bg-background border-r"
+            className="absolute left-0 top-0 bottom-0 w-64 bg-background border-r flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <SessionsSidebar />
+            {/* Mobile Menu - Inventory Button */}
+            <div className="p-3 border-t mt-auto">
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-2"
+                onClick={() => { setMobileMenuOpen(false); setInventoryOpen(true); }}
+              >
+                <Package className="w-5 h-5" />
+                {t('nav.inventory')}
+              </Button>
+            </div>
           </div>
         </div>
       )}

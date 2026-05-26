@@ -73,6 +73,7 @@ import {
   createObjectiveReward,
   createSolicitudReward,
   createTargetAttributeReward,
+  createCurrencyReward,
   describeReward,
   normalizeReward,
 } from '@/lib/quest/quest-reward-utils';
@@ -371,6 +372,22 @@ function AttributeEditor({ attribute, index, onChange, onDelete, allAttributes, 
                         >
                           <Plus className="w-2.5 h-2.5 mr-0.5" /> Atributo Target
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 text-[10px] text-amber-400 hover:bg-amber-500/10 border border-dashed border-amber-500/30"
+                          onClick={() => {
+                            const newReward = createCurrencyReward(0);
+                            onChange(index, {
+                              onMinReached: {
+                                enabled: true,
+                                rewards: [...(attribute.onMinReached?.rewards || []), newReward]
+                              }
+                            });
+                          }}
+                        >
+                          <Plus className="w-2.5 h-2.5 mr-0.5" /> 💰 Divisa
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -382,12 +399,13 @@ function AttributeEditor({ attribute, index, onChange, onDelete, allAttributes, 
                         const isTrig = normalized.type === 'trigger';
                         const isAttr = normalized.type === 'attribute';
                         const isTargetAttr = normalized.type === 'target_attribute';
+                        const isCurrency = normalized.type === 'currency';
 
                         return (
-                          <div key={reward.id} className={`p-1.5 rounded border ${isAttr ? 'bg-amber-500/5 border-amber-500/10' : isTargetAttr ? 'bg-blue-500/5 border-blue-500/10' : 'bg-purple-500/5 border-purple-500/10'}`}>
+                          <div key={reward.id} className={`p-1.5 rounded border ${isAttr ? 'bg-amber-500/5 border-amber-500/10' : isTargetAttr ? 'bg-blue-500/5 border-blue-500/10' : isCurrency ? 'bg-amber-500/5 border-amber-500/10' : 'bg-purple-500/5 border-purple-500/10'}`}>
                             <div className="flex items-center gap-1.5 mb-1">
-                              <Badge variant="outline" className={`text-[9px] ${isAttr ? 'text-amber-400 border-amber-500/30' : isTargetAttr ? 'text-blue-400 border-blue-500/30' : 'text-purple-400 border-purple-500/30'}`}>
-                                {isAttr ? '📊 Atributo' : isTargetAttr ? '🔗 Atributo Target' : '⚡ Trigger'}
+                              <Badge variant="outline" className={`text-[9px] ${isAttr ? 'text-amber-400 border-amber-500/30' : isTargetAttr ? 'text-blue-400 border-blue-500/30' : isCurrency ? 'text-amber-400 border-amber-500/30' : 'text-purple-400 border-purple-500/30'}`}>
+                                {isAttr ? '📊 Atributo' : isTargetAttr ? '🔗 Atributo Target' : isCurrency ? '💰 Divisa' : '⚡ Trigger'}
                               </Badge>
                               <Button
                                 variant="ghost"
@@ -668,6 +686,26 @@ function AttributeEditor({ attribute, index, onChange, onDelete, allAttributes, 
                                 })()}
                               </div>
                             )}
+                            {isCurrency && normalized.currency && (
+                              <div className="flex items-center gap-2 mt-1">
+                                <Label className="text-[10px] text-muted-foreground">Cantidad:</Label>
+                                <Input
+                                  type="number"
+                                  value={normalized.currency.amount}
+                                  onChange={(e) => {
+                                    const updatedRewards = [...(attribute.onMinReached?.rewards || [])];
+                                    updatedRewards[rewardIdx] = {
+                                      ...updatedRewards[rewardIdx],
+                                      type: 'currency',
+                                      currency: { amount: Number(e.target.value) }
+                                    };
+                                    onChange(index, { onMinReached: { enabled: true, rewards: updatedRewards } });
+                                  }}
+                                  className="bg-background h-5 text-[10px] w-20"
+                                />
+                                <span className="text-[10px] text-muted-foreground">divisa para persona</span>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -780,6 +818,22 @@ function AttributeEditor({ attribute, index, onChange, onDelete, allAttributes, 
                         >
                           <Plus className="w-2.5 h-2.5 mr-0.5" /> Atributo Target
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 text-[10px] text-amber-400 hover:bg-amber-500/10 border border-dashed border-amber-500/30"
+                          onClick={() => {
+                            const newReward = createCurrencyReward(0);
+                            onChange(index, {
+                              onMaxReached: {
+                                enabled: true,
+                                rewards: [...(attribute.onMaxReached?.rewards || []), newReward]
+                              }
+                            });
+                          }}
+                        >
+                          <Plus className="w-2.5 h-2.5 mr-0.5" /> 💰 Divisa
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -791,12 +845,13 @@ function AttributeEditor({ attribute, index, onChange, onDelete, allAttributes, 
                         const isTrig = normalized.type === 'trigger';
                         const isAttr = normalized.type === 'attribute';
                         const isTargetAttr = normalized.type === 'target_attribute';
+                        const isCurrency = normalized.type === 'currency';
 
                         return (
-                          <div key={reward.id} className={`p-1.5 rounded border ${isAttr ? 'bg-amber-500/5 border-amber-500/10' : isTargetAttr ? 'bg-blue-500/5 border-blue-500/10' : 'bg-green-500/5 border-green-500/10'}`}>
+                          <div key={reward.id} className={`p-1.5 rounded border ${isAttr ? 'bg-amber-500/5 border-amber-500/10' : isTargetAttr ? 'bg-blue-500/5 border-blue-500/10' : isCurrency ? 'bg-amber-500/5 border-amber-500/10' : 'bg-green-500/5 border-green-500/10'}`}>
                             <div className="flex items-center gap-1.5 mb-1">
-                              <Badge variant="outline" className={`text-[9px] ${isAttr ? 'text-amber-400 border-amber-500/30' : isTargetAttr ? 'text-blue-400 border-blue-500/30' : 'text-green-400 border-green-500/30'}`}>
-                                {isAttr ? '📊 Atributo' : isTargetAttr ? '🔗 Atributo Target' : '⚡ Trigger'}
+                              <Badge variant="outline" className={`text-[9px] ${isAttr ? 'text-amber-400 border-amber-500/30' : isTargetAttr ? 'text-blue-400 border-blue-500/30' : isCurrency ? 'text-amber-400 border-amber-500/30' : 'text-green-400 border-green-500/30'}`}>
+                                {isAttr ? '📊 Atributo' : isTargetAttr ? '🔗 Atributo Target' : isCurrency ? '💰 Divisa' : '⚡ Trigger'}
                               </Badge>
                               <Button
                                 variant="ghost"
@@ -1075,6 +1130,26 @@ function AttributeEditor({ attribute, index, onChange, onDelete, allAttributes, 
                                     </div>
                                   );
                                 })()}
+                              </div>
+                            )}
+                            {isCurrency && normalized.currency && (
+                              <div className="flex items-center gap-2 mt-1">
+                                <Label className="text-[10px] text-muted-foreground">Cantidad:</Label>
+                                <Input
+                                  type="number"
+                                  value={normalized.currency.amount}
+                                  onChange={(e) => {
+                                    const updatedRewards = [...(attribute.onMaxReached?.rewards || [])];
+                                    updatedRewards[rewardIdx] = {
+                                      ...updatedRewards[rewardIdx],
+                                      type: 'currency',
+                                      currency: { amount: Number(e.target.value) }
+                                    };
+                                    onChange(index, { onMaxReached: { enabled: true, rewards: updatedRewards } });
+                                  }}
+                                  className="bg-background h-5 text-[10px] w-20"
+                                />
+                                <span className="text-[10px] text-muted-foreground">divisa para persona</span>
                               </div>
                             )}
                           </div>
@@ -2275,6 +2350,17 @@ function SkillEditor({ skill, index, availableAttributes, availableObjectives = 
                 >
                   <Plus className="w-3 h-3 mr-1" /> 🔗 Atributo Target
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 text-xs border-amber-500/30 hover:bg-amber-500/10"
+                  onClick={() => {
+                    const newReward = createCurrencyReward(0, { id: `skill-reward-${Date.now().toString(36)}` });
+                    onChange(index, { activationRewards: [...(skill.activationRewards || []), newReward] });
+                  }}
+                >
+                  <Plus className="w-3 h-3 mr-1" /> 💰 Divisa
+                </Button>
               </div>
             </div>
             <div className="space-y-1">
@@ -2284,12 +2370,13 @@ function SkillEditor({ skill, index, availableAttributes, availableObjectives = 
                 const isObj = normalized.type === 'objective';
                 const isSol = normalized.type === 'solicitud';
                 const isTargetAttr = normalized.type === 'target_attribute';
+                const isCurrency = normalized.type === 'currency';
 
                 return (
-                  <div key={reward.id} className={`p-2 rounded border space-y-2 ${isObj ? 'bg-amber-500/5 border-amber-500/10' : isSol ? 'bg-violet-500/5 border-violet-500/10' : isTargetAttr ? 'bg-blue-500/5 border-blue-500/10' : 'bg-green-500/5 border-green-500/10'}`}>
+                  <div key={reward.id} className={`p-2 rounded border space-y-2 ${isObj ? 'bg-amber-500/5 border-amber-500/10' : isSol ? 'bg-violet-500/5 border-violet-500/10' : isTargetAttr ? 'bg-blue-500/5 border-blue-500/10' : isCurrency ? 'bg-amber-500/5 border-amber-500/10' : 'bg-green-500/5 border-green-500/10'}`}>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className={`text-[10px] ${isObj ? 'text-amber-400 border-amber-500/30' : isSol ? 'text-violet-400 border-violet-500/30' : isTargetAttr ? 'text-blue-400 border-blue-500/30' : 'text-green-400 border-green-500/30'}`}>
-                        {isObj ? '🎯 Objetivo' : isSol ? '📋 Solicitud' : isTargetAttr ? '🔗 Atributo Target' : '⚡ Trigger'}
+                      <Badge variant="outline" className={`text-[10px] ${isObj ? 'text-amber-400 border-amber-500/30' : isSol ? 'text-violet-400 border-violet-500/30' : isTargetAttr ? 'text-blue-400 border-blue-500/30' : isCurrency ? 'text-amber-400 border-amber-500/30' : 'text-green-400 border-green-500/30'}`}>
+                        {isObj ? '🎯 Objetivo' : isSol ? '📋 Solicitud' : isTargetAttr ? '🔗 Atributo Target' : isCurrency ? '💰 Divisa' : '⚡ Trigger'}
                       </Badge>
                       <Badge variant="outline" className="text-[10px]">
                         {describeReward(normalized)}
@@ -2673,6 +2760,26 @@ function SkillEditor({ skill, index, availableAttributes, availableObjectives = 
                             </div>
                           );
                         })()}
+                      </div>
+                    )}
+                    {isCurrency && normalized.currency && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <Label className="text-[10px] text-muted-foreground">Cantidad:</Label>
+                        <Input
+                          type="number"
+                          value={normalized.currency.amount}
+                          onChange={(e) => {
+                            const updatedRewards = [...(skill.activationRewards || [])];
+                            updatedRewards[rewardIdx] = {
+                              ...updatedRewards[rewardIdx],
+                              type: 'currency',
+                              currency: { amount: Number(e.target.value) }
+                            };
+                            onChange(index, { activationRewards: updatedRewards });
+                          }}
+                          className="bg-background h-5 text-[10px] w-20"
+                        />
+                        <span className="text-[10px] text-muted-foreground">divisa para persona</span>
                       </div>
                     )}
                   </div>

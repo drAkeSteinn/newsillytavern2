@@ -48,6 +48,7 @@ import {
   RefreshCw,
   Loader2,
   Wrench,
+  Library,
 } from 'lucide-react';
 import {
   Select,
@@ -738,6 +739,8 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
           dialogueSettings: store.dialogueSettings,
           // Inventory
           inventorySettings: store.inventorySettings,
+          items: store.items,
+          activeConsumableEffects: store.activeConsumableEffects,
           inventoryNotifications: store.inventoryNotifications,
         }
       };
@@ -796,7 +799,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
           'summarySettings', 'characterMemories', 'sessionTracking',
           'questSettings', 'questTemplates', 'questNotifications',
           'dialogueSettings',
-          'inventorySettings', 'inventoryNotifications'
+          'inventorySettings', 'items', 'activeConsumableEffects', 'inventoryNotifications'
         ];
 
         configKeys.forEach(key => {
@@ -878,6 +881,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
           // Inventory
           inventorySettings: store.inventorySettings,
           items: store.items,
+          activeConsumableEffects: store.activeConsumableEffects,
           containers: store.containers,
           currencies: store.currencies,
           inventoryNotifications: store.inventoryNotifications,
@@ -952,7 +956,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
           'summarySettings', 'summaries', 'characterMemories', 'sessionTracking',
           'questSettings', 'questTemplates', 'quests', 'questNotifications',
           'dialogueSettings',
-          'inventorySettings', 'items', 'containers', 'currencies', 'inventoryNotifications',
+          'inventorySettings', 'items', 'activeConsumableEffects', 'containers', 'currencies', 'inventoryNotifications',
           // Timeline
           'collections',
           // Data
@@ -1146,16 +1150,16 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
     { value: 'hud', label: 'HUD', icon: Layers },
     { value: 'atmosphere', label: 'Atmósfera', icon: Cloud },
     { value: 'memory', label: 'Memoria', icon: Brain },
+    { value: 'knowledge', label: 'Conocimiento', icon: Library },
     { value: 'quests', label: 'Misiones', icon: Target },
     { value: 'inventory', label: 'Inventario', icon: Package },
     { value: 'sprites', label: 'Sprites', icon: Sparkles },
-    { value: 'embeddings', label: 'Embeddings', icon: Brain },
     { value: 'tools', label: 'Herramientas', icon: Wrench },
     { value: 'handy', label: 'Haptic', icon: Zap },
   ];
 
   // Separators after these tabs to group related sections
-  const separatorAfter = new Set(['lorebooks', 'voice', 'data', 'sprites', 'tools']);
+  const separatorAfter = new Set(['lorebooks', 'voice', 'data', 'memory', 'sprites', 'tools']);
 
   return (
     <>
@@ -2253,7 +2257,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
             <TabsContent value="sprites" className="h-full overflow-hidden m-0 p-0 data-[state=inactive]:hidden">
               <SpriteGeneralPanel />
             </TabsContent>
-            <TabsContent value="embeddings" className="h-full overflow-y-auto p-6 m-0 data-[state=inactive]:hidden">
+            <TabsContent value="knowledge" className="h-full overflow-y-auto p-6 m-0 data-[state=inactive]:hidden">
               <EmbeddingsSettingsPanel />
             </TabsContent>
 
