@@ -76,6 +76,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-mobile';
 import type { ChatLayoutSettings, CharacterCard, CharacterGroup, Persona, ChatboxAppearanceSettings } from '@/types';
 import { DEFAULT_CHATBOX_APPEARANCE, THEME_COLOR_PRESETS } from '@/types';
 import { t } from '@/lib/i18n';
@@ -230,6 +231,7 @@ export function NovelChatBox({
 
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const isMobile = useIsMobile();
   const [showSettings, setShowSettings] = useState(false);
   const [showVariables, setShowVariables] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -536,7 +538,7 @@ export function NovelChatBox({
   // Auto-scroll to bottom when new messages arrive or during streaming
   useEffect(() => {
     if (settings.autoScroll && messagesEndRef.current && activeTab === 'chat') {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   }, [activeSession?.messages, settings.autoScroll, isAnyGenerating, streamingContent, activeTab]);
 
@@ -591,7 +593,7 @@ export function NovelChatBox({
 
   // Drag handlers
   const handleDragStart = (e: React.MouseEvent) => {
-    if (isCollapsed) return;
+    if (isCollapsed || isMobile) return;
     e.preventDefault();
     setIsDragging(true);
     dragStartRef.current = {
@@ -640,7 +642,7 @@ export function NovelChatBox({
 
   // Resize handlers
   const handleResizeStart = (e: React.MouseEvent) => {
-    if (isCollapsed) return;
+    if (isCollapsed || isMobile) return;
     e.preventDefault();
     e.stopPropagation();
     setIsResizing(true);
@@ -1058,18 +1060,26 @@ export function NovelChatBox({
     <div
       ref={containerRef}
       className={cn(
-        "absolute z-20 flex flex-col rounded-lg shadow-2xl overflow-hidden transition-colors",
-        isDragging && "cursor-grabbing",
-        isResizing && "cursor-nwse-resize"
+        "z-20 flex flex-col overflow-hidden transition-colors",
+        // Desktop: floating, draggable, resizable chat box
+        !isMobile && "absolute rounded-lg shadow-2xl",
+        isMobile && "relative h-full w-full",
+        !isMobile && isDragging && "cursor-grabbing",
+        !isMobile && isResizing && "cursor-nwse-resize"
       )}
       style={{
-        left: `${layout.chatX}%`,
-        top: `${layout.chatY}%`,
-        transform: 'translate(-50%, -50%)',
-        width: `${layout.chatWidth}%`,
-        height: isCollapsed ? 'auto' : `${layout.chatHeight}%`,
-        minHeight: isCollapsed ? 'auto' : '180px',
-        maxHeight: isCollapsed ? 'auto' : '95vh',
+        // Positioning & sizing: desktop uses percentage-based floating layout
+        // Mobile uses full-width/height via CSS classes (relative h-full w-full)
+        ...(isMobile ? {} : {
+          left: `${layout.chatX}%`,
+          top: `${layout.chatY}%`,
+          transform: 'translate(-50%, -50%)',
+          width: `${layout.chatWidth}%`,
+          height: isCollapsed ? 'auto' : `${layout.chatHeight}%`,
+          minWidth: '280px',
+          minHeight: isCollapsed ? 'auto' : '180px',
+          maxHeight: isCollapsed ? 'auto' : '95vh',
+        }),
         backgroundColor: safeAppearance.background.customBackgroundColor || `hsl(var(--background) / ${layout.chatOpacity})`,
         backdropFilter: safeAppearance.background.useGlassEffect ? `blur(${safeAppearance.background.blur}px)` : layout.blurBackground ? 'blur(12px)' : undefined,
         opacity: safeAppearance.background.transparency,
@@ -1086,7 +1096,10 @@ export function NovelChatBox({
       
       {/* Drag Handle / Header with Tabs */}
       <div
-        className="flex flex-col bg-background/50 border-b cursor-grab active:cursor-grabbing select-none flex-shrink-0"
+        className={cn(
+          "flex flex-col bg-background/50 border-b select-none flex-shrink-0",
+          !isMobile && "cursor-grab active:cursor-grabbing"
+        )}
         onMouseDown={handleDragStart}
       >
         {/* Header Row */}
@@ -1235,7 +1248,7 @@ export function NovelChatBox({
                           </div>
                           {/* ultima_accion_realizada */}
                           <div className="flex items-start gap-1.5 px-2 py-1.5 rounded border bg-purple-500/10 border-purple-500/20 text-xs">
-                            <span className="text-muted-foreground shrink-0">Acción realizada:</span>
+                            <span className="text-muted-foreground shrink-0">Acción realizada{sessionStats.ultima_accion_character ? ` (${sessionStats.ultima_accion_character})` : ''}:</span>
                             <span className="text-purple-400">{sessionStats.ultima_accion_realizada || 'N/A'}</span>
                           </div>
                         </div>
@@ -2853,13 +2866,15 @@ export function NovelChatBox({
             </DialogContent>
           </Dialog>
 
-          {/* Resize Handles */}
-          <div
-            className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize"
-            onMouseDown={handleResizeStart}
-          >
-            <div className="absolute bottom-1 right-1 w-2 h-2 border-r-2 border-b-2 border-muted-foreground/30" />
-          </div>
+          {/* Resize Handles - hidden on mobile since chat is full-screen */}
+          {!isMobile && (
+            <div
+              className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize"
+              onMouseDown={handleResizeStart}
+            >
+              <div className="absolute bottom-1 right-1 w-2 h-2 border-r-2 border-b-2 border-muted-foreground/30" />
+            </div>
+          )}
         </>
       )}
     </div>

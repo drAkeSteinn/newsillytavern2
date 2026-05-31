@@ -73,6 +73,10 @@ export function BackgroundGallery({ open, onOpenChange }: BackgroundGalleryProps
     setIsLoading(true);
     try {
       const response = await fetch('/api/backgrounds/collections');
+      if (!response.ok) {
+        bgLogger.error('Error fetching backgrounds', { status: response.status });
+        return;
+      }
       const data = await response.json();
       setCollections(data.collections || []);
     } catch (error) {

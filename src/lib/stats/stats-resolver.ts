@@ -304,14 +304,23 @@ export function buildSkillsBlock(
   }
 
   const charName = characterName || '{{char}}';
-  const introText = header.includes('ACCIONES')
-    ? `${charName} puede realizar las siguientes acciones cuando la situación lo requiera.\nCuando una acción tenga "Puede completar", USA LA TOOL "manage_quest" o "manage_solicitud" con la key correspondiente para marcar como completado:\n`
-    : '';
+  
+  // Build instruction text that goes BEFORE the header
+  // This ensures the LLM sees the rules before the action list
+  const introLines: string[] = [];
+  if (header.includes('ACCIONES')) {
+    introLines.push(`${charName} puede realizar únicamente las acciones listadas debajo cuando el contexto lo requiera. Para activar una acción, usa la TOOL "manage_action" con la key correspondiente.`);
+    introLines.push('');
+    introLines.push('Si una acción indica "Puede completar", usa la TOOL "manage_quest" o "manage_solicitud" con la key correspondiente para marcar como completado inmediatamente después de realizar la acción.');
+  }
+  const introText = introLines.length > 0 ? introLines.join('\n') : '';
 
-  const lines: string[] = [header];
+  // Build the block: instructions → header → action list
+  const lines: string[] = [];
   if (introText) {
     lines.push(introText);
   }
+  lines.push(header);
 
   // Build full context for comprehensive key resolution if data is available
   const keyFullContext = (userName && characterName) ? {

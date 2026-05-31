@@ -132,6 +132,12 @@ export function useBackgroundTriggers() {
       try {
         console.log('[BgTriggers] 🔄 Loading background index from API...');
         const response = await fetch('/api/backgrounds/index');
+        
+        if (!response.ok) {
+          console.warn(`[BgTriggers] ⚠️ Background index API returned ${response.status}, skipping`);
+          return;
+        }
+        
         const data = await response.json();
         
         console.log(`[BgTriggers] ✅ API returned ${data.backgrounds?.length || 0} backgrounds`);

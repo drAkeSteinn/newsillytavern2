@@ -355,6 +355,7 @@ export function ItemEditor({ open, onOpenChange, item, onSave, onDelete }: ItemE
           attributeName: '',
           operator: '+' as CostOperator,
           value: 0,
+          mode: 'static' as const,
         },
       ],
     }));
@@ -590,6 +591,7 @@ export function ItemEditor({ open, onOpenChange, item, onSave, onDelete }: ItemE
                     const filteredOperators = getFilteredOperators(currentAttrType);
                     const isTextAttr = currentAttrType === 'text' || currentAttrType === 'keyword';
                     const attrTypeInfo = currentAttrType ? ATTR_TYPE_INFO[currentAttrType] : null;
+                    const isDynamic = (effect.mode || 'static') === 'dynamic';
 
                     return (
                       <div key={index} className="p-3 bg-muted/50 rounded-lg space-y-2">
@@ -676,6 +678,20 @@ export function ItemEditor({ open, onOpenChange, item, onSave, onDelete }: ItemE
                         </div>
 
                         <div className="flex items-center gap-2">
+                          {/* Effect Mode */}
+                          <Select
+                            value={effect.mode || 'static'}
+                            onValueChange={(v) => updateEffect(index, { mode: v as 'static' | 'dynamic' })}
+                          >
+                            <SelectTrigger className="w-[110px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="static">📌 Estático</SelectItem>
+                              <SelectItem value="dynamic">🔄 Dinámico</SelectItem>
+                            </SelectContent>
+                          </Select>
+
                           {/* Operator - filtered by attribute type */}
                           <Select
                             value={effect.operator}
@@ -699,7 +715,7 @@ export function ItemEditor({ open, onOpenChange, item, onSave, onDelete }: ItemE
                               value={typeof effect.value === 'string' ? effect.value : String(effect.value)}
                               onChange={(e) => updateEffect(index, { value: e.target.value })}
                               className="flex-1"
-                              placeholder="Valor de texto (ej: Poción de fuerza)"
+                              placeholder={isDynamic ? "Valor1|Valor2|Valor3 (separa con |)" : "Valor de texto (ej: Poción de fuerza)"}
                             />
                           ) : (
                             <Input
@@ -711,6 +727,17 @@ export function ItemEditor({ open, onOpenChange, item, onSave, onDelete }: ItemE
                             />
                           )}
                         </div>
+
+                        {/* Dynamic mode hints */}
+                        {isDynamic && (
+                          <div className="text-xs text-muted-foreground space-y-1">
+                            {isTextAttr ? (
+                              <p>🔄 Usa <code className="bg-muted px-1 rounded">|</code> para separar valores que ciclan cada turno. Ej: <code className="bg-muted px-1 rounded">Envenenado|Debilitado|Crítico</code></p>
+                            ) : (
+                              <p>🔄 Se aplica <code className="bg-muted px-1 rounded">{effect.operator}{effect.value}</code> cada turno (acumulativo)</p>
+                            )}
+                          </div>
+                        )}
 
                         <div className="space-y-1">
                           <Label className="text-xs text-muted-foreground">Estado de regreso</Label>
@@ -733,9 +760,22 @@ export function ItemEditor({ open, onOpenChange, item, onSave, onDelete }: ItemE
                               className="w-full"
                             />
                           )}
-                          <p className="text-xs text-muted-foreground">
-                            Valor al que regresa el atributo cuando el efecto termina. Si se deja vacío, regresa al valor original.
-                          </p>
+                          {isDynamic ? (
+                            <>
+                              <p className="text-xs text-amber-500/80">
+                                ⚠️ Muy recomendado para efectos dinámicos ya que el cambio es acumulativo.
+                              </p>
+                              {effect.fallbackValue === undefined && (
+                                <p className="text-xs text-red-500/80">
+                                  ⚠️ Sin valor de regreso, el efecto dinámico no se puede revertir automáticamente al terminar.
+                                </p>
+                              )}
+                            </>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">
+                              Valor al que regresa el atributo cuando el efecto termina.
+                            </p>
+                          )}
                         </div>
 
                         {targetAttrs.length === 0 && effect.targetId && (

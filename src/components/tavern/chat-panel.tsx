@@ -755,6 +755,7 @@ export function ChatPanel() {
                     parsed.skillDescription || '',
                     parsed.activationCosts || [],
                     parsed.activationRewards || [],
+                    parsed.skillCompletedDescription || '',
                   );
                   toast.success(`⚔️ Acción: ${parsed.skillName}`);
                 } else if (parsed.type === 'solicitud_activation') {
@@ -1376,6 +1377,7 @@ export function ChatPanel() {
                     parsed.skillDescription || '',
                     parsed.activationCosts || [],
                     parsed.activationRewards || [],
+                    parsed.skillCompletedDescription || '',
                   );
                   toast.success(`⚔️ Acción: ${parsed.skillName}`);
                 } else if (parsed.type === 'solicitud_activation') {
@@ -2173,7 +2175,7 @@ export function ChatPanel() {
 
   // Novel Mode - Always active
   return (
-    <div className="flex-1 h-full relative">
+    <div className="flex-1 h-full relative min-h-0 min-w-0">
       <BackgroundWithOverlays 
         background={activeBackground} 
         overlayBack={activeOverlayBack}

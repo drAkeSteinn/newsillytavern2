@@ -2144,22 +2144,22 @@ export const DEFAULT_SUMMARY_SETTINGS: SummarySettings = {
   triggerThreshold: 20,
   keepRecentMessages: 10,
   maxSummaryTokens: 500,
-  promptTemplate: `You are a conversation summarizer for a roleplay chat. Your task is to create a concise but comprehensive summary of the conversation.
+  promptTemplate: `Eres un resumidor de conversaciones para un chat de rol. Tu tarea es crear un resumen conciso pero completo de la conversación.
 
-**Instructions:**
-1. Preserve key events, decisions, and plot developments
-2. Track emotional moments and character development
-3. Note important dialogue exchanges
-4. Keep track of items, locations, and relationships
-5. Maintain chronological order
+**Instrucciones:**
+1. Preserva eventos clave, decisiones y desarrollos de la trama
+2. Registra momentos emocionales y desarrollo de personajes
+3. Anota intercambios de diálogo importantes
+4. Haz seguimiento de objetos, lugares y relaciones
+5. Mantén el orden cronológico
 
-**Format:**
-Write a narrative summary (not bullet points) that captures the essence of the conversation.
+**Formato:**
+Escribe un resumen narrativo (no viñetas) que capture la esencia de la conversación.
 
-**Conversation to summarize:**
+**Conversación a resumir:**
 {{conversation}}
 
-**Summary:**`,
+**Resumen:**`,
   summarizeOnTurnEnd: true,
   includeCharacterThoughts: true,
   preserveEmotionalMoments: true,
@@ -3335,8 +3335,15 @@ export interface ItemAttributeEffect {
   attributeKey: string;     // e.g., 'vida', 'mana', 'resistencia'
   attributeName?: string;   // Display name for UI
   operator: CostOperator;   // '+', '-', '=', etc. (reuse existing CostOperator type)
-  value: number;
+  value: number | string;   // number for numeric attrs, string for text/keyword attrs
   fallbackValue?: string | number; // Value to revert to when effect expires or item is unequipped
+  mode?: 'static' | 'dynamic';  // Default: 'static'. Dynamic applies the effect each turn.
+}
+
+// Dynamic equipment state - tracks how many turns a dynamic equipment effect has been active
+export interface DynamicEquipmentState {
+  activeTurns: number;  // How many turns the dynamic effect has been active
+  appliedAt: string;    // ISO timestamp
 }
 
 // Active consumable effect (tracked for duration in turns)
@@ -3486,6 +3493,7 @@ export interface SkillDefinition {
   id: string;
   name: string;              // "Golpe furioso"
   description: string;       // "Golpe con gran velocidad..."
+  completedDescription?: string; // "Descripción completado" - texto que se guarda y se inyecta cuando la acción se realiza
   key: string;               // Template key: "golpe_furioso" → {{golpe_furioso}}
   type?: ActionType;         // "preparacion" | "ejecucion" - determines action type
   requirements: StatRequirement[];
@@ -3645,7 +3653,8 @@ export interface SessionStats {
   ultimo_objetivo_completado?: string;  // Description of the last completed objective
   ultima_solicitud_completada?: string; // Completion description of the last completed solicitud
   ultima_solicitud_realizada?: string;  // Description of the last peticion activated
-  ultima_accion_realizada?: string;     // "personaje - descripcion de la accion"
+  ultima_accion_realizada?: string;     // Descripción completado de la última acción realizada
+  ultima_accion_character?: string;     // Nombre del personaje que realizó la última acción
 
   // Metadata
   initialized: boolean;      // Whether stats were initialized from defaults

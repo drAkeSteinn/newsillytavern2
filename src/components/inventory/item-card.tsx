@@ -64,7 +64,8 @@ function formatEffectDescription(effect: ItemAttributeEffect): string {
   const op = OPERATOR_LABELS[effect.operator] ?? effect.operator;
   const target = effect.targetId === '__user__' ? '' : ` → ${effect.targetName || effect.targetId}`;
   const attr = effect.attributeName || effect.attributeKey;
-  return `${op}${effect.value} ${attr}${target}`;
+  const modePrefix = effect.mode === 'dynamic' ? '🔄/turno ' : '';
+  return `${modePrefix}${op}${effect.value} ${attr}${target}`;
 }
 
 // ============================================

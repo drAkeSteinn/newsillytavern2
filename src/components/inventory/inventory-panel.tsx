@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,10 @@ import {
   X,
   Target,
   User,
+  Download,
+  Upload,
+  AlertCircle,
+  CheckCircle,
 } from 'lucide-react';
 import { useTavernStore } from '@/store/tavern-store';
 import { ItemCard } from './item-card';
@@ -52,6 +56,7 @@ import {
 } from '@/store/slices/inventorySlice';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useToast } from '@/hooks/use-toast';
 
 // ============================================
 // Active Effect Badge
@@ -171,6 +176,8 @@ export function InventoryPanel() {
     clearPendingEquipAction,
     executeEquipWithTarget,
     executeUseWithTarget,
+    exportInventory,
+    importInventory,
   } = useTavernStore();
 
   // Characters for target selection
@@ -189,6 +196,8 @@ export function InventoryPanel() {
   const [targetPickerAction, setTargetPickerAction] = useState<'equip' | 'use' | null>(null);
   const [targetPickerItemId, setTargetPickerItemId] = useState<string>('');
   const [selectedTargetId, setSelectedTargetId] = useState<string>('__user__');
+  const { toast } = useToast();
+  const itemFileInputRef = useRef<HTMLInputElement>(null);
 
   // Build target options from active session characters
   const targetOptions = useMemo(() => {
@@ -385,6 +394,84 @@ export function InventoryPanel() {
     adjustCurrency(personaId, amount);
   };
 
+  // Export all items to JSON file
+  const handleExportItems = () => {
+    try {
+      const inventoryData = exportInventory();
+      const exportData = {
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        type: 'inventory',
+        data: inventoryData,
+      };
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tavernflow-items-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: 'Items exportados',
+        description: `${inventoryData.items.length} items exportados correctamente.`,
+      });
+    } catch {
+      toast({
+        title: 'Error al exportar',
+        description: 'No se pudieron exportar los items.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Import items from JSON file
+  const handleImportItems = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const imported = JSON.parse(content);
+
+        if (!imported.data) {
+          throw new Error('Formato de archivo inválido');
+        }
+
+        const { data } = imported;
+        importInventory({
+          items: data.items,
+          activeEffects: data.activeEffects,
+          settings: data.settings,
+          dynamicEquipmentState: data.dynamicEquipmentState,
+        });
+
+        const itemCount = data.items?.length ?? 0;
+        toast({
+          title: 'Items importados',
+          description: `${itemCount} items importados correctamente.`,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Error desconocido';
+        toast({
+          title: 'Error al importar',
+          description: `No se pudo importar: ${msg}`,
+          variant: 'destructive',
+        });
+      }
+    };
+    reader.readAsText(file);
+
+    if (itemFileInputRef.current) {
+      itemFileInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -500,7 +587,7 @@ export function InventoryPanel() {
 
         {/* ===== Inventario Tab ===== */}
         <TabsContent value="inventory" className="flex-1 overflow-hidden m-0">
-          <div className="h-full flex flex-col p-3 gap-3">
+          <div className="h-full flex flex-col p-3 gap-3 overflow-hidden">
             {/* Search */}
             <div className="relative shrink-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -513,7 +600,7 @@ export function InventoryPanel() {
             </div>
 
             {/* Items List */}
-            <ScrollArea className="flex-1">
+            <ScrollArea className="flex-1 min-h-0">
               {filteredPersonaItems.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <Package className="w-16 h-16 mx-auto mb-3 opacity-50" />
@@ -553,7 +640,7 @@ export function InventoryPanel() {
 
         {/* ===== Registro Tab ===== */}
         <TabsContent value="registry" className="flex-1 overflow-hidden m-0">
-          <div className="h-full flex flex-col p-3 gap-3">
+          <div className="h-full flex flex-col p-3 gap-3 overflow-hidden">
             <div className="flex items-center gap-2 text-sm text-muted-foreground shrink-0">
               <Package className="w-4 h-4" />
               <span>Items definidos ({filteredRegistryItems.length})</span>
@@ -569,7 +656,7 @@ export function InventoryPanel() {
               />
             </div>
 
-            <ScrollArea className="flex-1">
+            <ScrollArea className="flex-1 min-h-0">
               {filteredRegistryItems.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <Package className="w-16 h-16 mx-auto mb-3 opacity-50" />
@@ -643,7 +730,7 @@ export function InventoryPanel() {
 
         {/* ===== Tienda Tab ===== */}
         <TabsContent value="shop" className="flex-1 overflow-hidden m-0">
-          <div className="h-full flex flex-col p-3 gap-3">
+          <div className="h-full flex flex-col p-3 gap-3 overflow-hidden">
             {/* Currency display */}
             {persona && (
               <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 shrink-0">
@@ -663,7 +750,7 @@ export function InventoryPanel() {
               />
             </div>
 
-            <ScrollArea className="flex-1">
+            <ScrollArea className="flex-1 min-h-0">
               {filteredShopItems.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <ShoppingCart className="w-16 h-16 mx-auto mb-3 opacity-50" />
@@ -858,6 +945,57 @@ export function InventoryPanel() {
                     ))}
                   </div>
                 )}
+              </div>
+
+              <Separator />
+
+              {/* Export / Import Items */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-sm">Exportar / Importar Items</h3>
+                <p className="text-xs text-muted-foreground">
+                  Exporta todos los items, efectos activos y configuración del inventario a un archivo JSON, o impórtalos desde un archivo previamente exportado.
+                </p>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Button
+                    variant="outline"
+                    className="h-auto py-3 flex flex-col gap-1.5"
+                    onClick={handleExportItems}
+                  >
+                    <Download className="w-4 h-4" />
+                    <span className="text-sm">Exportar Items</span>
+                    <span className="text-[10px] text-muted-foreground">{items.length} items</span>
+                  </Button>
+                  <label className="cursor-pointer">
+                    <Button
+                      variant="outline"
+                      className="h-auto py-3 flex flex-col gap-1.5 w-full"
+                      asChild
+                    >
+                      <span>
+                        <Upload className="w-4 h-4" />
+                        <span className="text-sm">Importar Items</span>
+                        <span className="text-[10px] text-muted-foreground">Desde JSON</span>
+                      </span>
+                    </Button>
+                    <input
+                      ref={itemFileInputRef}
+                      type="file"
+                      accept=".json"
+                      onChange={handleImportItems}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+                    <span className="text-muted-foreground">
+                      Importar items reemplazará los items y efectos activos existentes. La configuración del inventario también se sobreescribirá si está incluida en el archivo.
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </ScrollArea>

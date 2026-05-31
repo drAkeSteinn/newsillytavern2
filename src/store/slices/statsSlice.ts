@@ -119,7 +119,7 @@ export interface StatsSlice {
   // These track recent important events in the session
   updateSessionEvent: (
     sessionId: string,
-    eventType: 'ultimo_objetivo_completado' | 'ultima_solicitud_completada' | 'ultima_solicitud_realizada' | 'ultima_accion_realizada',
+    eventType: 'ultimo_objetivo_completado' | 'ultima_solicitud_completada' | 'ultima_solicitud_realizada' | 'ultima_accion_realizada' | 'ultima_accion_character',
     description: string
   ) => void;
 }
@@ -1184,6 +1184,7 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
           ultima_solicitud_completada: undefined,
           ultima_solicitud_realizada: undefined,
           ultima_accion_realizada: undefined,
+          ultima_accion_character: undefined,
           initialized: true,
           lastModified: Date.now(),
         };

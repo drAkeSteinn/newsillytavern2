@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000 --hostname 0.0.0.0",
+    "dev": "next dev -p 3000 -H 0.0.0.0",
     "dev:win": "set LANCEDB_PLATFORM=win32-x64-msvc&& npx --yes prisma@6.19.3 generate && npx --yes prisma@6.19.3 db push && next dev -p 3000 --hostname 0.0.0.0",
     "dev:windows": "set LANCEDB_PLATFORM=win32-x64-msvc&& next dev -p 3000 --hostname 0.0.0.0",
     "start": "next start -p 3000 -H 0.0.0.0",

@@ -69,6 +69,10 @@ export function BackgroundTriggersSettings() {
     setIsLoading(true);
     try {
       const response = await fetch('/api/backgrounds/collections');
+      if (!response.ok) {
+        console.warn('[BgTriggers] Failed to fetch collections, status:', response.status);
+        return;
+      }
       const data = await response.json();
       console.log('[BgTriggers] Loaded collections:', data.collections?.length || 0);
       setBackgroundCollections(data.collections || []);

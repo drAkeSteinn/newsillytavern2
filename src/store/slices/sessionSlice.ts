@@ -531,7 +531,7 @@ export interface SessionSlice {
   failQuest: (sessionId: string, questTemplateId: string) => void;
   progressQuestObjective: (sessionId: string, questTemplateId: string, objectiveId: string, amount?: number, characterId?: string) => void;
   completeObjective: (sessionId: string, questTemplateId: string, objectiveId: string, characterId?: string) => void;
-  activateSkillByTool: (sessionId: string, characterId: string, skillName: string, skillDescription: string, activationCosts: ActivationCost[], activationRewards: QuestReward[]) => void;
+  activateSkillByTool: (sessionId: string, characterId: string, skillName: string, skillDescription: string, activationCosts: ActivationCost[], activationRewards: QuestReward[], skillCompletedDescription?: string) => void;
   toggleObjectiveCompletion: (sessionId: string, questTemplateId: string, objectiveId: string) => void;  // Toggle objective completion
   updateObjectiveVisibility: (sessionId: string, questTemplateId: string, objectiveId: string, isVisible: boolean) => void;  // Update objective visibility
   refreshAllObjectiveVisibility: (sessionId: string) => void;  // Re-evaluate all conditional objective visibilities
@@ -1684,7 +1684,7 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
   // ============================================
   // Called when manage_action tool activates a skill via tool-calling.
   // Applies costs to character stats and executes activation rewards.
-  activateSkillByTool: (sessionId: string, characterId: string, skillName: string, skillDescription: string, activationCosts: ActivationCost[], activationRewards: QuestReward[]) => {
+  activateSkillByTool: (sessionId: string, characterId: string, skillName: string, skillDescription: string, activationCosts: ActivationCost[], activationRewards: QuestReward[], skillCompletedDescription?: string) => {
     try {
       const session = get().sessions.find((s: ChatSession) => s.id === sessionId);
       if (!session) {
@@ -1725,9 +1725,12 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
       }
 
       // Save ultima_accion_realizada for {{eventos}} key
-      const actionDescription = `${character?.name || characterId} - ${skillName}${skillDescription ? `: ${skillDescription}` : ''}`;
-      get().updateSessionEvent?.(sessionId, 'ultima_accion_realizada', actionDescription);
-      console.log(`[activateSkillByTool] Saved ultima_accion_realizada: ${actionDescription}`);
+      // Use completedDescription (fallback to description) for the event text
+      const completedDesc = skillCompletedDescription || skillDescription || '';
+      const characterName = character?.name || characterId;
+      get().updateSessionEvent?.(sessionId, 'ultima_accion_realizada', completedDesc);
+      get().updateSessionEvent?.(sessionId, 'ultima_accion_character', characterName);
+      console.log(`[activateSkillByTool] Saved ultima_accion_realizada: ${completedDesc} (character: ${characterName})`);
 
       // Step 1: Apply activation costs to character stats
       if (activationCosts.length > 0) {

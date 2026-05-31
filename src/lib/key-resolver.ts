@@ -3,12 +3,12 @@
 // ============================================
 //
 // This module unifies the resolution of ALL template keys:
-// - Template variables: {{user}}, {{char}}, {{userpersona}}, {{description}}, etc.
+// - Template variables: {{user}}, {{char}}, {{userpersona}}, {{persona}}, {{description}}, etc.
 // - Conditional blocks: {{#if}}, {{#user}}, {{#char}}
 // - Stats keys: {{attributeKey}}, {{habilidades}}, {{intenciones}}, {{invitaciones}}
 //
 // The key resolution happens in two phases:
-// 1. Template Phase: Resolve {{user}}, {{char}}, {{userpersona}}, conditionals
+// 1. Template Phase: Resolve {{user}}, {{char}}, {{userpersona}}, {{persona}}, conditionals
 // 2. Stats Phase: Resolve attribute values and stat blocks
 //
 // This ensures that lorebooks injected after template processing
@@ -84,7 +84,7 @@ export interface KeyResolutionContext {
 
 /**
  * Resolve template variables in text
- * Handles: {{user}}, {{char}}, {{userpersona}}, {{description}}, {{personality}}, {{scenario}}
+ * Handles: {{user}}, {{char}}, {{userpersona}}, {{persona}}, {{description}}, {{personality}}, {{scenario}}
  * Also handles conditionals: {{#if}}, {{#user}}, {{#char}}
  */
 export function resolveTemplateVariables(
@@ -117,6 +117,17 @@ export function resolveTemplateVariables(
   } else {
     // Remove {{userpersona}} if not available
     result = result.replace(/\{\{userpersona\}\}/gi, '');
+  }
+
+  // {{persona}} key - injects persona description content
+  // Resolved early in Phase 1 so that the injected content can contain
+  // other keys ({{user}}, {{char}}, {{attributeKey}}, etc.) that will be
+  // resolved in subsequent phases.
+  if (context.persona?.description) {
+    result = result.replace(/\{\{persona\}\}/gi, context.persona.description);
+  } else {
+    // Remove {{persona}} if not available
+    result = result.replace(/\{\{persona\}\}/gi, '');
   }
 
   // Handle conditional blocks {{#if variable}}...{{/if}}
@@ -172,6 +183,8 @@ function getVariableValue(varName: string, context: KeyResolutionContext): strin
       return context.char;
     case 'userpersona':
       return context.userpersona;
+    case 'persona':
+      return context.persona?.description;
     case 'description':
       return context.character?.description;
     case 'personality':
@@ -278,11 +291,11 @@ export function resolveEventKeys(
  * Build the eventos block showing recent events
  * Only shows fields that have actual values (not undefined or empty)
  * Format:
- * [ESTADO RECIENTE]
+ * [ULTIMOS EVENTOS]
  * - ultimo_objetivo_completado : <value>
  * - ultima_solicitud_realizada : <value>
  * - ultima_solicitud_completada : <value>
- * - ultima_accion_realizada : <value>
+ * - ultima accion realizada de <characterName>: "<completedDescription>"
  */
 function buildEventosBlock(sessionStats: SessionStats): string {
   const lines: string[] = [];
@@ -301,7 +314,13 @@ function buildEventosBlock(sessionStats: SessionStats): string {
   }
   
   if (sessionStats.ultima_accion_realizada) {
-    lines.push(`- ultima_accion_realizada : ${sessionStats.ultima_accion_realizada}`);
+    const characterName = sessionStats.ultima_accion_character || '';
+    if (characterName) {
+      lines.push(`- ultima accion realizada de ${characterName}: "${sessionStats.ultima_accion_realizada}"`);
+    } else {
+      // Backward compatibility: if no character name stored, use old format
+      lines.push(`- ultima_accion_realizada : ${sessionStats.ultima_accion_realizada}`);
+    }
   }
   
   // Return empty string if no events to show
@@ -309,7 +328,7 @@ function buildEventosBlock(sessionStats: SessionStats): string {
     return '';
   }
   
-  return `[ESTADO RECIENTE]\n${lines.join('\n')}`;
+  return `[ULTIMOS EVENTOS]\n${lines.join('\n')}`;
 }
 
 // ============================================

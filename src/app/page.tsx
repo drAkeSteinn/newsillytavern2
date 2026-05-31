@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { useHydration } from '@/hooks/use-hydration';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { t } from '@/lib/i18n';
 
 export default function TavernFlow() {
@@ -39,6 +40,7 @@ export default function TavernFlow() {
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState('llm');
   const hydrated = useHydration();
+  const isMobile = useIsMobile();
 
   const togglePanels = () => {
     setSidebarOpen(!sidebarOpen);
@@ -84,6 +86,7 @@ export default function TavernFlow() {
           <Button
             variant="ghost"
             size="icon"
+            className="hidden md:inline-flex"
             onClick={() => openSettingsTab('atmosphere')}
             title={t('nav.atmosphere') || 'Atmósfera'}
           >
@@ -94,6 +97,7 @@ export default function TavernFlow() {
           <Button
             variant="ghost"
             size="icon"
+            className="hidden md:inline-flex"
             onClick={() => setBackgroundGalleryOpen(true)}
             title={t('nav.backgroundGallery')}
           >
@@ -104,6 +108,7 @@ export default function TavernFlow() {
           <Button
             variant="ghost"
             size="icon"
+            className="hidden md:inline-flex"
             onClick={() => openSettingsTab('lorebooks')}
             title={t('nav.lorebooks')}
           >
@@ -114,6 +119,7 @@ export default function TavernFlow() {
           <Button
             variant="ghost"
             size="icon"
+            className="hidden md:inline-flex"
             onClick={() => openSettingsTab('sounds')}
             title={t('nav.soundTriggers')}
           >
@@ -160,17 +166,18 @@ export default function TavernFlow() {
       </header>
 
       {/* Main Content - Only render after hydration */}
-      <div className="flex-1 flex overflow-hidden">
+      {/* h-[calc(100vh-3.5rem)] provides explicit height so h-full children can resolve percentages */}
+      <div className="h-[calc(100vh-3.5rem)] flex overflow-clip">
         {hydrated ? (
           <>
-            {/* Sessions Sidebar */}
-            <SessionsSidebar />
+            {/* Sessions Sidebar - hidden on mobile, accessible via mobile menu overlay */}
+            {!isMobile && <SessionsSidebar />}
 
             {/* Chat Area */}
             <ChatPanel />
 
-            {/* Character Panel */}
-            <CharacterPanel />
+            {/* Character Panel - hidden on mobile */}
+            {!isMobile && <CharacterPanel />}
           </>
         ) : (
           // Placeholder during hydration

@@ -374,6 +374,7 @@ export function useProactiveMessages({
                       parsed.skillDescription || '',
                       parsed.activationCosts || [],
                       parsed.activationRewards || [],
+                      parsed.skillCompletedDescription || '',
                     );
                     toast.success(`⚔️ Acción: ${parsed.skillName}`);
                   }

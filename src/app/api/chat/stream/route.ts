@@ -194,6 +194,7 @@ async function executeToolCallsAndContinue(
         skillId: action.skillId,
         skillName: action.skillName,
         skillDescription: action.skillDescription,
+        skillCompletedDescription: action.skillCompletedDescription,
         activationCosts: action.activationCosts,
         activationRewards: action.activationRewards,
         characterId: action.characterId,

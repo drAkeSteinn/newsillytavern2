@@ -648,7 +648,7 @@ export function CharacterPanel() {
           </div>
         </div>
 
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 min-h-0">
           {/* Characters List */}
           <div className="p-2">
             <div className="flex items-center gap-2 px-2 py-1 text-muted-foreground">

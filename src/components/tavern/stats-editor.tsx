@@ -2065,6 +2065,27 @@ function SkillEditor({ skill, index, availableAttributes, availableObjectives = 
               className="min-h-[60px] text-sm"
             />
           </div>
+
+          <div>
+            <div className="flex items-center gap-1.5 mb-1">
+              <Label className="text-xs">Descripción completado</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>Texto que se guarda y se inyecta en el LLM cuando la acción se realiza.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Si se deja vacío, se usará la Descripción normal.</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <Textarea
+              value={skill.completedDescription || ''}
+              onChange={(e) => onChange(index, { completedDescription: e.target.value || undefined })}
+              placeholder="Texto que aparece cuando la acción se realiza..."
+              className="min-h-[60px] text-sm"
+            />
+          </div>
           
           <div>
             <div className="flex items-center gap-1.5 mb-1">

@@ -46,23 +46,23 @@ function buildSummaryPrompt(
   previousSummary?: string
 ): { systemPrompt: string; userPrompt: string } {
   
-  const systemPrompt = `You are a memory summarization AI for a roleplay conversation.
-You generate "recuerdos anteriores" (previous memories) that preserve the continuity of the story.
-Your task is to create concise, comprehensive recuerdos anteriores that preserve:
-- Key events and plot developments
-- Important character decisions and motivations
-- Emotional moments and relationship changes
-- World-building details and established facts
-- Ongoing quests or objectives
+  const systemPrompt = `Eres una IA de resumen de memoria para una conversación de rol.
+Generas "recuerdos anteriores" que preservan la continuidad de la historia.
+Tu tarea es crear recuerdos anteriores concisos y completos que preserven:
+- Eventos clave y desarrollos de la trama
+- Decisiones importantes de los personajes y sus motivaciones
+- Momentos emocionales y cambios en las relaciones
+- Detalles del mundo y hechos establecidos
+- Misiones u objetivos en curso
 
-Guidelines:
-- Write as a narrative summary, not bullet points
-- Maintain chronological order
-- Preserve the tone and style of the roleplay
-- Focus on information that would be important for future conversations
-- Avoid redundant details
-- Keep the summary under ${settings.maxSummaryTokens} tokens
-- If a previous summary exists, integrate it and update with new information`;
+Directrices:
+- Escribe como un resumen narrativo, no como una lista de viñetas
+- Mantén el orden cronológico
+- Preserva el tono y estilo del rol
+- Enfócate en información que sea importante para conversaciones futuras
+- Evita detalles redundantes
+- Mantén el resumen bajo ${settings.maxSummaryTokens} tokens
+- Si existe un resumen previo, intégralo y actualízalo con la nueva información`;
 
   // Format messages for summarization
   const formattedMessages = messages
@@ -90,10 +90,10 @@ Guidelines:
     userPrompt = `Resumen anterior:
 ${previousSummary}
 
-New Messages to Integrate:
+Nuevos mensajes a integrar:
 ${formattedMessages}
 
-Please update the recuerdos anteriores to include the new information while preserving important details from the previous summary.`;
+Actualiza los recuerdos anteriores para incluir la nueva información, preservando los detalles importantes del resumen previo.`;
   } else {
     userPrompt = customPrompt;
   }
@@ -106,7 +106,7 @@ Please update the recuerdos anteriores to include the new information while pres
 // ============================================
 
 function estimateTokens(text: string): number {
-  // Rough estimation: ~4 characters per token for English
+  // Estimación aproximada: ~4 caracteres por token para español
   return Math.ceil(text.length / 4);
 }
 

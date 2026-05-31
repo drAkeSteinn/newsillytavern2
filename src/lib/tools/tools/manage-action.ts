@@ -167,8 +167,10 @@ export async function manageActionExecutor(
     // Build display message with resolved template keys (comprehensive resolution)
     const resolvedName = resolveToolKeysComprehensive(matchedSkill.name, context);
     const resolvedDescription = resolveToolKeysComprehensive(matchedSkill.description || '', context);
+    const resolvedCompletedDescription = resolveToolKeysComprehensive(matchedSkill.completedDescription || matchedSkill.description || '', context);
     const resolvedSkillName = resolvedName;
     const resolvedSkillDescription = resolvedDescription;
+    const resolvedSkillCompletedDescription = resolvedCompletedDescription;
 
     const lines: string[] = [];
     lines.push(`⚔️ Acción ejecutada: ${resolvedName}`);
@@ -196,6 +198,7 @@ export async function manageActionExecutor(
         skillId: matchedSkill.id,
         skillName: resolvedSkillName,
         skillDescription: resolvedSkillDescription,
+        skillCompletedDescription: resolvedSkillCompletedDescription,
         narrative,
         hasCosts: (matchedSkill.activationCosts || []).length > 0,
         hasRewards: (matchedSkill.activationRewards || []).length > 0,
@@ -205,6 +208,7 @@ export async function manageActionExecutor(
         skillId: matchedSkill.id,
         skillName: resolvedSkillName,
         skillDescription: resolvedSkillDescription,
+        skillCompletedDescription: resolvedSkillCompletedDescription,
         activationCosts: matchedSkill.activationCosts || [],
         activationRewards: matchedSkill.activationRewards || [],
         characterId,

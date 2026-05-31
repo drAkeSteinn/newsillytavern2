@@ -92,6 +92,7 @@ export interface ToolExecutionResult {
     skillId: string;
     skillName: string;
     skillDescription?: string;
+    skillCompletedDescription?: string;
     activationCosts: ActivationCost[];
     activationRewards: QuestReward[];
     characterId: string;

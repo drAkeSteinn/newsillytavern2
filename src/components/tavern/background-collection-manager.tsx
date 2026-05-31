@@ -103,6 +103,10 @@ export function BackgroundCollectionManager({ open, onOpenChange }: CollectionMa
     setIsLoading(true);
     try {
       const response = await fetch('/api/backgrounds/collections');
+      if (!response.ok) {
+        bgLogger.error('Error fetching collections', { status: response.status });
+        return [];
+      }
       const data = await response.json();
       setCollections(data.collections || []);
       return data.collections || [];
@@ -148,6 +152,11 @@ export function BackgroundCollectionManager({ open, onOpenChange }: CollectionMa
         })
       });
       
+      if (!response.ok) {
+        alert(`Error del servidor (${response.status})`);
+        return;
+      }
+      
       const data = await response.json();
       
       if (data.success) {
@@ -181,6 +190,11 @@ export function BackgroundCollectionManager({ open, onOpenChange }: CollectionMa
         { method: 'DELETE' }
       );
       
+      if (!response.ok) {
+        alert(`Error del servidor (${response.status})`);
+        return;
+      }
+      
       const data = await response.json();
       
       if (data.success) {
@@ -211,6 +225,11 @@ export function BackgroundCollectionManager({ open, onOpenChange }: CollectionMa
         `/api/backgrounds/collections?folderName=${encodeURIComponent(folderName || '')}&filename=${encodeURIComponent(deleteTarget.filename || '')}`,
         { method: 'DELETE' }
       );
+      
+      if (!response.ok) {
+        alert(`Error del servidor (${response.status})`);
+        return;
+      }
       
       const data = await response.json();
       
@@ -289,6 +308,11 @@ export function BackgroundCollectionManager({ open, onOpenChange }: CollectionMa
           transitionDuration: localCollection.transitionDuration
         })
       });
+      
+      if (!response.ok) {
+        alert(`Error del servidor (${response.status})`);
+        return;
+      }
       
       const data = await response.json();
       

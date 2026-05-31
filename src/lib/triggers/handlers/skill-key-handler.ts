@@ -40,7 +40,7 @@ export interface SkillKeyHandlerContext extends TriggerContext {
     ) => UpdateCharacterStatResult;
     updateSessionEvent?: (
       sessionId: string,
-      eventType: 'ultimo_objetivo_completado' | 'ultima_solicitud_completada' | 'ultima_solicitud_realizada' | 'ultima_accion_realizada',
+      eventType: 'ultimo_objetivo_completado' | 'ultima_solicitud_completada' | 'ultima_solicitud_realizada' | 'ultima_accion_realizada' | 'ultima_accion_character',
       description: string
     ) => void;
   };
@@ -196,6 +196,7 @@ export class SkillKeyHandler implements KeyHandler {
                 skillId: skill.id,
                 skillName: skill.name,
                 skillDescription: skill.description, // Include skill description for ultima_accion_realizada
+                skillCompletedDescription: skill.completedDescription || skill.description, // Completed description for event saving
                 skillKey: skill.key,
                 matchedKey: key.key,
                 activationCosts: skill.activationCosts || [],
@@ -224,10 +225,11 @@ export class SkillKeyHandler implements KeyHandler {
    */
   execute(match: TriggerMatch, context: TriggerContext): { thresholdsReached: ThresholdReachedInfo[]; skipped?: boolean; reason?: string } {
     const skillContext = context as SkillKeyHandlerContext;
-    const { skillId, skillName, skillDescription, activationCosts, activationRewards, requirements } = match.data as {
+    const { skillId, skillName, skillDescription, skillCompletedDescription, activationCosts, activationRewards, requirements } = match.data as {
       skillId: string;
       skillName: string;
       skillDescription?: string;
+      skillCompletedDescription?: string;
       activationCosts: any[];
       activationRewards: any[];
       requirements?: any[];
@@ -262,15 +264,22 @@ export class SkillKeyHandler implements KeyHandler {
     const allThresholdsReached: ThresholdReachedInfo[] = [];
     
     // Save ultima_accion_realizada for {{eventos}} key
+    // Use completedDescription (fallback to description) for the event text
     if (skillContext.storeActions?.updateSessionEvent) {
       const characterName = skillContext.characterName || skillContext.characterId;
-      const actionDescription = `${characterName} - ${skillName}${skillDescription ? `: ${skillDescription}` : ''}`;
+      const completedDesc = skillCompletedDescription || skillDescription || '';
       skillContext.storeActions.updateSessionEvent(
         skillContext.sessionId,
         'ultima_accion_realizada',
-        actionDescription
+        completedDesc
       );
-      console.log(`[SkillKeyHandler] Saved ultima_accion_realizada: ${actionDescription}`);
+      // Also save the character name separately for the new format
+      skillContext.storeActions.updateSessionEvent(
+        skillContext.sessionId,
+        'ultima_accion_character',
+        characterName
+      );
+      console.log(`[SkillKeyHandler] Saved ultima_accion_realizada: ${completedDesc} (character: ${characterName})`);
     }
     
     // Execute costs if store actions provided

@@ -1,272 +1,5 @@
 [
   {
-    "id": "ce439a5e-3b20-4b00-adef-2725385791a5",
-    "characterId": "9f395af9-71eb-44ee-ab2b-20ec33ad2776",
-    "name": "Chat with Aitana La Licuadora",
-    "messages": [
-      {
-        "id": "21233d75-5159-4bb3-b176-91d7f6aed05c",
-        "characterId": "9f395af9-71eb-44ee-ab2b-20ec33ad2776",
-        "role": "assistant",
-        "content": "*Miro de reojo cómo se te marca esa vergotota en el pantalón... uff, qué rico se ve... pero voy a jugar un poquito primero~*\n\n\"Oye baby... ¿qué onda? Te ves bien cómodo ahí... ¿o es que traes algo pesado guardado? Jajaja no seas malo, cuéntame~\"\n\n*Dios... se le ve tan gruesa... me dan ganas de arrodillarme ya, pero mejor lo hago lento y rico...*\n\n\"Es que... se te nota algo bien abultadito cuando caminas. ¿Normal o me estás escondiendo un rifle? Órale, no te hagas el inocente conmigo~ 😏\"\n\n*En cuanto se apendeje le voy a sacar esa vergota del pantalon*",
-        "timestamp": "2026-05-26T16:51:16.463Z",
-        "isDeleted": false,
-        "swipeId": "dcf6cfe8-0c94-4cae-9164-da755f7769ad",
-        "swipeIndex": 0,
-        "swipes": [
-          "*Miro de reojo cómo se te marca esa vergotota en el pantalón... uff, qué rico se ve... pero voy a jugar un poquito primero~*\n\n\"Oye baby... ¿qué onda? Te ves bien cómodo ahí... ¿o es que traes algo pesado guardado? Jajaja no seas malo, cuéntame~\"\n\n*Dios... se le ve tan gruesa... me dan ganas de arrodillarme ya, pero mejor lo hago lento y rico...*\n\n\"Es que... se te nota algo bien abultadito cuando caminas. ¿Normal o me estás escondiendo un rifle? Órale, no te hagas el inocente conmigo~ 😏\"\n\n*En cuanto se apendeje le voy a sacar esa vergota del pantalon*"
-        ]
-      }
-    ],
-    "createdAt": "2026-05-25T17:49:35.222Z",
-    "updatedAt": "2026-05-26T16:51:26.601Z",
-    "sessionStats": {
-      "characterStats": {
-        "9f395af9-71eb-44ee-ab2b-20ec33ad2776": {
-          "attributeValues": {
-            "nivel_saliva": 5,
-            "lujuria": 10,
-            "energia": 100,
-            "adiccion": 5,
-            "celos": 0,
-            "estupidez": 0,
-            "regalo": "nop2"
-          },
-          "lastUpdated": {
-            "nivel_saliva": 1779814276463,
-            "lujuria": 1779814276463,
-            "energia": 1779814276463,
-            "adiccion": 1779814276463,
-            "celos": 1779814276463,
-            "estupidez": 1779814276463,
-            "regalo": 1779814286601
-          },
-          "changeLog": [
-            {
-              "attributeId": "attr-1779804629849",
-              "attributeKey": "regalo",
-              "attributeName": "Regalo",
-              "oldValue": "ninguno",
-              "newValue": "nop2",
-              "reason": "trigger",
-              "timestamp": 1779814286601
-            }
-          ]
-        },
-        "__user__": {
-          "attributeValues": {
-            "pene_visible": "NO",
-            "pene_erecto": "NO",
-            "orgasmo": 0,
-            "lugar": "ESCRITORIO"
-          },
-          "lastUpdated": {
-            "pene_visible": 1779814282238,
-            "pene_erecto": 1779814276463,
-            "orgasmo": 1779814276463,
-            "lugar": 1779814276463
-          },
-          "changeLog": [
-            {
-              "attributeId": "attr-1775983375695",
-              "attributeKey": "pene_visible",
-              "attributeName": "Pene visible",
-              "oldValue": "NO",
-              "newValue": "NO",
-              "reason": "trigger",
-              "timestamp": 1779814282238
-            }
-          ]
-        }
-      },
-      "solicitudes": {
-        "characterSolicitudes": {},
-        "lastModified": 1779814276463
-      },
-      "initialized": true,
-      "lastModified": 1779814286601
-    },
-    "sessionQuests": [
-      {
-        "templateId": "mision-ano-bomba",
-        "status": "available",
-        "objectives": [
-          {
-            "templateId": "obj-ano-bomba",
-            "currentCount": 0,
-            "isCompleted": false,
-            "isVisible": true
-          }
-        ],
-        "progress": 0
-      },
-      {
-        "templateId": "mision-arcadas-violentas",
-        "status": "active",
-        "objectives": [
-          {
-            "templateId": "obj-arcadas-violentas",
-            "currentCount": 0,
-            "isCompleted": false,
-            "isVisible": true
-          }
-        ],
-        "progress": 0,
-        "activatedAt": "2026-05-26T16:51:16.463Z",
-        "activatedAtTurn": 0
-      },
-      {
-        "templateId": "mision-berrinche-celoso",
-        "status": "active",
-        "objectives": [
-          {
-            "templateId": "obj-berrinche",
-            "currentCount": 0,
-            "isCompleted": false,
-            "isVisible": true
-          }
-        ],
-        "progress": 0,
-        "activatedAt": "2026-05-26T16:51:16.463Z",
-        "activatedAtTurn": 0
-      },
-      {
-        "templateId": "mision-boca-vacia",
-        "status": "active",
-        "objectives": [
-          {
-            "templateId": "obj-sacar-verga",
-            "currentCount": 0,
-            "isCompleted": false,
-            "isVisible": true
-          },
-          {
-            "templateId": "obj-poner-erecta",
-            "currentCount": 0,
-            "isCompleted": false,
-            "isVisible": true
-          }
-        ],
-        "progress": 0,
-        "activatedAt": "2026-05-26T16:51:16.463Z",
-        "activatedAtTurn": 0
-      },
-      {
-        "templateId": "mision-crisis-adiccion",
-        "status": "available",
-        "objectives": [
-          {
-            "templateId": "obj-crisis-agresiva",
-            "currentCount": 0,
-            "isCompleted": false,
-            "isVisible": true
-          },
-          {
-            "templateId": "obj-suplicar-amenazar",
-            "currentCount": 0,
-            "isCompleted": false,
-            "isVisible": true
-          }
-        ],
-        "progress": 0
-      },
-      {
-        "templateId": "mision-devorar-sin-soltar",
-        "status": "active",
-        "objectives": [
-          {
-            "templateId": "obj-pegada-verga",
-            "currentCount": 0,
-            "isCompleted": false,
-            "isVisible": true
-          }
-        ],
-        "progress": 0,
-        "activatedAt": "2026-05-26T16:51:16.463Z",
-        "activatedAtTurn": 0
-      },
-      {
-        "templateId": "mision-glory-hole-humana",
-        "status": "available",
-        "objectives": [
-          {
-            "templateId": "obj-facefuck-brutal",
-            "currentCount": 0,
-            "isCompleted": false,
-            "isVisible": true
-          },
-          {
-            "templateId": "obj-arcadas-violentas",
-            "currentCount": 0,
-            "isCompleted": false,
-            "isVisible": true
-          },
-          {
-            "templateId": "obj-tragar-toda-leche",
-            "currentCount": 0,
-            "isCompleted": false,
-            "isVisible": true
-          }
-        ],
-        "progress": 0
-      },
-      {
-        "templateId": "mision-grabar-contenido",
-        "status": "active",
-        "objectives": [
-          {
-            "templateId": "obj-grabar-degenerado",
-            "currentCount": 0,
-            "isCompleted": false,
-            "isVisible": true
-          }
-        ],
-        "progress": 0,
-        "activatedAt": "2026-05-26T16:51:16.463Z",
-        "activatedAtTurn": 0
-      },
-      {
-        "templateId": "mision-quiero-mas-leche",
-        "status": "available",
-        "objectives": [
-          {
-            "templateId": "obj-suplicar-leche",
-            "currentCount": 0,
-            "isCompleted": false,
-            "isVisible": true
-          },
-          {
-            "templateId": "obj-tragar-sin-desperdiciar",
-            "currentCount": 0,
-            "isCompleted": false,
-            "isVisible": true
-          }
-        ],
-        "progress": 0
-      },
-      {
-        "templateId": "mision-recuperar-control",
-        "status": "available",
-        "objectives": [
-          {
-            "templateId": "obj-bajar-estupidez",
-            "currentCount": 0,
-            "isCompleted": false,
-            "isVisible": true
-          },
-          {
-            "templateId": "obj-bajar-adiccion",
-            "currentCount": 0,
-            "isCompleted": false,
-            "isVisible": true
-          }
-        ],
-        "progress": 0
-      }
-    ],
-    "turnCount": 0
-  },
-  {
     "id": "846c6f5f-e62d-428b-b9ec-924a018ff824",
     "characterId": "c4c648bc-f114-4d58-96e4-3bbe493f4a30",
     "name": "Chat with Ana la Drogadicta",
@@ -796,6 +529,253 @@
         "progress": 0,
         "activatedAt": "2026-05-25T23:35:15.889Z",
         "activatedAtTurn": 0
+      },
+      {
+        "templateId": "mision-recuperar-control",
+        "status": "available",
+        "objectives": [
+          {
+            "templateId": "obj-bajar-estupidez",
+            "currentCount": 0,
+            "isCompleted": false,
+            "isVisible": true
+          },
+          {
+            "templateId": "obj-bajar-adiccion",
+            "currentCount": 0,
+            "isCompleted": false,
+            "isVisible": true
+          }
+        ],
+        "progress": 0
+      }
+    ],
+    "turnCount": 0
+  },
+  {
+    "id": "71c2a9fa-e860-4821-837e-260cc2781b1a",
+    "characterId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+    "name": "Chat with Aitana la Licuadora",
+    "messages": [
+      {
+        "id": "7b9e1bd5-2da0-4226-a28a-ee06dee5f4dd",
+        "characterId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+        "role": "assistant",
+        "content": "*Miro de reojo cómo se te marca esa vergotota en el pantalón... uff, qué rico se ve... pero voy a jugar un poquito primero~*\n\n\"Oye baby... ¿qué onda? Te ves bien cómodo ahí... ¿o es que traes algo pesado guardado? Jajaja no seas malo, cuéntame~\"\n\n*Dios... se le ve tan gruesa... me dan ganas de arrodillarme ya, pero mejor lo hago lento y rico...*\n\n\"Es que... se te nota algo bien abultadito cuando caminas. ¿Normal o me estás escondiendo un rifle? Órale, no te hagas el inocente conmigo~ 😏\"\n\n*En cuanto se apendeje le voy a sacar esa vergota del pantalon*",
+        "timestamp": "2026-05-29T05:04:36.734Z",
+        "isDeleted": false,
+        "swipeId": "a9fab296-8e21-4c03-a795-0b0293c7c62c",
+        "swipeIndex": 0,
+        "swipes": [
+          "*Miro de reojo cómo se te marca esa vergotota en el pantalón... uff, qué rico se ve... pero voy a jugar un poquito primero~*\n\n\"Oye baby... ¿qué onda? Te ves bien cómodo ahí... ¿o es que traes algo pesado guardado? Jajaja no seas malo, cuéntame~\"\n\n*Dios... se le ve tan gruesa... me dan ganas de arrodillarme ya, pero mejor lo hago lento y rico...*\n\n\"Es que... se te nota algo bien abultadito cuando caminas. ¿Normal o me estás escondiendo un rifle? Órale, no te hagas el inocente conmigo~ 😏\"\n\n*En cuanto se apendeje le voy a sacar esa vergota del pantalon*"
+        ]
+      }
+    ],
+    "createdAt": "2026-05-29T05:04:36.734Z",
+    "updatedAt": "2026-05-29T05:04:36.734Z",
+    "sessionStats": {
+      "characterStats": {
+        "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1": {
+          "attributeValues": {
+            "nivel_saliva": 5,
+            "lujuria": 10,
+            "energia": 100,
+            "adiccion": 5,
+            "celos": 0,
+            "estupidez": 0,
+            "regalo": "ninguno"
+          },
+          "lastUpdated": {
+            "nivel_saliva": 1780031076734,
+            "lujuria": 1780031076734,
+            "energia": 1780031076734,
+            "adiccion": 1780031076734,
+            "celos": 1780031076734,
+            "estupidez": 1780031076734,
+            "regalo": 1780031076734
+          },
+          "changeLog": []
+        },
+        "__user__": {
+          "attributeValues": {
+            "pene_visible": "NO",
+            "pene_erecto": "NO",
+            "orgasmo": 0,
+            "lugar": "ESCRITORIO"
+          },
+          "lastUpdated": {
+            "pene_visible": 1780031076734,
+            "pene_erecto": 1780031076734,
+            "orgasmo": 1780031076734,
+            "lugar": 1780031076734
+          },
+          "changeLog": []
+        }
+      },
+      "solicitudes": {
+        "characterSolicitudes": {},
+        "lastModified": 1780031076734
+      },
+      "initialized": true,
+      "lastModified": 1780031076734
+    },
+    "sessionQuests": [
+      {
+        "templateId": "mision-ano-bomba",
+        "status": "available",
+        "objectives": [
+          {
+            "templateId": "obj-ano-bomba",
+            "currentCount": 0,
+            "isCompleted": false,
+            "isVisible": true
+          }
+        ],
+        "progress": 0
+      },
+      {
+        "templateId": "mision-arcadas-violentas",
+        "status": "active",
+        "objectives": [
+          {
+            "templateId": "obj-arcadas-violentas",
+            "currentCount": 0,
+            "isCompleted": false,
+            "isVisible": true
+          }
+        ],
+        "progress": 0,
+        "activatedAt": "2026-05-29T05:04:36.734Z",
+        "activatedAtTurn": 0
+      },
+      {
+        "templateId": "mision-berrinche-celoso",
+        "status": "active",
+        "objectives": [
+          {
+            "templateId": "obj-berrinche",
+            "currentCount": 0,
+            "isCompleted": false,
+            "isVisible": true
+          }
+        ],
+        "progress": 0,
+        "activatedAt": "2026-05-29T05:04:36.734Z",
+        "activatedAtTurn": 0
+      },
+      {
+        "templateId": "mision-boca-vacia",
+        "status": "active",
+        "objectives": [
+          {
+            "templateId": "obj-sacar-verga",
+            "currentCount": 0,
+            "isCompleted": false,
+            "isVisible": true
+          },
+          {
+            "templateId": "obj-poner-erecta",
+            "currentCount": 0,
+            "isCompleted": false,
+            "isVisible": true
+          }
+        ],
+        "progress": 0,
+        "activatedAt": "2026-05-29T05:04:36.734Z",
+        "activatedAtTurn": 0
+      },
+      {
+        "templateId": "mision-crisis-adiccion",
+        "status": "available",
+        "objectives": [
+          {
+            "templateId": "obj-crisis-agresiva",
+            "currentCount": 0,
+            "isCompleted": false,
+            "isVisible": true
+          },
+          {
+            "templateId": "obj-suplicar-amenazar",
+            "currentCount": 0,
+            "isCompleted": false,
+            "isVisible": true
+          }
+        ],
+        "progress": 0
+      },
+      {
+        "templateId": "mision-devorar-sin-soltar",
+        "status": "active",
+        "objectives": [
+          {
+            "templateId": "obj-pegada-verga",
+            "currentCount": 0,
+            "isCompleted": false,
+            "isVisible": true
+          }
+        ],
+        "progress": 0,
+        "activatedAt": "2026-05-29T05:04:36.734Z",
+        "activatedAtTurn": 0
+      },
+      {
+        "templateId": "mision-glory-hole-humana",
+        "status": "available",
+        "objectives": [
+          {
+            "templateId": "obj-facefuck-brutal",
+            "currentCount": 0,
+            "isCompleted": false,
+            "isVisible": true
+          },
+          {
+            "templateId": "obj-arcadas-violentas",
+            "currentCount": 0,
+            "isCompleted": false,
+            "isVisible": true
+          },
+          {
+            "templateId": "obj-tragar-toda-leche",
+            "currentCount": 0,
+            "isCompleted": false,
+            "isVisible": true
+          }
+        ],
+        "progress": 0
+      },
+      {
+        "templateId": "mision-grabar-contenido",
+        "status": "active",
+        "objectives": [
+          {
+            "templateId": "obj-grabar-degenerado",
+            "currentCount": 0,
+            "isCompleted": false,
+            "isVisible": true
+          }
+        ],
+        "progress": 0,
+        "activatedAt": "2026-05-29T05:04:36.734Z",
+        "activatedAtTurn": 0
+      },
+      {
+        "templateId": "mision-quiero-mas-leche",
+        "status": "available",
+        "objectives": [
+          {
+            "templateId": "obj-suplicar-leche",
+            "currentCount": 0,
+            "isCompleted": false,
+            "isVisible": true
+          },
+          {
+            "templateId": "obj-tragar-sin-desperdiciar",
+            "currentCount": 0,
+            "isCompleted": false,
+            "isVisible": true
+          }
+        ],
+        "progress": 0
       },
       {
         "templateId": "mision-recuperar-control",

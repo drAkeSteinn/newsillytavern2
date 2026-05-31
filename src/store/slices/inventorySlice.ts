@@ -25,6 +25,7 @@ import {
   type InventoryNotification,
   type CostOperator,
   type SessionStats,
+  type DynamicEquipmentState,
 } from '@/types';
 
 // Re-export for convenience
@@ -42,39 +43,43 @@ function generateId(prefix: string): string {
  * Apply a single item attribute effect to SessionStats via updateCharacterStat.
  * This directly modifies the session stats so the UI reflects the change.
  *
+ * Supports both numeric and text/keyword attributes:
+ * - Numeric: applies arithmetic operators (+, -, *, /, =, set_min, set_max)
+ * - Text/Keyword: only '=' operator is valid, sets the attribute to the string value
+ *
  * IMPORTANT: When the character stats for a target don't exist in the session
  * yet (e.g., persona stats were configured after session creation), we must
  * look up the default value from the statsConfig BEFORE computing the effect.
- * Otherwise, updateCharacterStat's auto-initialization would create default
- * values, but our computation would be based on 0 (the "missing" value),
- * resulting in incorrect attribute values (e.g., vida=10 instead of vida=110).
  */
 function applyEffectToSessionStats(
   stateAny: any,
   effect: ItemAttributeEffect
 ): void {
   const sessionId = stateAny.activeSessionId as string | undefined;
-  if (!sessionId) {
-    console.warn('[Inventory] applyEffectToSessionStats: no active session');
+  if (!sessionId) return;
+
+  const targetId = effect.targetId || '__user__';
+
+  // Detect if this is a text/keyword attribute by checking the statsConfig
+  const attrType = getAttributeType(stateAny, targetId, effect.attributeKey);
+  const isTextAttr = attrType === 'text' || attrType === 'keyword';
+
+  // For text/keyword attributes with '=' operator, set the string value directly
+  if (isTextAttr && effect.operator === '=') {
+    const newValue = typeof effect.value === 'string' ? effect.value : String(effect.value);
+    stateAny.updateCharacterStat?.(sessionId, targetId, effect.attributeKey, newValue, 'trigger');
     return;
   }
 
-  const targetId = effect.targetId || '__user__';
+  // For numeric attributes, proceed with arithmetic operations
   let currentValue = stateAny.getAttributeValue?.(sessionId, targetId, effect.attributeKey);
 
   // If the attribute doesn't exist yet in session stats, look up the default
-  // value from the character's/persona's statsConfig. This is critical because
-  // updateCharacterStat auto-initializes character stats with defaults, so
-  // computing based on 0 would give wrong results (e.g., 0+10=10 instead of 100+10=110).
+  // value from the character's/persona's statsConfig.
   if (currentValue === null || currentValue === undefined) {
     const defaultValue = getDefaultAttributeValue(stateAny, targetId, effect.attributeKey);
     if (defaultValue !== null) {
       currentValue = defaultValue;
-      console.log('[Inventory] applyEffectToSessionStats: attribute not in session, using config default', {
-        targetId,
-        attributeKey: effect.attributeKey,
-        defaultValue,
-      });
     }
   }
 
@@ -84,49 +89,30 @@ function applyEffectToSessionStats(
     : 0;
 
   if (isNaN(currentNum) && currentValue !== null && currentValue !== undefined) {
-    console.warn('[Inventory] applyEffectToSessionStats: current value is NaN', { targetId, attributeKey: effect.attributeKey, currentValue });
+    // If we can't parse as number but it's a text value with '=' operator, set directly
+    if (effect.operator === '=' && typeof effect.value === 'string') {
+      stateAny.updateCharacterStat?.(sessionId, targetId, effect.attributeKey, effect.value, 'trigger');
+      return;
+    }
     return;
   }
 
-  let newValue = currentNum;
+  const effectNumValue = typeof effect.value === 'number' ? effect.value : parseFloat(String(effect.value));
+
+  let newValue: number | string = currentNum;
   switch (effect.operator) {
-    case '+': newValue = currentNum + effect.value; break;
-    case '-': newValue = currentNum - effect.value; break;
-    case '*': newValue = currentNum * effect.value; break;
-    case '/': newValue = effect.value !== 0 ? currentNum / effect.value : currentNum; break;
-    case '=': newValue = effect.value; break;
-    case 'set_min': newValue = Math.min(currentNum, effect.value); break;
-    case 'set_max': newValue = Math.max(currentNum, effect.value); break;
+    case '+': newValue = currentNum + effectNumValue; break;
+    case '-': newValue = currentNum - effectNumValue; break;
+    case '*': newValue = currentNum * effectNumValue; break;
+    case '/': newValue = effectNumValue !== 0 ? currentNum / effectNumValue : currentNum; break;
+    case '=': newValue = effectNumValue; break;
+    case 'set_min': newValue = Math.min(currentNum, effectNumValue); break;
+    case 'set_max': newValue = Math.max(currentNum, effectNumValue); break;
   }
 
-  newValue = Math.round(newValue * 100) / 100;
+  newValue = Math.round((newValue as number) * 100) / 100;
 
-  console.log('[Inventory] applyEffectToSessionStats:', {
-    sessionId: sessionId.slice(0, 8),
-    targetId,
-    attributeKey: effect.attributeKey,
-    currentValue,
-    currentNum,
-    operator: effect.operator,
-    effectValue: effect.value,
-    newValue,
-  });
-
-  const result = stateAny.updateCharacterStat?.(sessionId, targetId, effect.attributeKey, newValue, 'trigger');
-  if (!result || result.oldValue === undefined) {
-    console.warn('[Inventory] applyEffectToSessionStats: updateCharacterStat returned no result', {
-      sessionId: sessionId.slice(0, 8),
-      targetId,
-      attributeKey: effect.attributeKey,
-      hasUpdateCharacterStat: typeof stateAny.updateCharacterStat === 'function',
-    });
-  } else {
-    console.log('[Inventory] applyEffectToSessionStats: updateCharacterStat result', {
-      oldValue: result.oldValue,
-      newValue: result.newValue,
-      clamped: result.clamped,
-    });
-  }
+  stateAny.updateCharacterStat?.(sessionId, targetId, effect.attributeKey, newValue, 'trigger');
 }
 
 /**
@@ -162,6 +148,34 @@ function getDefaultAttributeValue(
 }
 
 /**
+ * Look up the type of an attribute from the character's/persona's statsConfig.
+ * Returns 'number', 'text', 'keyword', or null if not found.
+ */
+function getAttributeType(
+  stateAny: any,
+  targetId: string,
+  attributeKey: string
+): 'number' | 'text' | 'keyword' | null {
+  let statsConfig: any = undefined;
+
+  if (targetId === '__user__') {
+    const activePersonaId = stateAny.activePersonaId;
+    const personas: any[] = stateAny.personas || [];
+    const activePersona = personas.find((p: any) => p.id === activePersonaId);
+    statsConfig = activePersona?.statsConfig;
+  } else {
+    const characters: any[] = stateAny.characters || [];
+    const character = characters.find((c: any) => c.id === targetId);
+    statsConfig = character?.statsConfig;
+  }
+
+  if (!statsConfig?.attributes) return null;
+
+  const attrDef = statsConfig.attributes.find((a: any) => a.key === attributeKey);
+  return attrDef?.type || null;
+}
+
+/**
  * Apply multiple item effects to SessionStats.
  */
 function applyEffectsToSessionStats(
@@ -174,8 +188,50 @@ function applyEffectsToSessionStats(
 }
 
 /**
+ * Get the cycled text value for a dynamic text effect.
+ * For values containing `|` separators, returns the value at (activeTurns % parts.length).
+ * For single values, returns the value as-is.
+ */
+function getDynamicTextValue(value: string | number, activeTurns: number): string | number {
+  if (typeof value !== 'string') return value;
+  const parts = value.split('|').map(p => p.trim()).filter(Boolean);
+  if (parts.length <= 1) return value;
+  return parts[activeTurns % parts.length];
+}
+
+/**
+ * Apply a single dynamic effect for a given turn.
+ * - For text/keyword attributes: cycles through `|`-separated values or sets single value.
+ * - For numeric attributes: applies the operator to the current value (cumulative).
+ */
+function applyDynamicEffectToSessionStats(
+  stateAny: any,
+  effect: ItemAttributeEffect,
+  activeTurns: number
+): void {
+  const sessionId = stateAny.activeSessionId as string | undefined;
+  if (!sessionId) return;
+
+  const targetId = effect.targetId || '__user__';
+  const attrType = getAttributeType(stateAny, targetId, effect.attributeKey);
+  const isTextAttr = attrType === 'text' || attrType === 'keyword';
+
+  if (isTextAttr) {
+    // For text attributes, cycle through values or set single value
+    const textValue = getDynamicTextValue(effect.value, activeTurns);
+    const newValue = typeof textValue === 'string' ? textValue : String(textValue);
+    stateAny.updateCharacterStat?.(sessionId, targetId, effect.attributeKey, newValue, 'trigger');
+    return;
+  }
+
+  // For numeric attributes, apply the operator (cumulative)
+  applyEffectToSessionStats(stateAny, effect);
+}
+
+/**
  * Apply a fallback value to SessionStats for a given target/attribute.
  * If no fallback value is provided, reverse the operator of the given effect.
+ * Supports both numeric and text/keyword attributes.
  */
 function applyFallbackToSessionStats(
   stateAny: any,
@@ -189,30 +245,47 @@ function applyFallbackToSessionStats(
 
   const resolvedTargetId = targetId || '__user__';
 
+  // Detect attribute type for proper handling
+  const attrType = getAttributeType(stateAny, resolvedTargetId, attributeKey);
+  const isTextAttr = attrType === 'text' || attrType === 'keyword';
+
   if (fallbackValue !== undefined) {
-    // Use explicit fallback value
-    const numValue = typeof fallbackValue === 'number'
-      ? fallbackValue
-      : (isNaN(Number(fallbackValue)) ? fallbackValue : Number(fallbackValue));
+    // Use explicit fallback value - for text attrs keep as string, for numeric parse
+    let valueToSet: string | number;
+    if (isTextAttr) {
+      valueToSet = typeof fallbackValue === 'string' ? fallbackValue : String(fallbackValue);
+    } else {
+      valueToSet = typeof fallbackValue === 'number'
+        ? fallbackValue
+        : (isNaN(Number(fallbackValue)) ? fallbackValue : Number(fallbackValue));
+    }
     try {
-      stateAny.updateCharacterStat?.(sessionId, resolvedTargetId, attributeKey, numValue, 'trigger');
+      stateAny.updateCharacterStat?.(sessionId, resolvedTargetId, attributeKey, valueToSet, 'trigger');
     } catch {
       // Non-critical
     }
   } else if (effect) {
-    // No fallback - reverse the operator
+    // No fallback - for text/keyword attributes with '=', we can't reverse without fallback
+    if (isTextAttr) {
+      // Text attributes cannot be auto-reversed, skip silently
+      return;
+    }
+
+    // No fallback - reverse the operator for numeric attributes
     const currentValue = stateAny.getAttributeValue?.(sessionId, resolvedTargetId, attributeKey);
     if (currentValue === null || currentValue === undefined) return;
 
     const currentNum = typeof currentValue === 'number' ? currentValue : parseFloat(String(currentValue));
     if (isNaN(currentNum)) return;
 
+    const effectNumValue = typeof effect.value === 'number' ? effect.value : parseFloat(String(effect.value));
+
     let newValue = currentNum;
     switch (effect.operator) {
-      case '+': newValue = currentNum - effect.value; break; // reverse add
-      case '-': newValue = currentNum + effect.value; break; // reverse subtract
-      case '*': newValue = effect.value !== 0 ? currentNum / effect.value : currentNum; break; // reverse multiply
-      case '/': newValue = currentNum * effect.value; break; // reverse divide
+      case '+': newValue = currentNum - effectNumValue; break; // reverse add
+      case '-': newValue = currentNum + effectNumValue; break; // reverse subtract
+      case '*': newValue = effectNumValue !== 0 ? currentNum / effectNumValue : currentNum; break; // reverse multiply
+      case '/': newValue = currentNum * effectNumValue; break; // reverse divide
       case '=': break; // can't reverse a set without fallback
       case 'set_min': break; // can't reverse without fallback
       case 'set_max': break; // can't reverse without fallback
@@ -356,9 +429,12 @@ export interface InventorySlice {
   // ===== Pending Fallbacks =====
   pendingFallbacks: Array<{ targetId: string; attributeKey: string; fallbackValue: string | number }>;
 
+  // ===== Dynamic Equipment State =====
+  dynamicEquipmentState: Record<string, DynamicEquipmentState>;  // key: `${personaId}:${itemId}`
+
   // ===== Utility =====
-  exportInventory: () => { items: Item[]; activeEffects: ActiveConsumableEffect[]; settings: InventoryV2Settings };
-  importInventory: (data: { items?: Item[]; activeEffects?: ActiveConsumableEffect[]; settings?: InventoryV2Settings }) => void;
+  exportInventory: () => { items: Item[]; activeEffects: ActiveConsumableEffect[]; settings: InventoryV2Settings; dynamicEquipmentState: Record<string, DynamicEquipmentState> };
+  importInventory: (data: { items?: Item[]; activeEffects?: ActiveConsumableEffect[]; settings?: InventoryV2Settings; dynamicEquipmentState?: Record<string, DynamicEquipmentState> }) => void;
 }
 
 // ============================================
@@ -374,6 +450,7 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
   pendingItemMessage: null,
   pendingEquipAction: null,
   pendingFallbacks: [],
+  dynamicEquipmentState: {},
 
   // ===== Item Registry Actions =====
   addItem: (item) => set((state) => ({
@@ -386,19 +463,49 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
     )
   })),
 
-  deleteItem: (id) => set((state) => {
-    // Also remove from all personas' inventories and active effects
-    const stateAny = state as any;
-    const personas = stateAny.personas as Array<{ id: string; inventoryItems: PersonaInventoryEntry[] }> | undefined;
+  deleteItem: (id) => {
+    const stateAny = get() as any;
+    const item = get().getItemById(id);
 
-    // We need to update personas to remove this item from their inventories
-    // This is handled by calling updatePersona for each affected persona
-    // For simplicity, we just remove from items and active effects
-    return {
+    // Reverse effects and clean up personas that have this item
+    if (item) {
+      const personas = stateAny.personas as Array<{ id: string; inventoryItems?: PersonaInventoryEntry[] }> | undefined;
+      if (personas) {
+        for (const persona of personas) {
+          const entry = persona.inventoryItems?.find(e => e.itemId === id);
+          if (entry) {
+            // If the item is equipped, reverse its effects first
+            if (entry.equipped && item.type === 'equipment' && item.attributeEffects) {
+              for (const ae of item.attributeEffects) {
+                const effectTargetId = entry.targetOverrideId || ae.targetId;
+                applyFallbackToSessionStats(stateAny, effectTargetId, ae.attributeKey, ae.fallbackValue, ae);
+              }
+            }
+            // Remove the item from this persona's inventory
+            const updatedItems = persona.inventoryItems?.filter(e => e.itemId !== id) || [];
+            stateAny.updatePersona(persona.id, { inventoryItems: updatedItems });
+          }
+        }
+      }
+    }
+
+    // Also reverse active consumable effects for this item
+    const activeEffects = get().activeConsumableEffects.filter(e => e.itemId === id);
+    for (const effect of activeEffects) {
+      if (item?.attributeEffects) {
+        for (const ae of item.attributeEffects) {
+          const activeEffect = effect.effects.find(e => e.attributeKey === ae.attributeKey);
+          const effectTargetId = activeEffect?.targetId || ae.targetId;
+          applyFallbackToSessionStats(stateAny, effectTargetId, ae.attributeKey, ae.fallbackValue, ae);
+        }
+      }
+    }
+
+    set((state) => ({
       items: state.items.filter(item => item.id !== id),
       activeConsumableEffects: state.activeConsumableEffects.filter(e => e.itemId !== id),
-    };
-  }),
+    }));
+  },
 
   getItemById: (id) => {
     return get().items.find(item => item.id === id);
@@ -540,6 +647,7 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
 
     // If this item uses a slot, unequip any existing item in that slot first
     let updatedItems = [...persona.inventoryItems];
+    const dynamicEqStateUpdates: Record<string, DynamicEquipmentState | undefined> = {};
     if (item.slot) {
       updatedItems = updatedItems.map(e => {
         const eItem = get().getItemById(e.itemId);
@@ -550,6 +658,11 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
               const oldTargetId = e.targetOverrideId || ae.targetId;
               applyFallbackToSessionStats(stateAny, oldTargetId, ae.attributeKey, ae.fallbackValue, ae);
             }
+          }
+          // Clean up dynamic equipment state for the old item
+          const oldStateKey = `${personaId}:${e.itemId}`;
+          if (get().dynamicEquipmentState[oldStateKey]) {
+            dynamicEqStateUpdates[oldStateKey] = undefined; // mark for deletion
           }
           return { ...e, equipped: false };
         }
@@ -566,21 +679,38 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
 
     // Apply equipment effects directly to SessionStats so UI reflects changes
     if (item.attributeEffects && item.attributeEffects.length > 0) {
-      applyEffectsToSessionStats(stateAny, item.attributeEffects);
+      const staticEffects = item.attributeEffects.filter(e => e.mode !== 'dynamic');
+      const dynamicEffects = item.attributeEffects.filter(e => e.mode === 'dynamic');
 
-      // Verify effects were applied
-      const verifyState = get() as any;
-      for (const ae of item.attributeEffects) {
-        const targetId = ae.targetId || '__user__';
-        const actualValue = verifyState.getAttributeValue?.(verifyState.activeSessionId, targetId, ae.attributeKey);
-        console.log('[Inventory] equipItem: verification after apply', {
-          attributeKey: ae.attributeKey,
-          targetId,
-          expectedOperator: ae.operator,
-          expectedDelta: ae.value,
-          actualValue,
-        });
+      // Apply static effects once
+      if (staticEffects.length > 0) {
+        applyEffectsToSessionStats(stateAny, staticEffects);
       }
+
+      // Apply dynamic effects for turn 0
+      for (const dynEffect of dynamicEffects) {
+        applyDynamicEffectToSessionStats(stateAny, dynEffect, 0);
+      }
+
+      // Track dynamic equipment state
+      if (dynamicEffects.length > 0) {
+        dynamicEqStateUpdates[`${personaId}:${itemId}`] = { activeTurns: 0, appliedAt: new Date().toISOString() };
+      }
+    }
+
+    // Apply dynamic equipment state updates (additions and deletions)
+    if (Object.keys(dynamicEqStateUpdates).length > 0) {
+      set((state) => {
+        const newState = { ...state.dynamicEquipmentState };
+        for (const [key, value] of Object.entries(dynamicEqStateUpdates)) {
+          if (value === undefined) {
+            delete newState[key];
+          } else {
+            newState[key] = value;
+          }
+        }
+        return { dynamicEquipmentState: newState };
+      });
     }
 
     const message = item.useMessage || `Equipaste ${item.name}`;
@@ -616,6 +746,23 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
 
     stateAny.updatePersona(personaId, { inventoryItems: updatedItems });
 
+    // Apply fallback values FIRST (before message) so attributes are updated
+    // before the LLM sees the message in the prompt
+    if (item.attributeEffects) {
+      for (const ae of item.attributeEffects) {
+        const effectTargetId = targetOverrideId || ae.targetId;
+        applyFallbackToSessionStats(stateAny, effectTargetId, ae.attributeKey, ae.fallbackValue, ae);
+      }
+    }
+
+    // Clean up dynamic equipment state
+    const stateKey = `${personaId}:${itemId}`;
+    if (get().dynamicEquipmentState[stateKey]) {
+      const newState = { ...get().dynamicEquipmentState };
+      delete newState[stateKey];
+      set({ dynamicEquipmentState: newState });
+    }
+
     const message = item.unequipMessage || `Desequipaste ${item.name}`;
     get().addInventoryNotification({
       type: 'item_equipped',
@@ -625,17 +772,9 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
       message,
     });
 
-    // Queue message for chat injection
+    // Queue message for chat injection AFTER attribute change
     if (item.unequipMessage) {
       set({ pendingItemMessage: item.unequipMessage });
-    }
-
-    // Apply fallback values directly to SessionStats when unequipping
-    if (item.attributeEffects) {
-      for (const ae of item.attributeEffects) {
-        const effectTargetId = targetOverrideId || ae.targetId;
-        applyFallbackToSessionStats(stateAny, effectTargetId, ae.attributeKey, ae.fallbackValue, ae);
-      }
     }
   },
 
@@ -661,29 +800,13 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
     const stateAny = get() as any;
     const personas = stateAny.personas as Array<{ id: string; inventoryItems?: PersonaInventoryEntry[] }>;
     const persona = personas.find(p => p.id === personaId);
-    if (!persona?.inventoryItems) {
-      console.warn('[Inventory] useConsumable: persona not found or no inventory', { personaId });
-      return null;
-    }
+    if (!persona?.inventoryItems) return null;
 
     const item = get().getItemById(itemId);
-    if (!item || item.type !== 'consumable') {
-      console.warn('[Inventory] useConsumable: item not found or not consumable', { itemId, itemFound: !!item, itemType: item?.type });
-      return null;
-    }
+    if (!item || item.type !== 'consumable') return null;
 
     const entry = persona.inventoryItems.find(e => e.itemId === itemId);
-    if (!entry || entry.quantity <= 0) {
-      console.warn('[Inventory] useConsumable: no inventory entry or zero quantity', { itemId, hasEntry: !!entry, quantity: entry?.quantity });
-      return null;
-    }
-
-    console.log('[Inventory] useConsumable: using item', {
-      itemName: item.name,
-      attributeEffects: item.attributeEffects,
-      useMessage: item.useMessage,
-      duration: item.duration,
-    });
+    if (!entry || entry.quantity <= 0) return null;
 
     // Reduce quantity (consumable is consumed on use)
     const updatedItems = persona.inventoryItems.map(e =>
@@ -723,27 +846,10 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
       activeConsumableEffects: [...state.activeConsumableEffects, effect]
     }));
 
-    // Apply consumable effects directly to SessionStats so UI reflects changes
+    // Apply consumable effects FIRST (before message) so attributes are updated
+    // before the LLM sees the message in the prompt
     if (item.attributeEffects && item.attributeEffects.length > 0) {
-      console.log('[Inventory] useConsumable: applying effects to session stats', {
-        effectsCount: item.attributeEffects.length,
-        effects: item.attributeEffects.map(e => `${e.targetId}.${e.attributeKey} ${e.operator}${e.value}`),
-      });
       applyEffectsToSessionStats(stateAny, item.attributeEffects);
-
-      // Verify effects were applied by reading back the values
-      const verifyState = get() as any;
-      for (const ae of item.attributeEffects) {
-        const targetId = ae.targetId || '__user__';
-        const actualValue = verifyState.getAttributeValue?.(verifyState.activeSessionId, targetId, ae.attributeKey);
-        console.log('[Inventory] useConsumable: verification after apply', {
-          attributeKey: ae.attributeKey,
-          targetId,
-          expectedOperator: ae.operator,
-          expectedDelta: ae.value,
-          actualValue,
-        });
-      }
     }
 
     const message = item.useMessage || `Usaste ${item.name} (${duration} turnos)`;
@@ -756,12 +862,9 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
       message,
     });
 
-    // Queue message for chat injection
+    // Queue message for chat injection AFTER attribute change
     if (item.useMessage) {
-      console.log('[Inventory] useConsumable: queueing pending item message', { useMessage: item.useMessage });
       set({ pendingItemMessage: item.useMessage });
-    } else {
-      console.log('[Inventory] useConsumable: no useMessage configured, skipping chat injection');
     }
 
     return { effect, message };
@@ -770,7 +873,35 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
   // ===== Active Effects =====
   tickEffects: (personaId) => {
     const expiredMessages: string[] = [];
+    const stateAny = get() as any;
 
+    // 1. Apply dynamic consumable effects before decrementing
+    const consumableEffects = get().activeConsumableEffects.filter(e => e.personaId === personaId);
+    for (const activeEffect of consumableEffects) {
+      const dynamicEffects = activeEffect.effects.filter(e => e.mode === 'dynamic');
+      const activeTurns = activeEffect.totalTurns - activeEffect.remainingTurns;
+      for (const dynEffect of dynamicEffects) {
+        applyDynamicEffectToSessionStats(stateAny, dynEffect, activeTurns);
+      }
+    }
+
+    // 2. Apply dynamic equipment effects and increment turn counters
+    const dynamicEqState = { ...get().dynamicEquipmentState };
+    const equippedItems = get().getEquippedItems(personaId);
+    for (const { entry, item } of equippedItems) {
+      const dynamicEffects = (item.attributeEffects || []).filter((e: ItemAttributeEffect) => e.mode === 'dynamic');
+      if (dynamicEffects.length > 0) {
+        const stateKey = `${personaId}:${item.id}`;
+        const currentState = dynamicEqState[stateKey] || { activeTurns: 0, appliedAt: new Date().toISOString() };
+        for (const dynEffect of dynamicEffects) {
+          const resolvedEffect = entry.targetOverrideId ? { ...dynEffect, targetId: entry.targetOverrideId } : dynEffect;
+          applyDynamicEffectToSessionStats(stateAny, resolvedEffect, currentState.activeTurns);
+        }
+        dynamicEqState[stateKey] = { ...currentState, activeTurns: currentState.activeTurns + 1 };
+      }
+    }
+
+    // 3. Decrement consumable turns
     set((state) => ({
       activeConsumableEffects: state.activeConsumableEffects.map(effect => {
         if (effect.personaId !== personaId) return effect;
@@ -780,7 +911,8 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
           expiredMessages.push(msg);
         }
         return { ...effect, remainingTurns: Math.max(0, newRemaining) };
-      })
+      }),
+      dynamicEquipmentState: dynamicEqState,
     }));
 
     return expiredMessages;
@@ -873,8 +1005,29 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
         }
       }
     }
+    // Also apply fallbacks for dynamic equipment effects for this persona
+    const equippedItems = get().getEquippedItems(personaId);
+    for (const { entry, item } of equippedItems) {
+      const dynamicEffects = (item.attributeEffects || []).filter((e: ItemAttributeEffect) => e.mode === 'dynamic');
+      if (dynamicEffects.length > 0) {
+        for (const ae of dynamicEffects) {
+          const effectTargetId = entry.targetOverrideId || ae.targetId;
+          applyFallbackToSessionStats(stateAny, effectTargetId, ae.attributeKey, ae.fallbackValue, ae);
+        }
+      }
+    }
+    // Clean up dynamic equipment state for this persona
+    const dynamicEqState = { ...get().dynamicEquipmentState };
+    let changed = false;
+    for (const key of Object.keys(dynamicEqState)) {
+      if (key.startsWith(`${personaId}:`)) {
+        delete dynamicEqState[key];
+        changed = true;
+      }
+    }
     set((state) => ({
-      activeConsumableEffects: state.activeConsumableEffects.filter(e => e.personaId !== personaId)
+      activeConsumableEffects: state.activeConsumableEffects.filter(e => e.personaId !== personaId),
+      ...(changed ? { dynamicEquipmentState: dynamicEqState } : {}),
     }));
   },
 
@@ -991,6 +1144,7 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
 
     // If this item uses a slot, unequip any existing item in that slot first
     let updatedItems = [...persona.inventoryItems];
+    const dynamicEqStateUpdates: Record<string, DynamicEquipmentState | undefined> = {};
     if (item.slot) {
       updatedItems = updatedItems.map(e => {
         const eItem = get().getItemById(e.itemId);
@@ -1001,6 +1155,11 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
               const oldTargetId = e.targetOverrideId || ae.targetId;
               applyFallbackToSessionStats(stateAny, oldTargetId, ae.attributeKey, ae.fallbackValue, ae);
             }
+          }
+          // Clean up dynamic equipment state for the old item
+          const oldStateKey = `${personaId}:${e.itemId}`;
+          if (get().dynamicEquipmentState[oldStateKey]) {
+            dynamicEqStateUpdates[oldStateKey] = undefined; // mark for deletion
           }
           return { ...e, equipped: false };
         }
@@ -1026,19 +1185,38 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
         targetName: targetOverrideId === '__user__' ? 'Persona'
           : (targetOverrideId ? (stateAny.getCharacterById?.(targetOverrideId)?.name || targetOverrideId) : ae.targetName),
       }));
-      applyEffectsToSessionStats(stateAny, effectsWithTarget);
+      const staticEffects = effectsWithTarget.filter(e => e.mode !== 'dynamic');
+      const dynamicEffects = effectsWithTarget.filter(e => e.mode === 'dynamic');
 
-      // Verify effects were applied
-      const verifyState = get() as any;
-      for (const ae of effectsWithTarget) {
-        const tid = ae.targetId || '__user__';
-        const actualValue = verifyState.getAttributeValue?.(verifyState.activeSessionId, tid, ae.attributeKey);
-        console.log('[Inventory] executeEquipWithTarget: verification after apply', {
-          attributeKey: ae.attributeKey,
-          targetId: tid,
-          actualValue,
-        });
+      // Apply static effects once
+      if (staticEffects.length > 0) {
+        applyEffectsToSessionStats(stateAny, staticEffects);
       }
+
+      // Apply dynamic effects for turn 0
+      for (const dynEffect of dynamicEffects) {
+        applyDynamicEffectToSessionStats(stateAny, dynEffect, 0);
+      }
+
+      // Track dynamic equipment state
+      if (dynamicEffects.length > 0) {
+        dynamicEqStateUpdates[`${personaId}:${itemId}`] = { activeTurns: 0, appliedAt: new Date().toISOString() };
+      }
+    }
+
+    // Apply dynamic equipment state updates (additions and deletions)
+    if (Object.keys(dynamicEqStateUpdates).length > 0) {
+      set((state) => {
+        const newState = { ...state.dynamicEquipmentState };
+        for (const [key, value] of Object.entries(dynamicEqStateUpdates)) {
+          if (value === undefined) {
+            delete newState[key];
+          } else {
+            newState[key] = value;
+          }
+        }
+        return { dynamicEquipmentState: newState };
+      });
     }
 
     const message = item.useMessage || `Equipaste ${item.name}`;
@@ -1106,18 +1284,17 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
 
     // Apply consumable effects directly to SessionStats (with overridden target)
     if (overriddenEffects.length > 0) {
-      applyEffectsToSessionStats(stateAny, overriddenEffects);
+      const staticEffects = overriddenEffects.filter(e => e.mode !== 'dynamic');
+      const dynamicEffects = overriddenEffects.filter(e => e.mode === 'dynamic');
 
-      // Verify effects were applied
-      const verifyState = get() as any;
-      for (const ae of overriddenEffects) {
-        const tid = ae.targetId || '__user__';
-        const actualValue = verifyState.getAttributeValue?.(verifyState.activeSessionId, tid, ae.attributeKey);
-        console.log('[Inventory] executeUseWithTarget: verification after apply', {
-          attributeKey: ae.attributeKey,
-          targetId: tid,
-          actualValue,
-        });
+      // Apply static effects once
+      if (staticEffects.length > 0) {
+        applyEffectsToSessionStats(stateAny, staticEffects);
+      }
+
+      // Apply dynamic effects for turn 0
+      for (const dynEffect of dynamicEffects) {
+        applyDynamicEffectToSessionStats(stateAny, dynEffect, 0);
       }
     }
 
@@ -1131,7 +1308,7 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
       message,
     });
 
-    // Queue message for chat injection
+    // Queue message for chat injection AFTER attribute change
     if (item.useMessage) {
       set({ pendingItemMessage: item.useMessage });
     }
@@ -1143,6 +1320,7 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
       items: get().items,
       activeEffects: get().activeConsumableEffects,
       settings: get().inventorySettings,
+      dynamicEquipmentState: get().dynamicEquipmentState,
     };
   },
 
@@ -1150,6 +1328,7 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
     items: data.items ?? state.items,
     activeConsumableEffects: data.activeEffects ?? state.activeConsumableEffects,
     inventorySettings: data.settings ?? state.inventorySettings,
+    dynamicEquipmentState: data.dynamicEquipmentState ?? state.dynamicEquipmentState,
   })),
 });
 

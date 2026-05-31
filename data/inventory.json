@@ -10,7 +10,7 @@
       "icon": "🧪",
       "attributeEffects": [
         {
-          "targetId": "9f395af9-71eb-44ee-ab2b-20ec33ad2776",
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
           "targetName": "Aitana la Licuadora",
           "attributeKey": "regalo",
           "attributeName": "Regalo",
@@ -26,7 +26,7 @@
       "expireMessage": "asddasd",
       "price": 10,
       "createdAt": "2026-05-26T15:03:57.762Z",
-      "updatedAt": "2026-05-26T15:56:22.618Z"
+      "updatedAt": "2026-05-29T09:32:17.364Z"
     },
     {
       "id": "item-1779812152844-m30pre4",

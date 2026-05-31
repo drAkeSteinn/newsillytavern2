@@ -69,7 +69,7 @@ export function createMemoryHandler(): PreLLMHandler {
             })
             .join('\n');
 
-          parts.push(`[Key Events and Facts]\n${eventContent}`);
+          parts.push(`[Eventos y hechos clave]\n${eventContent}`);
 
           results.push({
             type: 'memory',
@@ -96,7 +96,7 @@ export function createMemoryHandler(): PreLLMHandler {
           .join('\n');
 
         if (relationshipContent.trim()) {
-          parts.push(`[Relationships]\n${relationshipContent}`);
+          parts.push(`[Relaciones]\n${relationshipContent}`);
 
           results.push({
             type: 'memory',
@@ -115,7 +115,7 @@ export function createMemoryHandler(): PreLLMHandler {
 
       // Process notes
       if (includeNotes && memory.notes && memory.notes.trim()) {
-        parts.push(`[Notes]\n${memory.notes}`);
+        parts.push(`[Notas]\n${memory.notes}`);
 
         results.push({
           type: 'memory',
@@ -146,7 +146,7 @@ export function formatMemoryForDisplay(memory: CharacterMemory, characterName: s
   const parts: string[] = [];
 
   if (memory.events && memory.events.length > 0) {
-    parts.push(`[Key Events and Facts]`);
+    parts.push(`[Eventos y hechos clave]`);
     for (const event of memory.events) {
       const importance = event.importance >= 0.7 ? '⭐' : '';
       parts.push(`${importance} ${event.content}`);
@@ -154,7 +154,7 @@ export function formatMemoryForDisplay(memory: CharacterMemory, characterName: s
   }
 
   if (memory.relationships && memory.relationships.length > 0) {
-    parts.push(`\n[Relationships]`);
+    parts.push(`\n[Relaciones]`);
     for (const rel of memory.relationships) {
       const sentiment = rel.sentiment > 50 ? '😊' : rel.sentiment < -50 ? '😞' : '😐';
       parts.push(`${sentiment} ${rel.targetName}: ${rel.relationship} (${rel.sentiment >= 0 ? '+' : ''}${rel.sentiment})`);
@@ -162,7 +162,7 @@ export function formatMemoryForDisplay(memory: CharacterMemory, characterName: s
   }
 
   if (memory.notes) {
-    parts.push(`\n[Notes]\n${memory.notes}`);
+    parts.push(`\n[Notas]\n${memory.notes}`);
   }
 
   return parts.join('\n');

@@ -540,17 +540,11 @@ export function buildSystemPrompt(
     sections.push(lorebookPlan.position0Section);
   }
 
-  // Add user's persona description if available
-  if (persona && persona.description) {
-    sections.push({
-      type: 'persona',
-      label: `User's Persona (${userName})`,
-      content: persona.description,
-      color: SECTION_COLORS.persona
-    });
-  }
+  // NOTE: User's Persona section removed - use {{persona}} key in character sections instead
+  // The persona content is now injected via the {{persona}} template key which can be
+  // placed anywhere in the character's description, scenario, etc.
 
-  // Add inventory section (Inventory V2) - AFTER persona, BEFORE character description
+  // Add inventory section (Inventory V2) - BEFORE character description
   // Only inject if inventory is enabled and promptInclude is true
   if (inventoryData && inventoryData.inventorySettings.enabled && inventoryData.inventorySettings.promptInclude) {
     const inventorySection = buildInventorySection(inventoryData, keyContext);
@@ -1129,17 +1123,11 @@ export function buildGroupSystemPrompt(
     sections.push(lorebookPlan.position0Section);
   }
 
-  // Add user's persona description if available
-  if (persona && persona.description) {
-    sections.push({
-      type: 'persona',
-      label: `User's Persona (${userName})`,
-      content: persona.description,
-      color: SECTION_COLORS.persona
-    });
-  }
+  // NOTE: User's Persona section removed - use {{persona}} key in character sections instead
+  // The persona content is now injected via the {{persona}} template key which can be
+  // placed anywhere in the character's description, scenario, etc.
 
-  // Add inventory section (Inventory V2) - AFTER persona, BEFORE character description
+  // Add inventory section (Inventory V2) - BEFORE character description
   // Only inject if inventory is enabled and promptInclude is true
   if (inventoryData && inventoryData.inventorySettings.enabled && inventoryData.inventorySettings.promptInclude) {
     const inventorySection = buildInventorySection(inventoryData, keyContext);
@@ -1490,8 +1478,8 @@ export function createUserMessage(content: string): ChatMessage {
 export function buildSummarySection(summary: SummaryData): PromptSection {
   return {
     type: 'system',
-    label: 'Conversation Summary',
-    content: `[Previous Conversation Summary]\n${summary.content}`,
+    label: 'Resumen de conversación',
+    content: `[Resumen de conversación anterior]\n${summary.content}`,
     color: SECTION_COLORS.summary
   };
 }
@@ -1508,7 +1496,7 @@ export function buildMemorySection(memory: CharacterMemory, characterName: strin
 
   // Add events (sorted by importance, highest first)
   if (memory.events.length > 0) {
-    parts.push(`[Key Events and Facts]`);
+    parts.push(`[Eventos y hechos clave]`);
     const sortedEvents = [...memory.events].sort((a, b) => {
       // Support both old (0-1) and new (1-5) importance scales
       const impA = a.importance > 1 ? a.importance : Math.round(a.importance * 5);
@@ -1525,7 +1513,7 @@ export function buildMemorySection(memory: CharacterMemory, characterName: strin
 
   // Add relationships
   if (memory.relationships.length > 0) {
-    parts.push(`\n[Relationships]`);
+    parts.push(`\n[Relaciones]`);
     for (const rel of memory.relationships) {
       const sentiment = rel.sentiment > 50 ? '😊' : rel.sentiment < -50 ? '😞' : '😐';
       parts.push(`${sentiment} ${rel.targetName}: ${rel.relationship} (${rel.sentiment >= 0 ? '+' : ''}${rel.sentiment})`);
@@ -1534,12 +1522,12 @@ export function buildMemorySection(memory: CharacterMemory, characterName: strin
 
   // Add notes
   if (memory.notes) {
-    parts.push(`\n[Notes]\n${memory.notes}`);
+    parts.push(`\n[Notas]\n${memory.notes}`);
   }
 
   return {
     type: 'character_note',
-    label: `${characterName}'s Memory`,
+    label: `Memoria de ${characterName}`,
     content: parts.join('\n'),
     color: SECTION_COLORS.memory
   };
@@ -1554,15 +1542,15 @@ export function buildSummaryInstructionsSection(
 ): PromptSection | null {
   if (!summaryEnabled) return null;
 
-  const content = `## Memory Instructions
-- Remember important events, decisions, and emotional moments
-- Track relationship development with ${characterName}
-- Maintain consistency with previous conversations
-- Key information should be naturally recalled when relevant`;
+  const content = `## Instrucciones de memoria
+- Recuerda eventos importantes, decisiones y momentos emocionales
+- Haz seguimiento del desarrollo de la relación con ${characterName}
+- Mantén la consistencia con conversaciones anteriores
+- La información clave debe recordarse naturalmente cuando sea relevante`;
 
   return {
     type: 'instructions',
-    label: 'Memory Instructions',
+    label: 'Instrucciones de memoria',
     content,
     color: SECTION_COLORS.instructions
   };
@@ -1600,7 +1588,7 @@ export function formatSummaryWithContext(summary: SummaryData, totalMessages: nu
   const startMsg = summary.messageRange.start + 1;
   const endMsg = summary.messageRange.end + 1;
 
-  return `[Summary of messages ${startMsg}-${endMsg} of ${totalMessages}]\n${summary.content}`;
+  return `[Resumen de mensajes ${startMsg}-${endMsg} de ${totalMessages}]\n${summary.content}`;
 }
 
 // ============================================

@@ -741,6 +741,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
           inventorySettings: store.inventorySettings,
           items: store.items,
           activeConsumableEffects: store.activeConsumableEffects,
+          dynamicEquipmentState: store.dynamicEquipmentState,
           inventoryNotifications: store.inventoryNotifications,
         }
       };
@@ -799,7 +800,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
           'summarySettings', 'characterMemories', 'sessionTracking',
           'questSettings', 'questTemplates', 'questNotifications',
           'dialogueSettings',
-          'inventorySettings', 'items', 'activeConsumableEffects', 'inventoryNotifications'
+          'inventorySettings', 'items', 'activeConsumableEffects', 'dynamicEquipmentState', 'inventoryNotifications'
         ];
 
         configKeys.forEach(key => {
@@ -882,6 +883,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
           inventorySettings: store.inventorySettings,
           items: store.items,
           activeConsumableEffects: store.activeConsumableEffects,
+          dynamicEquipmentState: store.dynamicEquipmentState,
           containers: store.containers,
           currencies: store.currencies,
           inventoryNotifications: store.inventoryNotifications,
@@ -956,7 +958,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
           'summarySettings', 'summaries', 'characterMemories', 'sessionTracking',
           'questSettings', 'questTemplates', 'quests', 'questNotifications',
           'dialogueSettings',
-          'inventorySettings', 'items', 'activeConsumableEffects', 'containers', 'currencies', 'inventoryNotifications',
+          'inventorySettings', 'items', 'activeConsumableEffects', 'dynamicEquipmentState', 'containers', 'currencies', 'inventoryNotifications',
           // Timeline
           'collections',
           // Data
@@ -1019,6 +1021,92 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
       document.removeEventListener('keydown', handleEscape);
     };
   }, [recordingHotkey]);
+
+  // Export items only (from inventory system)
+  const handleExportItems = () => {
+    try {
+      const exportData = {
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        type: 'inventory',
+        data: {
+          items: store.items,
+          activeConsumableEffects: store.activeConsumableEffects,
+          inventorySettings: store.inventorySettings,
+          dynamicEquipmentState: store.dynamicEquipmentState,
+        },
+      };
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tavernflow-items-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: 'Items exportados',
+        description: `${store.items.length} items exportados correctamente.`,
+      });
+    } catch {
+      toast({
+        title: 'Error al exportar',
+        description: 'No se pudieron exportar los items.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Import items only (to inventory system)
+  const handleImportItems = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const imported = JSON.parse(content);
+
+        if (!imported.data) {
+          throw new Error('Formato de archivo inválido');
+        }
+
+        const { data } = imported;
+        const updates: Record<string, unknown> = {};
+
+        if (data.items !== undefined) updates.items = data.items;
+        if (data.activeConsumableEffects !== undefined) updates.activeConsumableEffects = data.activeConsumableEffects;
+        if (data.inventorySettings !== undefined) updates.inventorySettings = data.inventorySettings;
+        if (data.dynamicEquipmentState !== undefined) updates.dynamicEquipmentState = data.dynamicEquipmentState;
+
+        if (Object.keys(updates).length > 0) {
+          useTavernStore.setState(updates);
+        }
+
+        const itemCount = data.items?.length ?? 0;
+        toast({
+          title: 'Items importados',
+          description: `${itemCount} items importados correctamente.`,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Error desconocido';
+        toast({
+          title: 'Error al importar',
+          description: `No se pudo importar: ${msg}`,
+          variant: 'destructive',
+        });
+      }
+    };
+    reader.readAsText(file);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   const handleAddConfig = () => {
     addLLMConfig({
@@ -1180,7 +1268,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
                 initial={{ x: -16, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
                 transition={{ duration: 0.25, delay: 0.05, ease: 'easeOut' }}
-                className="w-14 md:w-60 border-r bg-muted/30 flex flex-col flex-shrink-0"
+                className="w-14 md:w-60 border-r bg-muted/30 flex flex-col flex-shrink-0 h-full overflow-hidden"
               >
                 {/* Sidebar header with title and close button */}
                 <div className="flex items-center justify-between px-2 py-3 md:px-4 border-b">
@@ -1201,7 +1289,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
                 </div>
 
                 {/* Scrollable navigation */}
-                <ScrollArea className="flex-1">
+                <ScrollArea className="flex-1 min-h-0">
                   <TooltipProvider delayDuration={400}>
                     <nav className="p-1.5 md:p-2 space-y-0.5">
                       {settingsTabs.map((tab) => {
@@ -2166,6 +2254,46 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
                         type="file"
                         accept=".json"
                         onChange={handleImportConfig}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Export/Import Items */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Package className="w-5 h-5" />
+                    <h3 className="font-medium">Items / Inventario</h3>
+                    <span className="text-xs text-muted-foreground">(Items, efectos activos, config del inventario)</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Button 
+                      variant="outline" 
+                      className="h-auto py-4 flex flex-col gap-2"
+                      onClick={handleExportItems}
+                    >
+                      <FileJson className="w-5 h-5" />
+                      <span>Exportar Items</span>
+                      <span className="text-xs text-muted-foreground">{store.items.length} items</span>
+                    </Button>
+                    <label className="cursor-pointer">
+                      <Button 
+                        variant="outline" 
+                        className="h-auto py-4 flex flex-col gap-2 w-full"
+                        asChild
+                      >
+                        <span>
+                          <Upload className="w-5 h-5" />
+                          <span>Importar Items</span>
+                          <span className="text-xs text-muted-foreground">Desde JSON</span>
+                        </span>
+                      </Button>
+                      <input
+                        type="file"
+                        accept=".json"
+                        onChange={handleImportItems}
                         className="hidden"
                       />
                     </label>
