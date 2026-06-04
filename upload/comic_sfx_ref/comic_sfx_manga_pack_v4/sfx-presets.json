@@ -1,0 +1,31 @@
+{
+  "version": "3.0",
+  "duration_ms_default": 880,
+  "font_family": "KOMIKAHB",
+  "presets": [
+    {
+      "id": "vertical",
+      "use": "sonidos pequeños verticales como mhi, egh, bho",
+      "text_mode": "horizontal o vertical",
+      "duration": 820
+    },
+    {
+      "id": "oval",
+      "use": "palabras horizontales como movah",
+      "text_mode": "horizontal con textLength",
+      "duration": 860
+    },
+    {
+      "id": "wail",
+      "use": "sonido grande, gemido o grito vertical",
+      "text_mode": "letras apiladas",
+      "duration": 980
+    },
+    {
+      "id": "tall",
+      "use": "OOH, !?, respiración o pregunta vertical",
+      "text_mode": "letras apiladas",
+      "duration": 920
+    }
+  ]
+}

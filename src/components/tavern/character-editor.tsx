@@ -46,6 +46,7 @@ import { NamespaceSelector } from './namespace-selector';
 import { StatsEditor } from './stats-editor';
 import { CharacterVoicePanel } from './character-voice-panel';
 import { ProactiveMessagesPanel } from './proactive-messages-panel';
+import { QuickRepliesPanel } from './quick-replies-panel';
 import { getLogger } from '@/lib/logger';
 
 const editorLogger = getLogger('editor');
@@ -65,6 +66,7 @@ const characterEditorTabs = [
   { value: 'stats', label: 'Stats', icon: Activity },
   { value: 'voice', label: 'Voz', icon: Mic },
   { value: 'proactive', label: 'Proactivo', icon: Sparkles },
+  { value: 'quickreplies', label: 'Resp. Rápidas', icon: MessageSquare },
 ];
 
 const defaultCharacter: Omit<CharacterCard, 'id' | 'createdAt' | 'updatedAt'> = {
@@ -86,6 +88,7 @@ const defaultCharacter: Omit<CharacterCard, 'id' | 'createdAt' | 'updatedAt'> = 
   lorebookIds: [],
   questTemplateIds: [],
   proactiveMessages: undefined,
+  quickReplies: undefined,
 };
 
 export function CharacterEditor({ characterId, open, onClose }: CharacterEditorProps) {
@@ -848,6 +851,14 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
     />
   );
 
+  const renderQuickRepliesTab = () => (
+    <QuickRepliesPanel
+      quickReplies={character.quickReplies}
+      statsConfig={character.statsConfig}
+      onChange={(quickReplies) => setCharacter(prev => ({ ...prev, quickReplies }))}
+    />
+  );
+
   const renderTabContent = () => {
     switch (activeTab) {
       case 'info': return renderInfoTab();
@@ -858,6 +869,7 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
       case 'stats': return renderStatsTab();
       case 'voice': return renderVoiceTab();
       case 'proactive': return renderProactiveTab();
+      case 'quickreplies': return renderQuickRepliesTab();
       default: return renderInfoTab();
     }
   };

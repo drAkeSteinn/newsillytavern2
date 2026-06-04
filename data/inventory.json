@@ -1,9 +1,38 @@
 {
   "items": [
     {
-      "id": "item-1779807837762-vtol1da",
-      "name": "pildora",
-      "description": "ok",
+      "id": "past-002",
+      "name": "Pastilla Babeadora",
+      "description": "Provoca que produzcas saliva en cantidades ridículas",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "common",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "pastilla babeadora",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 3,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que te hace babear como perra",
+      "price": 40,
+      "updatedAt": "2026-05-31T16:07:45.159Z",
+      "slotEffects": [],
+      "consumableEffect": "Te produce babear en cantidades absurdas"
+    },
+    {
+      "id": "past-003",
+      "name": "Pastilla Orgasmica",
+      "description": "Provoca que tu cuerpo tenga orgasmos",
       "category": "consumable",
       "type": "consumable",
       "rarity": "uncommon",
@@ -15,74 +44,2693 @@
           "attributeKey": "regalo",
           "attributeName": "Regalo",
           "operator": "=",
-          "value": "ok",
-          "fallbackValue": "nop"
+          "value": "pastilla orgasmica",
+          "fallbackValue": "ninguno",
+          "mode": "static"
         }
       ],
-      "duration": 2,
-      "stackable": false,
-      "maxStack": 1,
-      "useMessage": "asdssd",
-      "expireMessage": "asddasd",
-      "price": 10,
-      "createdAt": "2026-05-26T15:03:57.762Z",
-      "updatedAt": "2026-05-29T09:32:17.364Z"
+      "duration": 4,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que te proboca orgasmos",
+      "price": 35,
+      "updatedAt": "2026-05-31T08:37:56.937Z"
     },
     {
-      "id": "item-1779812152844-m30pre4",
-      "name": "Otro",
-      "description": "asd",
+      "id": "past-007",
+      "name": "Pastilla Estupida",
+      "description": "Provoca que seas mas estupida y hagas ahegao",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "rare",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "Pastilla estupida",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 3,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que te pone cara de ahegao idiota",
+      "expireMessage": "recuperas un poco de inteligencia",
+      "price": 20,
+      "updatedAt": "2026-05-29T13:07:04.245Z"
+    },
+    {
+      "id": "past-008",
+      "name": "Pastilla ano succioante",
+      "description": "Provoca que tu ano succione con mucha fuerza estimulando los musculos internos",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "epic",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "pastilla ano succionante",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 4,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que hace que tu ano succione solo",
+      "expireMessage": "tu ano ya no succiona con tanta fuerza",
+      "price": 25,
+      "updatedAt": "2026-05-31T09:36:39.401Z"
+    },
+    {
+      "id": "plug-001",
+      "name": "Dildo Inflable",
+      "description": "Se expande poco a poco hasta abrirte el culo de forma exagerada",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "legendary",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "plug inflable",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un dildo inflable que se esta expandiendo dentro de tu {{slot}}",
+      "price": 35,
+      "stackable": false,
+      "maxStack": 1,
+      "updatedAt": "2026-05-31T18:41:20.067Z",
+      "slotEffects": [
+        {
+          "slotId": "slot-1780243589021-wpam34n",
+          "slotName": "Ano",
+          "effectText": "Te expande el ano poco a poco hasta que este enorme"
+        },
+        {
+          "slotId": "slot-1780243594672-h7lvhsf",
+          "slotName": "vagina",
+          "effectText": "Te expande la vagina poco a poco hasta que este enorme"
+        }
+      ]
+    },
+    {
+      "id": "plug-002",
+      "name": "Doble dildo lechero",
+      "description": "Dildo doble que penetra el ano y la vagina, primero eyacula semen dentro de la vagina, luego lo succiona de golpe para inyectarlo dentro de tu ano, alternando el proceso",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "cursed",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "plug lechero",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un plug que eyacula semen en tu ano y luego lo succiona todo de golpe repitiendo el proceso una y otra ves",
+      "unequipMessage": "{{user}} te quito el plug lechero, tu ano sigue palpitando",
+      "price": 40,
+      "stackable": false,
+      "maxStack": 1,
+      "updatedAt": "2026-05-31T10:22:28.777Z"
+    },
+    {
+      "id": "plug-003",
+      "name": "Plug Vibrador",
+      "description": "Vibra con fuerza y sientes como si te electrocutaran",
       "category": "weapon",
       "type": "equipment",
       "rarity": "epic",
       "icon": "⚔️",
       "attributeEffects": [
         {
-          "targetId": "9f395af9-71eb-44ee-ab2b-20ec33ad2776",
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
           "targetName": "Aitana la Licuadora",
           "attributeKey": "regalo",
           "attributeName": "Regalo",
           "operator": "=",
-          "value": "ok2",
-          "fallbackValue": "nop2"
+          "value": "plug vibrador",
+          "fallbackValue": "ninguno",
+          "mode": "static"
         }
       ],
       "slot": "main_hand",
-      "useMessage": "se envio",
-      "unequipMessage": "no se envio",
-      "price": 15,
+      "useMessage": "{{user}} te metio un plug vibrador que te hace sentir que te electrocuta el ano",
+      "unequipMessage": "{{user}} te quito el plug, pero te dejo el ano sensible y la mente ida",
+      "price": 45,
       "stackable": false,
       "maxStack": 1,
-      "createdAt": "2026-05-26T16:15:52.844Z",
-      "updatedAt": "2026-05-26T16:15:52.844Z"
+      "updatedAt": "2026-05-29T13:15:14.957Z"
     },
     {
-      "id": "item-1779812275517-tpj77ff",
-      "name": "Crack",
-      "description": "asd",
+      "id": "dildo-001",
+      "name": "Dildo Tornado",
+      "description": "Rota a alta velocidad mientras se expande y contrae violentamente",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "dildo tornado",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un dildo tornado que rota y se expande dentro de tu ano",
+      "unequipMessage": "{{user}} te saco el dildo tornado, tu ano sigue palpitando",
+      "price": 50,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T12:25:00.000Z",
+      "updatedAt": "2026-05-30T00:05:07.172Z"
+    },
+    {
+      "id": "dildo-002",
+      "name": "Dildo Tentaculo",
+      "description": "Se mueve solo dentro de ti, retorciendose y explorando",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "dildo tentaculo",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un dildo tentaculo que se mueve solo dentro de tu ano",
+      "unequipMessage": "{{user}} te saco el dildo tentaculo",
+      "price": 55,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T12:25:00.000Z",
+      "updatedAt": "2026-05-30T00:05:59.698Z"
+    },
+    {
+      "id": "mask-001",
+      "name": "Máscara Esclava",
+      "description": "Una mascara que al ponerla inserta un dildo grueso en la garganta y se mueve solo",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "máscara esclava",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso una máscara con un dildo que te viola la garganta automáticamente",
+      "unequipMessage": "{{user}} te quito la máscara dildo, tu garganta sigue sensible",
+      "price": 55,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T12:30:00.000Z",
+      "updatedAt": "2026-05-30T00:08:54.248Z"
+    },
+    {
+      "id": "mask-002",
+      "name": "Máscara Doble",
+      "description": "Mascara que introduce un dildo en la garganta y unas mangueras que se introducen en las fosas nasales, el dildo succiona la saliva dentro de la garganta y la expulsa por las fosas nasales",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "máscara doble agujero",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso una máscara que te mete un dildo en la garganta y esta conectado con unas mangueras a tus fosas nasales, el dildo succiona tu saliva y la introduce en tus fosas nasales",
+      "unequipMessage": "{{user}} te quito la máscara doble",
+      "price": 65,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T12:30:00.000Z",
+      "updatedAt": "2026-05-30T00:11:57.244Z"
+    },
+    {
+      "id": "mask-004",
+      "name": "Máscara para babear",
+      "description": "Mascara que abre completamente la boca y estimula la producción de saliva",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "uncommon",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "máscara babeante",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso una máscara que abre tu boca y te obliga a babear",
+      "unequipMessage": "{{user}} te quito la máscara de baba",
+      "price": 35,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T12:30:00.000Z",
+      "updatedAt": "2026-05-30T09:21:40.764Z"
+    },
+    {
+      "id": "bomba-005",
+      "name": "Bomba Expansiva",
+      "description": "Se expande mientras succiona el interior",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "bomba expansiva",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio una bomba que se expande y contrae rapidamente y al contraerse te succiona muy fuerte creando un vacio",
+      "unequipMessage": "{{user}} te saco la bomba de expansion y succion",
+      "price": 52,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T12:35:00.000Z",
+      "updatedAt": "2026-05-30T00:27:14.712Z"
+    },
+    {
+      "id": "bomba-006",
+      "name": "Bomba Orgasmica",
+      "description": "Se expande más cuando tienes orgasmos llegando a expandirse a niveles exagerados",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "bomba orgasmica",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio una bomba anal que se activa cuando te corres, por cada contraccion orgasmica que tienes mas se expande, llegando a niveles de expansion exagerados",
+      "unequipMessage": "{{user}} te saco la bomba orgasmica",
+      "price": 55,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T12:35:00.000Z",
+      "updatedAt": "2026-05-30T15:31:46.096Z"
+    },
+    {
+      "id": "bola-002",
+      "name": "Bolas Anales Vibradoras",
+      "description": "Cada bola vibra a diferente intensidad",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "rare",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "bolas anales vibradoras",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio bolas anales que vibran dentro de tu ano, cada bola vibra con diferente intensidad",
+      "unequipMessage": "{{user}} te saco las bolas anales vibradoras",
+      "price": 40,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T12:45:00.000Z",
+      "updatedAt": "2026-05-30T15:33:48.100Z"
+    },
+    {
+      "id": "bola-003",
+      "name": "Bolas Anales con Cola",
+      "description": "La cola cuelga afuera, te sientes como una perra",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "uncommon",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "bolas anales con cola",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio bolas anales con cola que te hacen sentir como una perra",
+      "unequipMessage": "{{user}} te saco las bolas con cola",
+      "price": 38,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T12:45:00.000Z",
+      "updatedAt": "2026-05-30T15:35:02.741Z"
+    },
+    {
+      "id": "bola-005",
+      "name": "Bolas Anales con Peso",
+      "description": "El peso tira hacia abajo",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "uncommon",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "bolas anales con peso",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio bolas anales con peso",
+      "unequipMessage": "{{user}} te saco las bolas con peso",
+      "price": 35,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T12:45:00.000Z",
+      "updatedAt": "2026-05-29T12:45:00.000Z"
+    },
+    {
+      "id": "cum-001",
+      "name": "Plug Inflador de Semen",
+      "description": "Bombea grandes cantidades de semen dentro de tu ano hasta que parezcas embarazada",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "plug inflador de semen",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un plug que te llena de semen eyaculando constantemente hasta que parezcas embarazada",
+      "unequipMessage": "{{user}} te saco el plug inflador de semen",
+      "price": 60,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T12:50:00.000Z",
+      "updatedAt": "2026-05-30T15:36:09.105Z"
+    },
+    {
+      "id": "cum-002",
+      "name": "Dildo Eyaculador Masivo",
+      "description": "Eyacula cantidades enormes de semen de forma continua",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "dildo eyaculador masivo",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un dildo que te llena de semen hasta hincharte el estomago, cada senton que te das te eyacula dentro",
+      "unequipMessage": "{{user}} te saco el dildo eyaculador masivo",
+      "price": 65,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T12:50:00.000Z",
+      "updatedAt": "2026-05-30T15:37:43.168Z"
+    },
+    {
+      "id": "cum-003",
+      "name": "Máscara Tragar hasta Embarazada",
+      "description": "Te obliga a tragar semen sin parar hasta que se te hinche el estómago",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "máscara tragar hasta embarazada",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso una máscara que te mete un dildo en la boca qu llega hasta tu garganta, el dildo eyacula semen constantemente hasta incharte el estomago como si estubieras embarazada",
+      "unequipMessage": "{{user}} te quito la máscara tragar hasta embarazada",
+      "price": 60,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T12:50:00.000Z",
+      "updatedAt": "2026-05-30T15:40:06.417Z"
+    },
+    {
+      "id": "cum-004",
+      "name": "Plug Llenado Progresivo",
+      "description": "Bombea semen poco a poco durante horas",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "rare",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "plug llenado progresivo",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un plug que te llena de semen progresivamente",
+      "unequipMessage": "{{user}} te saco el plug llenado progresivo",
+      "price": 55,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T12:50:00.000Z",
+      "updatedAt": "2026-05-29T12:50:00.000Z"
+    },
+    {
+      "id": "cum-005",
+      "name": "Dildo Inflacion Interna",
+      "description": "Eyacula semen en grandes cantidades mientras está dentro",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "dildo inflacion interna",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un dildo que te hincha por dentro con semen",
+      "unequipMessage": "{{user}} te saco el dildo de inflacion interna",
+      "price": 58,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T12:50:00.000Z",
+      "updatedAt": "2026-05-29T12:50:00.000Z"
+    },
+    {
+      "id": "cum-006",
+      "name": "Sistema Llenado Total",
+      "description": "Bombea semen sin parar hasta que tu estómago está completamente lleno",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "sistema llenado total",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te conecto un sistema que te llena de semen hasta el límite",
+      "unequipMessage": "{{user}} te quito el sistema de llenado total",
+      "price": 70,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T12:50:00.000Z",
+      "updatedAt": "2026-05-29T12:50:00.000Z"
+    },
+    {
+      "id": "cum-007",
+      "name": "Plug Eyaculacion Continua",
+      "description": "Sigue eyaculando semen incluso después de que tu estómago ya está lleno",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "plug eyaculacion continua",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un plug que sigue eyaculando semen",
+      "unequipMessage": "{{user}} te saco el plug de eyaculacion continua",
+      "price": 60,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T12:50:00.000Z",
+      "updatedAt": "2026-05-29T12:50:00.000Z"
+    },
+    {
+      "id": "cum-008",
+      "name": "Máscara + Plug Doble Llenado",
+      "description": "Te llenan de semen por la boca y por el ano al mismo tiempo",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "máscara y plug doble llenado",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te conecto un sistema doble que te llena de semen por ambos agujeros",
+      "unequipMessage": "{{user}} te quito el sistema doble de llenado",
+      "price": 75,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T12:50:00.000Z",
+      "updatedAt": "2026-05-29T12:50:00.000Z"
+    },
+    {
+      "id": "afro-001",
+      "name": "Pastilla Labios Ventosa",
+      "description": "Provoca que tus labios se comporten como ventosas",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "rare",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "labios ventosa",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 4,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que hace que tus labios succionen como ventosas",
+      "expireMessage": "el efecto de labios ventosa comienza a pasar",
+      "price": 25,
+      "createdAt": "2026-05-29T12:55:00.000Z",
+      "updatedAt": "2026-05-29T12:55:00.000Z"
+    },
+    {
+      "id": "afro-002",
+      "name": "Pastilla Lengua Loca Babosa",
+      "description": "Provoca que tu lengua se mueva muy rápido y baboso",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "uncommon",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "lengua loca babosa",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 3,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que te hace mover la lengua como loca",
+      "expireMessage": "tu lengua ya no se mueve tan descontrolada",
+      "price": 20,
+      "createdAt": "2026-05-29T12:55:00.000Z",
+      "updatedAt": "2026-05-29T12:55:00.000Z"
+    },
+    {
+      "id": "afro-003",
+      "name": "Pastilla Garganta Succionadora",
+      "description": "Provoca que tu garganta succione con fuerza la verga",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "epic",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "garganta succionadora",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 4,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que hace que tu garganta succione sola",
+      "expireMessage": "tu garganta ya no succiona con tanta fuerza",
+      "price": 28,
+      "createdAt": "2026-05-29T12:55:00.000Z",
+      "updatedAt": "2026-05-29T12:55:00.000Z"
+    },
+    {
+      "id": "afro-004",
+      "name": "Pastilla Boca Ventosa Total",
+      "description": "Provoca que toda tu boca actúe como una ventosa gigante",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "epic",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "boca ventosa total",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 4,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que hace que tu boca succione como una ventosa",
+      "expireMessage": "tu boca ya no succiona con tanta fuerza",
+      "price": 30,
+      "createdAt": "2026-05-29T12:55:00.000Z",
+      "updatedAt": "2026-05-29T12:55:00.000Z"
+    },
+    {
+      "id": "afro-005",
+      "name": "Pastilla Ano Succionador Extremo",
+      "description": "Provoca que tu ano succione con mucha fuerza la verga",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "epic",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "ano succionador extremo",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 4,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que hace que tu ano succione solo",
+      "expireMessage": "tu ano ya no succiona con tanta fuerza",
+      "price": 28,
+      "createdAt": "2026-05-29T12:55:00.000Z",
+      "updatedAt": "2026-05-29T12:55:00.000Z"
+    },
+    {
+      "id": "afro-006",
+      "name": "Pastilla Squirt + Succion Anal",
+      "description": "Provoca que mientras tu ano succiona, tengas squirts intensos y entres en ahegao",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "epic",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "squirt y succion anal",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 4,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que te hace succionar y chorrear al mismo tiempo",
+      "expireMessage": "el efecto de succionar y chorrear comienza a pasar",
+      "price": 32,
+      "createdAt": "2026-05-29T12:55:00.000Z",
+      "updatedAt": "2026-05-29T12:55:00.000Z"
+    },
+    {
+      "id": "afro-007",
+      "name": "Pastilla Ano que Ordena y Goza",
+      "description": "Provoca que tu ano succione mientras tienes squirts y entres en ahegao total",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "epic",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "ano que ordena y goza",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 4,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que hace que tu ano succione y te corras al mismo tiempo",
+      "expireMessage": "el efecto de succionar y gozar comienza a pasar",
+      "price": 30,
+      "createdAt": "2026-05-29T12:55:00.000Z",
+      "updatedAt": "2026-05-29T12:55:00.000Z"
+    },
+    {
+      "id": "afro-008",
+      "name": "Pastilla Cuerpo que Succiona y se Corre",
+      "description": "Provoca que tu ano succione, tengas squirts y entres en ahegao baboso",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "epic",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "cuerpo que succiona y se corre",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 4,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que hace que tu cuerpo succione y se corra solo",
+      "expireMessage": "el efecto de succionar y correrte comienza a pasar",
+      "price": 32,
+      "createdAt": "2026-05-29T12:55:00.000Z",
+      "updatedAt": "2026-05-29T12:55:00.000Z"
+    },
+    {
+      "id": "suct-001",
+      "name": "Succionador Vaginal Extractor de Squirt",
+      "description": "Succiona con fuerza el interior de tu coño, extrayendo todo el squirt",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "succionador vaginal extractor de squirt",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un succionador vaginal que extrae tu squirt",
+      "unequipMessage": "{{user}} te saco el succionador vaginal",
+      "price": 55,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:00:00.000Z",
+      "updatedAt": "2026-05-29T13:00:00.000Z"
+    },
+    {
+      "id": "suct-002",
+      "name": "Succionador Vaginal Squirt Mas Fuerte al Correrte",
+      "description": "Aumenta la succión al máximo cuando estás teniendo un orgasmo",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "succionador vaginal squirt mas fuerte al correrte",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un succionador vaginal que succiona más fuerte cuando te corres",
+      "unequipMessage": "{{user}} te saco el succionador vaginal",
+      "price": 58,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:00:00.000Z",
+      "updatedAt": "2026-05-29T13:00:00.000Z"
+    },
+    {
+      "id": "suct-003",
+      "name": "Succionador Vaginal Orgasmo = Succion Brutal",
+      "description": "Succiona mucho más fuerte cada vez que te corres",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "succionador vaginal orgasmo = succion brutal",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un succionador vaginal que se pone brutal cuando te corres",
+      "unequipMessage": "{{user}} te saco el succionador vaginal",
+      "price": 60,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:00:00.000Z",
+      "updatedAt": "2026-05-29T13:00:00.000Z"
+    },
+    {
+      "id": "suct-004",
+      "name": "Succionador Vaginal Squirt Infinito",
+      "description": "Succiona constantemente tu vagina, extrayendo squirt una y otra vez",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "succionador vaginal squirt infinito",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un succionador vaginal que te hace chorrear squirt sin parar",
+      "unequipMessage": "{{user}} te saco el succionador vaginal",
+      "price": 55,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:00:00.000Z",
+      "updatedAt": "2026-05-29T13:00:00.000Z"
+    },
+    {
+      "id": "suct-005",
+      "name": "Succionador Vaginal Doble Efecto",
+      "description": "Succiona tanto el squirt como estimula tu clítoris al mismo tiempo",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "rare",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "succionador vaginal doble efecto",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un succionador vaginal con doble efecto",
+      "unequipMessage": "{{user}} te saco el succionador vaginal",
+      "price": 50,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:00:00.000Z",
+      "updatedAt": "2026-05-29T13:00:00.000Z"
+    },
+    {
+      "id": "suct-006",
+      "name": "Succionador Vaginal Activado por Garganta",
+      "description": "Cuanto más profundo te follan la garganta, más fuerte succiona tu coño",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "succionador vaginal activado por garganta",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un succionador vaginal que se activa cuando te follan la garganta",
+      "unequipMessage": "{{user}} te saco el succionador vaginal",
+      "price": 58,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:00:00.000Z",
+      "updatedAt": "2026-05-29T13:00:00.000Z"
+    },
+    {
+      "id": "suct-007",
+      "name": "Succionador Vaginal Squirt y Orina Juntos",
+      "description": "Extrae tanto squirt como orina cuando te corres",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "succionador vaginal squirt y orina juntos",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un succionador vaginal que extrae squirt y orina",
+      "unequipMessage": "{{user}} te saco el succionador vaginal",
+      "price": 55,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:00:00.000Z",
+      "updatedAt": "2026-05-29T13:00:00.000Z"
+    },
+    {
+      "id": "suct-008",
+      "name": "Succionador Vaginal Maxima Intensidad",
+      "description": "Diseñado para darte los squirts más intensos y placenteros de tu vida",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "succionador vaginal maxima intensidad",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un succionador vaginal de maxima intensidad",
+      "unequipMessage": "{{user}} te saco el succionador vaginal",
+      "price": 60,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:00:00.000Z",
+      "updatedAt": "2026-05-29T13:00:00.000Z"
+    },
+    {
+      "id": "aitana-001",
+      "name": "Pastilla Baba sin Control",
+      "description": "Provoca que babees abundantemente aunque no estés mamando",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "common",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "baba sin control",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 3,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que te hace babear sin parar",
+      "expireMessage": "dejaste de babear tanto",
+      "price": 12,
+      "createdAt": "2026-05-29T13:05:00.000Z",
+      "updatedAt": "2026-05-29T13:05:00.000Z"
+    },
+    {
+      "id": "aitana-002",
+      "name": "Pastilla Piernas que se Abren Solas",
+      "description": "Provoca que tus piernas se abran solas cuando estás cachonda",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "uncommon",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "piernas que se abren solas",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 3,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que te hace abrir las piernas solas",
+      "expireMessage": "ya puedes controlar mejor tus piernas",
+      "price": 15,
+      "createdAt": "2026-05-29T13:05:00.000Z",
+      "updatedAt": "2026-05-29T13:05:00.000Z"
+    },
+    {
+      "id": "aitana-003",
+      "name": "Pastilla Ojos en Blanco Automatico",
+      "description": "Provoca que se te vayan los ojos en blanco y pongas cara de ahegao idiota",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "rare",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "ojos en blanco automatico",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 3,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que te pone cara de ahegao idiota",
+      "expireMessage": "tu cara ya no se pone en ahegao sola",
+      "price": 20,
+      "createdAt": "2026-05-29T13:05:00.000Z",
+      "updatedAt": "2026-05-29T13:05:00.000Z"
+    },
+    {
+      "id": "aitana-004",
+      "name": "Pastilla Lengua Afuera Sola",
+      "description": "Provoca que saques la lengua sin poder controlarte",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "uncommon",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "lengua afuera sola",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 3,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que te hace sacar la lengua sola",
+      "expireMessage": "ya puedes controlar mejor tu lengua",
+      "price": 15,
+      "createdAt": "2026-05-29T13:05:00.000Z",
+      "updatedAt": "2026-05-29T13:05:00.000Z"
+    },
+    {
+      "id": "aitana-005",
+      "name": "Máscara Tik Activador",
+      "description": "Activa y acelera tu tik automáticamente",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "máscara tik activador",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso una máscara que activa tu tik acelerado",
+      "unequipMessage": "{{user}} te quito la máscara tik activador",
+      "price": 50,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:05:00.000Z",
+      "updatedAt": "2026-05-29T13:05:00.000Z"
+    },
+    {
+      "id": "aitana-006",
+      "name": "Dildo Tik Forzado",
+      "description": "Provoca que tu cabeza entre en tik acelerado sin que puedas parar",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "dildo tik forzado",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un dildo que te obliga a hacer tik acelerado",
+      "unequipMessage": "{{user}} te saco el dildo tik forzado",
+      "price": 55,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:05:00.000Z",
+      "updatedAt": "2026-05-29T13:05:00.000Z"
+    },
+    {
+      "id": "aitana-007",
+      "name": "Pastilla Tik Descontrolado",
+      "description": "Provoca que tu tik se active y acelere solo",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "rare",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "tik descontrolado",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 3,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que te hace hacer tik descontrolado",
+      "expireMessage": "el tik descontrolado comienza a pasar",
+      "price": 22,
+      "createdAt": "2026-05-29T13:05:00.000Z",
+      "updatedAt": "2026-05-29T13:05:00.000Z"
+    },
+    {
+      "id": "aitana-008",
+      "name": "Máscara Ahegao Forzado",
+      "description": "Te obliga a poner cara de ahegao (ojos en blanco, lengua afuera)",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "máscara ahegao forzado",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso una máscara que te obliga a poner cara de ahegao",
+      "unequipMessage": "{{user}} te quito la máscara ahegao forzado",
+      "price": 48,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:05:00.000Z",
+      "updatedAt": "2026-05-29T13:05:00.000Z"
+    },
+    {
+      "id": "aitana-009",
+      "name": "Succionador de Pezones Ahegao Activador",
+      "description": "Cada vez que succionan fuerte, te provocan que se te vayan los ojos en blanco",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "rare",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "succionador de pezones ahegao activador",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso succionadores de pezones que te ponen en ahegao",
+      "unequipMessage": "{{user}} te quito los succionadores de pezones",
+      "price": 42,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:05:00.000Z",
+      "updatedAt": "2026-05-29T13:05:00.000Z"
+    },
+    {
+      "id": "aitana-010",
+      "name": "Plug Ahegao al Correrte",
+      "description": "Cada vez que te corres, te obliga a poner cara de ahegao idiota",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "rare",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "plug ahegao al correrte",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un plug que te pone en ahegao cuando te corres",
+      "unequipMessage": "{{user}} te saco el plug ahegao al correrte",
+      "price": 45,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:05:00.000Z",
+      "updatedAt": "2026-05-29T13:05:00.000Z"
+    },
+    {
+      "id": "aitana-011",
+      "name": "Máscara Recolectora de Baba",
+      "description": "Recoge toda tu baba y te la mete de nuevo en la boca",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "máscara recolectora de baba",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso una máscara que te obliga a tragarte tu propia baba",
+      "unequipMessage": "{{user}} te quito la máscara recolectora de baba",
+      "price": 45,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:05:00.000Z",
+      "updatedAt": "2026-05-29T13:05:00.000Z"
+    },
+    {
+      "id": "aitana-012",
+      "name": "Plug Extractor de Fluidos",
+      "description": "Extrae tus propios fluidos y te los mete en la boca o cara",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "rare",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "plug extractor de fluidos",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un plug que te humilla con tus propios fluidos",
+      "unequipMessage": "{{user}} te saco el plug extractor de fluidos",
+      "price": 48,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:05:00.000Z",
+      "updatedAt": "2026-05-29T13:05:00.000Z"
+    },
+    {
+      "id": "aitana-013",
+      "name": "Dildo Squirt en la Cara",
+      "description": "Cuando chorreas squirt, te lo dirige a la cara",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "rare",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "dildo squirt en la cara",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un dildo que te moja la cara con tu propio squirt",
+      "unequipMessage": "{{user}} te saco el dildo squirt en la cara",
+      "price": 45,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:05:00.000Z",
+      "updatedAt": "2026-05-29T13:05:00.000Z"
+    },
+    {
+      "id": "aitana-014",
+      "name": "Plug Ano Sensible por Horas",
+      "description": "Después de usarlo, te deja el ano sensible y palpitando por horas",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "uncommon",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "plug ano sensible por horas",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un plug que te deja el ano sensible por horas",
+      "unequipMessage": "{{user}} te saco el plug ano sensible",
+      "price": 40,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:05:00.000Z",
+      "updatedAt": "2026-05-29T13:05:00.000Z"
+    },
+    {
+      "id": "aitana-015",
+      "name": "Pastilla Adiccion Post-Uso",
+      "description": "Después de usarte, te deja con ganas intensas de más verga durante horas",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "rare",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "adiccion post-uso",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 5,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que te deja adicta a la verga después",
+      "expireMessage": "la adicción post-uso comienza a pasar",
+      "price": 25,
+      "createdAt": "2026-05-29T13:05:00.000Z",
+      "updatedAt": "2026-05-29T13:05:00.000Z"
+    },
+    {
+      "id": "aitana-016",
+      "name": "Máscara Garganta Sensible",
+      "description": "Después de usarla, te deja la garganta sensible y con ganas de más",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "uncommon",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "máscara garganta sensible",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso una máscara que te deja la garganta sensible",
+      "unequipMessage": "{{user}} te quito la máscara garganta sensible",
+      "price": 42,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:05:00.000Z",
+      "updatedAt": "2026-05-29T13:05:00.000Z"
+    },
+    {
+      "id": "aitana-017",
+      "name": "Plug Recuerdo de Uso",
+      "description": "Después de sacarlo, te deja sintiendo como si todavía tuvieras algo dentro",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "uncommon",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "plug recuerdo de uso",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un plug que te deja sintiendo que todavía está dentro",
+      "unequipMessage": "{{user}} te saco el plug recuerdo de uso",
+      "price": 40,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:05:00.000Z",
+      "updatedAt": "2026-05-29T13:05:00.000Z"
+    },
+    {
+      "id": "electro-001",
+      "name": "Pinzas Electro en Pezones Activadas por Orgasmo",
+      "description": "Cada vez que estás a punto de correrte o te corres, te dan una descarga eléctrica en los pezones",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "pinzas electro en pezones activadas por orgasmo",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso pinzas electro en los pezones que se activan cuando te corres",
+      "unequipMessage": "{{user}} te quito las pinzas electro de los pezones",
+      "price": 50,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:10:00.000Z",
+      "updatedAt": "2026-05-29T13:10:00.000Z"
+    },
+    {
+      "id": "electro-002",
+      "name": "Pinzas Electro Castigo por Corrte",
+      "description": "Se activan con una fuerte descarga cada vez que te corres",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "pinzas electro castigo por correrte",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso pinzas electro que te castigan cuando te corres",
+      "unequipMessage": "{{user}} te quito las pinzas electro de castigo",
+      "price": 48,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:10:00.000Z",
+      "updatedAt": "2026-05-29T13:10:00.000Z"
+    },
+    {
+      "id": "electro-003",
+      "name": "Plug Electro Descarga al Squirt",
+      "description": "Cada vez que chorreas squirt o orinas, el plug te da una descarga dentro del culo",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "plug electro descarga al squirt",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un plug electro que te da descarga cuando chorreas",
+      "unequipMessage": "{{user}} te saco el plug electro",
+      "price": 52,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:10:00.000Z",
+      "updatedAt": "2026-05-29T13:10:00.000Z"
+    },
+    {
+      "id": "electro-004",
+      "name": "Dildo Electro Choque al Correrte",
+      "description": "Cada vez que te corres, el dildo te da una descarga interna",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "dildo electro choque al correrte",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un dildo electro que te da descarga cuando te corres",
+      "unequipMessage": "{{user}} te saco el dildo electro",
+      "price": 55,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:10:00.000Z",
+      "updatedAt": "2026-05-29T13:10:00.000Z"
+    },
+    {
+      "id": "electro-005",
+      "name": "Pinzas Electro Pezones + Clítoris",
+      "description": "Se activan con descargas cuando estás teniendo un orgasmo fuerte",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "pinzas electro pezones y clítoris",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso pinzas electro en pezones y clítoris",
+      "unequipMessage": "{{user}} te quito las pinzas electro",
+      "price": 50,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:10:00.000Z",
+      "updatedAt": "2026-05-29T13:10:00.000Z"
+    },
+    {
+      "id": "electro-006",
+      "name": "Plug Electro Corrientazo Anal",
+      "description": "Cada vez que vibra o recibe señal, te da una descarga dentro del culo",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "rare",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "plug electro corrientazo anal",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un plug electro que te da descargas en el ano",
+      "unequipMessage": "{{user}} te saco el plug electro",
+      "price": 48,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:10:00.000Z",
+      "updatedAt": "2026-05-29T13:10:00.000Z"
+    },
+    {
+      "id": "electro-007",
+      "name": "Dildo Electro Choque Interno",
+      "description": "Cada embestida viene acompañada de una pequeña descarga",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "rare",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "dildo electro choque interno",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te metio un dildo electro que te da descargas internas",
+      "unequipMessage": "{{user}} te saco el dildo electro",
+      "price": 50,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:10:00.000Z",
+      "updatedAt": "2026-05-29T13:10:00.000Z"
+    },
+    {
+      "id": "electro-008",
+      "name": "Violet Wand Puta Electrizada",
+      "description": "Las descargas eléctricas te recorren la piel, especialmente en zonas sensibles",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "violet wand puta electrizada",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te esta usando una violet wand en el cuerpo",
+      "unequipMessage": "{{user}} dejo de usar la violet wand",
+      "price": 55,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:10:00.000Z",
+      "updatedAt": "2026-05-29T13:10:00.000Z"
+    },
+    {
+      "id": "leche-001",
+      "name": "Succionador de Pezones Ordenadora",
+      "description": "Succiona con fuerza constante, extrayendo leche de tus tetas como si fueras una vaca",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "succionador de pezones ordeñadora",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso succionadores en los pezones que te ordeñan como vaca",
+      "unequipMessage": "{{user}} te quito los succionadores de pezones",
+      "price": 50,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:15:00.000Z",
+      "updatedAt": "2026-05-29T13:15:00.000Z"
+    },
+    {
+      "id": "leche-002",
+      "name": "Bomba de Leche Extraccion Forzada",
+      "description": "Extrae leche de forma mecánica y constante",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "bomba de leche extraccion forzada",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso una bomba de leche que te extrae la leche a la fuerza",
+      "unequipMessage": "{{user}} te quito la bomba de leche",
+      "price": 55,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:15:00.000Z",
+      "updatedAt": "2026-05-29T13:15:00.000Z"
+    },
+    {
+      "id": "leche-003",
+      "name": "Succionador de Pezones Doble Ordeno",
+      "description": "Succiona alternadamente o al mismo tiempo en ambos pezones",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "rare",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "succionador de pezones doble ordeño",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso succionadores dobles en los pezones",
+      "unequipMessage": "{{user}} te quito los succionadores dobles",
+      "price": 48,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:15:00.000Z",
+      "updatedAt": "2026-05-29T13:15:00.000Z"
+    },
+    {
+      "id": "leche-004",
+      "name": "Pinzas Succionadoras Leche y Dolor",
+      "description": "Combinan succión fuerte con presión, extrayendo leche mientras te causan dolor placentero",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "pinzas succionadoras leche y dolor",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso pinzas succionadoras que extraen leche y causan dolor",
+      "unequipMessage": "{{user}} te quito las pinzas succionadoras",
+      "price": 50,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:15:00.000Z",
+      "updatedAt": "2026-05-29T13:15:00.000Z"
+    },
+    {
+      "id": "leche-005",
+      "name": "Succionador de Pezones Activado por Orgasmo",
+      "description": "Se activan con más fuerza cada vez que te corres",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "succionador de pezones activado por orgasmo",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso succionadores de pezones que se activan cuando te corres",
+      "unequipMessage": "{{user}} te quito los succionadores de pezones",
+      "price": 52,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:15:00.000Z",
+      "updatedAt": "2026-05-29T13:15:00.000Z"
+    },
+    {
+      "id": "leche-006",
+      "name": "Bomba de Leche Constante",
+      "description": "Extrae leche sin parar durante horas",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "bomba de leche constante",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso una bomba de leche que extrae sin parar",
+      "unequipMessage": "{{user}} te quito la bomba de leche constante",
+      "price": 55,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:15:00.000Z",
+      "updatedAt": "2026-05-29T13:15:00.000Z"
+    },
+    {
+      "id": "leche-007",
+      "name": "Succionador de Pezones Vibracion + Succion",
+      "description": "Combinan vibración y succión fuerte",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "rare",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "succionador de pezones vibracion y succion",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso succionadores con vibracion y succion",
+      "unequipMessage": "{{user}} te quito los succionadores con vibracion",
+      "price": 48,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:15:00.000Z",
+      "updatedAt": "2026-05-29T13:15:00.000Z"
+    },
+    {
+      "id": "leche-008",
+      "name": "Máscara de Pezones Ordeno Total",
+      "description": "Succiona con fuerza mecánica, extrayendo toda la leche posible",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "máscara de pezones ordeño total",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso una máscara succionadora en los pezones",
+      "unequipMessage": "{{user}} te quito la máscara de pezones",
+      "price": 55,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:15:00.000Z",
+      "updatedAt": "2026-05-29T13:15:00.000Z"
+    },
+    {
+      "id": "leche-009",
+      "name": "Succionador de Pezones Con Recoleccion",
+      "description": "Extraen la leche de tus tetas y la recolectan",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "succionador de pezones con recoleccion",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso succionadores que recolectan la leche",
+      "unequipMessage": "{{user}} te quito los succionadores con recoleccion",
+      "price": 52,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:15:00.000Z",
+      "updatedAt": "2026-05-29T13:15:00.000Z"
+    },
+    {
+      "id": "leche-010",
+      "name": "Pinzas Succionadoras Leche y Electro",
+      "description": "Succionan y dan pequeñas descargas mientras extraen leche",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "epic",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "pinzas succionadoras leche y electro",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso pinzas que succionan, extraen leche y dan electro",
+      "unequipMessage": "{{user}} te quito las pinzas succionadoras con electro",
+      "price": 55,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:15:00.000Z",
+      "updatedAt": "2026-05-29T13:15:00.000Z"
+    },
+    {
+      "id": "bb-001",
+      "name": "Pastilla Cuerpo en Calor",
+      "description": "Provoca que tu ano y garganta ardan de deseo y se vuelvan extremadamente sensibles",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "uncommon",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "cuerpo en calor",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 3,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que hace que tu cuerpo arda de deseo",
+      "expireMessage": "el calor en tu cuerpo comienza a bajar",
+      "price": 15,
+      "createdAt": "2026-05-29T13:20:00.000Z",
+      "updatedAt": "2026-05-29T13:20:00.000Z"
+    },
+    {
+      "id": "bb-002",
+      "name": "Pastilla Placer Forzado",
+      "description": "Provoca que tu cuerpo tenga orgasmos más fáciles y frecuentes",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "uncommon",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "placer forzado",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 4,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que te hace corrarte más fácil",
+      "expireMessage": "el placer forzado comienza a pasar",
+      "price": 18,
+      "createdAt": "2026-05-29T13:20:00.000Z",
+      "updatedAt": "2026-05-29T13:20:00.000Z"
+    },
+    {
+      "id": "bb-003",
+      "name": "Pastilla Cuerpo Traicionero",
+      "description": "Provoca que tu ano y garganta se contraigan solos cuando estás cachonda",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "uncommon",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "cuerpo traicionero",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 4,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que hace que tu cuerpo te traicione",
+      "expireMessage": "tu cuerpo ya no se contrae solo",
+      "price": 18,
+      "createdAt": "2026-05-29T13:20:00.000Z",
+      "updatedAt": "2026-05-29T13:20:00.000Z"
+    },
+    {
+      "id": "bb-004",
+      "name": "Pastilla Semen Adicta",
+      "description": "Provoca que tu cuerpo anhele semen",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "rare",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "semen adicta",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 4,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que te hace adicta al semen",
+      "expireMessage": "la adicción al semen comienza a pasar",
+      "price": 22,
+      "createdAt": "2026-05-29T13:20:00.000Z",
+      "updatedAt": "2026-05-29T13:20:00.000Z"
+    },
+    {
+      "id": "bb-005",
+      "name": "Pastilla Garganta Esclava",
+      "description": "Provoca que tu garganta se contraiga y salive abundantemente",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "uncommon",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "garganta esclava",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 3,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que hace que tu garganta se prepare sola para ser follada",
+      "expireMessage": "el efecto de garganta esclava comienza a pasar",
+      "price": 18,
+      "createdAt": "2026-05-29T13:20:00.000Z",
+      "updatedAt": "2026-05-29T13:20:00.000Z"
+    },
+    {
+      "id": "bb-006",
+      "name": "Pastilla Ano que se Abre Solo",
+      "description": "Provoca que tu ano se relaje y abra solo cuando estás cerca de verga",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "rare",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "ano que se abre solo",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 3,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que hace que tu ano se abra solo",
+      "expireMessage": "tu ano ya no se abre solo",
+      "price": 20,
+      "createdAt": "2026-05-29T13:20:00.000Z",
+      "updatedAt": "2026-05-29T13:20:00.000Z"
+    },
+    {
+      "id": "bb-007",
+      "name": "Pastilla Clítoris Traidor",
+      "description": "Provoca que tu clítoris se hinche y palpite solo cuando estás cachonda",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "uncommon",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "clítoris traidor",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 3,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que hace que tu clítoris te traicione",
+      "expireMessage": "tu clítoris ya no palpita solo",
+      "price": 18,
+      "createdAt": "2026-05-29T13:20:00.000Z",
+      "updatedAt": "2026-05-29T13:20:00.000Z"
+    },
+    {
+      "id": "bb-008",
+      "name": "Pastilla Cuerpo que Ruega Verba",
+      "description": "Provoca que tu ano y vagina se contraigan solos pidiendo ser penetrados",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "rare",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "cuerpo que ruega verba",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 3,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que hace que tu cuerpo ruegue verga",
+      "expireMessage": "tu cuerpo ya no ruega solo",
+      "price": 22,
+      "createdAt": "2026-05-29T13:20:00.000Z",
+      "updatedAt": "2026-05-29T13:20:00.000Z"
+    },
+    {
+      "id": "bb-009",
+      "name": "Pastilla Cuerpo que tiembla",
+      "description": "Provoca que tu cuerpo tiemble entero cuando estás cachonda",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "uncommon",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "cuerpo que tiembla",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 3,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que te hace temblar cuando estás cachonda",
+      "expireMessage": "tu cuerpo ya no tiembla solo",
+      "price": 15,
+      "createdAt": "2026-05-29T13:20:00.000Z",
+      "updatedAt": "2026-05-29T13:20:00.000Z"
+    },
+    {
+      "id": "bb-010",
+      "name": "Inyección Ano Hambriento",
+      "description": "Provoca que tu ano se contraiga y succione solo",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "rare",
+      "icon": "💉",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "ano hambriento",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 3,
+      "stackable": true,
+      "maxStack": 3,
+      "useMessage": "{{user}} te inyecto algo que hace que tu ano succione solo",
+      "expireMessage": "tu ano ya no succiona solo",
+      "price": 25,
+      "createdAt": "2026-05-29T13:20:00.000Z",
+      "updatedAt": "2026-05-29T13:20:00.000Z"
+    },
+    {
+      "id": "drug-011",
+      "name": "Piedra de Crack Dosis Grande",
+      "description": "Una dosis grande de crack para un subidón más fuerte e idiota",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "cursed",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "adiccion",
+          "attributeName": "Adicción",
+          "operator": "+",
+          "value": 20,
+          "fallbackValue": 10,
+          "mode": "dynamic"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te dio una piedra de crack de dosis grande",
+      "unequipMessage": "nop",
+      "price": 15,
+      "stackable": true,
+      "maxStack": 50,
+      "duration": 6,
+      "expireMessage": "te acabaste la piedra de crack grande",
+      "createdAt": "2026-05-29T13:25:00.000Z",
+      "updatedAt": "2026-05-29T13:25:00.000Z"
+    },
+    {
+      "id": "drug-012",
+      "name": "Pastilla Estupidez Extrema",
+      "description": "Te pone extremadamente idiota y babosa por un buen rato",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "cursed",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "estupidez extrema",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 5,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla de estupidez extrema",
+      "expireMessage": "la estupidez extrema comienza a bajar",
+      "price": 25,
+      "createdAt": "2026-05-29T13:25:00.000Z",
+      "updatedAt": "2026-05-29T13:25:00.000Z"
+    },
+    {
+      "id": "drug-013",
+      "name": "Inyección Adicción Total",
+      "description": "Te vuelve adicta instantáneamente a la verga y a las drogas",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "cursed",
+      "icon": "💉",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "adiccion",
+          "attributeName": "Adicción",
+          "operator": "+",
+          "value": 30,
+          "fallbackValue": 15,
+          "mode": "dynamic"
+        }
+      ],
+      "duration": 6,
+      "stackable": true,
+      "maxStack": 3,
+      "useMessage": "{{user}} te inyecto una dosis fuerte de adicción",
+      "expireMessage": "la adicción total comienza a bajar un poco",
+      "price": 35,
+      "createdAt": "2026-05-29T13:25:00.000Z",
+      "updatedAt": "2026-05-29T13:25:00.000Z"
+    },
+    {
+      "id": "drug-014",
+      "name": "Pastilla Alucinaciones Porno",
+      "description": "Te hace ver y sentir cosas muy degeneradas y porno",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "cursed",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "alucinaciones porno",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 4,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla que te hace alucinar cosas muy sucias",
+      "expireMessage": "las alucinaciones porno comienzan a pasar",
+      "price": 28,
+      "createdAt": "2026-05-29T13:25:00.000Z",
+      "updatedAt": "2026-05-29T13:25:00.000Z"
+    },
+    {
+      "id": "drug-015",
+      "name": "Plug Inyector de Droga Continua",
+      "description": "Te va inyectando droga poco a poco mientras está dentro",
       "category": "weapon",
       "type": "equipment",
       "rarity": "cursed",
-      "icon": "🛡️",
+      "icon": "⚔️",
       "attributeEffects": [
         {
-          "targetId": "__user__",
-          "targetName": "Persona",
-          "attributeKey": "pene_visible",
-          "attributeName": "Pene visible",
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
           "operator": "=",
-          "value": "SI",
-          "fallbackValue": "NO"
+          "value": "plug inyector de droga continua",
+          "fallbackValue": "ninguno",
+          "mode": "static"
         }
       ],
       "slot": "main_hand",
-      "useMessage": "ok",
-      "unequipMessage": "nop",
-      "price": 5,
+      "useMessage": "{{user}} te metio un plug que te va drogando poco a poco",
+      "unequipMessage": "{{user}} te saco el plug inyector de droga",
+      "price": 60,
       "stackable": false,
       "maxStack": 1,
-      "createdAt": "2026-05-26T16:17:55.517Z",
-      "updatedAt": "2026-05-26T16:17:55.517Z"
+      "createdAt": "2026-05-29T13:25:00.000Z",
+      "updatedAt": "2026-05-29T13:25:00.000Z"
+    },
+    {
+      "id": "drug-016",
+      "name": "Máscara Dosis Continua en Garganta",
+      "description": "Te va administrando droga directamente en la garganta mientras la usas",
+      "category": "weapon",
+      "type": "equipment",
+      "rarity": "cursed",
+      "icon": "⚔️",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "máscara dosis continua en garganta",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "slot": "main_hand",
+      "useMessage": "{{user}} te puso una máscara que te va drogando por la garganta",
+      "unequipMessage": "{{user}} te quito la máscara de dosis continua",
+      "price": 65,
+      "stackable": false,
+      "maxStack": 1,
+      "createdAt": "2026-05-29T13:25:00.000Z",
+      "updatedAt": "2026-05-29T13:25:00.000Z"
+    },
+    {
+      "id": "drug-017",
+      "name": "Dosis Doble Crack + Electro",
+      "description": "Combinación de crack + electro para un subidón más intenso y doloroso",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "cursed",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "dosis doble crack + electro",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 5,
+      "stackable": true,
+      "maxStack": 3,
+      "useMessage": "{{user}} te dio una dosis combinada de crack y electro",
+      "expireMessage": "la dosis doble comienza a bajar",
+      "price": 40,
+      "createdAt": "2026-05-29T13:25:00.000Z",
+      "updatedAt": "2026-05-29T13:25:00.000Z"
+    },
+    {
+      "id": "drug-018",
+      "name": "Pastilla Multi Efecto (Estupidez + Adicción + Baba)",
+      "description": "Te pone idiota, adicta y babeando al mismo tiempo",
+      "category": "consumable",
+      "type": "consumable",
+      "rarity": "cursed",
+      "icon": "🧪",
+      "attributeEffects": [
+        {
+          "targetId": "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+          "targetName": "Aitana la Licuadora",
+          "attributeKey": "regalo",
+          "attributeName": "Regalo",
+          "operator": "=",
+          "value": "multi efecto estupidez adiccion baba",
+          "fallbackValue": "ninguno",
+          "mode": "static"
+        }
+      ],
+      "duration": 5,
+      "stackable": true,
+      "maxStack": 5,
+      "useMessage": "{{user}} te dio una pastilla multi-efecto (estupidez + adicción + baba)",
+      "expireMessage": "el multi-efecto comienza a pasar",
+      "price": 30,
+      "createdAt": "2026-05-29T13:25:00.000Z",
+      "updatedAt": "2026-05-29T13:25:00.000Z"
     }
   ],
   "activeConsumableEffects": [],
@@ -110,501 +2758,518 @@
     "showNotifications": true,
     "autoDetect": true,
     "promptInclude": false,
-    "currencyName": "Puntos"
+    "currencyName": "Puntos",
+    "equipmentSlots": [
+      {
+        "id": "slot-1780243589021-wpam34n",
+        "name": "Ano",
+        "key": "ano"
+      },
+      {
+        "id": "slot-1780243594672-h7lvhsf",
+        "name": "vagina",
+        "key": "vagina"
+      },
+      {
+        "id": "slot-1780243601682-1bc5vzh",
+        "name": "garganta",
+        "key": "garganta"
+      },
+      {
+        "id": "slot-1780243606357-qu4ccd0",
+        "name": "boca",
+        "key": "boca"
+      },
+      {
+        "id": "slot-1780243609566-rggw29a",
+        "name": "cara",
+        "key": "cara"
+      },
+      {
+        "id": "slot-1780243615399-8152pih",
+        "name": "pezones",
+        "key": "pezones"
+      }
+    ]
   },
   "inventoryNotifications": [
     {
-      "type": "item_equipped",
-      "itemId": "item-1779812152844-m30pre4",
-      "itemName": "Otro",
+      "type": "add",
+      "itemName": "Item",
       "quantity": 1,
-      "message": "no se envio",
-      "id": "notif-1779814286552-9m72zdk",
-      "timestamp": "2026-05-26T16:51:26.552Z",
+      "message": "Obtained: tu segunda corrida dentro, el calor llenándolo todo*",
+      "id": "notif-1780542722261-i5x5gpg",
+      "timestamp": "2026-06-04T03:12:02.261Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: tu segunda corrida dentro, el calor llenándolo to",
+      "id": "notif-1780542722245-o1rdhnb",
+      "timestamp": "2026-06-04T03:12:02.245Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: tu segunda corrida dentro, el calor llenándolo",
+      "id": "notif-1780542722227-pktcck6",
+      "timestamp": "2026-06-04T03:12:02.227Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: tu segunda corrida dentro, el calor llenánd",
+      "id": "notif-1780542722213-4icof5p",
+      "timestamp": "2026-06-04T03:12:02.213Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: tu segunda corrida dentro, el calor llen",
+      "id": "notif-1780542722197-bseckeg",
+      "timestamp": "2026-06-04T03:12:02.197Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: tu segunda corrida dentro, el calo",
+      "id": "notif-1780542722183-o5rpu0b",
+      "timestamp": "2026-06-04T03:12:02.183Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: tu segunda corrida dentro",
+      "id": "notif-1780542722169-et6hwhd",
+      "timestamp": "2026-06-04T03:12:02.169Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: tu segunda corrida den",
+      "id": "notif-1780542722153-34ecri4",
+      "timestamp": "2026-06-04T03:12:02.153Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: tu segunda corrida",
+      "id": "notif-1780542722139-zimlhm1",
+      "timestamp": "2026-06-04T03:12:02.139Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: tu segunda corri",
+      "id": "notif-1780542722124-jyal2ue",
+      "timestamp": "2026-06-04T03:12:02.124Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: tu segunda co",
+      "id": "notif-1780542722111-0gr44g0",
+      "timestamp": "2026-06-04T03:12:02.111Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: tu segunda",
+      "id": "notif-1780542722097-sb02k3y",
+      "timestamp": "2026-06-04T03:12:02.097Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: tu segu",
+      "id": "notif-1780542722085-3ur7h8k",
+      "timestamp": "2026-06-04T03:12:02.085Z",
       "read": false
     },
     {
       "type": "item_equipped",
-      "itemId": "item-1779812152844-m30pre4",
-      "itemName": "Otro",
+      "itemId": "plug-001",
+      "itemName": "Dildo Inflable",
       "quantity": 1,
-      "message": "se envio",
-      "id": "notif-1779814284066-llyz9vp",
-      "timestamp": "2026-05-26T16:51:24.066Z",
+      "message": "Desequipaste Dildo Inflable",
+      "id": "notif-1780297042910-er81pz3",
+      "timestamp": "2026-06-01T06:57:22.910Z",
       "read": false
     },
     {
       "type": "item_equipped",
-      "itemId": "item-1779812275517-tpj77ff",
-      "itemName": "Crack",
+      "itemId": "plug-001",
+      "itemName": "Dildo Inflable",
       "quantity": 1,
-      "message": "nop",
-      "id": "notif-1779814282188-waqo72m",
-      "timestamp": "2026-05-26T16:51:22.188Z",
+      "message": "{{user}} te metio un dildo inflable que se esta expandiendo dentro de tu Ano",
+      "id": "notif-1780296876308-xawcch8",
+      "timestamp": "2026-06-01T06:54:36.308Z",
       "read": false
     },
     {
       "type": "item_equipped",
-      "itemId": "item-1779812275517-tpj77ff",
-      "itemName": "Crack",
+      "itemId": "plug-001",
+      "itemName": "Dildo Inflable",
       "quantity": 1,
-      "message": "ok",
-      "id": "notif-1779814279840-yp5ou93",
-      "timestamp": "2026-05-26T16:51:19.840Z",
+      "message": "Desequipaste Dildo Inflable",
+      "id": "notif-1780252387537-1u7fjw9",
+      "timestamp": "2026-05-31T18:33:07.537Z",
+      "read": false
+    },
+    {
+      "type": "item_removed",
+      "itemId": "past-002",
+      "itemName": "Pastilla Babeadora",
+      "quantity": 1,
+      "message": "El efecto de Pastilla Babeadora ha expirado",
+      "id": "notif-1780252341690-9y3cith",
+      "timestamp": "2026-05-31T18:32:21.690Z",
       "read": false
     },
     {
       "type": "item_equipped",
-      "itemId": "item-1779812152844-m30pre4",
-      "itemName": "Otro",
+      "itemId": "plug-001",
+      "itemName": "Dildo Inflable",
       "quantity": 1,
-      "message": "no se envio",
-      "id": "notif-1779814271261-3436aq0",
-      "timestamp": "2026-05-26T16:51:11.261Z",
+      "message": "{{user}} te metio un dildo inflable que se esta expandiendo dentro de tu ano",
+      "id": "notif-1780252324199-2bjnrgd",
+      "timestamp": "2026-05-31T18:32:04.199Z",
       "read": false
     },
     {
       "type": "item_equipped",
-      "itemId": "item-1779812152844-m30pre4",
-      "itemName": "Otro",
+      "itemId": "plug-001",
+      "itemName": "Dildo Inflable",
       "quantity": 1,
-      "message": "se envio",
-      "id": "notif-1779814268221-t1mf8hb",
-      "timestamp": "2026-05-26T16:51:08.221Z",
+      "message": "Desequipaste Dildo Inflable",
+      "id": "notif-1780252229433-954jqrv",
+      "timestamp": "2026-05-31T18:30:29.433Z",
       "read": false
     },
     {
       "type": "item_equipped",
-      "itemId": "item-1779812152844-m30pre4",
-      "itemName": "Otro",
+      "itemId": "plug-001",
+      "itemName": "Dildo Inflable",
       "quantity": 1,
-      "message": "no se envio",
-      "id": "notif-1779812971222-zjsnt2u",
-      "timestamp": "2026-05-26T16:29:31.222Z",
+      "message": "{{user}} te metio un dildo inflable que se esta expandiendo dentro de tu ano",
+      "id": "notif-1780252150698-bvd4m5o",
+      "timestamp": "2026-05-31T18:29:10.698Z",
       "read": false
     },
     {
       "type": "item_equipped",
-      "itemId": "item-1779812152844-m30pre4",
-      "itemName": "Otro",
+      "itemId": "plug-001",
+      "itemName": "Dildo Inflable",
       "quantity": 1,
-      "message": "se envio",
-      "id": "notif-1779812968671-j9mut7h",
-      "timestamp": "2026-05-26T16:29:28.671Z",
-      "read": false
-    },
-    {
-      "type": "item_equipped",
-      "itemId": "item-1779812275517-tpj77ff",
-      "itemName": "Crack",
-      "quantity": 1,
-      "message": "nop",
-      "id": "notif-1779812960143-0nxjbdq",
-      "timestamp": "2026-05-26T16:29:20.143Z",
-      "read": false
-    },
-    {
-      "type": "item_equipped",
-      "itemId": "item-1779812275517-tpj77ff",
-      "itemName": "Crack",
-      "quantity": 1,
-      "message": "ok",
-      "id": "notif-1779812957429-0xoq58s",
-      "timestamp": "2026-05-26T16:29:17.429Z",
-      "read": false
-    },
-    {
-      "type": "item_equipped",
-      "itemId": "item-1779812152844-m30pre4",
-      "itemName": "Otro",
-      "quantity": 1,
-      "message": "no se envio",
-      "id": "notif-1779812948624-fdifu82",
-      "timestamp": "2026-05-26T16:29:08.624Z",
-      "read": false
-    },
-    {
-      "type": "item_equipped",
-      "itemId": "item-1779812152844-m30pre4",
-      "itemName": "Otro",
-      "quantity": 1,
-      "message": "se envio",
-      "id": "notif-1779812944686-v13raia",
-      "timestamp": "2026-05-26T16:29:04.686Z",
-      "read": false
-    },
-    {
-      "type": "item_equipped",
-      "itemId": "item-1779812275517-tpj77ff",
-      "itemName": "Crack",
-      "quantity": 1,
-      "message": "nop",
-      "id": "notif-1779812294760-mn16emk",
-      "timestamp": "2026-05-26T16:18:14.760Z",
-      "read": false
-    },
-    {
-      "type": "item_equipped",
-      "itemId": "item-1779812275517-tpj77ff",
-      "itemName": "Crack",
-      "quantity": 1,
-      "message": "ok",
-      "id": "notif-1779812289178-z04zw1j",
-      "timestamp": "2026-05-26T16:18:09.178Z",
-      "read": false
-    },
-    {
-      "type": "item_added",
-      "itemId": "item-1779812275517-tpj77ff",
-      "itemName": "Crack",
-      "quantity": 1,
-      "message": "Obtuviste Crack",
-      "id": "notif-1779812284259-3f4ts5a",
-      "timestamp": "2026-05-26T16:18:04.259Z",
-      "read": false
-    },
-    {
-      "type": "item_equipped",
-      "itemId": "item-1779812152844-m30pre4",
-      "itemName": "Otro",
-      "quantity": 1,
-      "message": "no se envio",
-      "id": "notif-1779812175115-mshvu8r",
-      "timestamp": "2026-05-26T16:16:15.115Z",
-      "read": false
-    },
-    {
-      "type": "item_equipped",
-      "itemId": "item-1779812152844-m30pre4",
-      "itemName": "Otro",
-      "quantity": 1,
-      "message": "se envio",
-      "id": "notif-1779812172193-mmenxd3",
-      "timestamp": "2026-05-26T16:16:12.193Z",
-      "read": false
-    },
-    {
-      "type": "item_equipped",
-      "itemId": "item-1779812152844-m30pre4",
-      "itemName": "Otro",
-      "quantity": 1,
-      "message": "no se envio",
-      "id": "notif-1779812166066-jj3mmo4",
-      "timestamp": "2026-05-26T16:16:06.066Z",
-      "read": false
-    },
-    {
-      "type": "item_equipped",
-      "itemId": "item-1779812152844-m30pre4",
-      "itemName": "Otro",
-      "quantity": 1,
-      "message": "se envio",
-      "id": "notif-1779812161193-gl6ug50",
-      "timestamp": "2026-05-26T16:16:01.193Z",
-      "read": false
-    },
-    {
-      "type": "item_added",
-      "itemId": "item-1779812152844-m30pre4",
-      "itemName": "Otro",
-      "quantity": 1,
-      "message": "Obtuviste Otro",
-      "id": "notif-1779812155190-lutb97c",
-      "timestamp": "2026-05-26T16:15:55.190Z",
-      "read": false
-    },
-    {
-      "type": "item_added",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "pildora",
-      "quantity": 1,
-      "message": "Obtuviste pildora",
-      "id": "notif-1779812098131-jwfq1lc",
-      "timestamp": "2026-05-26T16:14:58.131Z",
+      "message": "Desequipaste Dildo Inflable",
+      "id": "notif-1780252145524-bpr1w3u",
+      "timestamp": "2026-05-31T18:29:05.524Z",
       "read": false
     },
     {
       "type": "item_used",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "pildora",
+      "itemId": "past-002",
+      "itemName": "Pastilla Babeadora",
       "quantity": 1,
-      "message": "asdssd",
-      "id": "notif-1779812041727-nz6uaps",
-      "timestamp": "2026-05-26T16:14:01.727Z",
-      "read": false
-    },
-    {
-      "type": "item_added",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "pildora",
-      "quantity": 1,
-      "message": "Compraste pildora por 10 divisas",
-      "id": "notif-1779812038472-0alf716",
-      "timestamp": "2026-05-26T16:13:58.472Z",
-      "read": false
-    },
-    {
-      "type": "item_added",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "pildora",
-      "quantity": 1,
-      "message": "Obtuviste pildora",
-      "id": "notif-1779812038447-iuwe32l",
-      "timestamp": "2026-05-26T16:13:58.447Z",
+      "message": "{{user}} te dio una pastilla que te hace babear como perra",
+      "id": "notif-1780245102395-plhul23",
+      "timestamp": "2026-05-31T16:31:42.395Z",
       "read": false
     },
     {
       "type": "currency_changed",
       "itemName": "Puntos",
-      "quantity": -10,
-      "message": "Puntos: -10 (Total: 990)",
-      "id": "notif-1779812038398-36t0z13",
-      "timestamp": "2026-05-26T16:13:58.398Z",
-      "read": false
-    },
-    {
-      "type": "item_used",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "pildora",
-      "quantity": 1,
-      "message": "asdssd",
-      "id": "notif-1779811997850-5h0obex",
-      "timestamp": "2026-05-26T16:13:17.850Z",
-      "read": false
-    },
-    {
-      "type": "item_added",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "pildora",
-      "quantity": 1,
-      "message": "Compraste pildora por 10 divisas",
-      "id": "notif-1779810878269-2154cc0",
-      "timestamp": "2026-05-26T15:54:38.269Z",
-      "read": false
-    },
-    {
-      "type": "item_added",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "pildora",
-      "quantity": 1,
-      "message": "Obtuviste pildora",
-      "id": "notif-1779810878241-af8as3b",
-      "timestamp": "2026-05-26T15:54:38.241Z",
+      "quantity": 10,
+      "message": "Puntos: +10 (Total: 888)",
+      "id": "notif-1780245065030-usjddoq",
+      "timestamp": "2026-05-31T16:31:05.030Z",
       "read": false
     },
     {
       "type": "currency_changed",
       "itemName": "Puntos",
-      "quantity": -10,
-      "message": "Puntos: -10 (Total: 490)",
-      "id": "notif-1779810878175-hvsrzp1",
-      "timestamp": "2026-05-26T15:54:38.175Z",
-      "read": false
-    },
-    {
-      "type": "item_used",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "pildora",
-      "quantity": 1,
-      "message": "asdssd",
-      "id": "notif-1779810763479-my7n02u",
-      "timestamp": "2026-05-26T15:52:43.479Z",
-      "read": false
-    },
-    {
-      "type": "item_added",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "pildora",
-      "quantity": 1,
-      "message": "Obtuviste pildora",
-      "id": "notif-1779810756816-h2657tg",
-      "timestamp": "2026-05-26T15:52:36.816Z",
-      "read": false
-    },
-    {
-      "type": "item_used",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "pildora",
-      "quantity": 1,
-      "message": "asdssd",
-      "id": "notif-1779810722312-0n5ckxz",
-      "timestamp": "2026-05-26T15:52:02.312Z",
-      "read": false
-    },
-    {
-      "type": "item_added",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "pildora",
-      "quantity": 1,
-      "message": "Compraste pildora por 100 divisas",
-      "id": "notif-1779810717677-rei0xsn",
-      "timestamp": "2026-05-26T15:51:57.677Z",
-      "read": false
-    },
-    {
-      "type": "item_added",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "pildora",
-      "quantity": 1,
-      "message": "Obtuviste pildora",
-      "id": "notif-1779810717640-z7hge7b",
-      "timestamp": "2026-05-26T15:51:57.640Z",
+      "quantity": 10,
+      "message": "Puntos: +10 (Total: 878)",
+      "id": "notif-1780245064383-gaxgc8n",
+      "timestamp": "2026-05-31T16:31:04.383Z",
       "read": false
     },
     {
       "type": "currency_changed",
       "itemName": "Puntos",
-      "quantity": -100,
-      "message": "Puntos: -100 (Total: 500)",
-      "id": "notif-1779810717586-f76os67",
-      "timestamp": "2026-05-26T15:51:57.586Z",
+      "quantity": 1,
+      "message": "Puntos: +1 (Total: 868)",
+      "id": "notif-1780245061877-rdgr1mz",
+      "timestamp": "2026-05-31T16:31:01.877Z",
+      "read": false
+    },
+    {
+      "type": "item_removed",
+      "itemId": "past-002",
+      "itemName": "Pastilla Babeadora",
+      "quantity": 1,
+      "message": "El efecto de Pastilla Babeadora ha expirado",
+      "id": "notif-1780244315371-l7twj6w",
+      "timestamp": "2026-05-31T16:18:35.371Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "plug-001",
+      "itemName": "Plug Inflable",
+      "quantity": 1,
+      "message": "{{user}} te metio un plug inflable que se esta expandiendo dentro de tu ano",
+      "id": "notif-1780244284377-7thtu85",
+      "timestamp": "2026-05-31T16:18:04.377Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "plug-002",
+      "itemName": "Doble dildo lechero",
+      "quantity": 1,
+      "message": "{{user}} te quito el plug lechero, tu ano sigue palpitando",
+      "id": "notif-1780244255316-l9be7s9",
+      "timestamp": "2026-05-31T16:17:35.316Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "plug-001",
+      "itemName": "Plug Inflable",
+      "quantity": 1,
+      "message": "Desequipaste Plug Inflable",
+      "id": "notif-1780244254485-oqrtjgd",
+      "timestamp": "2026-05-31T16:17:34.485Z",
       "read": false
     },
     {
       "type": "item_used",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "pildora",
+      "itemId": "past-002",
+      "itemName": "Pastilla Babeadora",
       "quantity": 1,
-      "message": "asdssd",
-      "id": "notif-1779810706334-tcigq5l",
-      "timestamp": "2026-05-26T15:51:46.334Z",
+      "message": "{{user}} te dio una pastilla que te hace babear como perra",
+      "id": "notif-1780244157686-1pqckcp",
+      "timestamp": "2026-05-31T16:15:57.686Z",
       "read": false
     },
     {
       "type": "item_added",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "pildora",
+      "itemId": "past-002",
+      "itemName": "Pastilla Babeadora",
       "quantity": 1,
-      "message": "Compraste pildora por 100 divisas",
-      "id": "notif-1779810701819-yqhjj0j",
-      "timestamp": "2026-05-26T15:51:41.819Z",
+      "message": "Compraste Pastilla Babeadora por 40 divisas",
+      "id": "notif-1780244152122-2ah3wmr",
+      "timestamp": "2026-05-31T16:15:52.122Z",
       "read": false
     },
     {
       "type": "item_added",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "pildora",
+      "itemId": "past-002",
+      "itemName": "Pastilla Babeadora",
       "quantity": 1,
-      "message": "Obtuviste pildora",
-      "id": "notif-1779810701789-7dcax0l",
-      "timestamp": "2026-05-26T15:51:41.789Z",
+      "message": "Obtuviste Pastilla Babeadora",
+      "id": "notif-1780244152105-qa1goev",
+      "timestamp": "2026-05-31T16:15:52.105Z",
       "read": false
     },
     {
       "type": "currency_changed",
       "itemName": "Puntos",
-      "quantity": -100,
-      "message": "Puntos: -100 (Total: 600)",
-      "id": "notif-1779810701734-0lxpgz9",
-      "timestamp": "2026-05-26T15:51:41.734Z",
-      "read": false
-    },
-    {
-      "type": "item_used",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "asd",
-      "quantity": 1,
-      "message": "asdssd",
-      "id": "notif-1779810639032-eqwyqiq",
-      "timestamp": "2026-05-26T15:50:39.032Z",
+      "quantity": -40,
+      "message": "Puntos: -40 (Total: 867)",
+      "id": "notif-1780244152072-f5fdzfh",
+      "timestamp": "2026-05-31T16:15:52.072Z",
       "read": false
     },
     {
       "type": "item_added",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "asd",
+      "itemId": "past-002",
+      "itemName": "Pastilla Babeadora",
       "quantity": 1,
-      "message": "Compraste asd por 100 divisas",
-      "id": "notif-1779810634837-mfqxa5e",
-      "timestamp": "2026-05-26T15:50:34.837Z",
+      "message": "Compraste Pastilla Babeadora por 40 divisas",
+      "id": "notif-1780244149183-kjk8bgx",
+      "timestamp": "2026-05-31T16:15:49.183Z",
       "read": false
     },
     {
       "type": "item_added",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "asd",
+      "itemId": "past-002",
+      "itemName": "Pastilla Babeadora",
       "quantity": 1,
-      "message": "Obtuviste asd",
-      "id": "notif-1779810634806-31m4v56",
-      "timestamp": "2026-05-26T15:50:34.806Z",
+      "message": "Obtuviste Pastilla Babeadora",
+      "id": "notif-1780244149167-690w9c3",
+      "timestamp": "2026-05-31T16:15:49.167Z",
       "read": false
     },
     {
       "type": "currency_changed",
       "itemName": "Puntos",
-      "quantity": -100,
-      "message": "Puntos: -100 (Total: 700)",
-      "id": "notif-1779810634748-uoke7q8",
-      "timestamp": "2026-05-26T15:50:34.748Z",
+      "quantity": -40,
+      "message": "Puntos: -40 (Total: 907)",
+      "id": "notif-1780244149133-7bun1b3",
+      "timestamp": "2026-05-31T16:15:49.133Z",
       "read": false
     },
     {
-      "type": "item_used",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "asd",
+      "type": "item_equipped",
+      "itemId": "plug-001",
+      "itemName": "Plug Inflable",
       "quantity": 1,
-      "message": "asdssd",
-      "id": "notif-1779810611056-tytiec7",
-      "timestamp": "2026-05-26T15:50:11.056Z",
+      "message": "{{user}} te metio un plug inflable que se esta expandiendo dentro de tu ano",
+      "id": "notif-1780243892239-54zuetk",
+      "timestamp": "2026-05-31T16:11:32.239Z",
       "read": false
     },
     {
       "type": "item_added",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "asd",
+      "itemId": "plug-001",
+      "itemName": "Plug Inflable",
       "quantity": 1,
-      "message": "Compraste asd por 100 divisas",
-      "id": "notif-1779807934495-nxud461",
-      "timestamp": "2026-05-26T15:05:34.495Z",
+      "message": "Obtuviste Plug Inflable",
+      "id": "notif-1780243828074-t26i4rz",
+      "timestamp": "2026-05-31T16:10:28.074Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "plug-002",
+      "itemName": "Doble dildo lechero",
+      "quantity": 1,
+      "message": "{{user}} te metio un plug que eyacula semen en tu ano y luego lo succiona todo de golpe repitiendo el proceso una y otra ves",
+      "id": "notif-1780223022022-nfqlqcy",
+      "timestamp": "2026-05-31T10:23:42.022Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "plug-002",
+      "itemName": "Doble dildo lechero",
+      "quantity": 1,
+      "message": "{{user}} te quito el plug lechero, tu ano sigue palpitando",
+      "id": "notif-1780222963020-vvi52s5",
+      "timestamp": "2026-05-31T10:22:43.020Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "plug-002",
+      "itemName": "Plug Lechero",
+      "quantity": 1,
+      "message": "{{user}} te metio un plug que inyecta y succiona semen dentro de tu ano",
+      "id": "notif-1780221487794-v6ef8n3",
+      "timestamp": "2026-05-31T09:58:07.794Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "cum-002",
+      "itemName": "Dildo Eyaculador Masivo",
+      "quantity": 1,
+      "message": "{{user}} te metio un dildo que te llena de semen hasta hincharte el estomago, cada senton que te das te eyacula dentro",
+      "id": "notif-1780221025865-lf3j6kd",
+      "timestamp": "2026-05-31T09:50:25.865Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "cum-001",
+      "itemName": "Plug Inflador de Semen",
+      "quantity": 1,
+      "message": "{{user}} te metio un plug que te llena de semen eyaculando constantemente hasta que parezcas embarazada",
+      "id": "notif-1780220773186-xkorak8",
+      "timestamp": "2026-05-31T09:46:13.186Z",
+      "read": false
+    },
+    {
+      "type": "item_removed",
+      "itemId": "past-003",
+      "itemName": "Pastilla Orgasmica",
+      "quantity": 1,
+      "message": "El efecto de Pastilla Orgasmica ha expirado",
+      "id": "notif-1780220271709-k688l1x",
+      "timestamp": "2026-05-31T09:37:51.709Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "plug-002",
+      "itemName": "Plug Lechero",
+      "quantity": 1,
+      "message": "{{user}} te metio un plug que inyecta y succiona semen dentro de tu ano",
+      "id": "notif-1780220240494-spswszm",
+      "timestamp": "2026-05-31T09:37:20.494Z",
       "read": false
     },
     {
       "type": "item_added",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "asd",
+      "itemId": "plug-002",
+      "itemName": "Plug Lechero",
       "quantity": 1,
-      "message": "Obtuviste asd",
-      "id": "notif-1779807934465-rvv9yp2",
-      "timestamp": "2026-05-26T15:05:34.465Z",
+      "message": "Obtuviste Plug Lechero",
+      "id": "notif-1780220234064-2ku4x8n",
+      "timestamp": "2026-05-31T09:37:14.064Z",
       "read": false
     },
     {
-      "type": "currency_changed",
-      "itemName": "Puntos",
-      "quantity": -100,
-      "message": "Puntos: -100 (Total: 800)",
-      "id": "notif-1779807934410-j52il8y",
-      "timestamp": "2026-05-26T15:05:34.411Z",
+      "type": "item_removed",
+      "itemId": "past-002",
+      "itemName": "Pastilla Babeadora",
+      "quantity": 1,
+      "message": "dejaste de babear tanto",
+      "id": "notif-1780217220863-2tpdaro",
+      "timestamp": "2026-05-31T08:47:00.863Z",
       "read": false
     },
     {
-      "type": "item_used",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "asd",
+      "type": "add",
+      "itemName": "Item",
       "quantity": 1,
-      "message": "Usaste asd (1 turnos)",
-      "id": "notif-1779807874152-tmx5wfw",
-      "timestamp": "2026-05-26T15:04:34.152Z",
+      "message": "Obtained: de metérmela hasta la campanilla y que me ahogue rico",
+      "id": "notif-1780217220298-53hvey2",
+      "timestamp": "2026-05-31T08:47:00.298Z",
       "read": false
     },
     {
-      "type": "item_added",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "asd",
+      "type": "add",
+      "itemName": "Item",
       "quantity": 1,
-      "message": "Compraste asd por 100 divisas",
-      "id": "notif-1779807867192-v99h4qv",
-      "timestamp": "2026-05-26T15:04:27.192Z",
+      "message": "Obtained: de metérmela hasta la campanilla y que me ahogue ri",
+      "id": "notif-1780217220277-x6x2jlq",
+      "timestamp": "2026-05-31T08:47:00.277Z",
       "read": false
     },
     {
-      "type": "item_added",
-      "itemId": "item-1779807837762-vtol1da",
-      "itemName": "asd",
+      "type": "add",
+      "itemName": "Item",
       "quantity": 1,
-      "message": "Obtuviste asd",
-      "id": "notif-1779807867169-50400pw",
-      "timestamp": "2026-05-26T15:04:27.169Z",
+      "message": "Obtained: de metérmela hasta la campanilla y que me ahogue",
+      "id": "notif-1780217220257-r2szaj5",
+      "timestamp": "2026-05-31T08:47:00.257Z",
       "read": false
     }
   ]

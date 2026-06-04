@@ -27,7 +27,7 @@ import type {
   SessionEquipmentEntry,
 } from '@/types';
 import type { ChatApiMessage, CompletionPromptConfig, GroupPromptBuildResult } from './types';
-import { processExampleDialogue, parseExampleDialogueToMessages } from '@/lib/prompt-template';
+import { processExampleDialogue } from '@/lib/prompt-template';
 import {
   buildLorebookInjectionPlan,
   resolveLorebookAttributeKeys,
@@ -630,10 +630,21 @@ export function buildSystemPrompt(
     });
   }
 
-  // NOTE: Example dialogue is NO LONGER added as a system prompt section.
-  // Instead, it's parsed into actual user/assistant chat message pairs
-  // (SillyTavern style) and injected before the real chat history.
-  // See: exampleMessages in the return value
+  // Example Dialogue: Format as [EJEMPLO] text section
+  // Each <START> block becomes a labeled example with speaker names resolved.
+  // This replaces the old approach of injecting as user/assistant chat messages,
+  // making examples visible in the Prompt Viewer and clearly identifiable by the LLM.
+  if (character.mesExample) {
+    const exampleContent = processExampleDialogue(character.mesExample, userName, character.name);
+    if (exampleContent) {
+      sections.push({
+        type: 'example_dialogue',
+        label: 'Example Dialogue',
+        content: exampleContent,
+        color: SECTION_COLORS.example_dialogue
+      });
+    }
+  }
 
   // Lorebook position 5: At top of chat (before chat history)
   if (lorebookPlan?.position5Section) {
@@ -665,19 +676,9 @@ export function buildSystemPrompt(
   // Build the prompt string from processed sections
   const prompt = processedSections.map(s => `[${s.label}]\n${s.content}`).join('\n\n');
 
-  // Parse example dialogue into chat messages (SillyTavern style)
-  // These messages are injected BEFORE the real chat history as few-shot examples.
-  // Key resolution is applied to each message's content since they bypass
-  // the section-based key resolution pipeline.
-  let exampleMessages: ChatApiMessage[] = [];
-  if (character.mesExample) {
-    const parsed = parseExampleDialogueToMessages(character.mesExample, userName, character.name);
-    // Apply key resolution to each message's content
-    exampleMessages = parsed.map(msg => ({
-      ...msg,
-      content: resolveAllKeys(msg.content, keyContext)
-    }));
-  }
+  // Example dialogue is now included as a PromptSection above (visible in Prompt Viewer).
+  // Return empty exampleMessages for backward compatibility with API routes.
+  const exampleMessages: ChatApiMessage[] = [];
 
   return { prompt, sections: processedSections, lorebookChatInjections: lorebookPlan?.chatInjections || [], exampleMessages };
 }
@@ -1039,17 +1040,9 @@ export function buildCompletionPrompt(config: CompletionPromptConfig): string {
     parts.push('\n---\n');
   }
 
-  // Example dialogue as text (for completion-style APIs)
-  // Injected before chat history, after embeddings, as few-shot examples
-  if (exampleMessages && exampleMessages.length > 0) {
-    for (const msg of exampleMessages) {
-      if (msg.role === 'user') {
-        parts.push(`${userName}: ${msg.content}`);
-      } else if (msg.role === 'assistant') {
-        parts.push(`${character.name}: ${msg.content}`);
-      }
-    }
-  }
+  // Example dialogue is now included in the systemPrompt string (as [EJEMPLO] sections).
+  // The exampleMessages parameter is kept for backward compatibility but will always be empty.
+  // No separate injection needed here.
 
   // Exclude narrator messages from prompt
   const visibleMessages = messages.filter(m => !m.isDeleted && !m.isNarratorMessage);
@@ -1224,10 +1217,18 @@ export function buildGroupSystemPrompt(
     });
   }
 
-  // NOTE: Example dialogue is NO LONGER added as a system prompt section.
-  // Instead, it's parsed into actual user/assistant chat message pairs
-  // (SillyTavern style) and injected before the real chat history.
-  // See: exampleMessages in the return value
+  // Example Dialogue: Format as [EJEMPLO] text section (group chat variant)
+  if (character.mesExample) {
+    const exampleContent = processExampleDialogue(character.mesExample, userName, character.name);
+    if (exampleContent) {
+      sections.push({
+        type: 'example_dialogue',
+        label: 'Example Dialogue',
+        content: exampleContent,
+        color: SECTION_COLORS.example_dialogue
+      });
+    }
+  }
 
   // Lorebook position 5: At top of chat (before chat history)
   if (lorebookPlan?.position5Section) {
@@ -1255,17 +1256,9 @@ export function buildGroupSystemPrompt(
   // Build the prompt string from processed sections
   const prompt = processedSections.map(s => `[${s.label}]\n${s.content}`).join('\n\n');
 
-  // Parse example dialogue into chat messages (SillyTavern style)
-  // These messages are injected BEFORE the real chat history as few-shot examples.
-  let exampleMessages: ChatApiMessage[] = [];
-  if (character.mesExample) {
-    const parsed = parseExampleDialogueToMessages(character.mesExample, userName, character.name);
-    // Apply key resolution to each message's content
-    exampleMessages = parsed.map(msg => ({
-      ...msg,
-      content: resolveAllKeys(msg.content, keyContext)
-    }));
-  }
+  // Example dialogue is now included as a PromptSection above (visible in Prompt Viewer).
+  // Return empty exampleMessages for backward compatibility with API routes.
+  const exampleMessages: ChatApiMessage[] = [];
 
   return { prompt, sections: processedSections, lorebookChatInjections: lorebookPlan?.chatInjections || [], exampleMessages };
 }

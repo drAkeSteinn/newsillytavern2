@@ -175,7 +175,7 @@ export function processExampleDialogue(
     return processed.trim();
   }
 
-  // Process each block preserving the natural conversation flow
+  // Process each block with [EJEMPLO] headers for clear identification
   const formattedBlocks: string[] = [];
   
   for (const block of blocks) {
@@ -184,7 +184,7 @@ export function processExampleDialogue(
     
     const result = formatDialogueBlock(trimmedBlock, userName, charName);
     if (result) {
-      formattedBlocks.push(result);
+      formattedBlocks.push(`[EJEMPLO]\n${result}`);
     }
   }
   

@@ -199,31 +199,47 @@ export async function POST(request: NextRequest): Promise<NextResponse<SummaryRe
     const tokenCount = estimateTokens(summaryContent);
 
     // Save summary as embedding in the session namespace for future semantic search
+    //
+    // Strategy: Keep ALL summaries as embeddings so they can be found via RAG search.
+    // - The LATEST summary is injected directly into the prompt as [RECUERDOS ANTERIORES]
+    // - OLD summaries remain searchable via semantic search (the RAG pipeline excludes
+    //   the latest summary from search results to avoid duplication with the direct injection)
+    // - Only the latest summary gets `is_latest: true` in metadata — older ones are demoted
     try {
       const client = getEmbeddingClient();
       const effectiveCharId = characterId || 'default';
       const effectiveSessId = sessionId || 'unknown';
       const namespace = `memory-character-${effectiveCharId}-${effectiveSessId}`;
 
-      // Delete any previous summary embedding for this session (keep only the latest)
-      // Use direct metadata query instead of semantic search to avoid accidentally deleting non-summary embeddings
+      // Demote any previous "latest" summary for this session (set is_latest=false)
+      // This preserves old summaries for semantic search while marking only the newest as latest
       try {
         const { LanceDBWrapper } = await import('@/lib/embeddings/lancedb-db');
         const existingSummaries = await LanceDBWrapper.getNamespaceEmbeddingsMetadata(namespace, {
           sourceType: 'summary',
-          limit: 10,
+          limit: 50,
         });
         for (const existing of existingSummaries) {
-          if (existing.metadata?.session_id === effectiveSessId) {
-            await client.deleteEmbedding(existing.id);
-            console.log(`[Summary] Deleted previous summary embedding: ${existing.id}`);
+          if (existing.metadata?.session_id === effectiveSessId && existing.metadata?.is_latest) {
+            // Demote: update metadata to mark as not-latest
+            try {
+              await client.updateEmbedding(existing.id, {
+                ...existing,
+                metadata: { ...existing.metadata, is_latest: false },
+              });
+              console.log(`[Summary] Demoted previous summary: ${existing.id} (is_latest=false)`);
+            } catch (updateErr) {
+              console.warn('[Summary] Could not demote previous summary, deleting instead:', updateErr);
+              // Fallback: if update fails, delete the old one (better than duplication)
+              await client.deleteEmbedding(existing.id);
+            }
           }
         }
-      } catch (delErr) {
-        console.warn('[Summary] Could not delete previous summary embedding:', delErr);
+      } catch (demoteErr) {
+        console.warn('[Summary] Could not demote previous summaries (non-blocking):', demoteErr);
       }
 
-      // Save the new summary as an embedding
+      // Save the new summary as an embedding with is_latest=true
       await client.createEmbedding({
         content: summaryContent,
         namespace,
@@ -233,6 +249,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<SummaryRe
           type: 'summary',
           character_id: effectiveCharId,
           session_id: effectiveSessId,
+          is_latest: true,
           message_range_start: 0,
           message_range_end: visibleMessages.length - 1,
           tokens: tokenCount,
@@ -240,7 +257,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<SummaryRe
         },
       });
 
-      console.log(`[Summary] Saved summary embedding to namespace "${namespace}"`);
+      console.log(`[Summary] Saved summary embedding to namespace "${namespace}" (is_latest=true)`);
     } catch (embedErr) {
       console.warn('[Summary] Failed to save summary as embedding (non-blocking):', embedErr);
     }

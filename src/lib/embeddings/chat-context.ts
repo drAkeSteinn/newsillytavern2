@@ -226,10 +226,17 @@ export async function retrieveEmbeddingsContext(
     // Sort by similarity (highest first)
     allResults.sort((a, b) => b.similarity - a.similarity);
 
-    // Filter out summary-type embeddings — summaries are injected separately as [RECUERDOS ANTERIORES]
-    // Filter BEFORE slicing so we don't lose non-summary results that rank just below summaries
-    const nonSummaryResults = allResults.filter(r => r.source_type !== 'summary');
-    let trimmed = nonSummaryResults.slice(0, maxResults);
+    // Filter out the LATEST summary embedding — it's injected separately as [RECUERDOS ANTERIORES]
+    // to avoid duplication. OLD summaries (is_latest=false or no is_latest flag) are KEPT
+    // so they can be found via semantic search for long-term recall.
+    // Filter BEFORE slicing so we don't lose non-summary results that rank just below summaries.
+    const nonLatestSummaryResults = allResults.filter(r => {
+      if (r.source_type !== 'summary') return true; // Keep all non-summary results
+      // For summary-type: only keep if it's NOT the latest one
+      const isLatest = (r.metadata as Record<string, any>)?.is_latest;
+      return !isLatest; // Exclude latest summary (injected directly), keep old ones
+    });
+    let trimmed = nonLatestSummaryResults.slice(0, maxResults);
 
     // Deduplicate: Remove memory-type embeddings that overlap with existing Character Memory events.
     // Only memory-type (source_type='memory') results are deduplicated — lore/world content is never filtered.
@@ -419,17 +426,16 @@ async function getNamespaceTypesMap(results: SearchResult[]): Promise<Record<str
 /**
  * Determine which namespaces to search based on the configured strategy.
  *
- * Memory namespaces now use prefix 'memory-':
- *   - memory-character-{characterId}-{sessionId}
- *   - memory-group-{groupId}-{sessionId}
+ * IMPORTANT: Only searches namespaces explicitly configured. No hardcoded
+ * 'default', 'world', or 'world-building' namespaces are included unless
+ * the character/group card explicitly lists them in embeddingNamespaces.
  *
- * Lore namespaces (without 'memory-' prefix):
- *   - character-{characterId}
- *   - group-{groupId}
- *   - default, world, world-building
+ * Always includes:
+ *   - memory-character-{characterId}-{sessionId} (session-scoped memories)
+ *   - character-{characterId} (character lore/knowledge)
  *
- * So we search BOTH the memory namespaces (for extracted memories) AND the
- * lore namespaces (for manually created content).
+ * Plus any namespaces configured in the character/group card's embeddingNamespaces.
+ * The character/group embeddingNamespaces are passed via settings.customNamespaces.
  */
 function getNamespacesForStrategy(
   strategy: EmbeddingsChatSettings['namespaceStrategy'],
@@ -441,28 +447,18 @@ function getNamespacesForStrategy(
     case 'global':
       return ['*'];
 
-    case 'character': {
-      const ns: string[] = [];
-      // Session-specific MEMORY namespaces (memories extracted from chat)
-      if (characterId && sessionId) ns.push(`memory-character-${characterId}-${sessionId}`);
-      if (groupId && sessionId) ns.push(`memory-group-${groupId}-${sessionId}`);
-      // LORE namespaces (manually created content - files, world, etc.)
-      if (characterId) ns.push(`character-${characterId}`);
-      if (groupId) ns.push(`group-${groupId}`);
-      // Always include common lore/world namespaces
-      ns.push('default', 'world', 'world-building');
-      return ns;
-    }
-
+    case 'character':
     case 'session': {
       const ns: string[] = [];
-      // Session-specific MEMORY namespaces (primary)
+      // ALWAYS include: session-specific MEMORY namespace (memories extracted from chat)
       if (characterId && sessionId) ns.push(`memory-character-${characterId}-${sessionId}`);
       if (groupId && sessionId) ns.push(`memory-group-${groupId}-${sessionId}`);
-      // LORE namespaces
+      // ALWAYS include: character/group lore namespace (manually created content)
       if (characterId) ns.push(`character-${characterId}`);
       if (groupId) ns.push(`group-${groupId}`);
-      ns.push('default', 'world');
+      // NO hardcoded 'default', 'world', 'world-building' — only search what's configured.
+      // Character/group card namespaces are passed via settings.customNamespaces and merged
+      // by the calling code in retrieveEmbeddingsContext().
       return ns;
     }
 

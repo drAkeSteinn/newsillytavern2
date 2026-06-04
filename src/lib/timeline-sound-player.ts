@@ -18,6 +18,7 @@ import type {
   SoundCollection,
 } from '@/types';
 import { isGlobalMuted } from '@/lib/audio/audio-mute-store';
+import { emitComicSoundEvent } from '@/lib/comic-sound-bus';
 
 // ============================================
 // Types
@@ -140,6 +141,9 @@ async function playSoundFromTrigger(
       console.warn('[TimelineSoundPlayer] Audio play failed:', e);
     });
     
+    // Emit comic sound visual event
+    emitComicSoundEvent(trigger.name, trigger.keywords[0] || 'timeline_sound');
+    
     return audioClone;
   } catch (error) {
     console.error('[TimelineSoundPlayer] Failed to play sound:', error);
@@ -166,6 +170,10 @@ async function playSoundFromUrl(
     await audioClone.play().catch(e => {
       console.warn('[TimelineSoundPlayer] Audio play failed:', e);
     });
+    
+    // Emit comic sound visual event for direct URL sounds
+    const soundName = url.split('/').pop()?.replace(/\.[^.]+$/, '') || 'sound';
+    emitComicSoundEvent(soundName, soundName);
     
     return audioClone;
   } catch (error) {

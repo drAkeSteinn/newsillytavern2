@@ -4,6 +4,7 @@ import { useRef, useCallback, useEffect } from 'react';
 import { useTavernStore } from '@/store/tavern-store';
 import type { SoundTrigger, SoundCollection } from '@/types';
 import { isGlobalMuted } from '@/lib/audio/audio-mute-store';
+import { emitComicSoundEvent } from '@/lib/comic-sound-bus';
 
 // ============ Audio Queue System ============
 
@@ -12,6 +13,7 @@ interface QueueItem {
   volume: number;
   triggerName: string;
   keyword: string;
+  characterId?: string;
 }
 
 const audioQueue: QueueItem[] = [];
@@ -56,6 +58,9 @@ async function processAudioQueue() {
       const audio = new Audio(item.src);
       audio.volume = Math.min(1, Math.max(0, item.volume));
       currentlyPlayingAudio = audio;
+      
+      // Emit comic sound visual event
+      emitComicSoundEvent(item.triggerName, item.keyword, item.characterId);
       
       await audio.play();
       
@@ -338,6 +343,7 @@ export function useSoundTriggers() {
             volume,
             triggerName: trigger.name,
             keyword,
+            characterId: state.activeCharacterId || undefined,
           });
           
           // Update cooldowns
@@ -359,7 +365,7 @@ export function useSoundTriggers() {
     if (audioQueue.length > 0 && !isPlaying) {
       processAudioQueue();
     }
-  }, [soundTriggers, settings.sound, getSoundFile]);
+  }, [soundTriggers, settings.sound, getSoundFile, state.activeCharacterId]);
   
   /**
    * Reset detection for a new message

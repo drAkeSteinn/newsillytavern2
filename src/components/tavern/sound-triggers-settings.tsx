@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTavernStore } from '@/store/tavern-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,8 +34,10 @@ import {
 } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
-import type { SoundTrigger, SoundCollection, SoundSequenceTrigger } from '@/types';
+import type { SoundTrigger, SoundCollection, SoundSequenceTrigger, ComicSoundSettings, ComicTemplateType } from '@/types';
+import { DEFAULT_COMIC_SOUND_SETTINGS, COMIC_TEMPLATE_TYPES, COMIC_TEMPLATE_LABELS, COMIC_TEMPLATE_DESCRIPTIONS } from '@/types';
 import { getLogger } from '@/lib/logger';
+import { createComicSFX } from './comic-sound-templates';
 import {
   Plus,
   Play,
@@ -56,9 +58,14 @@ import {
   FileText,
   Pencil,
   ChevronRight,
+  Sparkles,
+  Palette,
+  RotateCcw,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
-type SoundSettingsTab = 'global' | 'triggers' | 'sequences';
+type SoundSettingsTab = 'global' | 'triggers' | 'sequences' | 'comic';
 
 export function SoundTriggersSettings() {
   const soundLogger = getLogger('sound');
@@ -179,6 +186,7 @@ export function SoundTriggersSettings() {
     { id: 'global', label: 'Configuración Global', icon: <Settings className="w-4 h-4" /> },
     { id: 'triggers', label: 'Triggers de Sonido', icon: <Zap className="w-4 h-4" /> },
     { id: 'sequences', label: 'Triggers de Secuencia', icon: <ListMusic className="w-4 h-4" /> },
+    { id: 'comic', label: 'Templates Cómic', icon: <Sparkles className="w-4 h-4" /> },
   ];
 
   return (
@@ -1148,7 +1156,334 @@ ${settings.sound?.soundListSuffix ?? ''}`}
             </div>
           </ScrollArea>
         )}
+
+        {/* Comic Templates Tab */}
+        {activeTab === 'comic' && (
+          <ComicTemplatesSettings />
+        )}
       </div>
     </div>
   );
+}
+
+// ============================================
+// Comic Templates Settings Sub-Component
+// ============================================
+
+function ComicTemplatesSettings() {
+  const { settings, updateSettings } = useTavernStore();
+  const comic = settings.comicSound ?? DEFAULT_COMIC_SOUND_SETTINGS;
+
+  const updateComic = (partial: Partial<ComicSoundSettings>) => {
+    updateSettings({ comicSound: { ...comic, ...partial } });
+  };
+
+  const toggleTemplate = (type: ComicTemplateType) => {
+    const current = comic.allowedTemplates;
+    const updated = current.includes(type)
+      ? current.filter(t => t !== type)
+      : [...current, type];
+    updateComic({ allowedTemplates: updated });
+  };
+
+  const resetToDefaults = () => {
+    updateSettings({ comicSound: { ...DEFAULT_COMIC_SOUND_SETTINGS } });
+  };
+
+  // Preview state
+  const [previewText, setPreviewText] = useState('mhi');
+  const [previewPreset, setPreviewPreset] = useState<ComicTemplateType>('vertical');
+  const [previewKey, setPreviewKey] = useState(0);
+
+  // Generate preview SVG
+  const previewSvg = useMemo(() => {
+    return createComicSFX({ text: previewText, preset: previewPreset, duration: comic.duration });
+  }, [previewText, previewPreset, comic.duration, previewKey]);
+
+  const handleReplayPreview = () => {
+    setPreviewKey(k => k + 1);
+  };
+
+  return (
+    <ScrollArea className="h-full">
+      <div className="p-4 rounded-lg border bg-muted/30 space-y-5">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <h4 className="font-medium flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-500" />
+            Templates Cómic de Sonidos
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-sm">
+                <p>Cuando un sonido se reproduce, aparece un efecto visual cómic estilo manga en el área de sprites con el nombre del sonido.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Las animaciones usan líneas temblorosas (boiling lines), filtros de tinta y texto dinámico que se ajusta al contenido.</p>
+              </TooltipContent>
+            </Tooltip>
+          </h4>
+          <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={resetToDefaults}>
+            <RotateCcw className="w-3 h-3" />
+            Restaurar
+          </Button>
+        </div>
+
+        {/* Enable/Disable */}
+        <label className="flex items-center justify-between p-3 rounded-lg border bg-background">
+          <div className="flex items-center gap-2">
+            {comic.enabled ? <Eye className="w-4 h-4 text-green-500" /> : <EyeOff className="w-4 h-4 text-muted-foreground" />}
+            <span className="text-sm font-medium">Efectos Visuales Cómic</span>
+          </div>
+          <Switch
+            checked={comic.enabled}
+            onCheckedChange={(checked) => updateComic({ enabled: checked })}
+          />
+        </label>
+
+        {/* Template Types */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-medium flex items-center gap-1">
+              <Palette className="w-3.5 h-3.5" />
+              Presets de Template
+            </Label>
+            <button
+              onClick={() => updateComic({
+                allowedTemplates: comic.allowedTemplates.length === COMIC_TEMPLATE_TYPES.length ? [] : [...COMIC_TEMPLATE_TYPES]
+              })}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {comic.allowedTemplates.length === COMIC_TEMPLATE_TYPES.length ? 'Deseleccionar todos' : 'Seleccionar todos'}
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Selecciona los presets que pueden aparecer. Vacío = todos. Cada preset se adapta al texto automáticamente.
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {COMIC_TEMPLATE_TYPES.map((type) => {
+              const isSelected = comic.allowedTemplates.length === 0 || comic.allowedTemplates.includes(type);
+              return (
+                <button
+                  key={type}
+                  onClick={() => toggleTemplate(type)}
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 p-3 rounded-lg border transition-all text-center",
+                    isSelected
+                      ? "bg-background border-primary/50 shadow-sm"
+                      : "bg-muted/30 border-transparent opacity-40"
+                  )}
+                >
+                  <div className="w-10 h-10 flex items-center justify-center">
+                    <TemplateIcon type={type} />
+                  </div>
+                  <span className="text-xs font-medium">{COMIC_TEMPLATE_LABELS[type]}</span>
+                  <span className="text-[10px] text-muted-foreground leading-tight">{COMIC_TEMPLATE_DESCRIPTIONS[type]}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Duration */}
+        <div className="space-y-3">
+          <Label className="text-sm font-medium">Duración de Animación</Label>
+          <div className="p-3 rounded-lg border bg-background space-y-2">
+            <div className="flex justify-between text-xs">
+              <span>Duración total</span>
+              <span className="text-muted-foreground">{comic.duration}ms ({(comic.duration / 1000).toFixed(1)}s)</span>
+            </div>
+            <Slider
+              value={[comic.duration]}
+              min={500}
+              max={3000}
+              step={50}
+              onValueChange={([v]) => updateComic({ duration: v })}
+            />
+            <p className="text-[10px] text-muted-foreground">
+              Ciclo completo: aparece → rebota → se estabiliza → se eleva → desaparece
+            </p>
+          </div>
+        </div>
+
+        {/* Size & Count */}
+        <div className="space-y-3">
+          <Label className="text-sm font-medium">Tamaño y Cantidad</Label>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 rounded-lg border bg-background">
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs">
+                <span>Escala mínima</span>
+                <span className="text-muted-foreground">{comic.minScale.toFixed(1)}x</span>
+              </div>
+              <Slider
+                value={[comic.minScale * 10]}
+                min={3}
+                max={15}
+                step={1}
+                onValueChange={([v]) => updateComic({ minScale: v / 10 })}
+              />
+            </div>
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs">
+                <span>Escala máxima</span>
+                <span className="text-muted-foreground">{comic.maxScale.toFixed(1)}x</span>
+              </div>
+              <Slider
+                value={[comic.maxScale * 10]}
+                min={5}
+                max={25}
+                step={1}
+                onValueChange={([v]) => updateComic({ maxScale: v / 10 })}
+              />
+            </div>
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs">
+                <span>Máx. simultáneos</span>
+                <span className="text-muted-foreground">{comic.maxEffects}</span>
+              </div>
+              <Slider
+                value={[comic.maxEffects]}
+                min={1}
+                max={10}
+                step={1}
+                onValueChange={([v]) => updateComic({ maxEffects: v })}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Live Preview */}
+        <div className="space-y-3">
+          <Label className="text-sm font-medium flex items-center gap-1">
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            Vista Previa en Vivo
+          </Label>
+          <div className="p-4 rounded-lg border bg-background space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">Texto de prueba</Label>
+                <Input
+                  value={previewText}
+                  onChange={(e) => setPreviewText(e.target.value)}
+                  placeholder="mhi, movah, OOH..."
+                  className="h-8"
+                  maxLength={12}
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">Preset</Label>
+                <Select
+                  value={previewPreset}
+                  onValueChange={(v: ComicTemplateType) => setPreviewPreset(v)}
+                >
+                  <SelectTrigger className="h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COMIC_TEMPLATE_TYPES.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {COMIC_TEMPLATE_LABELS[type]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Preview area */}
+            <div className="flex items-center justify-center p-4 rounded-lg border border-dashed bg-muted/20 min-h-[200px] relative overflow-visible">
+              <div
+                key={previewKey}
+                className="comic-sfx-preview"
+                style={{
+                  width: '150px',
+                  height: '200px',
+                  display: 'grid',
+                  placeItems: 'center',
+                  overflow: 'visible',
+                }}
+                dangerouslySetInnerHTML={{ __html: previewSvg }}
+              />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] text-muted-foreground">
+                El SVG se ajusta dinámicamente al texto usando textLength y lengthAdjust
+              </p>
+              <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={handleReplayPreview}>
+                <Play className="w-3 h-3" />
+                Reproducir
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Info */}
+        <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+          <p className="text-xs text-amber-600 font-medium mb-1">Efectos Manga</p>
+          <p className="text-xs text-muted-foreground">
+            Los efectos usan líneas temblorosas (boiling lines), filtros SVG de tinta (ink wobble) y texto dinámico (text rattle).
+            Duración total: <strong>{(comic.duration / 1000).toFixed(1)}s</strong>. El preset se selecciona automáticamente según el largo del texto.
+          </p>
+        </div>
+      </div>
+    </ScrollArea>
+  );
+}
+
+// ============================================
+// Template Type Icon Component
+// ============================================
+
+function TemplateIcon({ type }: { type: ComicTemplateType }) {
+  const size = 32;
+  const cx = size / 2;
+  const cy = size / 2;
+
+  switch (type) {
+    case 'vertical':
+      // Narrow vertical diamond
+      return (
+        <svg width={size} height={size} viewBox="0 0 32 32">
+          <path
+            d={`M${cx},4 L${cx + 6},${cy} L${cx},${size - 4} L${cx - 6},${cy} Z`}
+            fill="#fffef8" stroke="#0b0b0b" strokeWidth={1.5}
+          />
+          <line x1={cx - 4} y1={cy - 4} x2={cx + 4} y2={cy - 4} stroke="#0b0b0b" strokeWidth={0.8} opacity={0.6} />
+          <line x1={cx - 3} y1={cy + 2} x2={cx + 3} y2={cy + 2} stroke="#0b0b0b" strokeWidth={0.8} opacity={0.6} />
+        </svg>
+      );
+    case 'oval':
+      // Wide oval with tail
+      return (
+        <svg width={size} height={size} viewBox="0 0 32 32">
+          <ellipse cx={cx} cy={cy - 3} rx={10} ry={7} fill="#fffef8" stroke="#0b0b0b" strokeWidth={1.5} />
+          <path d={`M${cx - 3},${cy + 5} C${cx - 1},${cy + 8} ${cx + 1},${cy + 9} ${cx},${cy + 12}`} fill="none" stroke="#0b0b0b" strokeWidth={1.2} />
+          <circle cx={cx + 5} cy={cy - 6} r={1.5} fill="#0b0b0b" opacity={0.5} />
+        </svg>
+      );
+    case 'wail':
+      // Tall wail shape with hearts
+      return (
+        <svg width={size} height={size} viewBox="0 0 32 32">
+          <path
+            d={`M${cx},3 C${cx - 4},8 ${cx - 5},12 ${cx - 3},16 C${cx - 5},20 ${cx - 3},24 ${cx},29 C${cx + 3},24 ${cx + 5},20 ${cx + 3},16 C${cx + 5},12 ${cx + 4},8 ${cx},3 Z`}
+            fill="#fffef8" stroke="#0b0b0b" strokeWidth={1.5}
+          />
+          <path d={`M${cx - 5},${size - 4} C${cx - 3},${size - 6} ${cx - 1},${size - 4} ${cx - 3},${size - 2}`} fill="none" stroke="#0b0b0b" strokeWidth={0.8} opacity={0.6} />
+        </svg>
+      );
+    case 'tall':
+      // Tall diamond-like shape
+      return (
+        <svg width={size} height={size} viewBox="0 0 32 32">
+          <path
+            d={`M${cx},3 C${cx - 8},9 ${cx - 7},16 ${cx - 6},20 C${cx - 7},24 ${cx - 6},27 ${cx},29 C${cx + 6},27 ${cx + 7},24 ${cx + 6},20 C${cx + 7},16 ${cx + 8},9 ${cx},3 Z`}
+            fill="#fffef8" stroke="#0b0b0b" strokeWidth={1.5}
+          />
+          <path d={`M${cx - 5},${size - 4} C${cx - 3},${size - 6} ${cx - 1},${size - 4} ${cx - 3},${size - 2}`} fill="none" stroke="#0b0b0b" strokeWidth={1} opacity={0.6} />
+        </svg>
+      );
+    default:
+      return null;
+  }
 }

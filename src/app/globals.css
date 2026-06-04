@@ -112,6 +112,17 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* ============================================
+   KOMIKAHB Font - Comic Sound Effects
+   ============================================ */
+@font-face {
+  font-family: 'KOMIKAHB';
+  src: url('/fonts/KOMIKAHB.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -1213,5 +1224,60 @@
   .animate-dot-empty,
   .animate-badge-pop {
     animation: none !important;
+  }
+}
+
+/* ============================================
+   Comic Sound Effect Animations (v3 - Manga Pack)
+   ============================================
+   Based on comic_sfx_manga_pack_v4 reference:
+   - Single CSS keyframe lifecycle (SVG inline)
+   - Boiling lines: 3 alternating outline paths for hand-drawn feel
+   - Ink wobble: SVG feTurbulence/feDisplacementMap filter
+   - Text rattle: SVG filter for organic text movement
+   - Single playback: pop-in → stabilize → rise → disappear
+   - Dynamic text: textLength + lengthAdjust for auto-fitting
+*/
+
+/* Comic SFX host positioning */
+.comic-sfx-host {
+  position: relative;
+  pointer-events: none;
+}
+
+.comic-sfx-host svg,
+.comic-sfx-preview svg {
+  display: block;
+  overflow: visible;
+  background: transparent;
+}
+
+/* Reduced motion for comic effects */
+@media (prefers-reduced-motion: reduce) {
+  .comic-sfx-host svg,
+  .comic-sfx-preview svg {
+    animation: none !important;
+  }
+  .comic-sfx-host svg .sfx-root,
+  .comic-sfx-preview svg .sfx-root,
+  .comic-sfx-host svg .boil-a,
+  .comic-sfx-host svg .boil-b,
+  .comic-sfx-host svg .boil-c,
+  .comic-sfx-host svg .side-mark,
+  .comic-sfx-host svg .dot,
+  .comic-sfx-host svg .heart,
+  .comic-sfx-host svg .arrow,
+  .comic-sfx-host svg .text-pop,
+  .comic-sfx-preview svg .sfx-root,
+  .comic-sfx-preview svg .boil-a,
+  .comic-sfx-preview svg .boil-b,
+  .comic-sfx-preview svg .boil-c,
+  .comic-sfx-preview svg .side-mark,
+  .comic-sfx-preview svg .dot,
+  .comic-sfx-preview svg .heart,
+  .comic-sfx-preview svg .arrow,
+  .comic-sfx-preview svg .text-pop {
+    animation: none !important;
+    opacity: 1 !important;
   }
 }

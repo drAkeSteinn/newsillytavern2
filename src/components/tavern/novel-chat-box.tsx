@@ -89,6 +89,8 @@ import { isGlobalMuted, setGlobalMuted } from '@/lib/audio/audio-mute-store';
 import { pauseAllTimelines, resumeAllTimelines } from '@/hooks/use-timeline-sprite-sounds';
 import { stopAllSoundTriggers } from '@/hooks/use-sound-triggers';
 import { ttsService } from '@/lib/tts';
+import { resolveTemplateVariables } from '@/lib/key-resolver';
+import type { CharacterQuickReply, QuickReplyAttributeModifier } from '@/types';
 
 // Tab type for the chatbox
 type ChatboxTab = 'chat' | 'solicitudes' | 'misiones' | 'memorias' | 'tienda';
@@ -287,6 +289,8 @@ export function NovelChatBox({
     items,
     purchaseItem,
     getShopItems,
+    batchUpdateCharacterStats,
+    getAttributeValue,
   } = useTavernStore();
 
   // ASR config state (loaded from API)
@@ -746,9 +750,63 @@ export function NovelChatBox({
     }
   }, !isAnyGenerating);
 
-  const handleQuickReply = (item: { label: string; response: string }) => {
+  // Apply attribute modifiers from a quick reply
+  const applyQuickReplyModifiers = (modifiers: QuickReplyAttributeModifier[]) => {
+    if (!activeSessionId || !activeCharacter?.id || modifiers.length === 0) return;
+    const attributes = activeCharacter.statsConfig?.attributes || [];
+    
+    const updates: Array<{ attributeKey: string; value: number | string }> = [];
+    
+    for (const mod of modifiers) {
+      const attr = attributes.find((a) => a.key === mod.attributeKey);
+      if (!attr) continue;
+      
+      const currentValue = getAttributeValue(activeSessionId, activeCharacter.id, mod.attributeKey);
+      const isNumeric = attr.type === 'number';
+      
+      if (isNumeric) {
+        const current = typeof currentValue === 'number' ? currentValue : parseFloat(String(currentValue)) || 0;
+        const modValue = typeof mod.value === 'number' ? mod.value : parseFloat(String(mod.value)) || 0;
+        let newValue: number;
+        
+        switch (mod.operation) {
+          case 'set': newValue = modValue; break;
+          case 'add': newValue = current + modValue; break;
+          case 'subtract': newValue = current - modValue; break;
+          case 'multiply': newValue = current * modValue; break;
+          case 'divide': newValue = modValue !== 0 ? current / modValue : current; break;
+          default: newValue = current;
+        }
+        
+        // Clamp to min/max
+        if (attr.min !== undefined && newValue < attr.min) newValue = attr.min;
+        if (attr.max !== undefined && newValue > attr.max) newValue = attr.max;
+        
+        updates.push({ attributeKey: mod.attributeKey, value: newValue });
+      } else {
+        // Text/keyword: only 'set' operation makes sense
+        updates.push({ attributeKey: mod.attributeKey, value: String(mod.value) });
+      }
+    }
+    
+    if (updates.length > 0) {
+      batchUpdateCharacterStats(activeSessionId, activeCharacter.id, updates, 'manual');
+    }
+  };
+
+  const handleQuickReply = (item: CharacterQuickReply) => {
     if (isAnyGenerating || !item.response.trim()) return;
-    onSendMessage(item.response.trim());
+    // Resolve template variables like {{char}} and {{user}} in quick replies
+    const resolutionContext = {
+      user: activePersona?.name || 'User',
+      char: activeCharacter?.name || 'Character',
+    };
+    const resolvedResponse = resolveTemplateVariables(item.response.trim(), resolutionContext);
+    // Apply attribute modifiers if any
+    if (item.modifiers && item.modifiers.length > 0) {
+      applyQuickReplyModifiers(item.modifiers);
+    }
+    onSendMessage(resolvedResponse);
     setInput('');
   };
 
@@ -1726,24 +1784,40 @@ export function NovelChatBox({
                 </div>
               </ScrollArea>
 
-              {/* Quick Replies - Compact */}
-              {settings.quickReplies.length > 0 && (
+              {/* Quick Replies - From character card */}
+              {activeCharacter?.quickReplies && activeCharacter.quickReplies.length > 0 && (() => {
+                const qrContext = {
+                  user: activePersona?.name || 'User',
+                  char: activeCharacter?.name || 'Character',
+                };
+                return (
                 <div className="px-2 py-1 flex gap-1 overflow-x-auto border-t bg-background/30 flex-shrink-0">
-                  {settings.quickReplies.map((item, index) => (
+                  {activeCharacter.quickReplies.map((item) => {
+                    const resolvedLabel = resolveTemplateVariables(item.label, qrContext);
+                    const resolvedResponse = resolveTemplateVariables(item.response, qrContext);
+                    const hasUnresolved = item.response !== resolvedResponse || item.label !== resolvedLabel;
+                    const hasModifiers = item.modifiers && item.modifiers.length > 0;
+                    return (
                     <Button
-                      key={index}
+                      key={item.id}
                       variant="outline"
                       size="sm"
-                      className="h-6 px-2 text-xs flex-shrink-0 disabled:opacity-50 max-w-[120px]"
+                      className={cn(
+                        "h-6 px-2 text-xs flex-shrink-0 disabled:opacity-50 max-w-[150px]",
+                        hasModifiers && "border-amber-500/30 hover:border-amber-500/50"
+                      )}
                       disabled={isAnyGenerating}
                       onClick={() => handleQuickReply(item)}
-                      title={item.response !== item.label ? item.response : undefined}
+                      title={hasUnresolved ? resolvedResponse : (item.response !== item.label ? item.response : undefined)}
                     >
-                      <span className="truncate">{item.label}</span>
+                      {hasModifiers && <Zap className="w-3 h-3 mr-1 text-amber-400 flex-shrink-0" />}
+                      <span className="truncate">{resolvedLabel}</span>
                     </Button>
-                  ))}
+                    );
+                  })}
                 </div>
-              )}
+                );
+              })()}
 
               {/* User Peticiones - Quick Tags */}
               <QuickPetitions

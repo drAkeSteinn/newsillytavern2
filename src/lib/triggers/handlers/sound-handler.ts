@@ -19,6 +19,7 @@ import type { TriggerContext } from '../trigger-bus';
 import type { SoundTrigger, SoundCollection, SoundSequenceTrigger } from '@/types';
 import { getCooldownManager } from '../cooldown-manager';
 import { normalizeKey } from '../key-detector';
+import { emitComicSoundEvent } from '@/lib/comic-sound-bus';
 
 // ============================================
 // Audio Queue System
@@ -47,6 +48,9 @@ async function processAudioQueue(): Promise<void> {
       console.log(`[SoundHandler] Playing: ${item.triggerName} (keyword: ${item.keyword})`);
       const audio = new Audio(item.src);
       audio.volume = Math.min(1, Math.max(0, item.volume));
+      
+      // Emit comic sound visual event
+      emitComicSoundEvent(item.triggerName, item.keyword);
       
       await audio.play();
       

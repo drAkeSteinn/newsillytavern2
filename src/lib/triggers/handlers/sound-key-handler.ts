@@ -32,6 +32,7 @@ import {
   selectCycle,
   calculateVolume,
 } from '../utils';
+import { emitComicSoundEvent } from '@/lib/comic-sound-bus';
 
 // ============================================
 // Types
@@ -136,11 +137,17 @@ async function processAudioQueue(
       });
       
       if (playSound) {
+        // Emit comic sound visual event before playing
+        emitComicSoundEvent(item.triggerName, item.keyword, item.characterId);
         playSound(item.src, item.volume);
       } else {
         // Fallback to direct Audio API
         const audio = new Audio(item.src);
         audio.volume = Math.min(1, Math.max(0, item.volume));
+        
+        // Emit comic sound visual event
+        emitComicSoundEvent(item.triggerName, item.keyword, item.characterId);
+        
         await audio.play();
         await new Promise<void>((resolve) => {
           audio.onended = () => resolve();

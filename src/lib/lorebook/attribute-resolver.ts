@@ -16,6 +16,7 @@ import type {
   AttributeComparator,
   SessionStats,
 } from '@/types';
+import { processStartDialogueInText } from '@/lib/prompt-template';
 
 // ============================================
 // Types
@@ -291,11 +292,15 @@ function resolveSingleAttributeEntry(
     return null;
   }
 
+  // Resolve character names for <START> dialogue formatting
+  const charName = resolveCharacterName(context.characterId, context);
+  const userName = resolveCharacterName('__user__', context) || 'User';
+
   // Evaluate based on mode
   if (config.mode === 'static' && config.staticCondition) {
     const matched = evaluateCondition(attrValue, config.staticCondition.operator, config.staticCondition.value);
     if (matched) {
-      return entry.content || null;
+      return formatStartDialogue(entry.content || null, userName, charName);
     }
     return null;
   }
@@ -311,20 +316,21 @@ function resolveSingleAttributeEntry(
       if (resolutionMode === 'first-match') {
         // Only the highest-priority matching condition wins
         const sorted = [...matched].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-        return sorted[0].content?.trim() || null;
+        return formatStartDialogue(sorted[0].content?.trim() || null, userName, charName);
       }
 
       // 'concat-all': concatenate all matching, ordered by priority (highest first)
       const sorted = [...matched].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
       const contents = sorted.map(c => c.content).filter(c => c?.trim());
       if (contents.length > 0) {
-        return contents.join('\n\n');
+        const joined = contents.join('\n\n');
+        return formatStartDialogue(joined, userName, charName);
       }
     }
 
     // No condition matched — use fallback content if available
     if (config.fallbackContent?.trim()) {
-      return config.fallbackContent;
+      return formatStartDialogue(config.fallbackContent, userName, charName);
     }
 
     return null;
@@ -332,6 +338,34 @@ function resolveSingleAttributeEntry(
 
   // Invalid config
   return null;
+}
+
+/**
+ * Format <START>-style dialogue in content with [EJEMPLO] headers.
+ * If the content doesn't contain <START> tags, returns it as-is.
+ */
+function formatStartDialogue(content: string | null, userName: string, charName: string): string | null {
+  if (!content) return null;
+  return processStartDialogueInText(content, userName, charName);
+}
+
+/**
+ * Resolve a character ID to its name for dialogue formatting.
+ */
+function resolveCharacterName(
+  characterId: string | undefined,
+  context: LorebookAttributeContext
+): string {
+  if (characterId === '__user__') {
+    // Try to find the persona name from session stats
+    const userStats = context.sessionStats?.characterStats?.['__user__'] as Record<string, unknown> | undefined;
+    return (userStats?.name as string) || 'User';
+  }
+  if (characterId === '__char__' || !characterId) {
+    characterId = context.characterId || '';
+  }
+  const char = context.characters?.find(c => c.id === characterId);
+  return char?.name || characterId || 'Character';
 }
 
 /**

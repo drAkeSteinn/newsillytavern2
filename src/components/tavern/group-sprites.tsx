@@ -504,6 +504,7 @@ export function GroupSprites({
         return (
           <div
             key={character.id}
+            data-character-id={character.id}
             className={cn(
               "absolute select-none",
               isBeingDragged ? "cursor-grabbing" : "cursor-grab"

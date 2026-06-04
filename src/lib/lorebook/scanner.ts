@@ -592,7 +592,8 @@ function formatStartDialogueInLorebook(content: string, userName: string, charNa
         currentSpeaker = dl.speaker;
       }
 
-      formattedBlocks.push(parts.join('\n'));
+      // Wrap each <START> block with [EJEMPLO] header for clear identification
+      formattedBlocks.push(`[EJEMPLO]\n${parts.join('\n')}`);
     }
   }
 

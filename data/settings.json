@@ -11,24 +11,6 @@
   "defaultBackground": "",
   "backgroundFit": "cover",
   "swipeEnabled": true,
-  "quickReplies": [
-    {
-      "label": "Consulta",
-      "response": "Busca en internet las novedades de google home en este 2026"
-    },
-    {
-      "label": "test",
-      "response": "realiza un test psycologico"
-    },
-    {
-      "label": "Yes",
-      "response": "Yes"
-    },
-    {
-      "label": "No",
-      "response": "No"
-    }
-  ],
   "hotkeys": {
     "send": "Enter",
     "newLine": "Shift+Enter",
@@ -58,10 +40,10 @@
   },
   "chatLayout": {
     "novelMode": true,
-    "chatWidth": 52.196324204766725,
-    "chatHeight": 66.1522633744856,
-    "chatX": 61.04532459114154,
-    "chatY": 65.2616343713889,
+    "chatWidth": 41.94444444444444,
+    "chatHeight": 39.053497942386834,
+    "chatX": 73.84920634920634,
+    "chatY": 80.47325102880659,
     "chatOpacity": 0.95,
     "blurBackground": false,
     "showCharacterSprite": true
@@ -204,5 +186,13 @@
       "manage_quest",
       "manage_solicitud"
     ]
+  },
+  "comicSound": {
+    "enabled": true,
+    "maxEffects": 5,
+    "duration": 880,
+    "minScale": 0.7,
+    "maxScale": 2.1,
+    "allowedTemplates": []
   }
 }

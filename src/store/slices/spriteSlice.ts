@@ -53,6 +53,7 @@ import {
 import type { SoundChainStep, SoundTrigger, SoundCollection } from '@/types';
 
 import { uuidv4 } from '@/lib/uuid';
+import { emitComicSoundEvent } from '@/lib/comic-sound-bus';
 
 // ============================================
 // Sound Chain Player
@@ -146,6 +147,10 @@ function playSoundChainStep(
   try {
     const audio = new Audio(soundUrl);
     audio.volume = Math.min(1, Math.max(0, volume));
+    
+    // Emit comic sound visual event
+    const stepName = step.soundTriggerKey || 'chain_sound';
+    emitComicSoundEvent(stepName, stepName, characterId);
     
     audio.play().catch(e => {
       console.warn('[SpriteSlice] Audio play failed:', e);

@@ -34,6 +34,7 @@ import type {
   StateCollectionV2,
 } from '@/types';
 import { isGlobalMuted } from '@/lib/audio/audio-mute-store';
+import { emitComicSoundEvent } from '@/lib/comic-sound-bus';
 import { generateHspPattern } from '@/lib/haptic/hsp-pattern-generator';
 import type { HspPoint } from '@/hooks/use-haptic-playback';
 
@@ -515,7 +516,8 @@ function extractFilenameFromUrl(spriteUrl: string): string | null {
 async function playSoundFromTrigger(
   trigger: SoundTrigger,
   collections: SoundCollection[],
-  volume: number = 1
+  volume: number = 1,
+  characterId?: string
 ): Promise<HTMLAudioElement | null> {
   if (isGlobalMuted()) return null;
   const collection = collections.find(c => c.name === trigger.collection);
@@ -535,6 +537,10 @@ async function playSoundFromTrigger(
     audioClone.volume = volume * (trigger.volume || 1);
     audioClone.currentTime = 0;
     await audioClone.play().catch(() => {});
+
+    // Emit comic sound visual event for timeline trigger sounds
+    emitComicSoundEvent(trigger.name, trigger.keywords[0] || 'timeline_sound', characterId);
+
     return audioClone;
   } catch {
     return null;
@@ -543,7 +549,8 @@ async function playSoundFromTrigger(
 
 async function playSoundFromUrl(
   url: string,
-  volume: number = 1
+  volume: number = 1,
+  characterId?: string
 ): Promise<HTMLAudioElement | null> {
   if (isGlobalMuted()) return null;
   try {
@@ -552,6 +559,11 @@ async function playSoundFromUrl(
     audioClone.volume = volume;
     audioClone.currentTime = 0;
     await audioClone.play().catch(() => {});
+
+    // Emit comic sound visual event for timeline direct URL sounds
+    const soundName = url.split('/').pop()?.replace(/\.[^.]+$/, '') || 'sound';
+    emitComicSoundEvent(soundName, soundName, characterId);
+
     return audioClone;
   } catch {
     return null;
@@ -623,14 +635,16 @@ function playSoundsAtTime(
                 audioEl = await playSoundFromTrigger(
                   trigger,
                   soundCollections,
-                  (soundValue.volume || 1) * globalVolume
+                  (soundValue.volume || 1) * globalVolume,
+                  active.characterId
                 );
               }
             }
             else if (soundValue.soundUrl) {
               audioEl = await playSoundFromUrl(
                 soundValue.soundUrl,
-                (soundValue.volume || 1) * globalVolume
+                (soundValue.volume || 1) * globalVolume,
+                active.characterId
               );
             }
 

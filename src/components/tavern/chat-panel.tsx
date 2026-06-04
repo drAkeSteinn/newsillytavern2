@@ -16,6 +16,7 @@ import { HUDDisplay } from './hud-display';
 import { QuestNotifications } from './quest-notifications';
 import { InventoryHUD } from '@/components/inventory/inventory-hud';
 import { TTSFloatingIndicator } from './tts-playback-controls';
+import { ComicSoundOverlay } from './comic-sound-overlay';
 import { Sparkles } from 'lucide-react';
 import type { CharacterCard, SummaryData, ChatMessage } from '@/types';
 import { EmbeddingsContextContainer } from '@/components/embeddings/embeddings-context-indicator';
@@ -132,6 +133,36 @@ export function ChatPanel() {
 
     ensureNamespaces();
   }, [activeSessionId]);
+
+  // Garbage collection: Clean up orphaned memory namespaces on mount
+  // Orphaned = memory-* namespaces whose session no longer exists in the store
+  useEffect(() => {
+    const cleanupOrphanedNamespaces = async () => {
+      try {
+        const state = useTavernStore.getState();
+        const sessions = state.sessions || [];
+        const activeSessionIds = sessions.map((s: any) => s.id);
+
+        const resp = await fetch('/api/embeddings/cleanup-orphaned', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ activeSessionIds }),
+        });
+
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.data?.deletedCount > 0) {
+            console.log(`[ChatPanel] Cleaned up ${data.data.deletedCount} orphaned namespace(s)`);
+          }
+        }
+      } catch (err) {
+        // Non-blocking — orphaned namespaces don't break functionality
+        console.warn('[ChatPanel] Failed to cleanup orphaned namespaces:', err);
+      }
+    };
+
+    cleanupOrphanedNamespaces();
+  }, []); // Run once on mount
   
   // Sound triggers for {{sonidos}} key resolution
   const soundTriggers = useTavernStore((state) => state.soundTriggers);
@@ -2218,6 +2249,9 @@ export function ChatPanel() {
           activeGroup={activeGroup}
         />
       )}
+
+      {/* Comic Sound Effect Overlay - Visual feedback when sounds play */}
+      {settings.chatLayout.showCharacterSprite && <ComicSoundOverlay />}
 
       {/* HUD Display */}
       {hudSessionState.activeTemplateId && (

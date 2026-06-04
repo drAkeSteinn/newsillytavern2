@@ -3,7 +3,7 @@
 // ============================================
 
 import type { LLMConfig, AppSettings, PromptTemplate, Persona, LorebookSettings, ContextSettings } from '@/types';
-import { DEFAULT_CHATBOX_APPEARANCE, DEFAULT_HANDY_SETTINGS } from '@/types';
+import { DEFAULT_CHATBOX_APPEARANCE, DEFAULT_HANDY_SETTINGS, DEFAULT_COMIC_SOUND_SETTINGS } from '@/types';
 
 export const defaultLLMConfig: LLMConfig = {
   id: 'default',
@@ -49,12 +49,6 @@ export const defaultSettings: AppSettings = {
   defaultBackground: '',
   backgroundFit: 'cover',
   swipeEnabled: true,
-  quickReplies: [
-    { label: 'Continue', response: 'Continue' },
-    { label: '...', response: '...' },
-    { label: 'Yes', response: 'Yes' },
-    { label: 'No', response: 'No' },
-  ],
   hotkeys: {
     send: 'Enter',
     newLine: 'Shift+Enter',
@@ -69,6 +63,7 @@ export const defaultSettings: AppSettings = {
     globalCooldown: 0, // 0 = no cooldown, allows all sounds in same message to play
     realtimeEnabled: true
   },
+  comicSound: { ...DEFAULT_COMIC_SOUND_SETTINGS },
   backgroundTriggers: {
     enabled: true,
     globalCooldown: 250,

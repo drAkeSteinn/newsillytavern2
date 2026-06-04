@@ -6,7 +6,7 @@
     "avatar": "",
     "isActive": true,
     "createdAt": "2026-03-01T21:37:31.485Z",
-    "updatedAt": "2026-05-26T16:51:26.528Z",
+    "updatedAt": "2026-06-01T06:57:22.868Z",
     "statsConfig": {
       "enabled": true,
       "attributes": [
@@ -94,22 +94,42 @@
     },
     "inventoryItems": [
       {
-        "itemId": "item-1779807837762-vtol1da",
+        "itemId": "mask-002",
         "quantity": 1,
         "equipped": false
       },
       {
-        "itemId": "item-1779812152844-m30pre4",
+        "itemId": "dildo-002",
         "quantity": 1,
         "equipped": false
       },
       {
-        "itemId": "item-1779812275517-tpj77ff",
+        "itemId": "cum-002",
+        "quantity": 1,
+        "equipped": false
+      },
+      {
+        "itemId": "cum-003",
+        "quantity": 1,
+        "equipped": false
+      },
+      {
+        "itemId": "cum-001",
+        "quantity": 1,
+        "equipped": false
+      },
+      {
+        "itemId": "plug-002",
+        "quantity": 1,
+        "equipped": false
+      },
+      {
+        "itemId": "plug-001",
         "quantity": 1,
         "equipped": false
       }
     ],
-    "currency": 990,
+    "currency": 888,
     "currencyName": "Puntos",
     "currencyIcon": "💰"
   }

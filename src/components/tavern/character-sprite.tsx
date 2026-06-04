@@ -522,6 +522,7 @@ export function CharacterSprite({
   return (
     <div
       ref={spriteRef}
+      data-character-id={characterId}
       className={cn(
         "absolute select-none",
         isDragging ? "cursor-grabbing" : "cursor-grab"

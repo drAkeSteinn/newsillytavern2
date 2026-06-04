@@ -417,6 +417,7 @@ export interface CharacterCard {
   embeddingNamespaces?: string[];   // Embedding namespaces to search during chat (overrides strategy)
   statsConfig?: CharacterStatsConfig;  // Stats system configuration (attributes, skills, etc.)
   proactiveMessages?: ProactiveMessagesConfig;  // Proactive message configuration
+  quickReplies?: CharacterQuickReply[];          // Character-specific quick replies with optional attribute modifiers
   createdAt: string;
   updatedAt: string;
 }
@@ -524,7 +525,7 @@ export interface ToolUsedInfo {
 
 // Prompt section for displaying in prompt viewer
 export interface PromptSection {
-  type: 'system' | 'persona' | 'character_description' | 'personality' | 'scenario' | 'example_dialogue' | 'character_note' | 'lorebook' | 'author_note' | 'post_history' | 'chat_history' | 'instructions' | 'quest' | 'memory' | 'context' | 'inventory';
+  type: 'system' | 'persona' | 'character_description' | 'personality' | 'scenario' | 'example_dialogue' | 'character_note' | 'lorebook' | 'author_note' | 'post_history' | 'chat_history' | 'instructions' | 'quest' | 'memory' | 'context' | 'inventory' | 'hud_context' | 'summary' | 'relationship';
   label: string;
   content: string;
   color: string;  // Tailwind color class for the section header
@@ -981,6 +982,57 @@ export interface SoundCollection {
   path: string;
   files: string[];
 }
+
+export interface ComicSoundSettings {
+  /** Enable comic sound visual effects */
+  enabled: boolean;
+  /** Max simultaneous effects on screen (1-10) */
+  maxEffects: number;
+  /** Total animation duration in ms (500-3000) - single playback lifecycle */
+  duration: number;
+  /** Minimum scale factor (0.3-1.5) */
+  minScale: number;
+  /** Maximum scale factor (0.5-2.5) */
+  maxScale: number;
+  /** Allowed template types (empty = all) */
+  allowedTemplates: ComicTemplateType[];
+}
+
+export type ComicTemplateType =
+  | 'vertical'
+  | 'oval'
+  | 'wail'
+  | 'tall';
+
+export const COMIC_TEMPLATE_TYPES: ComicTemplateType[] = [
+  'vertical',
+  'oval',
+  'wail',
+  'tall',
+];
+
+export const COMIC_TEMPLATE_LABELS: Record<ComicTemplateType, string> = {
+  vertical: 'Vertical',
+  oval: 'Óvalo',
+  wail: 'Gemido',
+  tall: 'Alto',
+};
+
+export const COMIC_TEMPLATE_DESCRIPTIONS: Record<ComicTemplateType, string> = {
+  vertical: 'Sonidos pequeños verticales como mhi, egh, bho',
+  oval: 'Palabras horizontales como movah',
+  wail: 'Sonido grande, gemido o grito vertical',
+  tall: 'OOH, !?, respiración o pregunta vertical',
+};
+
+export const DEFAULT_COMIC_SOUND_SETTINGS: ComicSoundSettings = {
+  enabled: true,
+  maxEffects: 5,
+  duration: 880,
+  minScale: 0.7,
+  maxScale: 1.4,
+  allowedTemplates: [],
+};
 
 export interface SoundSettings {
   enabled: boolean;
@@ -1560,6 +1612,33 @@ export interface QuickReplyItem {
   response: string;
 }
 
+// ============ Character Quick Reply System Types ============
+
+/** Operation type for attribute modification via quick reply */
+export type QuickReplyModifierOperation = 'set' | 'add' | 'subtract' | 'multiply' | 'divide';
+
+/** A single attribute modifier applied when a quick reply is used */
+export interface QuickReplyAttributeModifier {
+  /** Key of the attribute to modify (must match an AttributeDefinition.key in the character's statsConfig) */
+  attributeKey: string;
+  /** How to modify the attribute value */
+  operation: QuickReplyModifierOperation;
+  /** Value to apply (number for numeric ops, string for 'set' on text attributes) */
+  value: number | string;
+}
+
+/** Character-specific quick reply with optional attribute modifiers */
+export interface CharacterQuickReply {
+  /** Unique ID for this quick reply */
+  id: string;
+  /** Label shown on the button in the chatbox (supports {{char}}, {{user}}) */
+  label: string;
+  /** Actual text sent as the user message (supports {{char}}, {{user}}) */
+  response: string;
+  /** Optional attribute modifiers applied when this quick reply is used */
+  modifiers?: QuickReplyAttributeModifier[];
+}
+
 export interface HandySettings {
   /** Enable or disable the haptic system globally */
   enabled: boolean;
@@ -1594,9 +1673,9 @@ export interface AppSettings {
   defaultBackground: string;
   backgroundFit: BackgroundFit;
   swipeEnabled: boolean;
-  quickReplies: QuickReplyItem[];
   hotkeys: Record<string, string>;
   sound: SoundSettings;
+  comicSound?: ComicSoundSettings;
   backgroundTriggers: BackgroundTriggerSettings;
   chatLayout: ChatLayoutSettings;
   context: ContextSettings;
