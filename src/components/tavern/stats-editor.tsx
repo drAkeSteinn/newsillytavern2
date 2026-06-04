@@ -66,6 +66,7 @@ import type {
   ActionType,
   ObjectiveDropdownOption,
   QuestTemplate,
+  SolicitudDropdownOption,
 } from '@/types';
 import { DEFAULT_STATS_BLOCK_HEADERS, DEFAULT_STATS_CONFIG } from '@/types';
 import {
@@ -135,8 +136,13 @@ function AttributeEditor({ attribute, index, onChange, onDelete, allAttributes, 
               {'{{' + attribute.key + '}}'}
             </code>
           )}
-          <Badge variant="outline" className="text-xs capitalize">
-            {attribute.type === 'number' ? 'Número' : attribute.type === 'keyword' ? 'Estado' : 'Texto'}
+          <Badge variant="outline" className={cn(
+            "text-xs capitalize",
+            attribute.type === 'number' ? 'border-blue-500/30 text-blue-500' :
+            attribute.type === 'keyword' ? 'border-purple-500/30 text-purple-500' :
+            'border-amber-500/30 text-amber-500'
+          )}>
+            {attribute.type === 'number' ? '🔢 Numérico' : attribute.type === 'keyword' ? '🏷️ Estado' : '📝 Texto'}
           </Badge>
         </div>
         <div className="flex items-center gap-1">
@@ -201,64 +207,111 @@ function AttributeEditor({ attribute, index, onChange, onDelete, allAttributes, 
             </div>
           </div>
           
-          {/* Type Selection */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Type Selection - Two main categories: Numeric / Text */}
+          <div className="space-y-3">
             <div>
-              <div className="flex items-center gap-1.5 mb-1">
-                <Label className="text-xs">Tipo de atributo</Label>
+              <div className="flex items-center gap-1.5 mb-2">
+                <Label className="text-xs font-medium">Tipo de atributo</Label>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
-                    <p className="font-medium">Número:</p>
-                    <p className="text-xs text-muted-foreground">Valores numéricos con min/max. Ej: Vida (0-100)</p>
-                    <p className="font-medium mt-2">Estado:</p>
-                    <p className="text-xs text-muted-foreground">Valores de texto que representan estados. Ej: "enojado", "feliz", "neutral"</p>
-                    <p className="font-medium mt-2">Texto:</p>
-                    <p className="text-xs text-muted-foreground">Texto libre sin restricciones. Ej: Notas, descripciones</p>
+                    <p className="font-medium">🔢 Numérico:</p>
+                    <p className="text-xs text-muted-foreground">Valores numéricos con min/max. Soporta operaciones aritméticas (+, -, *, /). Ej: Vida (0-100), Maná</p>
+                    <p className="font-medium mt-2">📝 Texto:</p>
+                    <p className="text-xs text-muted-foreground">Texto libre sin restricciones. Solo soporta el operador = (establecer). Ej: Notas, descripciones</p>
+                    <p className="font-medium mt-2">🏷️ Estado:</p>
+                    <p className="text-xs text-muted-foreground">Variante de texto que representa estados o condiciones. Solo soporta = (establecer). Ej: "enojado", "feliz", "neutral"</p>
                   </TooltipContent>
                 </Tooltip>
               </div>
-              <Select
-                value={attribute.type}
-                onValueChange={(value: AttributeType) => onChange(index, { type: value })}
-              >
-                <SelectTrigger className="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="number">
-                    <div className="flex items-center gap-2">
-                      <span>🔢</span>
-                      <span>Número</span>
+              {/* Two main category buttons */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  className={cn(
+                    'flex flex-col items-center gap-1 p-2.5 rounded-lg border-2 transition-all',
+                    attribute.type === 'number'
+                      ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                      : 'border-border hover:border-blue-500/50 hover:bg-blue-500/5'
+                  )}
+                  onClick={() => onChange(index, { type: 'number', defaultValue: 0 })}
+                >
+                  <span className="text-xl">🔢</span>
+                  <span className="text-xs font-medium">Numérico</span>
+                  <span className="text-[10px] text-muted-foreground">Operaciones aritméticas</span>
+                </button>
+                <div className="space-y-1.5">
+                  <button
+                    type="button"
+                    className={cn(
+                      'w-full flex items-center gap-2 p-2 rounded-lg border-2 transition-all',
+                      attribute.type === 'text'
+                        ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                        : 'border-border hover:border-amber-500/50 hover:bg-amber-500/5'
+                    )}
+                    onClick={() => onChange(index, { type: 'text', defaultValue: '' })}
+                  >
+                    <span className="text-base">📝</span>
+                    <div className="text-left">
+                      <span className="text-xs font-medium block">Texto</span>
+                      <span className="text-[10px] text-muted-foreground">Texto libre</span>
                     </div>
-                  </SelectItem>
-                  <SelectItem value="keyword">
-                    <div className="flex items-center gap-2">
-                      <span>🏷️</span>
-                      <span>Estado</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      'w-full flex items-center gap-2 p-2 rounded-lg border-2 transition-all',
+                      attribute.type === 'keyword'
+                        ? 'border-purple-500 bg-purple-500/10 text-purple-600 dark:text-purple-400'
+                        : 'border-border hover:border-purple-500/50 hover:bg-purple-500/5'
+                    )}
+                    onClick={() => onChange(index, { type: 'keyword', defaultValue: '' })}
+                  >
+                    <span className="text-base">🏷️</span>
+                    <div className="text-left">
+                      <span className="text-xs font-medium block">Estado</span>
+                      <span className="text-[10px] text-muted-foreground">Texto con estados</span>
                     </div>
-                  </SelectItem>
-                  <SelectItem value="text">
-                    <div className="flex items-center gap-2">
-                      <span>📝</span>
-                      <span>Texto</span>
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+                  </button>
+                </div>
+              </div>
             </div>
             <div>
               <Label className="text-xs mb-1 block">Valor por defecto</Label>
-              <Input
-                type={attribute.type === 'number' ? 'number' : 'text'}
-                value={attribute.defaultValue}
-                onChange={(e) => onChange(index, { 
-                  defaultValue: attribute.type === 'number' ? parseFloat(e.target.value) || 0 : e.target.value 
-                })}
-                className="h-8"
-              />
+              {attribute.type === 'number' ? (
+                <Input
+                  type="number"
+                  value={attribute.defaultValue}
+                  onChange={(e) => onChange(index, { 
+                    defaultValue: parseFloat(e.target.value) || 0
+                  })}
+                  className="h-8"
+                  placeholder="0"
+                />
+              ) : attribute.type === 'keyword' ? (
+                <Input
+                  type="text"
+                  value={attribute.defaultValue}
+                  onChange={(e) => onChange(index, { defaultValue: e.target.value })}
+                  className="h-8"
+                  placeholder="neutral (separa opciones con |)"
+                />
+              ) : (
+                <Textarea
+                  value={attribute.defaultValue}
+                  onChange={(e) => onChange(index, { defaultValue: e.target.value })}
+                  className="min-h-[60px] text-xs"
+                  placeholder="Texto libre..."
+                  rows={2}
+                />
+              )}
+              {attribute.type === 'keyword' && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Para estados múltiples, separa con | Ej: enojado|feliz|neutral
+                </p>
+              )}
             </div>
           </div>
           

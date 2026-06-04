@@ -530,6 +530,13 @@ export interface PromptSection {
   color: string;  // Tailwind color class for the section header
 }
 
+// Session equipment entry - tracks equipped items per session
+export interface SessionEquipmentEntry {
+  itemId: string;           // Reference to Item.id
+  equippedSlotId: string;   // Which EquipmentSlotDefinition.id the item is equipped in
+  slotEffectText?: string;  // The effect text for the equipped slot (cached from ItemSlotEffect)
+}
+
 export interface ChatSession {
   id: string;
   characterId: string;
@@ -541,8 +548,10 @@ export interface ChatSession {
   background?: string;
   scenario?: string;
   sessionStats?: SessionStats;  // Stats values for this session (per character)
-  sessionQuests?: SessionQuestInstance[];  // NEW: Active quests in this session
-  turnCount?: number;             // NEW: Turn counter
+  sessionQuests?: SessionQuestInstance[];  // Active quests in this session
+  sessionEquipment?: SessionEquipmentEntry[];  // Equipped items in this session (per-session, independent)
+  activeConsumableEffects?: ActiveConsumableEffect[];  // Active consumable effects in this session
+  turnCount?: number;             // Turn counter
   summary?: SessionSummary;       // Last conversation summary (overwritten on each new summary)
 }
 
@@ -3117,6 +3126,22 @@ export type ItemSlot =
   | 'back'         // Cloak, cape
   | 'none';        // No slot (consumables, etc.)
 
+// Equipment slot definition - user-defined slots for equipment system
+export interface EquipmentSlotDefinition {
+  id: string;               // Unique ID
+  name: string;             // Display name (e.g., "Cabeza", "Mano Izquierda", "Pecho")
+  key: string;              // Template key (e.g., "cabeza" → used as {{cabeza}})
+  icon?: string;            // Optional emoji (e.g., "🪖", "🧤")
+  description?: string;     // Optional description
+}
+
+// Item slot effect - how an item affects a specific equipment slot
+export interface ItemSlotEffect {
+  slotId: string;           // Reference to EquipmentSlotDefinition.id
+  slotName?: string;        // Display name for UI (denormalized)
+  effectText: string;       // The effect caused when equipped in this slot (free text)
+}
+
 // Item stat definition
 export interface ItemStat {
   name: string;             // "Attack", "Defense", "Magic Power"
@@ -3143,7 +3168,7 @@ export interface Item {
   // Classification
   category: ItemCategory;
   rarity: ItemRarity;
-  slot?: ItemSlot;          // Equipment slot (if equippable)
+  slot?: string;            // Equipment slot ID (legacy ItemSlot or user-defined EquipmentSlotDefinition.id)
   
   // Visual
   icon?: string;            // Emoji or icon name
@@ -3157,6 +3182,8 @@ export interface Item {
   // Inventory V2 fields
   type?: InventoryItemType;               // 'consumable' or 'equipment' (V2 classification)
   attributeEffects?: ItemAttributeEffect[]; // How item modifies attributes (V2)
+  slotEffects?: ItemSlotEffect[];  // Slot-based effects (V3 - replaces attributeEffects)
+  consumableEffect?: string;               // Free-text effect for consumables (V3)
   duration?: number;                       // Consumable duration in turns (V2)
   price?: number;                          // Shop purchase price (V2)
   
@@ -3354,6 +3381,7 @@ export interface ActiveConsumableEffect {
   personaId: string;
   effects: ItemAttributeEffect[];
   effectFallbacks: Record<string, string | number>; // attributeKey -> fallbackValue
+  consumableEffect?: string;  // Free-text effect description for consumables
   remainingTurns: number;
   totalTurns: number;       // For display: "2/5 turns remaining"
   useMessage?: string;      // Message shown when used
@@ -3367,6 +3395,7 @@ export interface PersonaInventoryEntry {
   quantity: number;
   equipped: boolean;        // Is this equipment item currently equipped?
   targetOverrideId?: string; // Override target for effects (persona or character id)
+  equippedSlotId?: string;  // Which EquipmentSlotDefinition the item is equipped in (for slot-based effects)
 }
 
 // Inventory V2 Settings (simplified)
@@ -3379,6 +3408,7 @@ export interface InventoryV2Settings {
   autoDetect: boolean;      // Auto-detect items in messages
   currencyName: string;     // Default currency name (e.g., "Divisa")
   currencyIcon: string;     // Default currency icon (e.g., "💰")
+  equipmentSlots: EquipmentSlotDefinition[];  // User-defined equipment slots
 }
 
 // Default inventory V2 settings
@@ -3398,6 +3428,7 @@ export const DEFAULT_INVENTORY_V2_SETTINGS: InventoryV2Settings = {
   autoDetect: true,
   currencyName: 'Divisa',
   currencyIcon: '💰',
+  equipmentSlots: [],
 };
 
 // Currency reward for quest system

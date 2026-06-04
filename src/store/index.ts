@@ -158,6 +158,7 @@ export const useTavernStore = create<TavernState>()(
         // Inventory state (V2)
         items: state.items,
         activeConsumableEffects: state.activeConsumableEffects,
+        dynamicEquipmentState: state.dynamicEquipmentState,
         inventorySettings: state.inventorySettings,
         inventoryNotifications: state.inventoryNotifications,
         // Legacy inventory state (kept for migration)
@@ -353,6 +354,17 @@ export const useTavernStore = create<TavernState>()(
         const finalActiveLorebookIds = persisted.activeLorebookIds as string[] | undefined
           ?? mergedLorebooks.filter(lb => lb.active).map(lb => lb.id as string);
 
+        // Ensure inventorySettings has all fields with proper defaults (migration)
+        const persistedInventorySettings = persisted.inventorySettings as Record<string, unknown> | undefined;
+        const mergedInventorySettings: Record<string, unknown> = {
+          ...currentState.inventorySettings,
+          ...(persistedInventorySettings || {}),
+          // Deep-merge equipmentSlots: always ensure it exists and is an array
+          equipmentSlots: Array.isArray(persistedInventorySettings?.equipmentSlots)
+            ? persistedInventorySettings!.equipmentSlots
+            : currentState.inventorySettings.equipmentSlots || [],
+        };
+
         // Return merged state
         return {
           ...currentState,
@@ -367,6 +379,7 @@ export const useTavernStore = create<TavernState>()(
           questSettings: mergedQuest,
           lorebooks: mergedLorebooks,
           activeLorebookIds: finalActiveLorebookIds,
+          inventorySettings: mergedInventorySettings,
         };
       },
     }

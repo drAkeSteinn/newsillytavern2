@@ -739,6 +739,19 @@ export function resolveStats(
   for (const attr of attributes) {
     attributesMap[attr.key] = attr.formatted;
   }
+
+  // Also include slot values and other dynamically-set attributes from session stats
+  // that aren't already in statsConfig.attributes (e.g., equipment slot keys like {{cabeza}})
+  if (charStats?.attributeValues) {
+    for (const [key, value] of Object.entries(charStats.attributeValues)) {
+      if (!(key in attributesMap) && value !== undefined && value !== null && value !== '') {
+        attributesMap[key] = String(value);
+      } else if (!(key in attributesMap) && value !== undefined && value !== null) {
+        // Include even empty values so the key resolves (to empty string) rather than staying as {{key}}
+        attributesMap[key] = String(value);
+      }
+    }
+  }
   
   // Build blocks with full key resolution context
   // Include a partial resolvedStats with just the attributes map so that

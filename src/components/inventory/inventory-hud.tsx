@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -21,11 +21,14 @@ import {
   X,
   Sword,
   Backpack,
+  ArrowRight,
 } from 'lucide-react';
 import { useTavernStore } from '@/store/tavern-store';
 import type {
   Item,
   ActiveConsumableEffect,
+  EquipmentSlotDefinition,
+  ItemSlotEffect,
 } from '@/types';
 import {
   getRarityColor,
@@ -61,6 +64,18 @@ function savePosition(pos: { x: number; y: number }) {
   try {
     localStorage.setItem(HUD_STORAGE_KEY, JSON.stringify(pos));
   } catch {}
+}
+
+/**
+ * Get display name for a slot ID by looking up EquipmentSlotDefinition
+ */
+function getSlotDisplayName(
+  slotId: string | undefined,
+  equipmentSlots: EquipmentSlotDefinition[]
+): string | null {
+  if (!slotId) return null;
+  const slotDef = equipmentSlots.find(s => s.id === slotId);
+  return slotDef?.name || null;
 }
 
 // ============================================
@@ -104,13 +119,18 @@ function CompactEffectRow({
 
 function CompactEquippedItem({
   item,
+  equippedSlotId,
+  equipmentSlots,
   onUnequip,
 }: {
   item: Item;
+  equippedSlotId?: string;
+  equipmentSlots: EquipmentSlotDefinition[];
   onUnequip: () => void;
 }) {
   const icon = item.icon || getItemTypeIcon(item.type || 'equipment');
   const rarityColor = getRarityColor(item.rarity);
+  const slotDisplayName = getSlotDisplayName(equippedSlotId, equipmentSlots);
 
   return (
     <TooltipProvider>
@@ -144,7 +164,7 @@ function CompactEquippedItem({
         <TooltipContent side="bottom" className="text-xs">
           <p className={cn('font-semibold', rarityColor)}>{item.name}</p>
           <p className="text-muted-foreground">{getItemTypeLabel(item.type || 'equipment')}</p>
-          {item.slot && <p className="text-muted-foreground">Slot: {item.slot}</p>}
+          {slotDisplayName && <p className="text-muted-foreground">Slot: {slotDisplayName}</p>}
           <p className="text-primary font-medium mt-0.5">Click para desequipar</p>
         </TooltipContent>
       </Tooltip>
@@ -157,23 +177,30 @@ function CompactEquippedItem({
 // ============================================
 
 export function InventoryHUD() {
-  const {
-    activeConsumableEffects,
-    inventorySettings,
-    getActivePersona,
-    getPersonaItems,
-    getEquippedItems,
-    removeEffect,
-    equipItem,
-    unequipItem,
-    useConsumable: consumeItem,
-  } = useTavernStore();
+  // Use individual selectors to avoid subscribing to the entire store
+  const activeSessionId = useTavernStore(state => state.activeSessionId);
+  const sessions = useTavernStore(state => state.sessions);
+  const inventorySettings = useTavernStore(state => state.inventorySettings);
+  const getActivePersona = useTavernStore(state => state.getActivePersona);
+  const getPersonaItems = useTavernStore(state => state.getPersonaItems);
+  const getEquippedItems = useTavernStore(state => state.getEquippedItems);
+  const removeEffect = useTavernStore(state => state.removeEffect);
+  const equipItem = useTavernStore(state => state.equipItem);
+  const equipItemToSlot = useTavernStore(state => state.equipItemToSlot);
+  const unequipItem = useTavernStore(state => state.unequipItem);
+  const consumeItem = useTavernStore(state => state.useConsumable);
+  const getItemById = useTavernStore(state => state.getItemById);
 
   const [expanded, setExpanded] = useState(false);
   const [position, setPosition] = useState(loadPosition);
   const [isDragging, setIsDragging] = useState(false);
+  const [pendingSlotSelection, setPendingSlotSelection] = useState<string | null>(null);
   const dragStart = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
   const hudRef = useRef<HTMLDivElement>(null);
+  const slotPickerRef = useRef<HTMLDivElement>(null);
+
+  // Equipment slots for slot name resolution
+  const equipmentSlots = inventorySettings.equipmentSlots || [];
 
   // Draggable handlers - must be declared before any early returns
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
@@ -215,35 +242,86 @@ export function InventoryHUD() {
   const persona = getActivePersona();
   const personaId = persona?.id ?? '';
 
+  // Get session-specific data
+  const activeSession = sessions.find(s => s.id === activeSessionId);
+
   const personaItems = personaId ? getPersonaItems(personaId) : [];
   const equippedItems = personaId ? getEquippedItems(personaId) : [];
-  const activeEffects = activeConsumableEffects.filter(e => e.personaId === personaId);
+
+  // Read active effects from session first, fallback to global store
+  const activeEffects = useMemo(() => {
+    const sessionEffects = activeSession?.activeConsumableEffects;
+    if (sessionEffects && sessionEffects.length > 0) {
+      return sessionEffects.filter(e => e.personaId === personaId);
+    }
+    // Fallback to global store for backward compat
+    return (useTavernStore.getState().activeConsumableEffects || []).filter(e => e.personaId === personaId);
+  }, [activeSession?.activeConsumableEffects, personaId]);
+
+  // Build a map from session equipment for quick lookup
+  const sessionEquipmentMap = useMemo(() => {
+    const map = new Map<string, string>(); // itemId → equippedSlotId
+    const sessionEquip = activeSession?.sessionEquipment || [];
+    for (const entry of sessionEquip) {
+      map.set(entry.itemId, entry.equippedSlotId);
+    }
+    return map;
+  }, [activeSession?.sessionEquipment]);
 
   // Separate unequipped items for the backpack section
   const unequippedItems = personaItems.filter(({ entry }) => !entry.equipped);
 
-  // Action handlers
-  const handleEquipItem = useCallback((itemId: string) => {
-    if (!personaId) return;
-    equipItem(personaId, itemId);
-  }, [personaId, equipItem]);
+  // Close slot picker on outside click
+  useEffect(() => {
+    if (!pendingSlotSelection) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (slotPickerRef.current && !slotPickerRef.current.contains(e.target as Node)) {
+        setPendingSlotSelection(null);
+      }
+    };
+    document.addEventListener('pointerdown', handleClickOutside);
+    return () => document.removeEventListener('pointerdown', handleClickOutside);
+  }, [pendingSlotSelection]);
 
-  const handleUnequipItem = useCallback((itemId: string) => {
+  // Action handlers
+  const handleEquipItem = (itemId: string) => {
+    if (!personaId) return;
+    const item = getItemById(itemId);
+    if (!item) return;
+
+    // Check if item has multiple slot effects → show picker
+    const slotEffects = item.slotEffects || [];
+    if (slotEffects.length > 1) {
+      setPendingSlotSelection(itemId);
+      return;
+    }
+
+    // Single or no slot effects → equip directly
+    equipItem(personaId, itemId);
+  };
+
+  const handleEquipToSlot = (itemId: string, slotId: string) => {
+    if (!personaId) return;
+    setPendingSlotSelection(null);
+    equipItemToSlot(personaId, itemId, slotId);
+  };
+
+  const handleUnequipItem = (itemId: string) => {
     if (!personaId) return;
     unequipItem(personaId, itemId);
-  }, [personaId, unequipItem]);
+  };
 
-  const handleUseConsumable = useCallback((itemId: string) => {
+  const handleUseConsumable = (itemId: string) => {
     if (!personaId) return;
     consumeItem(personaId, itemId);
-  }, [personaId, consumeItem]);
+  };
 
-  const handleExpireEffect = useCallback((effectId: string) => {
+  const handleExpireEffect = (effectId: string) => {
     removeEffect(effectId);
-  }, [removeEffect]);
+  };
 
   // Determine action for an inventory item based on type and equipped state
-  const getItemAction = useCallback((item: Item, equipped: boolean): {
+  const getItemAction = (item: Item, equipped: boolean): {
     action: () => void;
     tooltip: string;
   } => {
@@ -259,11 +337,22 @@ export function InventoryHUD() {
         tooltip: 'Click para desequipar',
       };
     }
+    const slotEffects = item.slotEffects || [];
+    if (slotEffects.length > 1) {
+      return {
+        action: () => setPendingSlotSelection(item.id),
+        tooltip: 'Click para elegir slot',
+      };
+    }
     return {
       action: () => handleEquipItem(item.id),
       tooltip: 'Click para equipar',
     };
-  }, [handleUseConsumable, handleUnequipItem, handleEquipItem]);
+  };
+
+  // Get the item that is pending slot selection
+  const pendingSlotItem = pendingSlotSelection ? getItemById(pendingSlotSelection) : null;
+  const pendingSlotEffects: ItemSlotEffect[] = pendingSlotItem?.slotEffects || [];
 
   // Don't render if disabled or no persona
   if (!inventorySettings.showInChat || !persona) return null;
@@ -377,10 +466,12 @@ export function InventoryHUD() {
                       </span>
                     </div>
                     <div className="flex flex-wrap gap-1">
-                      {equippedItems.map(({ item }) => (
+                      {equippedItems.map(({ entry, item }) => (
                         <CompactEquippedItem
                           key={item.id}
                           item={item}
+                          equippedSlotId={entry.equippedSlotId || sessionEquipmentMap.get(item.id)}
+                          equipmentSlots={equipmentSlots}
                           onUnequip={() => handleUnequipItem(item.id)}
                         />
                       ))}
@@ -446,8 +537,85 @@ export function InventoryHUD() {
                   </div>
                 )}
 
+                {/* Slot Selection Picker */}
+                <AnimatePresence>
+                  {pendingSlotSelection && pendingSlotItem && pendingSlotEffects.length > 1 && (
+                    <motion.div
+                      ref={slotPickerRef}
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="overflow-hidden rounded-md border border-primary/30 bg-primary/5"
+                    >
+                      <div className="p-2 space-y-1">
+                        <div className="flex items-center gap-1 mb-1.5">
+                          <Sword className="w-3 h-3 text-primary shrink-0" />
+                          <span className="text-[10px] font-semibold text-primary uppercase truncate">
+                            ¿En qué slot equipar {pendingSlotItem.name}?
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setPendingSlotSelection(null)}
+                            className="ml-auto w-4 h-4 rounded-full flex items-center justify-center hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                        <div className="space-y-0.5">
+                          {pendingSlotEffects.map((se) => {
+                            const slotDef = equipmentSlots.find(s => s.id === se.slotId);
+                            const slotName = slotDef?.name || se.slotName || se.slotId;
+                            const slotIcon = slotDef?.icon;
+                            const isOccupied = activeSession?.sessionEquipment?.some(
+                              eq => eq.equippedSlotId === se.slotId && eq.itemId !== pendingSlotSelection
+                            );
+                            const occupiedItemName = isOccupied
+                              ? (() => {
+                                  const occEntry = activeSession?.sessionEquipment?.find(
+                                    eq => eq.equippedSlotId === se.slotId && eq.itemId !== pendingSlotSelection
+                                  );
+                                  return occEntry ? getItemById(occEntry.itemId)?.name : undefined;
+                                })()
+                              : undefined;
+                            return (
+                              <button
+                                key={se.slotId}
+                                type="button"
+                                className={cn(
+                                  'w-full flex items-center gap-1.5 text-[10px] rounded px-1.5 py-1',
+                                  'cursor-pointer hover:bg-primary/10',
+                                  'transition-colors duration-150',
+                                  'text-left border border-transparent hover:border-primary/20',
+                                  isOccupied && 'border-amber-500/30'
+                                )}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEquipToSlot(pendingSlotSelection, se.slotId);
+                                }}
+                              >
+                                {slotIcon && <span className="text-xs shrink-0">{slotIcon}</span>}
+                                <div className="flex-1 min-w-0">
+                                  <span className="font-semibold text-foreground truncate block">{slotName}</span>
+                                  {se.effectText && (
+                                    <span className="text-muted-foreground truncate block">{se.effectText}</span>
+                                  )}
+                                  {isOccupied && occupiedItemName && (
+                                    <span className="text-amber-500/80 truncate block">Reemplaza: {occupiedItemName}</span>
+                                  )}
+                                </div>
+                                <ArrowRight className="w-2.5 h-2.5 text-muted-foreground/60 shrink-0" />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 {/* Empty state */}
-                {activeEffects.length === 0 && equippedItems.length === 0 && unequippedItems.length === 0 && (
+                {activeEffects.length === 0 && equippedItems.length === 0 && unequippedItems.length === 0 && !pendingSlotSelection && (
                   <p className="text-[10px] text-muted-foreground text-center py-2">
                     Inventario vacío
                   </p>

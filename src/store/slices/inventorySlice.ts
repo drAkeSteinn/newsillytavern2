@@ -17,15 +17,17 @@ import {
   DEFAULT_INVENTORY_V2_SETTINGS,
   type Item,
   type ItemRarity,
-  type ItemSlot,
   type ItemAttributeEffect,
+  type ItemSlotEffect,
   type ActiveConsumableEffect,
   type PersonaInventoryEntry,
   type InventoryV2Settings,
+  type EquipmentSlotDefinition,
   type InventoryNotification,
   type CostOperator,
   type SessionStats,
   type DynamicEquipmentState,
+  type SessionEquipmentEntry,
 } from '@/types';
 
 // Re-export for convenience
@@ -197,6 +199,41 @@ function getDynamicTextValue(value: string | number, activeTurns: number): strin
   const parts = value.split('|').map(p => p.trim()).filter(Boolean);
   if (parts.length <= 1) return value;
   return parts[activeTurns % parts.length];
+}
+
+/**
+ * Resolve the {{slot}} template key in an item message.
+ * Replaces {{slot}} with the display name of the equipment slot.
+ * If the slot is not found or slotId is empty, removes the {{slot}} key.
+ *
+ * Example:
+ *   "Equipaste espada en {{slot}}" → "Equipaste espada en mano derecha"
+ */
+function resolveSlotKeyInMessage(
+  message: string,
+  slotId: string | undefined,
+  equipmentSlots: EquipmentSlotDefinition[]
+): string {
+  if (!message || !/\{\{slot\}\}/gi.test(message)) return message;
+
+  const slotDef = slotId ? equipmentSlots.find(s => s.id === slotId) : undefined;
+  const slotName = slotDef?.name || '';
+  return message.replace(/\{\{slot\}\}/gi, slotName);
+}
+
+/**
+ * Sync active consumable effects to the current session for per-session storage.
+ * This ensures effects are persisted in the session JSON and available for prompt building.
+ * Called after every mutation of activeConsumableEffects.
+ */
+function syncEffectsToSession(stateAny: any, effects: ActiveConsumableEffect[]): void {
+  const sessionId = stateAny.activeSessionId as string | undefined;
+  if (!sessionId) return;
+  try {
+    stateAny.updateSession?.(sessionId, { activeConsumableEffects: effects });
+  } catch {
+    // Non-critical — session might not exist yet
+  }
 }
 
 /**
@@ -385,8 +422,11 @@ export interface InventorySlice {
 
   // ===== Equipment Actions =====
   equipItem: (personaId: string, itemId: string) => void;
+  equipItemToSlot: (personaId: string, itemId: string, slotId: string) => void;
   unequipItem: (personaId: string, itemId: string) => void;
   getEquippedItems: (personaId: string) => Array<{ entry: PersonaInventoryEntry; item: Item }>;
+  getSessionEquipment: (sessionId: string) => SessionEquipmentEntry[];
+  isItemEquippedInSession: (sessionId: string, itemId: string) => boolean;
   getEquipmentEffects: (personaId: string) => ItemAttributeEffect[];
 
   // ===== Consumable Actions =====
@@ -431,6 +471,13 @@ export interface InventorySlice {
 
   // ===== Dynamic Equipment State =====
   dynamicEquipmentState: Record<string, DynamicEquipmentState>;  // key: `${personaId}:${itemId}`
+
+  // ===== Equipment Slots Actions =====
+  addEquipmentSlot: (slot: Omit<EquipmentSlotDefinition, 'id'>) => EquipmentSlotDefinition;
+  updateEquipmentSlot: (id: string, updates: Partial<EquipmentSlotDefinition>) => void;
+  deleteEquipmentSlot: (id: string) => void;
+  getEquipmentSlotById: (id: string) => EquipmentSlotDefinition | undefined;
+  getEquipmentSlots: () => EquipmentSlotDefinition[];
 
   // ===== Utility =====
   exportInventory: () => { items: Item[]; activeEffects: ActiveConsumableEffect[]; settings: InventoryV2Settings; dynamicEquipmentState: Record<string, DynamicEquipmentState> };
@@ -505,6 +552,9 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
       items: state.items.filter(item => item.id !== id),
       activeConsumableEffects: state.activeConsumableEffects.filter(e => e.itemId !== id),
     }));
+
+    // Sync to session for per-session storage
+    syncEffectsToSession(stateAny, get().activeConsumableEffects);
   },
 
   getItemById: (id) => {
@@ -645,75 +695,92 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
     const entry = persona.inventoryItems.find(e => e.itemId === itemId);
     if (!entry) return;
 
-    // If this item uses a slot, unequip any existing item in that slot first
-    let updatedItems = [...persona.inventoryItems];
-    const dynamicEqStateUpdates: Record<string, DynamicEquipmentState | undefined> = {};
+    // Determine which slot to equip in (from slotEffects or item.slot)
+    const equipmentSlots = get().inventorySettings.equipmentSlots || [];
+
+    // If item has multiple slot effects, use the first one (UI should show slot picker for multiple)
+    let targetSlotId = '';
+    let targetSlotEffect = item.slotEffects?.[0];
+
     if (item.slot) {
-      updatedItems = updatedItems.map(e => {
-        const eItem = get().getItemById(e.itemId);
-        if (e.equipped && eItem?.slot === item.slot && e.itemId !== itemId) {
-          // Unequip the old item in this slot - reverse its effects
-          if (eItem.attributeEffects) {
-            for (const ae of eItem.attributeEffects) {
-              const oldTargetId = e.targetOverrideId || ae.targetId;
-              applyFallbackToSessionStats(stateAny, oldTargetId, ae.attributeKey, ae.fallbackValue, ae);
-            }
-          }
-          // Clean up dynamic equipment state for the old item
-          const oldStateKey = `${personaId}:${e.itemId}`;
-          if (get().dynamicEquipmentState[oldStateKey]) {
-            dynamicEqStateUpdates[oldStateKey] = undefined; // mark for deletion
-          }
-          return { ...e, equipped: false };
-        }
-        return e;
-      });
+      const matchingSlot = equipmentSlots.find(s => s.id === item.slot || s.key === item.slot);
+      if (matchingSlot) {
+        targetSlotId = matchingSlot.id;
+        const slotEffectForSlot = item.slotEffects?.find(se => se.slotId === matchingSlot.id);
+        targetSlotEffect = slotEffectForSlot || targetSlotEffect;
+      }
     }
 
-    // Equip the item
-    updatedItems = updatedItems.map(e =>
-      e.itemId === itemId ? { ...e, equipped: true } : e
-    );
+    if (!targetSlotId && targetSlotEffect) {
+      targetSlotId = targetSlotEffect.slotId;
+    }
 
+    if (!targetSlotId && item.slot) {
+      targetSlotId = item.slot;
+    }
+
+    // Delegate to equipItemToSlot
+    if (targetSlotId) {
+      get().equipItemToSlot(personaId, itemId, targetSlotId);
+    }
+  },
+
+  equipItemToSlot: (personaId, itemId, slotId) => {
+    const stateAny = get() as any;
+    const sessionId = stateAny.activeSessionId as string | undefined;
+    if (!sessionId) return;
+
+    const personas = stateAny.personas as Array<{ id: string; inventoryItems?: PersonaInventoryEntry[] }>;
+    const persona = personas.find(p => p.id === personaId);
+    if (!persona?.inventoryItems) return;
+
+    const item = get().getItemById(itemId);
+    if (!item || item.type !== 'equipment') return;
+
+    const entry = persona.inventoryItems.find(e => e.itemId === itemId);
+    if (!entry) return;
+
+    const equipmentSlots = get().inventorySettings.equipmentSlots || [];
+    const slotEffect = item.slotEffects?.find(se => se.slotId === slotId);
+    const slotDef = equipmentSlots.find(s => s.id === slotId);
+
+    // Get current session equipment
+    const sessions = stateAny.sessions as Array<{ id: string; sessionEquipment?: SessionEquipmentEntry[] }>;
+    const session = sessions.find(s => s.id === sessionId);
+    const currentEquipment = session?.sessionEquipment || [];
+
+    // Remove any existing item in this slot (unequip it)
+    let updatedEquipment = currentEquipment.filter(e => e.equippedSlotId !== slotId);
+
+    // Also remove this item from any other slot it might be equipped in
+    updatedEquipment = updatedEquipment.filter(e => e.itemId !== itemId);
+
+    // Add the new equipment entry
+    const newEntry: SessionEquipmentEntry = {
+      itemId,
+      equippedSlotId: slotId,
+      slotEffectText: slotEffect?.effectText || undefined,
+    };
+    updatedEquipment.push(newEntry);
+
+    // Save to session
+    stateAny.updateSession(sessionId, { sessionEquipment: updatedEquipment });
+
+    // Also update persona.inventoryItems for backward compat (mark as equipped)
+    const updatedItems = persona.inventoryItems.map(e =>
+      e.itemId === itemId ? { ...e, equipped: true, equippedSlotId: slotId } : e
+    );
     stateAny.updatePersona(personaId, { inventoryItems: updatedItems });
 
-    // Apply equipment effects directly to SessionStats so UI reflects changes
-    if (item.attributeEffects && item.attributeEffects.length > 0) {
-      const staticEffects = item.attributeEffects.filter(e => e.mode !== 'dynamic');
-      const dynamicEffects = item.attributeEffects.filter(e => e.mode === 'dynamic');
-
-      // Apply static effects once
-      if (staticEffects.length > 0) {
-        applyEffectsToSessionStats(stateAny, staticEffects);
-      }
-
-      // Apply dynamic effects for turn 0
-      for (const dynEffect of dynamicEffects) {
-        applyDynamicEffectToSessionStats(stateAny, dynEffect, 0);
-      }
-
-      // Track dynamic equipment state
-      if (dynamicEffects.length > 0) {
-        dynamicEqStateUpdates[`${personaId}:${itemId}`] = { activeTurns: 0, appliedAt: new Date().toISOString() };
-      }
+    // Apply slot-based effects - set the slot attribute value on the persona
+    if (slotDef) {
+      const slotValue = slotEffect?.effectText
+        ? `${item.name}: ${slotEffect.effectText}`
+        : item.name;
+      stateAny.updateCharacterStat?.(sessionId, '__user__', slotDef.key, slotValue, 'text');
     }
 
-    // Apply dynamic equipment state updates (additions and deletions)
-    if (Object.keys(dynamicEqStateUpdates).length > 0) {
-      set((state) => {
-        const newState = { ...state.dynamicEquipmentState };
-        for (const [key, value] of Object.entries(dynamicEqStateUpdates)) {
-          if (value === undefined) {
-            delete newState[key];
-          } else {
-            newState[key] = value;
-          }
-        }
-        return { dynamicEquipmentState: newState };
-      });
-    }
-
-    const message = item.useMessage || `Equipaste ${item.name}`;
+    const message = resolveSlotKeyInMessage(item.useMessage || `Equipaste ${item.name}${slotDef ? ` en ${slotDef.name}` : ''}`, slotId, equipmentSlots);
     get().addInventoryNotification({
       type: 'item_equipped',
       itemId: item.id,
@@ -722,14 +789,14 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
       message,
     });
 
-    // Queue message for chat injection
     if (item.useMessage) {
-      set({ pendingItemMessage: item.useMessage });
+      set({ pendingItemMessage: resolveSlotKeyInMessage(item.useMessage, slotId, equipmentSlots) });
     }
   },
 
   unequipItem: (personaId, itemId) => {
     const stateAny = get() as any;
+    const sessionId = stateAny.activeSessionId as string | undefined;
     const personas = stateAny.personas as Array<{ id: string; inventoryItems?: PersonaInventoryEntry[] }>;
     const persona = personas.find(p => p.id === personaId);
     if (!persona?.inventoryItems) return;
@@ -738,32 +805,33 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
     if (!item) return;
 
     const entry = persona.inventoryItems.find(e => e.itemId === itemId);
-    const targetOverrideId = entry?.targetOverrideId;
+    const equippedSlotId = entry?.equippedSlotId;
 
+    // Remove from persona inventory (mark as unequipped)
     const updatedItems = persona.inventoryItems.map(e =>
-      e.itemId === itemId ? { ...e, equipped: false } : e
+      e.itemId === itemId ? { ...e, equipped: false, equippedSlotId: undefined } : e
     );
-
     stateAny.updatePersona(personaId, { inventoryItems: updatedItems });
 
-    // Apply fallback values FIRST (before message) so attributes are updated
-    // before the LLM sees the message in the prompt
-    if (item.attributeEffects) {
-      for (const ae of item.attributeEffects) {
-        const effectTargetId = targetOverrideId || ae.targetId;
-        applyFallbackToSessionStats(stateAny, effectTargetId, ae.attributeKey, ae.fallbackValue, ae);
+    // Remove from session equipment
+    if (sessionId) {
+      const sessions = stateAny.sessions as Array<{ id: string; sessionEquipment?: SessionEquipmentEntry[] }>;
+      const session = sessions.find(s => s.id === sessionId);
+      const currentEquipment = session?.sessionEquipment || [];
+      const updatedEquipment = currentEquipment.filter(e => e.itemId !== itemId);
+      stateAny.updateSession(sessionId, { sessionEquipment: updatedEquipment });
+    }
+
+    // Clear slot-based effects - reset the slot attribute to empty
+    const equipmentSlots = get().inventorySettings.equipmentSlots || [];
+    if (equippedSlotId && sessionId) {
+      const slotDef = equipmentSlots.find(s => s.id === equippedSlotId);
+      if (slotDef) {
+        stateAny.updateCharacterStat?.(sessionId, '__user__', slotDef.key, '', 'text');
       }
     }
 
-    // Clean up dynamic equipment state
-    const stateKey = `${personaId}:${itemId}`;
-    if (get().dynamicEquipmentState[stateKey]) {
-      const newState = { ...get().dynamicEquipmentState };
-      delete newState[stateKey];
-      set({ dynamicEquipmentState: newState });
-    }
-
-    const message = item.unequipMessage || `Desequipaste ${item.name}`;
+    const message = resolveSlotKeyInMessage(item.unequipMessage || `Desequipaste ${item.name}`, equippedSlotId, equipmentSlots);
     get().addInventoryNotification({
       type: 'item_equipped',
       itemId: item.id,
@@ -774,12 +842,24 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
 
     // Queue message for chat injection AFTER attribute change
     if (item.unequipMessage) {
-      set({ pendingItemMessage: item.unequipMessage });
+      set({ pendingItemMessage: resolveSlotKeyInMessage(item.unequipMessage, equippedSlotId, equipmentSlots) });
     }
   },
 
   getEquippedItems: (personaId) => {
     return get().getPersonaItems(personaId).filter(({ entry }) => entry.equipped);
+  },
+
+  getSessionEquipment: (sessionId) => {
+    const stateAny = get() as any;
+    const sessions = stateAny.sessions as Array<{ id: string; sessionEquipment?: SessionEquipmentEntry[] }>;
+    const session = sessions.find(s => s.id === sessionId);
+    return session?.sessionEquipment || [];
+  },
+
+  isItemEquippedInSession: (sessionId, itemId) => {
+    const equipment = get().getSessionEquipment(sessionId);
+    return equipment.some(e => e.itemId === itemId);
   },
 
   getEquipmentEffects: (personaId) => {
@@ -835,6 +915,7 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
       personaId,
       effects: item.attributeEffects || [],
       effectFallbacks,
+      consumableEffect: item.consumableEffect,
       remainingTurns: duration,
       totalTurns: duration,
       useMessage: item.useMessage,
@@ -845,6 +926,9 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
     set((state) => ({
       activeConsumableEffects: [...state.activeConsumableEffects, effect]
     }));
+
+    // Sync to session for per-session storage
+    syncEffectsToSession(stateAny, get().activeConsumableEffects);
 
     // Apply consumable effects FIRST (before message) so attributes are updated
     // before the LLM sees the message in the prompt
@@ -915,6 +999,9 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
       dynamicEquipmentState: dynamicEqState,
     }));
 
+    // Sync to session for per-session storage
+    syncEffectsToSession(stateAny, get().activeConsumableEffects);
+
     return expiredMessages;
   },
 
@@ -959,6 +1046,9 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
       };
     });
 
+    // Sync to session for per-session storage
+    syncEffectsToSession(stateAny, get().activeConsumableEffects);
+
     return expiredMessages;
   },
 
@@ -989,6 +1079,9 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
     set((state) => ({
       activeConsumableEffects: state.activeConsumableEffects.filter(e => e.id !== effectId)
     }));
+
+    // Sync to session for per-session storage
+    syncEffectsToSession(stateAny, get().activeConsumableEffects);
   },
 
   clearAllEffects: (personaId) => {
@@ -1029,6 +1122,9 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
       activeConsumableEffects: state.activeConsumableEffects.filter(e => e.personaId !== personaId),
       ...(changed ? { dynamicEquipmentState: dynamicEqState } : {}),
     }));
+
+    // Sync to session for per-session storage
+    syncEffectsToSession(stateAny, get().activeConsumableEffects);
   },
 
   // ===== Currency Actions =====
@@ -1142,26 +1238,50 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
     const entry = persona.inventoryItems.find(e => e.itemId === itemId);
     if (!entry) return;
 
+    // Determine slot for the item
+    const equipmentSlots = get().inventorySettings.equipmentSlots || [];
+    let targetSlotId = '';
+    let targetSlotEffect = item.slotEffects?.[0];
+
+    if (item.slot) {
+      const matchingSlot = equipmentSlots.find(s => s.id === item.slot || s.key === item.slot);
+      if (matchingSlot) {
+        targetSlotId = matchingSlot.id;
+        const slotEffectForSlot = item.slotEffects?.find(se => se.slotId === matchingSlot.id);
+        targetSlotEffect = slotEffectForSlot || targetSlotEffect;
+      }
+    }
+    if (!targetSlotId && targetSlotEffect) {
+      targetSlotId = targetSlotEffect.slotId;
+    }
+    if (!targetSlotId && item.slot) {
+      targetSlotId = item.slot;
+    }
+
     // If this item uses a slot, unequip any existing item in that slot first
     let updatedItems = [...persona.inventoryItems];
     const dynamicEqStateUpdates: Record<string, DynamicEquipmentState | undefined> = {};
-    if (item.slot) {
+    if (targetSlotId) {
       updatedItems = updatedItems.map(e => {
-        const eItem = get().getItemById(e.itemId);
-        if (e.equipped && eItem?.slot === item.slot && e.itemId !== itemId) {
-          // Unequip the old item in this slot - reverse its effects
-          if (eItem.attributeEffects) {
+        if (e.equipped && e.equippedSlotId === targetSlotId && e.itemId !== itemId) {
+          const eItem = get().getItemById(e.itemId);
+          if (eItem?.attributeEffects) {
             for (const ae of eItem.attributeEffects) {
               const oldTargetId = e.targetOverrideId || ae.targetId;
               applyFallbackToSessionStats(stateAny, oldTargetId, ae.attributeKey, ae.fallbackValue, ae);
             }
           }
-          // Clean up dynamic equipment state for the old item
+          if (eItem?.slotEffects && e.equippedSlotId) {
+            const oldSlot = equipmentSlots.find(s => s.id === e.equippedSlotId);
+            if (oldSlot) {
+              stateAny.updateCharacterStat(targetOverrideId || '__user__', oldSlot.key, '', 'text');
+            }
+          }
           const oldStateKey = `${personaId}:${e.itemId}`;
           if (get().dynamicEquipmentState[oldStateKey]) {
-            dynamicEqStateUpdates[oldStateKey] = undefined; // mark for deletion
+            dynamicEqStateUpdates[oldStateKey] = undefined;
           }
-          return { ...e, equipped: false };
+          return { ...e, equipped: false, equippedSlotId: undefined };
         }
         return e;
       });
@@ -1169,7 +1289,7 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
 
     // Equip the item with target override
     updatedItems = updatedItems.map(e =>
-      e.itemId === itemId ? { ...e, equipped: true, targetOverrideId } : e
+      e.itemId === itemId ? { ...e, equipped: true, targetOverrideId, equippedSlotId: targetSlotId || undefined } : e
     );
 
     stateAny.updatePersona(personaId, { inventoryItems: updatedItems });
@@ -1177,7 +1297,7 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
     // Clear pending action
     set({ pendingEquipAction: null });
 
-    // Apply equipment effects directly to SessionStats (with targetOverrideId)
+    // Apply legacy equipment effects directly to SessionStats (with targetOverrideId)
     if (item.attributeEffects && item.attributeEffects.length > 0) {
       const effectsWithTarget = item.attributeEffects.map(ae => ({
         ...ae,
@@ -1188,19 +1308,32 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
       const staticEffects = effectsWithTarget.filter(e => e.mode !== 'dynamic');
       const dynamicEffects = effectsWithTarget.filter(e => e.mode === 'dynamic');
 
-      // Apply static effects once
       if (staticEffects.length > 0) {
         applyEffectsToSessionStats(stateAny, staticEffects);
       }
 
-      // Apply dynamic effects for turn 0
       for (const dynEffect of dynamicEffects) {
         applyDynamicEffectToSessionStats(stateAny, dynEffect, 0);
       }
 
-      // Track dynamic equipment state
       if (dynamicEffects.length > 0) {
         dynamicEqStateUpdates[`${personaId}:${itemId}`] = { activeTurns: 0, appliedAt: new Date().toISOString() };
+      }
+    }
+
+    // Apply slot-based effects
+    if (targetSlotId && targetSlotEffect) {
+      const slotDef = equipmentSlots.find(s => s.id === targetSlotId);
+      if (slotDef) {
+        const slotValue = targetSlotEffect.effectText
+          ? `${item.name}: ${targetSlotEffect.effectText}`
+          : item.name;
+        stateAny.updateCharacterStat(targetOverrideId || '__user__', slotDef.key, slotValue, 'text');
+      }
+    } else if (targetSlotId) {
+      const slotDef = equipmentSlots.find(s => s.id === targetSlotId);
+      if (slotDef) {
+        stateAny.updateCharacterStat(targetOverrideId || '__user__', slotDef.key, item.name, 'text');
       }
     }
 
@@ -1219,7 +1352,7 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
       });
     }
 
-    const message = item.useMessage || `Equipaste ${item.name}`;
+    const message = resolveSlotKeyInMessage(item.useMessage || `Equipaste ${item.name}`, targetSlotId || undefined, equipmentSlots);
     get().addInventoryNotification({
       type: 'item_equipped',
       itemId: item.id,
@@ -1230,7 +1363,7 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
 
     // Queue message for chat injection
     if (item.useMessage) {
-      set({ pendingItemMessage: item.useMessage });
+      set({ pendingItemMessage: resolveSlotKeyInMessage(item.useMessage, targetSlotId || undefined, equipmentSlots) });
     }
   },
 
@@ -1270,6 +1403,7 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
       itemName: item.name,
       personaId,
       effects: overriddenEffects,
+      consumableEffect: item.consumableEffect,
       remainingTurns: duration,
       totalTurns: duration,
       useMessage: item.useMessage,
@@ -1281,6 +1415,9 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
       activeConsumableEffects: [...state.activeConsumableEffects, effect],
       pendingEquipAction: null,
     }));
+
+    // Sync to session for per-session storage
+    syncEffectsToSession(stateAny, get().activeConsumableEffects);
 
     // Apply consumable effects directly to SessionStats (with overridden target)
     if (overriddenEffects.length > 0) {
@@ -1315,6 +1452,77 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
   },
 
   // ===== Utility =====
+  // ===== Equipment Slots Actions =====
+  addEquipmentSlot: (slotData) => {
+    const newSlot: EquipmentSlotDefinition = {
+      id: generateId('slot'),
+      ...slotData,
+    };
+    set((state) => ({
+      inventorySettings: {
+        ...state.inventorySettings,
+        equipmentSlots: [...(state.inventorySettings.equipmentSlots || []), newSlot],
+      },
+    }));
+    // Initialize the slot value as empty text attribute on the persona's session stats
+    const stateAny = get() as any;
+    const sessionId = stateAny.activeSessionId as string | undefined;
+    if (sessionId) {
+      stateAny.updateCharacterStat?.(sessionId, '__user__', newSlot.key, '', 'text');
+    }
+    return newSlot;
+  },
+
+  updateEquipmentSlot: (id, updates) => set((state) => ({
+    inventorySettings: {
+      ...state.inventorySettings,
+      equipmentSlots: (state.inventorySettings.equipmentSlots || []).map(s =>
+        s.id === id ? { ...s, ...updates } : s
+      ),
+    },
+  })),
+
+  deleteEquipmentSlot: (id) => {
+    // Find the slot before deleting so we can clean up its value
+    const slotToDelete = get().inventorySettings.equipmentSlots?.find(s => s.id === id);
+    set((state) => ({
+      inventorySettings: {
+        ...state.inventorySettings,
+        equipmentSlots: (state.inventorySettings.equipmentSlots || []).filter(s => s.id !== id),
+      },
+    }));
+    // Also clean up any slotEffects on items that reference this slot
+    const items = get().items;
+    for (const item of items) {
+      if (item.slotEffects?.some(se => se.slotId === id)) {
+        get().updateItem(item.id, {
+          slotEffects: item.slotEffects.filter(se => se.slotId !== id),
+        });
+      }
+    }
+    // Remove the slot value from persona's session stats
+    if (slotToDelete?.key) {
+      const stateAny = get() as any;
+      const sessionId = stateAny.activeSessionId as string | undefined;
+      if (sessionId) {
+        const sessionStats = stateAny.sessionStats as any;
+        if (sessionStats?.characterStats?.['__user__']?.attributeValues) {
+          delete sessionStats.characterStats['__user__'].attributeValues[slotToDelete.key];
+          // Trigger re-render
+          stateAny.setSessionStats?.(sessionId, { ...sessionStats });
+        }
+      }
+    }
+  },
+
+  getEquipmentSlotById: (id) => {
+    return get().inventorySettings.equipmentSlots?.find(s => s.id === id);
+  },
+
+  getEquipmentSlots: () => {
+    return get().inventorySettings.equipmentSlots || [];
+  },
+
   exportInventory: () => {
     return {
       items: get().items,
@@ -1324,12 +1532,30 @@ export const createInventorySlice: StateCreator<InventorySlice, [], [], Inventor
     };
   },
 
-  importInventory: (data) => set((state) => ({
-    items: data.items ?? state.items,
-    activeConsumableEffects: data.activeEffects ?? state.activeConsumableEffects,
-    inventorySettings: data.settings ?? state.inventorySettings,
-    dynamicEquipmentState: data.dynamicEquipmentState ?? state.dynamicEquipmentState,
-  })),
+  importInventory: (data) => {
+    set((state) => {
+      const importedSettings = data.settings;
+      return {
+        items: data.items ?? state.items,
+        activeConsumableEffects: data.activeEffects ?? state.activeConsumableEffects,
+        inventorySettings: importedSettings
+          ? {
+              ...state.inventorySettings,
+              ...importedSettings,
+              // Deep-merge equipmentSlots to avoid losing slots
+              equipmentSlots: Array.isArray(importedSettings.equipmentSlots)
+                ? importedSettings.equipmentSlots
+                : state.inventorySettings.equipmentSlots || [],
+            }
+          : state.inventorySettings,
+        dynamicEquipmentState: data.dynamicEquipmentState ?? state.dynamicEquipmentState,
+      };
+    });
+
+    // Sync imported effects to session for per-session storage
+    const stateAny = get() as any;
+    syncEffectsToSession(stateAny, get().activeConsumableEffects);
+  },
 });
 
 // ============================================
@@ -1347,6 +1573,8 @@ export function createConsumableItem(
     icon?: string;
     duration?: number;
     attributeEffects?: ItemAttributeEffect[];
+    slotEffects?: ItemSlotEffect[];
+    consumableEffect?: string;
     useMessage?: string;
     expireMessage?: string;
     price?: number;
@@ -1366,6 +1594,8 @@ export function createConsumableItem(
     rarity: options.rarity || 'common',
     icon: options.icon || '🧪',
     attributeEffects: options.attributeEffects || [],
+    slotEffects: options.slotEffects || [],
+    consumableEffect: options.consumableEffect,
     duration: options.duration ?? 1,
     stackable: options.stackable ?? true,
     maxStack: options.maxStack ?? 99,
@@ -1389,8 +1619,9 @@ export function createEquipmentItem(
     description?: string;
     rarity?: ItemRarity;
     icon?: string;
-    slot?: ItemSlot;
+    slot?: string;
     attributeEffects?: ItemAttributeEffect[];
+    slotEffects?: ItemSlotEffect[];
     useMessage?: string;
     unequipMessage?: string;
     price?: number;
@@ -1408,6 +1639,7 @@ export function createEquipmentItem(
     rarity: options.rarity || 'common',
     icon: options.icon || '⚔️',
     attributeEffects: options.attributeEffects || [],
+    slotEffects: options.slotEffects || [],
     slot: options.slot,
     useMessage: options.useMessage,
     unequipMessage: options.unequipMessage,

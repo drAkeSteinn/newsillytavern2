@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -23,17 +23,16 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Trash2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Plus, Trash2, AlertTriangle } from 'lucide-react';
 import { useTavernStore } from '@/store/tavern-store';
 import type {
   Item,
   ItemRarity,
-  ItemSlot,
   ItemAttributeEffect,
+  ItemSlotEffect,
+  EquipmentSlotDefinition,
   InventoryItemType,
-  CostOperator,
-  AttributeDefinition,
-  AttributeType,
 } from '@/types';
 import {
   getRarityColor,
@@ -70,140 +69,6 @@ const ITEM_TYPES: { value: InventoryItemType; label: string }[] = [
   { value: 'equipment', label: 'Equipo' },
 ];
 
-const EQUIPMENT_SLOTS: ItemSlot[] = [
-  'main_hand',
-  'off_hand',
-  'head',
-  'chest',
-  'legs',
-  'feet',
-  'hands',
-  'accessory1',
-  'accessory2',
-  'back',
-];
-
-const SLOT_LABELS: Record<string, string> = {
-  main_hand: 'Mano Principal',
-  off_hand: 'Mano Secundaria',
-  head: 'Cabeza',
-  chest: 'Pecho',
-  legs: 'Piernas',
-  feet: 'Pies',
-  hands: 'Manos',
-  accessory1: 'Accesorio 1',
-  accessory2: 'Accesorio 2',
-  back: 'Espalda',
-};
-
-// Target options are built dynamically - see useTargetOptions hook below
-
-function useTargetOptions() {
-  const characters = useTavernStore(state => state.characters);
-  const activeSessionId = useTavernStore(state => state.activeSessionId);
-  const sessions = useTavernStore(state => state.sessions);
-  const getGroupById = useTavernStore(state => state.getGroupById);
-  const getCharacterById = useTavernStore(state => state.getCharacterById);
-
-  return useMemo(() => {
-    const options = [{ value: '__user__', label: 'Persona (usuario)' }];
-
-    // Get characters from the active session
-    const activeSession = sessions.find(s => s.id === activeSessionId);
-    if (activeSession) {
-      const sessionCharIds: string[] = [];
-
-      if (activeSession.groupId) {
-        const group = getGroupById?.(activeSession.groupId);
-        if (group?.members) {
-          for (const member of group.members) {
-            sessionCharIds.push(member.characterId);
-          }
-        }
-      } else if (activeSession.characterId) {
-        sessionCharIds.push(activeSession.characterId);
-      }
-
-      for (const charId of sessionCharIds) {
-        const char = getCharacterById?.(charId);
-        if (char) {
-          options.push({
-            value: char.id,
-            label: char.name || 'Personaje',
-          });
-        }
-      }
-    } else {
-      for (const char of characters) {
-        options.push({
-          value: char.id,
-          label: char.name || 'Personaje',
-        });
-      }
-    }
-
-    return options;
-  }, [characters, activeSessionId, sessions, getGroupById, getCharacterById]);
-}
-
-// Hook to get attributes for a specific target (persona or character)
-function useTargetAttributes(targetId: string | undefined): AttributeDefinition[] {
-  const characters = useTavernStore(state => state.characters);
-  const personas = useTavernStore(state => state.personas);
-  const activePersonaId = useTavernStore(state => state.activePersonaId);
-
-  return useMemo(() => {
-    if (!targetId) return [];
-
-    if (targetId === '__user__') {
-      // Get persona attributes
-      const persona = personas.find((p: any) => p.id === activePersonaId);
-      return persona?.statsConfig?.enabled ? (persona.statsConfig.attributes || []) : [];
-    } else {
-      // Get character attributes
-      const char = characters.find(c => c.id === targetId);
-      return char?.statsConfig?.enabled ? (char.statsConfig.attributes || []) : [];
-    }
-  }, [targetId, characters, personas, activePersonaId]);
-}
-
-// Operators filtered by attribute type
-const OPERATORS_BY_TYPE: Record<AttributeType, { value: CostOperator; label: string }[]> = {
-  number: [
-    { value: '+', label: '+ (Sumar)' },
-    { value: '-', label: '− (Restar)' },
-    { value: '*', label: '× (Multiplicar)' },
-    { value: '/', label: '÷ (Dividir)' },
-    { value: '=', label: '= (Establecer)' },
-    { value: 'set_min', label: 'Mínimo' },
-    { value: 'set_max', label: 'Máximo' },
-  ],
-  text: [
-    { value: '=', label: '= (Establecer)' },
-  ],
-  keyword: [
-    { value: '=', label: '= (Establecer)' },
-  ],
-};
-
-// Type label and icon for attributes
-const ATTR_TYPE_INFO: Record<AttributeType, { label: string; icon: string }> = {
-  number: { label: 'Numérico', icon: '🔢' },
-  text: { label: 'Texto', icon: '📝' },
-  keyword: { label: 'Keyword', icon: '🏷️' },
-};
-
-// All operators (fallback when no attribute type is known)
-const ALL_OPERATORS: { value: CostOperator; label: string }[] = [
-  { value: '+', label: '+ (Sumar)' },
-  { value: '-', label: '− (Restar)' },
-  { value: '*', label: '× (Multiplicar)' },
-  { value: '/', label: '÷ (Dividir)' },
-  { value: '=', label: '= (Establecer)' },
-  { value: 'set_min', label: 'Mínimo' },
-  { value: 'set_max', label: 'Máximo' },
-];
-
 // Common emojis for the emoji picker
 const COMMON_EMOJIS = [
   '⚔️', '🛡️', '🧪', '📜', '🗡️', '🏹', '💎', '🔥', '❄️', '⚡',
@@ -222,12 +87,14 @@ interface EditorState {
   rarity: ItemRarity;
   icon: string;
   price: string;
-  attributeEffects: ItemAttributeEffect[];
+  attributeEffects: ItemAttributeEffect[]; // Kept for backward compatibility
+  slotEffects: ItemSlotEffect[];
+  consumableEffect: string;               // Free-text effect for consumables
   useMessage: string;
   expireMessage: string;
   unequipMessage: string;
   duration: string;
-  slot: ItemSlot;
+  slot: string; // Slot ID (references EquipmentSlotDefinition.id or legacy ItemSlot)
   stackable: boolean;
   maxStack: string;
   triggerKeywords: string;
@@ -244,6 +111,8 @@ function getInitialState(item: Item | null | undefined): EditorState {
     icon: item?.icon ?? (item?.type === 'equipment' ? '⚔️' : '🧪'),
     price: item?.price?.toString() ?? '',
     attributeEffects: item?.attributeEffects ?? [],
+    slotEffects: item?.slotEffects ?? [],
+    consumableEffect: item?.consumableEffect ?? '',
     useMessage: item?.useMessage ?? '',
     expireMessage: item?.expireMessage ?? '',
     unequipMessage: item?.unequipMessage ?? '',
@@ -258,6 +127,13 @@ function getInitialState(item: Item | null | undefined): EditorState {
 }
 
 // ============================================
+// Stable empty array to avoid infinite re-render
+// (must be outside component so reference is stable)
+// ============================================
+
+const EMPTY_EQUIPMENT_SLOTS: EquipmentSlotDefinition[] = [];
+
+// ============================================
 // Item Editor Component
 // ============================================
 
@@ -270,62 +146,23 @@ interface ItemEditorProps {
 }
 
 export function ItemEditor({ open, onOpenChange, item, onSave, onDelete }: ItemEditorProps) {
-  const itemKey = item?.id ?? 'new';
   const initialState = useMemo(() => getInitialState(item), [item]);
-  const targetOptions = useTargetOptions();
   const [state, setState] = useState<EditorState>(initialState);
 
-  // Reset state when the dialog opens or the item changes
-  // This is needed because useState only uses its initial value on first render,
-  // and handleOpenChange only fires for user interactions (not programmatic opens)
-  useEffect(() => {
-    if (open) {
-      setState(getInitialState(item));
-    }
-  }, [item?.id, open]);
+  // User-defined equipment slots from store
+  // IMPORTANT: Use stable empty array outside selector to avoid getSnapshot infinite loop
+  const equipmentSlots = useTavernStore(state => state.inventorySettings.equipmentSlots) ?? EMPTY_EQUIPMENT_SLOTS;
 
-  // Get attributes for each unique target in effects
-  // Cache attributes per targetId so dropdowns can show the right options
-  const effectTargetIds = state.attributeEffects.map(e => e.targetId).join(',');
-  const targetAttributesCache = useMemo(() => {
-    const cache: Record<string, AttributeDefinition[]> = {};
-    for (const effect of state.attributeEffects) {
-      if (effect.targetId && !cache[effect.targetId]) {
-        // Read directly from store for each unique target
-        const store = useTavernStore.getState();
-        if (effect.targetId === '__user__') {
-          const persona = store.personas.find((p: any) => p.id === store.activePersonaId);
-          cache[effect.targetId] = persona?.statsConfig?.enabled ? (persona.statsConfig.attributes || []) : [];
-        } else {
-          const char = store.characters.find(c => c.id === effect.targetId);
-          cache[effect.targetId] = char?.statsConfig?.enabled ? (char.statsConfig.attributes || []) : [];
-        }
-      }
-    }
-    return cache;
-  }, [effectTargetIds]);
-
-  // Helper: get attribute type for a given target + attributeKey
-  const getAttributeType = (targetId: string | undefined, attributeKey: string | undefined): AttributeType | undefined => {
-    if (!targetId || !attributeKey) return undefined;
-    const attrs = targetAttributesCache[targetId] || [];
-    const attr = attrs.find(a => a.key === attributeKey);
-    return attr?.type;
-  };
-
-  // Helper: get filtered operators for an attribute type
-  const getFilteredOperators = (attrType: AttributeType | undefined) => {
-    if (!attrType) return ALL_OPERATORS;
-    return OPERATORS_BY_TYPE[attrType] || ALL_OPERATORS;
-  };
+  // Available slots (not already used in slotEffects)
+  const availableSlots = useMemo(() => {
+    const usedSlotIds = new Set(state.slotEffects.map(se => se.slotId));
+    return equipmentSlots.filter((s: EquipmentSlotDefinition) => !usedSlotIds.has(s.id));
+  }, [equipmentSlots, state.slotEffects]);
 
   // Handle dialog open/close changes from user interactions
   const handleOpenChange = useCallback((isOpen: boolean) => {
-    if (isOpen) {
-      setState(getInitialState(item));
-    }
     onOpenChange(isOpen);
-  }, [item, onOpenChange]);
+  }, [onOpenChange]);
 
   const update = <K extends keyof EditorState>(key: K, value: EditorState[K]) => {
     setState(prev => ({ ...prev, [key]: value }));
@@ -339,41 +176,44 @@ export function ItemEditor({ open, onOpenChange, item, onSave, onDelete }: ItemE
       stackable: newType === 'consumable',
       maxStack: newType === 'consumable' ? '99' : '1',
       duration: newType === 'consumable' ? '1' : '',
+      // Clear type-specific fields when switching types
+      slotEffects: newType === 'consumable' ? [] : prev.slotEffects,
+      consumableEffect: newType === 'equipment' ? '' : prev.consumableEffect,
+      unequipMessage: newType === 'consumable' ? '' : prev.unequipMessage,
+      expireMessage: newType === 'equipment' ? '' : prev.expireMessage,
     }));
   };
 
-  // Effect management
-  const addEffect = () => {
+  // Slot effect management
+  const addSlotEffect = () => {
+    if (availableSlots.length === 0) return;
+    const firstSlot = availableSlots[0];
     setState(prev => ({
       ...prev,
-      attributeEffects: [
-        ...prev.attributeEffects,
+      slotEffects: [
+        ...prev.slotEffects,
         {
-          targetId: '__user__',
-          targetName: 'Persona',
-          attributeKey: '',
-          attributeName: '',
-          operator: '+' as CostOperator,
-          value: 0,
-          mode: 'static' as const,
+          slotId: firstSlot.id,
+          slotName: firstSlot.name,
+          effectText: '',
         },
       ],
     }));
   };
 
-  const updateEffect = (index: number, updates: Partial<ItemAttributeEffect>) => {
+  const updateSlotEffect = (index: number, updates: Partial<ItemSlotEffect>) => {
     setState(prev => ({
       ...prev,
-      attributeEffects: prev.attributeEffects.map((e, i) =>
-        i === index ? { ...e, ...updates } : e
+      slotEffects: prev.slotEffects.map((se, i) =>
+        i === index ? { ...se, ...updates } : se
       ),
     }));
   };
 
-  const removeEffect = (index: number) => {
+  const removeSlotEffect = (index: number) => {
     setState(prev => ({
       ...prev,
-      attributeEffects: prev.attributeEffects.filter((_, i) => i !== index),
+      slotEffects: prev.slotEffects.filter((_, i) => i !== index),
     }));
   };
 
@@ -402,6 +242,8 @@ export function ItemEditor({ open, onOpenChange, item, onSave, onDelete }: ItemE
         icon: state.icon || undefined,
         duration: parseInt(state.duration) || 1,
         attributeEffects: state.attributeEffects,
+        slotEffects: state.slotEffects,
+        consumableEffect: state.consumableEffect.trim() || undefined,
         useMessage: state.useMessage.trim() || undefined,
         expireMessage: state.expireMessage.trim() || undefined,
         price,
@@ -424,6 +266,7 @@ export function ItemEditor({ open, onOpenChange, item, onSave, onDelete }: ItemE
         icon: state.icon || undefined,
         slot: state.slot || undefined,
         attributeEffects: state.attributeEffects,
+        slotEffects: state.slotEffects,
         useMessage: state.useMessage.trim() || undefined,
         unequipMessage: state.unequipMessage.trim() || undefined,
         price,
@@ -442,7 +285,7 @@ export function ItemEditor({ open, onOpenChange, item, onSave, onDelete }: ItemE
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange} key={itemKey}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>
@@ -566,227 +409,145 @@ export function ItemEditor({ open, onOpenChange, item, onSave, onDelete }: ItemE
 
             {/* ===== Effects Tab ===== */}
             <TabsContent value="effects" className="space-y-4 mt-0">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h4 className="font-semibold text-sm">Efectos de Atributo</h4>
-                  <p className="text-xs text-muted-foreground">
-                    Define cómo el item modifica los atributos del objetivo
-                  </p>
-                </div>
-                <Button variant="outline" size="sm" onClick={addEffect}>
-                  <Plus className="w-4 h-4 mr-1" />
-                  Agregar
-                </Button>
-              </div>
 
-              {state.attributeEffects.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-6">
-                  Sin efectos definidos. Agrega efectos para modificar atributos.
-                </p>
-              ) : (
+              {/* ---- Consumable: simple effect text ---- */}
+              {state.type === 'consumable' && (
                 <div className="space-y-3">
-                  {state.attributeEffects.map((effect, index) => {
-                    const targetAttrs = targetAttributesCache[effect.targetId] || [];
-                    const currentAttrType = getAttributeType(effect.targetId, effect.attributeKey);
-                    const filteredOperators = getFilteredOperators(currentAttrType);
-                    const isTextAttr = currentAttrType === 'text' || currentAttrType === 'keyword';
-                    const attrTypeInfo = currentAttrType ? ATTR_TYPE_INFO[currentAttrType] : null;
-                    const isDynamic = (effect.mode || 'static') === 'dynamic';
+                  <div>
+                    <h4 className="font-semibold text-sm">Efecto del Consumible</h4>
+                    <p className="text-xs text-muted-foreground">
+                      Describe qué efecto causa al usar este consumible
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="consumable-effect">Efecto</Label>
+                    <Textarea
+                      id="consumable-effect"
+                      value={state.consumableEffect}
+                      onChange={(e) => update('consumableEffect', e.target.value)}
+                      placeholder="Describe el efecto del consumible... (ej: +10 vida, restaura 20 de maná, curación de veneno)"
+                      rows={4}
+                      className="resize-none"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Este texto se incluirá en el contexto cuando el consumible esté activo.
+                    </p>
+                  </div>
 
-                    return (
-                      <div key={index} className="p-3 bg-muted/50 rounded-lg space-y-2">
-                        <div className="flex items-center gap-2">
-                          {/* Target */}
-                          <Select
-                            value={effect.targetId}
-                            onValueChange={(v) => {
-                              const opt = targetOptions.find(o => o.value === v);
-                              const targetName = opt?.label ?? (v === '__user__' ? 'Persona' : v);
-                              // Reset attribute when changing target
-                              updateEffect(index, { targetId: v, targetName, attributeKey: '', attributeName: '' });
-                            }}
-                          >
-                            <SelectTrigger className="w-[130px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {targetOptions.map(opt => (
-                                <SelectItem key={opt.value} value={opt.value}>
-                                  {opt.value === '__user__' ? '👤' : '🎭'} {opt.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-
-                          {/* Attribute Key - Dropdown when target has attributes, free input otherwise */}
-                          {targetAttrs.length > 0 ? (
-                            <Select
-                              value={effect.attributeKey}
-                              onValueChange={(v) => {
-                                const attr = targetAttrs.find(a => a.key === v);
-                                updateEffect(index, {
-                                  attributeKey: v,
-                                  attributeName: attr?.name || v,
-                                  // Auto-reset operator if current one isn't valid for the new type
-                                  operator: attr?.type && attr.type !== 'number' && effect.operator !== '=' ? '=' as CostOperator : effect.operator,
-                                });
-                              }}
-                            >
-                              <SelectTrigger className="flex-1">
-                                <SelectValue placeholder="Seleccionar atributo..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {targetAttrs.map(attr => (
-                                  <SelectItem key={attr.key} value={attr.key}>
-                                    <span className="flex items-center gap-1.5">
-                                      <span className="text-xs">{ATTR_TYPE_INFO[attr.type]?.icon || '📊'}</span>
-                                      <span>{attr.icon ? `${attr.icon} ` : ''}{attr.name}</span>
-                                      <span className="text-muted-foreground text-xs">({attr.key})</span>
-                                    </span>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <Input
-                              value={effect.attributeKey}
-                              onChange={(e) => updateEffect(index, {
-                                attributeKey: e.target.value,
-                                attributeName: e.target.value,
-                              })}
-                              placeholder="atributo (ej: vida)"
-                              className="flex-1"
-                            />
-                          )}
-
-                          {/* Attribute type badge */}
-                          {attrTypeInfo && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted whitespace-nowrap" title={`Tipo: ${attrTypeInfo.label}`}>
-                              {attrTypeInfo.icon} {attrTypeInfo.label}
-                            </span>
-                          )}
-
-                          {/* Delete */}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="shrink-0"
-                            onClick={() => removeEffect(index)}
-                          >
-                            <Trash2 className="w-4 h-4 text-destructive" />
-                          </Button>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          {/* Effect Mode */}
-                          <Select
-                            value={effect.mode || 'static'}
-                            onValueChange={(v) => updateEffect(index, { mode: v as 'static' | 'dynamic' })}
-                          >
-                            <SelectTrigger className="w-[110px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="static">📌 Estático</SelectItem>
-                              <SelectItem value="dynamic">🔄 Dinámico</SelectItem>
-                            </SelectContent>
-                          </Select>
-
-                          {/* Operator - filtered by attribute type */}
-                          <Select
-                            value={effect.operator}
-                            onValueChange={(v) => updateEffect(index, { operator: v as CostOperator })}
-                          >
-                            <SelectTrigger className="w-[140px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {filteredOperators.map(op => (
-                                <SelectItem key={op.value} value={op.value}>
-                                  {op.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-
-                          {/* Value - number input for number attrs, text input for text/keyword attrs */}
-                          {isTextAttr ? (
-                            <Input
-                              value={typeof effect.value === 'string' ? effect.value : String(effect.value)}
-                              onChange={(e) => updateEffect(index, { value: e.target.value })}
-                              className="flex-1"
-                              placeholder={isDynamic ? "Valor1|Valor2|Valor3 (separa con |)" : "Valor de texto (ej: Poción de fuerza)"}
-                            />
-                          ) : (
-                            <Input
-                              type="number"
-                              value={effect.value}
-                              onChange={(e) => updateEffect(index, { value: parseFloat(e.target.value) || 0 })}
-                              className="w-24"
-                              placeholder="Valor"
-                            />
-                          )}
-                        </div>
-
-                        {/* Dynamic mode hints */}
-                        {isDynamic && (
-                          <div className="text-xs text-muted-foreground space-y-1">
-                            {isTextAttr ? (
-                              <p>🔄 Usa <code className="bg-muted px-1 rounded">|</code> para separar valores que ciclan cada turno. Ej: <code className="bg-muted px-1 rounded">Envenenado|Debilitado|Crítico</code></p>
-                            ) : (
-                              <p>🔄 Se aplica <code className="bg-muted px-1 rounded">{effect.operator}{effect.value}</code> cada turno (acumulativo)</p>
-                            )}
-                          </div>
-                        )}
-
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">Estado de regreso</Label>
-                          {isTextAttr ? (
-                            <Input
-                              value={effect.fallbackValue != null ? String(effect.fallbackValue) : ''}
-                              onChange={(e) => updateEffect(index, {
-                                fallbackValue: e.target.value === '' ? undefined : e.target.value,
-                              })}
-                              placeholder="Valor original de texto (ej: NINGUNO)"
-                              className="w-full"
-                            />
-                          ) : (
-                            <Input
-                              value={effect.fallbackValue ?? ''}
-                              onChange={(e) => updateEffect(index, {
-                                fallbackValue: e.target.value === '' ? undefined : (isNaN(Number(e.target.value)) ? e.target.value : Number(e.target.value)),
-                              })}
-                              placeholder="Valor original (dejar vacío)"
-                              className="w-full"
-                            />
-                          )}
-                          {isDynamic ? (
-                            <>
-                              <p className="text-xs text-amber-500/80">
-                                ⚠️ Muy recomendado para efectos dinámicos ya que el cambio es acumulativo.
-                              </p>
-                              {effect.fallbackValue === undefined && (
-                                <p className="text-xs text-red-500/80">
-                                  ⚠️ Sin valor de regreso, el efecto dinámico no se puede revertir automáticamente al terminar.
-                                </p>
-                              )}
-                            </>
-                          ) : (
-                            <p className="text-xs text-muted-foreground">
-                              Valor al que regresa el atributo cuando el efecto termina.
-                            </p>
-                          )}
-                        </div>
-
-                        {targetAttrs.length === 0 && effect.targetId && (
-                          <p className="text-xs text-amber-500/80 italic">
-                            ⚠️ Este objetivo no tiene atributos configurados. Verifica que {effect.targetId === '__user__' ? 'la persona' : 'el personaje'} tenga el sistema de stats activado.
-                          </p>
-                        )}
+                  {/* Info about old effects for backward compat */}
+                  {state.attributeEffects && state.attributeEffects.length > 0 && (
+                    <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+                        <span className="text-muted-foreground">
+                          Este item tiene efectos heredados del sistema anterior. El nuevo campo de efecto reemplaza el sistema de objetivo+atributo.
+                        </span>
                       </div>
-                    );
-                  })}
+                    </div>
+                  )}
                 </div>
+              )}
+
+              {/* ---- Equipment: slot-based effects ---- */}
+              {state.type === 'equipment' && (
+                <>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="font-semibold text-sm">Efectos por Slot</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Define qué efecto causa el item según el slot donde se equipe
+                      </p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={addSlotEffect} disabled={availableSlots.length === 0}>
+                      <Plus className="w-4 h-4 mr-1" />
+                      Agregar Slot
+                    </Button>
+                  </div>
+
+                  {equipmentSlots.length === 0 ? (
+                    <div className="text-center py-6 space-y-2">
+                      <p className="text-sm text-amber-600">No hay slots de equipo configurados</p>
+                      <p className="text-xs text-muted-foreground">
+                        Ve a la sección de Inventario → Slots para crear slots de equipo primero.
+                      </p>
+                    </div>
+                  ) : state.slotEffects.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-6">
+                      Sin efectos definidos. Agrega slots para definir los efectos del item.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {state.slotEffects.map((slotEffect, index) => {
+                        const slotDef = equipmentSlots.find((s: EquipmentSlotDefinition) => s.id === slotEffect.slotId);
+                        if (!slotDef) return null; // Slot was deleted
+
+                        return (
+                          <div key={index} className="rounded-lg border overflow-hidden">
+                            {/* Header with slot info */}
+                            <div className="flex items-center justify-between px-3 py-1.5 bg-orange-500/10 border-b border-orange-500/20">
+                              <div className="flex items-center gap-2">
+                                <span className="text-base">{slotDef.icon || '📦'}</span>
+                                <span className="text-xs font-medium text-orange-700">{slotDef.name}</span>
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 font-mono">
+                                  {'{{'}{slotDef.key}{'}}'}
+                                </Badge>
+                              </div>
+                              <Button variant="ghost" size="icon" className="shrink-0 h-6 w-6" onClick={() => removeSlotEffect(index)}>
+                                <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                              </Button>
+                            </div>
+
+                            <div className="p-3 space-y-3 bg-muted/30">
+                              {/* Slot selector (in case user wants to change the slot) */}
+                              <Select
+                                value={slotEffect.slotId}
+                                onValueChange={(v) => {
+                                  const newSlot = equipmentSlots.find((s: EquipmentSlotDefinition) => s.id === v);
+                                  updateSlotEffect(index, { slotId: v, slotName: newSlot?.name || v });
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Seleccionar slot..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {equipmentSlots.map((s: EquipmentSlotDefinition) => (
+                                    <SelectItem key={s.id} value={s.id}>
+                                      {s.icon || '📦'} {s.name} ({`{{${s.key}}}`})
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+
+                              {/* Effect text - the main content */}
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">Efecto</Label>
+                                <Textarea
+                                  value={slotEffect.effectText}
+                                  onChange={(e) => updateSlotEffect(index, { effectText: e.target.value })}
+                                  placeholder="Describe el efecto cuando se equipa en este slot... (ej: +10 ataque, Maldición: -5 vida por turno)"
+                                  rows={2}
+                                  className="resize-none"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Info about old effects for backward compat */}
+                  {state.attributeEffects && state.attributeEffects.length > 0 && (
+                    <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+                        <span className="text-muted-foreground">
+                          Este item tiene efectos heredados del sistema anterior. Los nuevos efectos por slot reemplazan el sistema de objetivo+atributo.
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </TabsContent>
 
@@ -796,6 +557,9 @@ export function ItemEditor({ open, onOpenChange, item, onSave, onDelete }: ItemE
                 <Label htmlFor="use-message">Mensaje al usar</Label>
                 <p className="text-xs text-muted-foreground">
                   Texto mostrado cuando se usa o equipa el item
+                  {state.type === 'equipment' && (
+                    <> — usa <code className="text-primary font-mono text-[10px] bg-primary/10 px-1 rounded">{'{{slot}}'}</code> para insertar el nombre del slot</>
+                  )}
                 </p>
                 <Textarea
                   id="use-message"
@@ -828,7 +592,7 @@ export function ItemEditor({ open, onOpenChange, item, onSave, onDelete }: ItemE
                 <div className="space-y-2">
                   <Label htmlFor="unequip-message">Mensaje al desequipar</Label>
                   <p className="text-xs text-muted-foreground">
-                    Texto mostrado cuando se desequipa el item
+                    Texto mostrado cuando se desequipa el item — usa <code className="text-primary font-mono text-[10px] bg-primary/10 px-1 rounded">{'{{slot}}'}</code> para insertar el nombre del slot
                   </p>
                   <Textarea
                     id="unequip-message"
@@ -885,27 +649,6 @@ export function ItemEditor({ open, onOpenChange, item, onSave, onDelete }: ItemE
                     )}
                   </div>
                 </>
-              )}
-
-              {state.type === 'equipment' && (
-                <div className="space-y-2">
-                  <Label>Slot de Equipo</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Slot donde se equipa este item
-                  </p>
-                  <Select value={state.slot} onValueChange={(v) => update('slot', v as ItemSlot)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {EQUIPMENT_SLOTS.map(s => (
-                        <SelectItem key={s} value={s}>
-                          {SLOT_LABELS[s]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
               )}
 
               <Separator />

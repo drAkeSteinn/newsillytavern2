@@ -10,6 +10,7 @@ import type {
   SessionQuestInstance,
   QuestTemplate,
   CharacterCard,
+  EquipmentSlotDefinition,
 } from '@/types';
 import { processMessageTemplate } from '@/lib/prompt-template';
 import { uuidv4 } from '@/lib/uuid';
@@ -335,6 +336,29 @@ function createDefaultCharacterStats(
 }
 
 /**
+ * Add equipment slot defaults to persona session stats.
+ * Slots are initialized as empty text attributes so {{slotkey}} resolves in prompts.
+ */
+function addEquipmentSlotsToPersonaStats(
+  stats: CharacterSessionStats,
+  equipmentSlots?: EquipmentSlotDefinition[]
+): CharacterSessionStats {
+  if (!equipmentSlots || equipmentSlots.length === 0) return stats;
+  const now = Date.now();
+  const updated = { ...stats };
+  updated.attributeValues = { ...stats.attributeValues };
+  updated.lastUpdated = { ...stats.lastUpdated };
+  for (const slot of equipmentSlots) {
+    // Don't overwrite existing values (could be set by equip/unequip)
+    if (!(slot.key in updated.attributeValues)) {
+      updated.attributeValues[slot.key] = '';
+      updated.lastUpdated[slot.key] = now;
+    }
+  }
+  return updated;
+}
+
+/**
  * Initialize session stats for a character or group of characters
  * Resets all stats, solicitudes, and session events to default values
  */
@@ -608,8 +632,10 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     }
 
     // Also add persona's stats as __user__ entry
+    const equipmentSlots = (get() as any).inventorySettings?.equipmentSlots as EquipmentSlotDefinition[] | undefined;
     if (activePersona?.statsConfig?.enabled && activePersona.statsConfig.attributes?.length > 0) {
-      const personaStats = createDefaultCharacterStats(activePersona.statsConfig);
+      let personaStats = createDefaultCharacterStats(activePersona.statsConfig);
+      personaStats = addEquipmentSlotsToPersonaStats(personaStats, equipmentSlots);
       if (sessionStats) {
         sessionStats = {
           ...sessionStats,
@@ -621,6 +647,31 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
       } else {
         sessionStats = {
           characterStats: { '__user__': personaStats },
+          solicitudes: {
+            characterSolicitudes: {},
+            lastModified: Date.now(),
+          },
+          initialized: true,
+          lastModified: Date.now(),
+        };
+      }
+    } else if (equipmentSlots && equipmentSlots.length > 0) {
+      // Even if persona has no statsConfig attributes, still initialize slots
+      const slotStats = addEquipmentSlotsToPersonaStats(
+        { attributeValues: {}, lastUpdated: {}, changeLog: [] },
+        equipmentSlots
+      );
+      if (sessionStats) {
+        sessionStats = {
+          ...sessionStats,
+          characterStats: {
+            ...sessionStats.characterStats,
+            '__user__': slotStats,
+          },
+        };
+      } else {
+        sessionStats = {
+          characterStats: { '__user__': slotStats },
           solicitudes: {
             characterSolicitudes: {},
             lastModified: Date.now(),
@@ -816,12 +867,27 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
 
     // Also add persona's stats as __user__ entry
     const resetActivePersona = get().getActivePersona?.();
+    const resetEquipmentSlots = (get() as any).inventorySettings?.equipmentSlots as EquipmentSlotDefinition[] | undefined;
     if (resetActivePersona?.statsConfig?.enabled && resetActivePersona.statsConfig.attributes?.length > 0) {
+      let personaStats = createDefaultCharacterStats(resetActivePersona.statsConfig);
+      personaStats = addEquipmentSlotsToPersonaStats(personaStats, resetEquipmentSlots);
       newSessionStats = {
         ...newSessionStats,
         characterStats: {
           ...newSessionStats.characterStats,
-          '__user__': createDefaultCharacterStats(resetActivePersona.statsConfig),
+          '__user__': personaStats,
+        },
+      };
+    } else if (resetEquipmentSlots && resetEquipmentSlots.length > 0) {
+      const slotStats = addEquipmentSlotsToPersonaStats(
+        { attributeValues: {}, lastUpdated: {}, changeLog: [] },
+        resetEquipmentSlots
+      );
+      newSessionStats = {
+        ...newSessionStats,
+        characterStats: {
+          ...newSessionStats.characterStats,
+          '__user__': slotStats,
         },
       };
     }
@@ -876,12 +942,27 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     let newSessionStats = initializeSessionStatsForCharacters(characters);
 
     // Also add persona's stats as __user__ entry
+    const clearEquipmentSlots = (get() as any).inventorySettings?.equipmentSlots as EquipmentSlotDefinition[] | undefined;
     if (activePersona?.statsConfig?.enabled && activePersona.statsConfig.attributes?.length > 0) {
+      let personaStats = createDefaultCharacterStats(activePersona.statsConfig);
+      personaStats = addEquipmentSlotsToPersonaStats(personaStats, clearEquipmentSlots);
       newSessionStats = {
         ...newSessionStats,
         characterStats: {
           ...newSessionStats.characterStats,
-          '__user__': createDefaultCharacterStats(activePersona.statsConfig),
+          '__user__': personaStats,
+        },
+      };
+    } else if (clearEquipmentSlots && clearEquipmentSlots.length > 0) {
+      const slotStats = addEquipmentSlotsToPersonaStats(
+        { attributeValues: {}, lastUpdated: {}, changeLog: [] },
+        clearEquipmentSlots
+      );
+      newSessionStats = {
+        ...newSessionStats,
+        characterStats: {
+          ...newSessionStats.characterStats,
+          '__user__': slotStats,
         },
       };
     }

@@ -8,7 +8,7 @@
 // - All sections are processed consistently
 
 import { NextRequest } from 'next/server';
-import type { ChatMessage, CharacterCard, CharacterGroup, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestTemplate, SessionQuestInstance, SessionSummary, SolicitudInstance, CharacterStatsConfig, CharacterMemory, InventoryV2Settings } from '@/types';
+import type { ChatMessage, CharacterCard, CharacterGroup, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestTemplate, SessionQuestInstance, SessionSummary, SolicitudInstance, CharacterStatsConfig, CharacterMemory, InventoryV2Settings, SessionEquipmentEntry } from '@/types';
 
 import type { LorebookInjectionPlan, LorebookChatInjection } from '@/lib/lorebook';
 import { DEFAULT_QUEST_SETTINGS } from '@/types';

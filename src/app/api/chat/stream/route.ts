@@ -8,7 +8,7 @@
 // - All sections are processed consistently
 
 import { NextRequest } from 'next/server';
-import type { ChatMessage, CharacterCard, LLMConfig, Persona, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestSettings, QuestTemplate, SessionQuestInstance, SessionSummary, SoundTrigger, AppSettings, CharacterStatsConfig, CharacterMemory, InventoryV2Settings, PersonaInventoryEntry, Item, ActiveConsumableEffect } from '@/types';
+import type { ChatMessage, CharacterCard, LLMConfig, Persona, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestSettings, QuestTemplate, SessionQuestInstance, SessionSummary, SoundTrigger, AppSettings, CharacterStatsConfig, CharacterMemory, InventoryV2Settings, PersonaInventoryEntry, Item, ActiveConsumableEffect, SessionEquipmentEntry } from '@/types';
 import { DEFAULT_QUEST_SETTINGS } from '@/types';
 import {
   DEFAULT_CHARACTER,

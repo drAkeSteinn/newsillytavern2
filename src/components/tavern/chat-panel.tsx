@@ -604,21 +604,25 @@ export function ChatPanel() {
               customNamespaces: activeGroup?.embeddingNamespaces,
             },  // Pass embeddings chat settings + group namespace override
             inventoryData: (() => {
+              // CRITICAL: Re-read store state fresh to ensure we have the latest
+              // equipment/consumable data. When equipItem/useConsumable runs,
+              // it saves to session JSON BEFORE this code executes (300ms delay).
               const invState = useTavernStore.getState();
               const invSettings = invState.inventorySettings;
-              if (!invSettings.enabled || !invSettings.promptInclude) return undefined;
+              if (!invSettings.enabled) return undefined;
               const personaId = activePersona?.id || 'default';
+              // Re-read session from fresh store state to get updated sessionEquipment & activeConsumableEffects
+              const freshSession = invState.sessions.find((s: any) => s.id === activeSessionId);
               return {
                 personaItems: invState.getPersonaItems(personaId),
-                equippedItems: invState.getEquippedItems(personaId),
-                activeEffects: invState.activeConsumableEffects.filter(e => e.personaId === personaId),
-                pendingFallbacks: invState.pendingFallbacks || [],
+                sessionEquipment: freshSession?.sessionEquipment || [],
+                activeEffects: freshSession?.activeConsumableEffects || invState.activeConsumableEffects.filter(e => e.personaId === personaId),
                 currency: activePersona?.currency ?? 0,
                 currencyName: activePersona?.currencyName || invSettings.currencyName,
                 currencyIcon: activePersona?.currencyIcon || invSettings.currencyIcon,
                 inventorySettings: invSettings,
               };
-            })(),  // Pass inventory data for prompt injection
+            })(),  // Pass inventory data for {{slots}} key resolution
           })
         });
 
@@ -1215,21 +1219,25 @@ export function ChatPanel() {
             },  // Pass embeddings chat settings + character namespace override
             toolsSettings: settings.tools,  // Pass tool calling configuration
             inventoryData: (() => {
+              // CRITICAL: Re-read store state fresh to ensure we have the latest
+              // equipment/consumable data. When equipItem/useConsumable runs,
+              // it saves to session JSON BEFORE this code executes (300ms delay).
               const invState = useTavernStore.getState();
               const invSettings = invState.inventorySettings;
-              if (!invSettings.enabled || !invSettings.promptInclude) return undefined;
+              if (!invSettings.enabled) return undefined;
               const personaId = activePersona?.id || 'default';
+              // Re-read session from fresh store state to get updated sessionEquipment & activeConsumableEffects
+              const freshSession = invState.sessions.find((s: any) => s.id === activeSessionId);
               return {
                 personaItems: invState.getPersonaItems(personaId),
-                equippedItems: invState.getEquippedItems(personaId),
-                activeEffects: invState.activeConsumableEffects.filter(e => e.personaId === personaId),
-                pendingFallbacks: invState.pendingFallbacks || [],
+                sessionEquipment: freshSession?.sessionEquipment || [],
+                activeEffects: freshSession?.activeConsumableEffects || invState.activeConsumableEffects.filter(e => e.personaId === personaId),
                 currency: activePersona?.currency ?? 0,
                 currencyName: activePersona?.currencyName || invSettings.currencyName,
                 currencyIcon: activePersona?.currencyIcon || invSettings.currencyIcon,
                 inventorySettings: invSettings,
               };
-            })(),  // Pass inventory data for prompt injection
+            })(),  // Pass inventory data for {{slots}} key resolution
           })
         });
 

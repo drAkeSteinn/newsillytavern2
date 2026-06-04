@@ -24,6 +24,7 @@ import type {
   PersonaInventoryEntry,
   ItemRarity,
   ItemAttributeEffect,
+  EquipmentSlotDefinition,
 } from '@/types';
 import {
   getRarityColor,
@@ -78,6 +79,7 @@ interface ItemCardProps {
   showQuantity?: boolean;
   showActions?: boolean;
   compact?: boolean;
+  equipmentSlots?: EquipmentSlotDefinition[];
   onUse?: () => void;
   onEquip?: () => void;
   onUnequip?: () => void;
@@ -91,6 +93,7 @@ export function ItemCard({
   showQuantity = true,
   showActions = true,
   compact = false,
+  equipmentSlots = [],
   onUse,
   onEquip,
   onUnequip,
@@ -267,8 +270,48 @@ export function ItemCard({
             <p className="text-muted-foreground pt-2">{item.description}</p>
           )}
 
-          {/* Attribute Effects */}
-          {item.attributeEffects && item.attributeEffects.length > 0 && (
+          {/* Slot-based Effects (Equipment) */}
+          {isEquipment && item.slotEffects && item.slotEffects.length > 0 && (
+            <div className="space-y-1">
+              <h5 className="text-xs font-semibold text-muted-foreground uppercase">
+                Efectos por Slot
+              </h5>
+              <div className="space-y-1">
+                {item.slotEffects.map((slotEffect, i) => {
+                  const slotDef = equipmentSlots.find(s => s.id === slotEffect.slotId);
+                  return (
+                    <div key={i} className="rounded border bg-muted/30 px-2 py-1.5 space-y-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm">{slotDef?.icon || '📦'}</span>
+                        <span className="text-xs font-medium">{slotEffect.slotName || slotDef?.name || slotEffect.slotId}</span>
+                        {slotDef && (
+                          <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 font-mono">
+                            {`{{${slotDef.key}}}`}
+                          </Badge>
+                        )}
+                      </div>
+                      {slotEffect.effectText && (
+                        <p className="text-xs text-muted-foreground pl-5">{slotEffect.effectText}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Consumable Effect */}
+          {isConsumable && item.consumableEffect && (
+            <div className="space-y-1">
+              <h5 className="text-xs font-semibold text-muted-foreground uppercase">
+                Efecto
+              </h5>
+              <p className="text-xs text-muted-foreground">{item.consumableEffect}</p>
+            </div>
+          )}
+
+          {/* Legacy Attribute Effects (backward compat) */}
+          {item.attributeEffects && item.attributeEffects.length > 0 && !(item.slotEffects && item.slotEffects.length > 0) && !item.consumableEffect && (
             <div className="space-y-1">
               <h5 className="text-xs font-semibold text-muted-foreground uppercase">
                 Efectos
@@ -289,7 +332,7 @@ export function ItemCard({
             <div className="flex items-center gap-1.5 text-xs">
               <span className="text-muted-foreground">Slot:</span>
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
-                {item.slot}
+                {equipmentSlots.find(s => s.id === item.slot)?.name || item.slot}
               </Badge>
             </div>
           )}
@@ -340,9 +383,10 @@ interface ItemListProps {
   items: Array<{ item: Item; entry?: PersonaInventoryEntry }>;
   onItemClick?: (item: Item, entry?: PersonaInventoryEntry) => void;
   showQuantity?: boolean;
+  equipmentSlots?: EquipmentSlotDefinition[];
 }
 
-export function ItemList({ items, onItemClick, showQuantity = true }: ItemListProps) {
+export function ItemList({ items, onItemClick, showQuantity = true, equipmentSlots = [] }: ItemListProps) {
   if (items.length === 0) {
     return (
       <div className="text-center py-8 text-muted-foreground">
@@ -360,6 +404,7 @@ export function ItemList({ items, onItemClick, showQuantity = true }: ItemListPr
           entry={entry}
           compact
           showQuantity={showQuantity}
+          equipmentSlots={equipmentSlots}
           onEdit={onItemClick ? () => onItemClick(item, entry) : undefined}
         />
       ))}

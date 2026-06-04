@@ -24,6 +24,7 @@ import type {
   ItemAttributeEffect,
   ActiveConsumableEffect,
   InventoryV2Settings,
+  SessionEquipmentEntry,
 } from '@/types';
 import type { ChatApiMessage, CompletionPromptConfig, GroupPromptBuildResult } from './types';
 import { processExampleDialogue, parseExampleDialogueToMessages } from '@/lib/prompt-template';
@@ -353,6 +354,7 @@ export function buildInventorySection(
   const {
     personaItems,
     equippedItems,
+    sessionEquipment,
     activeEffects,
     currency,
     currencyName,
@@ -388,19 +390,47 @@ export function buildInventorySection(
   // Build active effects list
   const effectLines = activeEffects.map(e => {
     const turnsLeft = e.remainingTurns > 0 ? ` (${e.remainingTurns}/${e.totalTurns} turnos)` : '';
-    const effectDesc = e.effects.map(ef =>
-      `${ef.operator}${ef.value} ${ef.attributeKey}${ef.targetId !== '__user__' ? ` → ${ef.targetName || ef.targetId}` : ''}`
-    ).join(', ');
+    // Use consumableEffect free text if available, otherwise fall back to attribute effects
+    let effectDesc: string;
+    if (e.consumableEffect) {
+      effectDesc = e.consumableEffect;
+    } else {
+      effectDesc = e.effects.map(ef =>
+        `${ef.operator}${ef.value} ${ef.attributeKey}${ef.targetId !== '__user__' ? ` → ${ef.targetName || ef.targetId}` : ''}`
+      ).join(', ');
+    }
     return `- ${e.itemName}: ${effectDesc}${turnsLeft}`;
   }).join('\n');
 
-  // Build equipped items list
-  const equipLines = equippedItems.map(({ item }) => {
-    const effects = (item.attributeEffects && item.attributeEffects.length > 0)
-      ? item.attributeEffects.map(e => `${e.operator}${e.value} ${e.attributeKey}`).join(', ')
-      : '';
-    return `- ${item.icon || ''} ${item.name}${item.slot ? ` [${item.slot}]` : ''}${effects ? ` → ${effects}` : ''}`;
-  }).join('\n');
+  // Build equipped items list - prefer sessionEquipment (per-session), fallback to equippedItems (legacy)
+  let equipLines = '';
+  if (sessionEquipment && sessionEquipment.length > 0) {
+    // Use session equipment data
+    const items = personaItems.map(({ item }) => item);
+    equipLines = sessionEquipment.map(eq => {
+      const item = items.find(i => i.id === eq.itemId);
+      const slotDef = inventorySettings.equipmentSlots?.find(s => s.id === eq.equippedSlotId);
+      const slotLabel = slotDef?.name || eq.equippedSlotId;
+      const effectText = eq.slotEffectText
+        || item?.slotEffects?.find(se => se.slotId === eq.equippedSlotId)?.effectText
+        || '';
+      return `- ${item?.icon || ''} ${item?.name || '???'} [${slotLabel}]${effectText ? ` → ${effectText}` : ''}`;
+    }).join('\n');
+  } else if (equippedItems && equippedItems.length > 0) {
+    // Fallback to legacy equipped items
+    equipLines = equippedItems.map(({ item }) => {
+      // Prefer slotEffects (V3) over attributeEffects (V2)
+      let effects = '';
+      if (item.slotEffects && item.slotEffects.length > 0) {
+        effects = item.slotEffects.map(se => se.effectText).filter(Boolean).join('; ');
+      } else if (item.attributeEffects && item.attributeEffects.length > 0) {
+        effects = item.attributeEffects.map(e => `${e.operator}${e.value} ${e.attributeKey}`).join(', ');
+      }
+      const slotDef = inventorySettings.equipmentSlots?.find(s => s.id === item.slot);
+      const slotLabel = slotDef?.name || item.slot || '';
+      return `- ${item.icon || ''} ${item.name}${slotLabel ? ` [${slotLabel}]` : ''}${effects ? ` → ${effects}` : ''}`;
+    }).join('\n');
+  }
 
   // Build currency line
   const currencyLine = `${currencyIcon || '💰'} ${currencyName || 'Divisa'}: ${currency}`;
@@ -431,9 +461,10 @@ export function buildInventorySection(
 
 export interface InventoryPromptData {
   personaItems: Array<{ entry: PersonaInventoryEntry; item: Item }>;
-  equippedItems: Array<{ entry: PersonaInventoryEntry; item: Item }>;
+  equippedItems?: Array<{ entry: PersonaInventoryEntry; item: Item }>;  // Legacy: persona-based equipped items
+  sessionEquipment?: SessionEquipmentEntry[];  // Per-session equipment state (preferred)
   activeEffects: ActiveConsumableEffect[];
-  pendingFallbacks: Array<{ targetId: string; attributeKey: string; fallbackValue: string | number }>;
+  pendingFallbacks?: Array<{ targetId: string; attributeKey: string; fallbackValue: string | number }>;
   currency: number;
   currencyName: string;
   currencyIcon: string;
@@ -519,8 +550,18 @@ export function buildSystemPrompt(
     }
   }
 
-  // Build unified key resolution context (includes quest data for {{activeQuests}}, outlet sections, and lorebook attribute keys)
-  const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, soundTriggers, soundSettings, personaResolvedStats, questTemplates, sessionQuests, questSettings, outletSections, lorebookAttributeKeys);
+  // Build unified key resolution context (includes quest data for {{activeQuests}}, outlet sections, lorebook attribute keys, and inventory data for {{slots}})
+  const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, soundTriggers, soundSettings, personaResolvedStats, questTemplates, sessionQuests, questSettings, outletSections, lorebookAttributeKeys, inventoryData ? {
+    personaItems: inventoryData.personaItems,
+    sessionEquipment: inventoryData.sessionEquipment || inventoryData.equippedItems?.flatMap(({ entry, item }) =>
+      entry.equippedSlotId ? [{ itemId: item.id, equippedSlotId: entry.equippedSlotId, slotEffectText: item.slotEffects?.find(se => se.slotId === entry.equippedSlotId)?.effectText }] : []
+    ) || [],
+    activeEffects: inventoryData.activeEffects,
+    currency: inventoryData.currency,
+    currencyName: inventoryData.currencyName,
+    currencyIcon: inventoryData.currencyIcon,
+    inventorySettings: inventoryData.inventorySettings,
+  } : undefined);
 
   // Main system instruction
   // If character has a custom system prompt, use it instead of the default
@@ -544,14 +585,9 @@ export function buildSystemPrompt(
   // The persona content is now injected via the {{persona}} template key which can be
   // placed anywhere in the character's description, scenario, etc.
 
-  // Add inventory section (Inventory V2) - BEFORE character description
-  // Only inject if inventory is enabled and promptInclude is true
-  if (inventoryData && inventoryData.inventorySettings.enabled && inventoryData.inventorySettings.promptInclude) {
-    const inventorySection = buildInventorySection(inventoryData, keyContext);
-    if (inventorySection) {
-      sections.push(inventorySection);
-    }
-  }
+  // NOTE: Inventory section removed - use {{slots}} key in character sections instead.
+  // The {{slots}} key resolves slot equipment + active consumable effects and can be
+  // placed anywhere in the character's description, scenario, systemPrompt, etc.
 
   // Add character description
   if (character.description) {
@@ -1090,8 +1126,18 @@ export function buildGroupSystemPrompt(
     personaResolvedStats,
   });
 
-  // Build unified key resolution context (includes quest data for {{activeQuests}} and lorebook attribute keys)
-  const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, undefined, undefined, personaResolvedStats, questTemplates, sessionQuests, questSettings, undefined, lorebookAttributeKeys);
+  // Build unified key resolution context (includes quest data for {{activeQuests}}, lorebook attribute keys, and inventory data for {{slots}})
+  const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, undefined, undefined, personaResolvedStats, questTemplates, sessionQuests, questSettings, undefined, lorebookAttributeKeys, inventoryData ? {
+    personaItems: inventoryData.personaItems,
+    sessionEquipment: inventoryData.sessionEquipment || inventoryData.equippedItems?.flatMap(({ entry, item }) =>
+      entry.equippedSlotId ? [{ itemId: item.id, equippedSlotId: entry.equippedSlotId, slotEffectText: item.slotEffects?.find(se => se.slotId === entry.equippedSlotId)?.effectText }] : []
+    ) || [],
+    activeEffects: inventoryData.activeEffects,
+    currency: inventoryData.currency,
+    currencyName: inventoryData.currencyName,
+    currencyIcon: inventoryData.currencyIcon,
+    inventorySettings: inventoryData.inventorySettings,
+  } : undefined);
 
   // System Prompt Priority: Group > Character > Default
   let systemContent: string;
@@ -1127,14 +1173,9 @@ export function buildGroupSystemPrompt(
   // The persona content is now injected via the {{persona}} template key which can be
   // placed anywhere in the character's description, scenario, etc.
 
-  // Add inventory section (Inventory V2) - BEFORE character description
-  // Only inject if inventory is enabled and promptInclude is true
-  if (inventoryData && inventoryData.inventorySettings.enabled && inventoryData.inventorySettings.promptInclude) {
-    const inventorySection = buildInventorySection(inventoryData, keyContext);
-    if (inventorySection) {
-      sections.push(inventorySection);
-    }
-  }
+  // NOTE: Inventory section removed - use {{slots}} key in character sections instead.
+  // The {{slots}} key resolves slot equipment + active consumable effects and can be
+  // placed anywhere in the character's description, scenario, systemPrompt, etc.
 
   // Add this character's details
   if (character.description) {

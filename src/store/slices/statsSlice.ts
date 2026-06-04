@@ -328,11 +328,24 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
         const character = state.characters.find((c: any) => c.id === characterId);
         statsConfig = character?.statsConfig;
       }
+      let newStats = createDefaultCharacterStats(statsConfig);
+      // For persona (__user__), also initialize equipment slot values
+      if (characterId === '__user__') {
+        const equipmentSlots = (state as any).inventorySettings?.equipmentSlots;
+        if (equipmentSlots && equipmentSlots.length > 0) {
+          for (const slot of equipmentSlots) {
+            if (!(slot.key in newStats.attributeValues)) {
+              newStats.attributeValues[slot.key] = '';
+              newStats.lastUpdated[slot.key] = Date.now();
+            }
+          }
+        }
+      }
       sessionStats = {
         ...sessionStats,
         characterStats: {
           ...sessionStats.characterStats,
-          [characterId]: createDefaultCharacterStats(statsConfig),
+          [characterId]: newStats,
         },
       };
     }
@@ -520,11 +533,24 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
           const character = state.characters.find((c: any) => c.id === characterId);
           statsConfig = character?.statsConfig;
         }
+        let autoStats = createDefaultCharacterStats(statsConfig);
+        // For persona (__user__), also initialize equipment slot values
+        if (characterId === '__user__') {
+          const equipmentSlots = (state as any).inventorySettings?.equipmentSlots;
+          if (equipmentSlots && equipmentSlots.length > 0) {
+            for (const slot of equipmentSlots) {
+              if (!(slot.key in autoStats.attributeValues)) {
+                autoStats.attributeValues[slot.key] = '';
+                autoStats.lastUpdated[slot.key] = Date.now();
+              }
+            }
+          }
+        }
         sessionStats = {
           ...sessionStats,
           characterStats: {
             ...sessionStats.characterStats,
-            [characterId]: createDefaultCharacterStats(statsConfig),
+            [characterId]: autoStats,
           },
         };
       }
@@ -623,6 +649,18 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
       
       const character = state.characters.find((c: any) => c.id === characterId);
       const newStats = createDefaultCharacterStats(statsConfig || character?.statsConfig);
+      // For persona (__user__), also initialize equipment slot values
+      if (characterId === '__user__') {
+        const equipmentSlots = (state as any).inventorySettings?.equipmentSlots;
+        if (equipmentSlots && equipmentSlots.length > 0) {
+          for (const slot of equipmentSlots) {
+            if (!(slot.key in newStats.attributeValues)) {
+              newStats.attributeValues[slot.key] = '';
+              newStats.lastUpdated[slot.key] = Date.now();
+            }
+          }
+        }
+      }
       
       const updatedCharacterStats = {
         ...session.sessionStats.characterStats,

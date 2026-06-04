@@ -974,6 +974,21 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
           }
         });
 
+        // Deep-merge inventorySettings to preserve equipmentSlots and other fields
+        // that may not exist in older exports
+        if (data.inventorySettings !== undefined) {
+          const currentSettings = store.inventorySettings;
+          const importedSettings = data.inventorySettings as Record<string, unknown>;
+          updates.inventorySettings = {
+            ...currentSettings,
+            ...importedSettings,
+            // Ensure equipmentSlots is always a valid array
+            equipmentSlots: Array.isArray(importedSettings.equipmentSlots)
+              ? importedSettings.equipmentSlots
+              : currentSettings.equipmentSlots || [],
+          };
+        }
+
         if (Object.keys(updates).length > 0) {
           useTavernStore.setState(updates);
         }
@@ -1080,8 +1095,20 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
 
         if (data.items !== undefined) updates.items = data.items;
         if (data.activeConsumableEffects !== undefined) updates.activeConsumableEffects = data.activeConsumableEffects;
-        if (data.inventorySettings !== undefined) updates.inventorySettings = data.inventorySettings;
         if (data.dynamicEquipmentState !== undefined) updates.dynamicEquipmentState = data.dynamicEquipmentState;
+
+        // Deep-merge inventorySettings to preserve equipmentSlots
+        if (data.inventorySettings !== undefined) {
+          const currentSettings = store.inventorySettings;
+          const importedSettings = data.inventorySettings as Record<string, unknown>;
+          updates.inventorySettings = {
+            ...currentSettings,
+            ...importedSettings,
+            equipmentSlots: Array.isArray(importedSettings.equipmentSlots)
+              ? importedSettings.equipmentSlots
+              : currentSettings.equipmentSlots || [],
+          };
+        }
 
         if (Object.keys(updates).length > 0) {
           useTavernStore.setState(updates);
