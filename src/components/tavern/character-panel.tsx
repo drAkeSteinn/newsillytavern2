@@ -191,6 +191,7 @@ export function CharacterPanel() {
         characterNote: character.characterNote || '',
         systemPrompt: character.systemPrompt || '',
         postHistoryInstructions: character.postHistoryInstructions || '',
+        authorNote: character.authorNote || '',
         alternateGreetings: character.alternateGreetings || [],
         tags: character.tags || [],
         avatar: avatar,
@@ -218,6 +219,9 @@ export function CharacterPanel() {
         chatStats: character.chatStats,
         // Embeddings
         embeddingNamespaces: character.embeddingNamespaces,
+        // Quick Replies & Proactive Messages
+        quickReplies: character.quickReplies,
+        proactiveMessages: character.proactiveMessages,
       });
 
       toast({
@@ -409,6 +413,9 @@ export function CharacterPanel() {
           memory: character.memory,
           // Embeddings
           embeddingNamespaces: character.embeddingNamespaces,
+          // Quick Replies & Proactive Messages
+          quickReplies: character.quickReplies,
+          proactiveMessages: character.proactiveMessages,
         }, true); // preserveId = true
         importedCharacters++;
       }
@@ -520,6 +527,7 @@ export function CharacterPanel() {
         characterNote: character.characterNote || '',
         systemPrompt: character.systemPrompt || '',
         postHistoryInstructions: character.postHistoryInstructions || '',
+        authorNote: character.authorNote || '',
         alternateGreetings: character.alternateGreetings || [],
         tags: character.tags || [],
         avatar: avatar,
@@ -547,6 +555,9 @@ export function CharacterPanel() {
         chatStats: character.chatStats,
         // Embeddings
         embeddingNamespaces: character.embeddingNamespaces,
+        // Quick Replies & Proactive Messages
+        quickReplies: character.quickReplies,
+        proactiveMessages: character.proactiveMessages,
       });
 
       toast({

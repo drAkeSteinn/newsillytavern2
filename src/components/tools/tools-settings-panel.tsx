@@ -492,7 +492,7 @@ export function ToolsSettingsPanel() {
                     saveSettings({ ...localSettings, maxToolCallsPerTurn: val })
                   }
                   min={1}
-                  max={5}
+                  max={8}
                   step={1}
                 />
                 <p className="text-xs text-muted-foreground">

@@ -441,6 +441,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Safety: smart truncation based on embedding model's context window.
+    try {
+      const { MODEL_CONTEXT_LENGTHS, DEFAULT_CONTEXT_LENGTH, CHARS_PER_TOKEN } = await import('@/lib/embeddings/types');
+      const { loadConfig } = await import('@/lib/embeddings/config-persistence');
+      const embConfig = loadConfig();
+      const modelKey = embConfig.model || 'bge-m3:567m';
+      const modelCtx = MODEL_CONTEXT_LENGTHS[modelKey]
+        || MODEL_CONTEXT_LENGTHS[modelKey.split(':')[0]]
+        || DEFAULT_CONTEXT_LENGTH;
+      const maxQueryChars = Math.floor(modelCtx * 0.75 * CHARS_PER_TOKEN);
+
+      if (enrichedSearchQuery.length > maxQueryChars) {
+        // For proactive: keep the most recent part (end of the string)
+        enrichedSearchQuery = enrichedSearchQuery.slice(-maxQueryChars);
+        console.warn(
+          `[Proactive Route] Search query trimmed to ${enrichedSearchQuery.length} chars ` +
+          `(model: ${modelKey}, context: ${modelCtx} tokens)`
+        );
+      }
+    } catch { /* fallback: Ollama client handles truncation */ }
+
     // Retrieve relevant embeddings based on enriched query and settings
     // Pass Character Memory events for deduplication (avoid duplicate memory in prompt)
     const existingMemoryEvents = characterMemory?.events?.map(e => ({

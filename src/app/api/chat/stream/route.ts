@@ -60,6 +60,7 @@ import {
   executeTool,
   getSessionReminders,
   createToolCallAccumulator,
+  finalizeToolCalls,
   hasToolCalls,
   buildToolMessagesForOpenAI,
   buildToolMessagesForOllama,
@@ -321,7 +322,7 @@ export async function POST(request: NextRequest) {
     // Extract tools settings for tool/action system (native tool calling only)
     const toolsSettings: ToolsSettings = {
       enabled: body.toolsSettings?.enabled ?? true,
-      maxToolCallsPerTurn: body.toolsSettings?.maxToolCallsPerTurn ?? 2,
+      maxToolCallsPerTurn: body.toolsSettings?.maxToolCallsPerTurn ?? 4,
       characterConfigs: body.toolsSettings?.characterConfigs || [],
       usePromptBasedFallback: body.toolsSettings?.usePromptBasedFallback ?? false,
       disabledTools: body.toolsSettings?.disabledTools || [],
@@ -432,6 +433,39 @@ export async function POST(request: NextRequest) {
         enrichedSearchQuery = recentHistory.join(' ') + ' ' + sanitizedMessage;
       }
     }
+
+    // Smart truncation: limit query to the embedding model's context window.
+    // Prioritize the user's CURRENT message over history when truncating.
+    // The Ollama client also handles truncation, but this avoids sending huge payloads.
+    try {
+      const { MODEL_CONTEXT_LENGTHS, DEFAULT_CONTEXT_LENGTH, CHARS_PER_TOKEN } = await import('@/lib/embeddings/types');
+      const { loadConfig } = await import('@/lib/embeddings/config-persistence');
+      const embConfig = loadConfig();
+      const modelKey = embConfig.model || 'bge-m3:567m';
+      const modelCtx = MODEL_CONTEXT_LENGTHS[modelKey]
+        || MODEL_CONTEXT_LENGTHS[modelKey.split(':')[0]]
+        || DEFAULT_CONTEXT_LENGTH;
+      const maxQueryChars = Math.floor(modelCtx * 0.75 * CHARS_PER_TOKEN);
+
+      if (enrichedSearchQuery.length > maxQueryChars) {
+        // Smart: keep the user's message intact, truncate history prefix
+        const userMsgLen = sanitizedMessage.length;
+        if (userMsgLen >= maxQueryChars) {
+          // User message alone exceeds limit — truncate it
+          enrichedSearchQuery = sanitizedMessage.slice(0, maxQueryChars);
+        } else {
+          // Keep full user message + as much recent history as fits
+          const budgetForHistory = maxQueryChars - userMsgLen - 1; // -1 for separator
+          enrichedSearchQuery = enrichedSearchQuery.slice(
+            Math.max(0, enrichedSearchQuery.length - maxQueryChars)
+          );
+        }
+        console.warn(
+          `[Stream Route] Search query trimmed to ${enrichedSearchQuery.length} chars ` +
+          `(model: ${modelKey}, context: ${modelCtx} tokens)`
+        );
+      }
+    } catch { /* fallback: no truncation at this level, Ollama client handles it */ }
 
     // Retrieve relevant embeddings based on enriched query and settings
     // Pass Character Memory events for deduplication (avoid duplicate memory in prompt)
@@ -936,11 +970,52 @@ Y cambiar mi expresión:
                   // Fix: Update accumulatedContent to cleaned version
                   accumulatedContent = cleanModelArtifacts(accumulatedContent);
                 } else if (isToolRound && toolContextMessages.length > 0) {
-                  // Follow-up call after tool execution
-                  console.log(`[Z.ai+Tools] Tool round ${toolRound}: sending ${toolContextMessages.length} messages (incl. tool results)`);
-                  generator = streamZAI(toolContextMessages, zaiRuntimeToken);
-                  for await (const chunk of generator) {
-                    controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                  // Follow-up call after tool execution - include tools so the character can chain actions
+                  const canUseMoreTools = shouldUseTools && toolRound < maxToolRounds;
+                  if (canUseMoreTools) {
+                    console.log(`[Z.ai+Tools] Tool round ${toolRound}: sending ${toolContextMessages.length} messages with tools (character can chain actions)`);
+                    const accumulator = createToolCallAccumulator(availableTools);
+                    generator = streamZAIWithTools(toolContextMessages, availableTools, accumulator, zaiRuntimeToken);
+
+                    // Buffer content for potential tool call detection
+                    let roundContent = '';
+                    for await (const chunk of generator) {
+                      roundContent += chunk;
+                      accumulatedContent += chunk;
+                    }
+
+                    const toolCalls = finalizeToolCalls(accumulator);
+                    if (toolCalls.length > 0 && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'stop')) {
+                      // Another tool call detected - stream buffered content and execute
+                      if (roundContent.trim()) {
+                        for (const chunk of splitIntoChunks(roundContent)) {
+                          controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                        }
+                      }
+                      const toolResult = await executeToolCallsAndContinue(
+                        toolCalls, availableTools, toolRound, maxToolRounds,
+                        effectiveCharacter, sessionId || '', effectiveUserName, controller,
+                        sessionQuests, questTemplates,
+                        effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
+                      );
+                      toolContextMessages = buildToolMessagesForOpenAI(toolContextMessages, toolCalls, toolResult);
+                      toolRound++;
+                      isToolRound = true;
+                      continue;
+                    } else {
+                      // No more tool calls - stream the response
+                      const cleanedContent = cleanModelArtifacts(roundContent);
+                      for (const chunk of splitIntoChunks(cleanedContent)) {
+                        controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                      }
+                      accumulatedContent = cleanModelArtifacts(accumulatedContent);
+                    }
+                  } else {
+                    console.log(`[Z.ai+Tools] Tool round ${toolRound}: sending ${toolContextMessages.length} messages (final round, no tools)`);
+                    generator = streamZAI(toolContextMessages, zaiRuntimeToken);
+                    for await (const chunk of generator) {
+                      controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                    }
                   }
                 } else {
                   // No tools enabled - normal streaming
@@ -1088,8 +1163,46 @@ Y cambiar mi expresión:
                   toolRound = maxToolRounds + 1;
                   continue;
                 } else if (shouldUseTools && isToolRound) {
-                  // Follow-up call with tool results (no tools in request to avoid loops)
-                  generator = streamOpenAICompatible(toolContextMessages as any, llmConfig, llmConfig.provider);
+                  // Follow-up call with tool results - include tools so the character can chain actions
+                  const canUseMoreTools = toolRound < maxToolRounds;
+                  if (canUseMoreTools) {
+                    console.log(`[OpenAI+Tools] Tool round ${toolRound}: sending tool results with tools (character can chain actions)`);
+                    const accumulator = createToolCallAccumulator(availableTools);
+                    generator = streamOpenAIWithTools(toolContextMessages as any, llmConfig, availableTools, accumulator);
+
+                    let roundContent = '';
+                    for await (const chunk of generator) {
+                      roundContent += chunk;
+                      accumulatedContent += chunk;
+                    }
+
+                    const toolCalls = finalizeToolCalls(accumulator);
+                    if (toolCalls.length > 0 && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'stop')) {
+                      if (roundContent.trim()) {
+                        for (const chunk of splitIntoChunks(roundContent)) {
+                          controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                        }
+                      }
+                      const toolResult = await executeToolCallsAndContinue(
+                        toolCalls, availableTools, toolRound, maxToolRounds,
+                        effectiveCharacter, sessionId || '', effectiveUserName, controller,
+                        sessionQuests, questTemplates,
+                        effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
+                      );
+                      toolContextMessages = buildToolMessagesForOpenAI(toolContextMessages, toolCalls, toolResult);
+                      toolRound++;
+                      isToolRound = true;
+                      continue;
+                    } else {
+                      const cleanedContent = cleanModelArtifacts(roundContent);
+                      for (const chunk of splitIntoChunks(cleanedContent)) {
+                        controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                      }
+                      accumulatedContent = cleanModelArtifacts(accumulatedContent);
+                    }
+                  } else {
+                    generator = streamOpenAICompatible(toolContextMessages as any, llmConfig, llmConfig.provider);
+                  }
                 } else {
                   generator = streamOpenAICompatible(chatMessages, llmConfig, llmConfig.provider);
                 }
@@ -1205,7 +1318,46 @@ Y cambiar mi expresión:
                   toolRound = maxToolRounds + 1;
                   continue;
                 } else if (shouldUseTools && isToolRound) {
-                  generator = streamAnthropic(toolContextMessages as any, llmConfig);
+                  // Follow-up call with tool results - include tools so the character can chain actions
+                  const canUseMoreTools = toolRound < maxToolRounds;
+                  if (canUseMoreTools) {
+                    console.log(`[Anthropic+Tools] Tool round ${toolRound}: sending tool results with tools (character can chain actions)`);
+                    const toolState = createAnthropicToolState();
+                    generator = streamAnthropicWithTools(toolContextMessages as any, llmConfig, availableTools, toolState);
+
+                    let roundContent = '';
+                    for await (const chunk of generator) {
+                      roundContent += chunk;
+                      accumulatedContent += chunk;
+                    }
+
+                    const toolCalls = anthropicStateToToolCalls(toolState);
+                    if (toolCalls.length > 0 && toolState.stopReason === 'tool_use') {
+                      if (roundContent.trim()) {
+                        for (const chunk of splitIntoChunks(roundContent)) {
+                          controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                        }
+                      }
+                      const toolResult = await executeToolCallsAndContinue(
+                        toolCalls, availableTools, toolRound, maxToolRounds,
+                        effectiveCharacter, sessionId || '', effectiveUserName, controller,
+                        sessionQuests, questTemplates,
+                        effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
+                      );
+                      toolContextMessages = buildToolMessagesForAnthropic(toolContextMessages, toolCalls, toolResult);
+                      toolRound++;
+                      isToolRound = true;
+                      continue;
+                    } else {
+                      const cleanedContent = cleanModelArtifacts(roundContent);
+                      for (const chunk of splitIntoChunks(cleanedContent)) {
+                        controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+                      }
+                      accumulatedContent = cleanModelArtifacts(accumulatedContent);
+                    }
+                  } else {
+                    generator = streamAnthropic(toolContextMessages as any, llmConfig);
+                  }
                 } else {
                   generator = streamAnthropic(chatMessages, llmConfig);
                 }
@@ -1318,10 +1470,11 @@ Y cambiar mi expresión:
                   toolRound = maxToolRounds + 1;
                   continue;
                 } else if (shouldUseTools && isToolRound) {
-                  // Follow-up: send tool results back to Ollama using /api/chat with proper tool messages
-                  // Per Ollama docs, tool results use role: "tool" with tool_name field
+                  // Follow-up: send tool results back to Ollama - include tools so character can chain actions
+                  const canUseMoreTools = toolRound < maxToolRounds;
+                  const ollamaFollowUpTools = canUseMoreTools ? availableTools : [];
                   const toolFollowAccumulator = createToolCallAccumulator(availableTools);
-                  generator = streamOllamaWithTools(toolContextMessages as any, llmConfig, [], toolFollowAccumulator);
+                  generator = streamOllamaWithTools(toolContextMessages as any, llmConfig, ollamaFollowUpTools, toolFollowAccumulator);
                 } else {
                   // No tools - use standard completion endpoint
                   const prompt = buildCompletionPrompt({
@@ -1436,7 +1589,10 @@ Y cambiar mi expresión:
                   toolRound = maxToolRounds + 1;
                   continue;
                 } else if (shouldUseTools && isToolRound) {
-                  generator = streamGrokWithTools(toolContextMessages as any, llmConfig, [], createToolCallAccumulator(availableTools));
+                  // Follow-up with tool results - include tools so character can chain actions
+                  const canUseMoreTools = toolRound < maxToolRounds;
+                  const grokFollowUpTools = canUseMoreTools ? availableTools : [];
+                  generator = streamGrokWithTools(toolContextMessages as any, llmConfig, grokFollowUpTools, createToolCallAccumulator(availableTools));
                 } else {
                   generator = streamGrok(chatMessages, llmConfig);
                 }

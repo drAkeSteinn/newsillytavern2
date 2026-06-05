@@ -1775,7 +1775,7 @@ export interface ToolsSettings {
 
 export const DEFAULT_TOOLS_SETTINGS: ToolsSettings = {
   enabled: true,
-  maxToolCallsPerTurn: 2,
+  maxToolCallsPerTurn: 4,
   characterConfigs: [],
   usePromptBasedFallback: false,
   disabledTools: [],

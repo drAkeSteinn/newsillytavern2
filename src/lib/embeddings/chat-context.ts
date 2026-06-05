@@ -19,6 +19,7 @@ import { getEmbeddingClient } from './client';
 import { loadConfig } from './config-persistence';
 import { LanceDBWrapper } from './lancedb-db';
 import type { SearchResult } from './types';
+import { MODEL_CONTEXT_LENGTHS, DEFAULT_CONTEXT_LENGTH, CHARS_PER_TOKEN } from './types';
 
 /** Result of embeddings context retrieval — split into non-memory and memory */
 export interface EmbeddingsContextResult {
@@ -146,6 +147,26 @@ export async function retrieveEmbeddingsContext(
       return emptyResult();
     }
 
+    // Smart truncation: calculate max chars based on the embedding model's context window.
+    // Use 75% of the model's context as safe budget (same as ollama-client.ts).
+    const embeddingModel = config.model || 'bge-m3:567m';
+    const modelContextTokens = MODEL_CONTEXT_LENGTHS[embeddingModel]
+      || MODEL_CONTEXT_LENGTHS[embeddingModel.split(':')[0]]
+      || DEFAULT_CONTEXT_LENGTH;
+    const safeTokenBudget = Math.floor(modelContextTokens * 0.75);
+    const maxSearchQueryChars = Math.floor(safeTokenBudget * CHARS_PER_TOKEN);
+
+    const searchQuery = userMessage.length > maxSearchQueryChars
+      ? userMessage.slice(0, maxSearchQueryChars)
+      : userMessage;
+
+    if (userMessage.length > maxSearchQueryChars) {
+      console.warn(
+        `[Embeddings] Search query truncated from ${userMessage.length} to ${maxSearchQueryChars} chars ` +
+        `(model: ${embeddingModel}, context: ${modelContextTokens} tokens)`
+      );
+    }
+
     // Search each namespace (with deduplication)
     const maxResults = config.maxResults || 5;
     const threshold = config.similarityThreshold || 0.5;
@@ -159,14 +180,14 @@ export async function retrieveEmbeddingsContext(
         let results: SearchResult[];
         if (ns === '*') {
           results = await client.searchSimilar({
-            query: userMessage,
+            query: searchQuery,
             limit: maxResults * 2,
             threshold,
           });
         } else {
           results = await client.searchInNamespace({
             namespace: ns,
-            query: userMessage,
+            query: searchQuery,
             limit: maxResults,
             threshold,
           });
@@ -187,7 +208,14 @@ export async function retrieveEmbeddingsContext(
     // This captures memories relevant to what the character was talking about,
     // even when the user's message is short or context-dependent (e.g., "Sí", "Claro")
     if (lastAssistantMessage && lastAssistantMessage.trim().length > 20) {
-      const assistantQuery = lastAssistantMessage.trim();
+      // Truncate assistant query to avoid context-length errors
+      let assistantQuery = lastAssistantMessage.trim();
+      if (assistantQuery.length > maxSearchQueryChars) {
+        assistantQuery = assistantQuery.slice(0, maxSearchQueryChars);
+        console.warn(
+          `[Embeddings] Assistant search query truncated to ${maxSearchQueryChars} chars`
+        );
+      }
       const assistantThreshold = Math.min(threshold + 0.1, 1.0);  // Cap at 1.0 to avoid disabling search
       for (const ns of namespaces) {
         try {

@@ -140,3 +140,29 @@ export const MODEL_DIMENSIONS: Record<string, number> = {
   'llama3.1:8b': 4096,
   'phi3:mini': 3072,
 };
+
+/** Known embedding models and their MAX CONTEXT LENGTH in tokens */
+export const MODEL_CONTEXT_LENGTHS: Record<string, number> = {
+  'bge-m3': 8192,
+  'bge-m3:567m': 8192,
+  'bge-m3:latest': 8192,
+  'nomic-embed-text': 8192,
+  'nomic-embed-text:latest': 8192,
+  'nomic-embed-text-v2-moe': 2048,
+  'nomic-embed-text-v2-moe:latest': 2048,
+  'mxbai-embed-large': 512,
+  'mxbai-embed-large:latest': 512,
+  'all-minilm': 256,
+  'all-minilm:latest': 256,
+  'snowflake-arctic-embed': 8192,
+  'snowflake-arctic-embed:latest': 8192,
+  // Non-embedding models used as fallback (very large context)
+  'llama3.1:8b': 128000,
+  'phi3:mini': 128000,
+};
+
+/** Fallback context length for unknown models */
+export const DEFAULT_CONTEXT_LENGTH = 512;
+
+/** Conservative chars-per-token ratio for mixed/Spanish text */
+export const CHARS_PER_TOKEN = 3.5;

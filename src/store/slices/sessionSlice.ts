@@ -1009,6 +1009,7 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
           sessionStats: newSessionStats,
           sessionQuests: newSessionQuests,  // Reset quests to template defaults
           turnCount: 0,  // Reset turn counter
+          summary: undefined,  // Clear summary — starting fresh
           updatedAt: new Date().toISOString()
         } : s
       ),
@@ -1062,6 +1063,26 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
       });
     } catch (err) {
       console.warn('[clearChat] Failed to reset memory namespaces:', err);
+    }
+
+    // Clear Character Memory (Zustand store: events, relationships, notes)
+    // This prevents stale memories from being injected into the prompt after reset
+    try {
+      const characterId = session.characterId;
+      if (characterId) {
+        (get() as any).clearCharacterMemory?.(characterId);
+      }
+      // For group chats, clear memory for all members
+      if (session.groupId) {
+        const group = get().getGroupById?.(session.groupId);
+        if (group?.members) {
+          for (const member of group.members) {
+            (get() as any).clearCharacterMemory?.(member.characterId);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[clearChat] Failed to clear character memory:', err);
     }
   },
 

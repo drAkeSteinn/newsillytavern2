@@ -309,7 +309,14 @@ export function buildSkillsBlock(
   // This ensures the LLM sees the rules before the action list
   const introLines: string[] = [];
   if (header.includes('ACCIONES')) {
-    introLines.push(`${charName} puede realizar únicamente las acciones listadas debajo cuando el contexto lo requiera. Para activar una acción, usa la TOOL "manage_action" con la key correspondiente.`);
+    introLines.push(`${charName} DEBE usar acciones SIEMPRE que realice algo significativo en el roleplay. Las acciones son la forma principal de interactuar con el mundo. Cada vez que ${charName} haga algo más allá de hablar (moverse, atacar, usar habilidades, reaccionar físicamente, etc.), DEBE usar la TOOL "manage_action" con la key correspondiente.`);
+    introLines.push('');
+    introLines.push('REGLAS DE USO DE ACCIONES:');
+    introLines.push('- USA ACCIONES ACTIVAMENTE. No esperes a que haya objetivos o misiones para usarlas.');
+    introLines.push('- Cada acción narrativa importante DEBE ir acompañada de un manage_action call.');
+    introLines.push('- Si una acción describe algo que el personaje hace físicamente, úsala.');
+    introLines.push('- Puedes usar múltiples acciones en una sola respuesta si la situación lo requiere.');
+    introLines.push('- NUNCA dejes de usar una acción disponible cuando el personaje la podría realizar.');
     introLines.push('');
     introLines.push('Si una acción indica "Puede completar", usa la TOOL "manage_quest" o "manage_solicitud" con la key correspondiente para marcar como completado inmediatamente después de realizar la acción.');
   }

@@ -1,0 +1,20 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+@font-face{font-family:KOMIKAHB;src:url('../KOMIKAHB.ttf') format('truetype')}
+.stage{position:relative;width:600px;height:360px;background:#fafaf7;border:1px solid #ddd;overflow:hidden}
+.sfx{position:absolute;left:50%;top:50%;width:140px;transform:translate(-50%,-50%);pointer-events:none}
+</style></head><body>
+<div class="stage" onclick="spawn(event)"></div>
+<script src="../js/comic-sfx-factory-v3.js"></script>
+<script>
+function spawn(ev){
+  const host=document.createElement('div'); host.className='sfx'; host.style.left=ev.offsetX+'px'; host.style.top=ev.offsetY+'px';
+  ev.currentTarget.appendChild(host);
+  const words=['mhi','egh','bho','movah','obgh','OOH!?'];
+  const word=words[Math.floor(Math.random()*words.length)];
+  const preset=word==='movah'?'oval':(word.length>4?'tall':'vertical');
+  mountComicSFX(host,{text:word,preset,vertical:preset==='vertical',duration:850});
+  setTimeout(()=>host.remove(),1100);
+}
+</script>
+</body></html>

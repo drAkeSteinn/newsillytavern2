@@ -2151,6 +2151,8 @@ export function ChatPanel() {
   // Get clearChat from store for proper reset
   const clearChat = useTavernStore((state) => state.clearChat);
   const resetSessionStats = useTavernStore((state) => state.resetSessionStats);
+  const clearSessionSummary = useTavernStore((state) => state.clearSessionSummary);
+  const clearCharacterMemory = useTavernStore((state) => state.clearCharacterMemory);
 
   const handleResetChat = () => {
     if (!activeSessionId) return;
@@ -2160,6 +2162,9 @@ export function ChatPanel() {
     // 2. Session stats to default values
     // 3. Session quests to template defaults (with updated templates)
     // 4. Turn count to 0
+    // 5. Summary cleared
+    // 6. Embedding namespaces deleted and re-created empty
+    // 7. Character Memory (events, relationships, notes) cleared
     if (confirm(t('chat.resetConfirm'))) {
       clearChat(activeSessionId);
       // Clear ALL trigger detection state so quests can be re-activated
@@ -2170,12 +2175,64 @@ export function ChatPanel() {
   const handleClearChat = () => {
     if (!activeSessionId) return;
     
-    // Clear only messages, keep stats and quests
+    // Clear messages AND related session data to start fresh:
+    // - Clear messages
+    // - Clear summary (stale summaries would inject wrong context)
+    // - Clear Character Memory (events, relationships, notes)
+    // - Clear embedding namespaces and re-create empty
     if (confirm(t('chat.clearConfirm'))) {
+      // 1. Clear messages
       updateSession(activeSessionId, { 
         messages: [],
+        summary: undefined,  // Clear summary — starting fresh
+        turnCount: 0,  // Reset turn counter
         updatedAt: new Date().toISOString()
       });
+
+      // 2. Clear Character Memory (Zustand store: events, relationships, notes)
+      if (activeCharacterId) {
+        clearCharacterMemory(activeCharacterId);
+      }
+
+      // 3. Clean up embedding namespaces and re-create them empty
+      try {
+        const session = activeSession;
+        const characterId = session?.characterId;
+        const groupId = session?.groupId;
+        let memberIds: string[] | undefined;
+        if (groupId) {
+          const group = useTavernStore.getState().getGroupById?.(groupId);
+          if (group?.members) {
+            memberIds = group.members.map((m: any) => m.characterId).filter((id: string) => !!id);
+          }
+        }
+
+        fetch('/api/embeddings/delete-session-namespaces', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ characterId, groupId, sessionId: activeSessionId, memberIds }),
+        }).then(() => {
+          // Re-create empty namespaces for the session
+          const character = activeCharacter;
+          return fetch('/api/embeddings/ensure-namespace', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              characterId,
+              characterName: character?.name || '',
+              groupId,
+              groupName: groupId ? useTavernStore.getState().getGroupById?.(groupId)?.name : undefined,
+              memberIds,
+              memberNames: memberIds?.map((mid: string) => useTavernStore.getState().getCharacterById(mid)?.name).filter(Boolean),
+              sessionId: activeSessionId,
+            }),
+          });
+        }).catch((err) => {
+          console.warn('[handleClearChat] Failed to reset embedding namespaces:', err);
+        });
+      } catch (err) {
+        console.warn('[handleClearChat] Failed to reset embedding namespaces:', err);
+      }
     }
   };
 

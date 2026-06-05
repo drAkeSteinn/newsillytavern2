@@ -1,0 +1,14 @@
+/* Comic SFX base hooks. The standalone SVGs already include their own CSS.
+   Use this only when injecting SVG strings from comic-sfx-factory-v3.js. */
+.comic-sfx-host {
+  position: absolute;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  z-index: 50;
+}
+.comic-sfx-host svg {
+  display: block;
+  width: var(--sfx-width, 150px);
+  height: auto;
+  overflow: visible;
+}

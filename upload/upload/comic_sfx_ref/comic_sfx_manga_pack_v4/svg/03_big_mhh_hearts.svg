@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320" role="img" aria-label="Comic SFX animation" style="--dur:980ms">
+
+  <defs>
+    <filter id="inkWobble" x="-12%" y="-12%" width="124%" height="124%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.018 0.072" numOctaves="1" seed="4" result="noise">
+        <animate attributeName="seed" values="2;5;9;3;7;2" dur="0.22s" repeatCount="indefinite" />
+      </feTurbulence>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="0.9" xChannelSelector="R" yChannelSelector="G" />
+    </filter>
+    <filter id="textRattle" x="-8%" y="-8%" width="116%" height="116%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.026 0.09" numOctaves="1" seed="6" result="noise">
+        <animate attributeName="seed" values="1;3;8;4;1" dur="0.18s" repeatCount="indefinite" />
+      </feTurbulence>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="0.45" />
+    </filter>
+  </defs>
+
+
+  <style><![CDATA[
+    :root { --dur: 900ms; --font: KOMIKAHB, "Komika Hand", "Comic Sans MS", cursive; }
+    svg { overflow: visible; background: transparent; }
+    .sfx-root { transform-box: fill-box; transform-origin: center; animation: sfx-pop var(--dur) cubic-bezier(.16,.96,.2,1) forwards; pointer-events:none; }
+    .ink { filter:url(#inkWobble); }
+    .boil-a,.boil-b,.boil-c { fill:#fffef8; stroke:#0b0b0b; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
+    .boil-a { stroke-width:3.05; animation: boilA .18s steps(1,end) infinite; }
+    .boil-b { stroke-width:2.65; animation: boilB .18s steps(1,end) infinite; opacity:0; }
+    .boil-c { stroke-width:2.3; animation: boilC .18s steps(1,end) infinite; opacity:0; }
+    .inner-scratch { fill:none; stroke:#0b0b0b; stroke-width:1.15; stroke-linecap:round; stroke-linejoin:round; opacity:.72; vector-effect:non-scaling-stroke; }
+    .side-mark { fill:none; stroke:#0b0b0b; stroke-width:1.35; stroke-linecap:round; stroke-linejoin:round; opacity:1; vector-effect:non-scaling-stroke; animation: mark-in calc(var(--dur) * .72) ease-out forwards; }
+    .mark-1 { animation-delay:70ms; } .mark-2 { animation-delay:115ms; } .mark-3 { animation-delay:155ms; } .mark-4 { animation-delay:190ms; }
+    .dot { fill:#0b0b0b; opacity:1; animation: dot-pop calc(var(--dur) * .7) ease-out forwards; }
+    .heart { fill:none; stroke:#0b0b0b; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; opacity:1; animation: heart-pop calc(var(--dur) * .78) cubic-bezier(.13,1.06,.32,1) forwards; vector-effect:non-scaling-stroke; }
+    .arrow { fill:none; stroke:#0b0b0b; stroke-width:2.1; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; opacity:1; animation: arrow-drop calc(var(--dur) * .72) ease-out forwards; animation-delay:120ms; }
+    .sfx-text { font-family:var(--font); fill:#0b0b0b; font-weight:700; paint-order:stroke; stroke:#0b0b0b; stroke-width:.25; filter:url(#textRattle); }
+    .ghost-text { font-family:var(--font); fill:#0b0b0b; opacity:.14; filter:none; }
+    .text-pop { transform-box: fill-box; transform-origin:center; animation: text-pop var(--dur) cubic-bezier(.14,.88,.18,1) forwards; }
+    .stack-char { font-family:var(--font); fill:#0b0b0b; font-weight:700; text-anchor:middle; dominant-baseline:middle; paint-order:stroke; stroke:#0b0b0b; stroke-width:.2; filter:url(#textRattle); }
+    @keyframes sfx-pop {
+      0% { opacity:0; transform:translateY(8px) scale(.06,.1) rotate(-7deg); }
+      10% { opacity:1; transform:translateY(-3px) scale(1.12,.88) rotate(3deg); }
+      20% { transform:translateY(1px) scale(.94,1.08) rotate(-2deg); }
+      31% { transform:translateY(0) scale(1) rotate(.6deg); }
+      68% { opacity:1; transform:translateY(0) scale(1) rotate(.2deg); }
+      82% { opacity:1; transform:translateY(-3px) scale(1.04,.98) rotate(-1deg); }
+      100% { opacity:0; transform:translateY(-10px) scale(.94,1.08) rotate(2.5deg); }
+    }
+    @keyframes text-pop {
+      0% { opacity:0; transform:scale(.2) rotate(-6deg); }
+      13% { opacity:1; transform:scale(1.12) rotate(3deg); }
+      26% { transform:scale(.97) rotate(-1.5deg); }
+      42%,78% { opacity:1; transform:scale(1) rotate(0deg); }
+      100% { opacity:0; transform:scale(1.02) rotate(2deg); }
+    }
+    @keyframes boilA { 0%,32%{opacity:1} 33%,100%{opacity:0} }
+    @keyframes boilB { 0%,32%{opacity:0} 33%,65%{opacity:1} 66%,100%{opacity:0} }
+    @keyframes boilC { 0%,65%{opacity:0} 66%,100%{opacity:1} }
+    @keyframes mark-in { 0%{opacity:0; stroke-dasharray:0 50; transform:scale(.8)} 18%{opacity:1; stroke-dasharray:18 50; transform:scale(1.02)} 72%{opacity:1} 100%{opacity:0; stroke-dasharray:18 50; transform:translateY(-4px)} }
+    @keyframes dot-pop { 0%{opacity:0; transform:scale(.3)} 15%{opacity:1; transform:scale(1.35)} 35%{transform:scale(1)} 85%{opacity:1} 100%{opacity:0; transform:scale(.65) translateY(-4px)} }
+    @keyframes heart-pop { 0%{opacity:0; transform:scale(.2) rotate(-8deg)} 20%{opacity:1; transform:scale(1.25) rotate(5deg)} 42%{transform:scale(1) rotate(-2deg)} 85%{opacity:1} 100%{opacity:0; transform:scale(.8) translateY(-7px)} }
+    @keyframes arrow-drop { 0%{opacity:0; transform:translateY(-5px) scale(.75)} 23%{opacity:1; transform:translateY(0) scale(1.08)} 80%{opacity:1} 100%{opacity:0; transform:translateY(4px) scale(.92)} }
+    @media (prefers-reduced-motion: reduce) { .sfx-root,.boil-a,.boil-b,.boil-c,.side-mark,.dot,.heart,.arrow,.text-pop { animation:none!important; opacity:1!important; } }
+  ]]></style>
+
+  <g class="sfx-root">
+    
+      <g class="ink">
+        <path class="boil-a" d="M132 8 L122 43 L96 75 L101 110 L94 143 L100 176 L88 215 L123 309 L146 251 L154 211 L149 176 L162 142 L153 111 L161 77 L143 56 Z"/>
+        <path class="boil-b" d="M130 7 L121 44 L94 76 L103 110 L92 144 L99 177 L86 216 L124 312 L148 250 L155 210 L151 175 L164 141 L152 110 L163 78 L142 55 Z"/>
+        <path class="boil-c" d="M134 9 L123 42 L97 78 L100 112 L95 142 L101 174 L89 214 L122 307 L145 252 L153 212 L148 178 L161 140 L154 113 L159 75 L145 57 Z"/>
+        <path class="inner-scratch" d="M104 52 q12 2 23 -1 M99 66 q13 3 28 -1 M98 88 q10 3 24 0"/>
+      </g>
+      
+        <path class="side-mark mark-1" d="M96 61 l-15 -2 M93 75 l-18 1 M95 89 l-13 4"/>
+        <path class="side-mark mark-2" d="M160 75 l15 -5 M160 91 l17 1 M154 108 l14 6"/>
+        <circle class="dot" cx="151" cy="84" r="3.2" style="animation-delay:125ms"/>
+        <path class="heart" style="animation-delay:170ms" d="M95 232 C84 218 72 232 88 248 C102 235 106 225 95 232 Z"/>
+        <path class="heart" style="animation-delay:215ms" d="M143 253 C134 241 122 253 137 268 C150 253 154 244 143 253 Z"/>
+        
+    
+    <g class="text-pop" style="animation-delay:20ms">
+<text class="stack-char" x="123.5" y="97.0" font-size="45" transform="rotate(-86 123.5 97.0)">m</text>
+<text class="stack-char" x="126.0" y="130.0" font-size="45" transform="rotate(-84 126.0 130.0)">h</text>
+<text class="stack-char" x="124.5" y="163.0" font-size="45" transform="rotate(-88 124.5 163.0)">h</text>
+<text class="stack-char" x="126.7" y="196.0" font-size="45" transform="rotate(-83 126.7 196.0)">h</text>
+</g><text class="stack-char text-pop" x="108" y="214" font-size="37" transform="rotate(-83 108 214)">!</text><text class="stack-char text-pop" x="103" y="252" font-size="30" transform="rotate(-84 103 252)">?</text>
+    
+  </g>
+</svg>

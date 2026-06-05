@@ -727,6 +727,27 @@ export async function POST(request: NextRequest) {
               }
             }
 
+            // Safety: smart truncation based on embedding model's context window.
+            try {
+              const { MODEL_CONTEXT_LENGTHS, DEFAULT_CONTEXT_LENGTH, CHARS_PER_TOKEN } = await import('@/lib/embeddings/types');
+              const { loadConfig } = await import('@/lib/embeddings/config-persistence');
+              const embConfig = loadConfig();
+              const modelKey = embConfig.model || 'bge-m3:567m';
+              const modelCtx = MODEL_CONTEXT_LENGTHS[modelKey]
+                || MODEL_CONTEXT_LENGTHS[modelKey.split(':')[0]]
+                || DEFAULT_CONTEXT_LENGTH;
+              const maxQueryChars = Math.floor(modelCtx * 0.75 * CHARS_PER_TOKEN);
+
+              if (groupEnrichedQuery.length > maxQueryChars) {
+                // Keep the most recent part (current message at end)
+                groupEnrichedQuery = groupEnrichedQuery.slice(-maxQueryChars);
+                console.warn(
+                  `[Group Stream] Search query trimmed to ${groupEnrichedQuery.length} chars ` +
+                  `(model: ${modelKey}, context: ${modelCtx} tokens)`
+                );
+              }
+            } catch { /* fallback: Ollama client handles truncation */ }
+
             // Extract last assistant message for bidirectional search
             const lastAssistantMsg = messages
               .filter(m => !m.isDeleted && m.role === 'assistant')

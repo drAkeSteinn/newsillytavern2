@@ -153,6 +153,7 @@ export function buildPromptBasedToolsSection(
     '- USA HERRAMIENTAS DE STATS cuando ganes/perdas experiencia, salud, etc.',
     '- USA HERRAMIENTAS DE QUESTS para reportar progreso en misiones',
     '- USA HERRAMIENTAS DE MEMORIA para guardar eventos importantes',
+    '- USA manage_action ACTIVAMENTE: cada vez que el personaje haga algo más allá de hablar, usa la acción correspondiente. No esperes a que haya misiones u objetivos.',
     '',
     charNameMsg,
     '',

@@ -36,9 +36,12 @@ export const manageActionTool: ToolDefinition = {
   label: 'Usar Acción',
   icon: 'Sword',
   description:
-    'Activa una acción o habilidad del personaje. Usa esta herramienta cuando ' +
-    'el personaje realice una acción listada en las ACCIONES DISPONIBLES. ' +
-    'Solo usa acciones que estén listadas como disponibles en el contexto actual.',
+    'Activa una acción o habilidad del personaje. DEBES usar esta herramienta SIEMPRE que el personaje ' +
+    'realice una acción listada en las ACCIONES DISPONIBLES, incluso si no hay misiones u objetivos activos. ' +
+    'Las acciones hacen al personaje más vivo y activo — úsalas con frecuencia en cada turno cuando el ' +
+    'personaje haga algo más allá de hablar. No esperes a que haya quests o solicitudes para usar acciones. ' +
+    'Si el personaje se mueve, ataca, usa una habilidad, reacciona físicamente, o hace cualquier cosa ' +
+    'que coincida con una acción disponible, DEBES llamar esta herramienta.',
   category: 'in_character',
   parameters: {
     type: 'object',

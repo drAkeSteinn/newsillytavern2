@@ -147,6 +147,9 @@ function parseCharacterData(data: unknown): Partial<CharacterCard> {
       embeddingNamespaces: extensions?.embeddingNamespaces as string[],
       memory: extensions?.memory as CharacterCard['memory'],
       chatStats: extensions?.chatStats as CharacterCard['chatStats'],
+      // Quick Replies & Proactive Messages
+      quickReplies: extensions?.quickReplies as CharacterCard['quickReplies'],
+      proactiveMessages: extensions?.proactiveMessages as CharacterCard['proactiveMessages'],
     };
   }
   
@@ -190,6 +193,9 @@ function parseCharacterData(data: unknown): Partial<CharacterCard> {
       chatStats: v1Data.chatStats as CharacterCard['chatStats'],
       // Embeddings
       embeddingNamespaces: v1Data.embeddingNamespaces as string[],
+      // Quick Replies & Proactive Messages
+      quickReplies: v1Data.quickReplies as CharacterCard['quickReplies'],
+      proactiveMessages: v1Data.proactiveMessages as CharacterCard['proactiveMessages'],
     };
   }
   
@@ -368,6 +374,9 @@ export async function exportCharacterCardAsPng(
         questTemplateIds: character.questTemplateIds,
         // Embeddings
         embeddingNamespaces: character.embeddingNamespaces,
+        // Quick Replies & Proactive Messages
+        quickReplies: character.quickReplies,
+        proactiveMessages: character.proactiveMessages,
       }
     }
   };
@@ -632,6 +641,9 @@ export function exportCharacterCardAsJson(character: CharacterCard): string {
         questTemplateIds: character.questTemplateIds,
         // Embeddings
         embeddingNamespaces: character.embeddingNamespaces,
+        // Quick Replies & Proactive Messages
+        quickReplies: character.quickReplies,
+        proactiveMessages: character.proactiveMessages,
       }
     }
   };
