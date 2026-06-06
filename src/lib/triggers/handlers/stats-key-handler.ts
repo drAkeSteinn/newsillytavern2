@@ -70,7 +70,8 @@ export class StatsKeyHandler implements KeyHandler {
     for (const attr of context.statsConfig.attributes) {
       const detectionKeys = [
         attr.key,
-        ...(attr.detectionKeys || [])
+        ...(attr.keys || []),
+        ...(attr.detectionTags ? attr.detectionTags.split(',').map(t => t.trim()).filter(Boolean) : [])
       ].filter(Boolean);
       
       if (detectionKeys.some(k => k.toLowerCase() === normalizedKey)) {
@@ -106,7 +107,8 @@ export class StatsKeyHandler implements KeyHandler {
     for (const attr of statsConfig.attributes) {
       const detectionKeys = [
         attr.key,
-        ...(attr.detectionKeys || [])
+        ...(attr.keys || []),
+        ...(attr.detectionTags ? attr.detectionTags.split(',').map(t => t.trim()).filter(Boolean) : [])
       ].filter(Boolean);
       
       if (detectionKeys.some(k => k.toLowerCase() === normalizedKey)) {
@@ -215,7 +217,8 @@ export class StatsKeyHandler implements KeyHandler {
     for (const attr of context.statsConfig.attributes) {
       const detectionKeys = [
         attr.key,
-        ...(attr.detectionKeys || [])
+        ...(attr.keys || []),
+        ...(attr.detectionTags ? attr.detectionTags.split(',').map(t => t.trim()).filter(Boolean) : [])
       ].filter(Boolean);
       
       for (const key of detectionKeys) {

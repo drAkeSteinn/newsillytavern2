@@ -276,6 +276,23 @@ export function useProactiveMessages({
           soundTriggers,
           settings,
           characterMemory: activeCharacter ? useTavernStore.getState().getCharacterMemory(activeCharacter.id) : undefined,
+          // Inventory data for {{inventory}}, {{currency}}, {{slots}} key resolution
+          inventoryData: (() => {
+            const invState = useTavernStore.getState();
+            const invSettings = invState.inventorySettings;
+            if (!invSettings.enabled) return undefined;
+            const personaId = activePersona?.id || 'default';
+            const freshSession = invState.sessions.find((s: any) => s.id === invState.activeSessionId);
+            return {
+              personaItems: invState.getPersonaItems(personaId),
+              sessionEquipment: freshSession?.sessionEquipment || [],
+              activeEffects: freshSession?.activeConsumableEffects || invState.activeConsumableEffects.filter((e: any) => e.personaId === personaId),
+              currency: activePersona?.currency ?? 0,
+              currencyName: activePersona?.currencyName || invSettings.currencyName,
+              currencyIcon: activePersona?.currencyIcon || invSettings.currencyIcon,
+              inventorySettings: invSettings,
+            };
+          })(),
         }),
       });
 
@@ -377,6 +394,22 @@ export function useProactiveMessages({
                       parsed.skillCompletedDescription || '',
                     );
                     toast.success(`⚔️ Acción: ${parsed.skillName}`);
+                  }
+                  break;
+
+                case 'stat_activation':
+                  console.log('[Proactive] Stat activation:', parsed.toolName, parsed.attributeKey, parsed.oldValue, '→', parsed.newValue);
+                  {
+                    const store = useTavernStore.getState();
+                    const sid = useTavernStore.getState().activeSessionId;
+                    store.updateCharacterStat?.(
+                      sid,
+                      parsed.characterId,
+                      parsed.attributeKey,
+                      parsed.newValue,
+                      'llm_detection'
+                    );
+                    toast.success(`📊 ${parsed.attributeName || parsed.attributeKey}: ${parsed.oldValue} → ${parsed.newValue}`);
                   }
                   break;
 

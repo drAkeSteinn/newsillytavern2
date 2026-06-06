@@ -688,8 +688,21 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
   });
 
   // Export all configuration (without characters/sessions)
-  const handleExportConfig = () => {
+  const handleExportConfig = async () => {
     try {
+      // Fetch embeddings config from server (not in Zustand store)
+      let embeddingsConfig = null;
+      try {
+        const embResp = await fetch('/api/embeddings/config');
+        if (embResp.ok) {
+          const embData = await embResp.json();
+          if (embData.success && embData.data) {
+            const { tableDimension, ...config } = embData.data;
+            embeddingsConfig = config;
+          }
+        }
+      } catch { /* non-critical */ }
+
       const configData = {
         version: '2.0',
         exportedAt: new Date().toISOString(),
@@ -739,6 +752,8 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
           activeConsumableEffects: store.activeConsumableEffects,
           dynamicEquipmentState: store.dynamicEquipmentState,
           inventoryNotifications: store.inventoryNotifications,
+          // Knowledge / Embeddings config (server-side only, not in store)
+          ...(embeddingsConfig ? { embeddingsConfig } : {}),
         }
       };
 
@@ -771,7 +786,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const content = e.target?.result as string;
         const imported = JSON.parse(content);
@@ -784,7 +799,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
         const { data } = imported;
         const updates: Record<string, unknown> = {};
 
-        // Config data keys (same as in export)
+        // Config data keys (same as in export) — excludes embeddingsConfig (server-side only)
         const configKeys = [
           'settings', 'llmConfigs', 'ttsConfigs', 'promptTemplates',
           'personas', 'lorebooks', 'activeLorebookIds',
@@ -805,8 +820,54 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
           }
         });
 
+        // Deep-merge complex settings to preserve new fields
+        const deepMergeKeys = ['settings', 'dialogueSettings', 'summarySettings', 'questSettings', 'atmosphereSettings', 'inventorySettings'];
+        for (const mergeKey of deepMergeKeys) {
+          if (data[mergeKey] !== undefined) {
+            const currentVal = (useTavernStore.getState() as Record<string, unknown>)[mergeKey];
+            const importedVal = data[mergeKey] as Record<string, unknown>;
+            if (currentVal && typeof currentVal === 'object' && !Array.isArray(currentVal)) {
+              updates[mergeKey] = { ...currentVal, ...importedVal };
+            }
+          }
+        }
+
         if (Object.keys(updates).length > 0) {
           useTavernStore.setState(updates);
+        }
+
+        // Persist quest templates to disk via API
+        if (data.questTemplates && Array.isArray(data.questTemplates)) {
+          try {
+            for (const template of data.questTemplates) {
+              if (template && template.id) {
+                await fetch('/api/quest-templates', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ template }),
+                });
+              }
+            }
+            console.log(`[ImportConfig] Persisted ${data.questTemplates.length} quest templates to disk`);
+          } catch (questErr) {
+            console.warn('[ImportConfig] Error persisting quest templates to disk:', questErr);
+          }
+        }
+
+        // Restore embeddings config to server (it's not in Zustand store)
+        if (data.embeddingsConfig && typeof data.embeddingsConfig === 'object') {
+          try {
+            const resp = await fetch('/api/embeddings/config', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data.embeddingsConfig),
+            });
+            if (resp.ok) {
+              console.log('[ImportConfig] Embeddings config restored to server');
+            }
+          } catch (embErr) {
+            console.warn('[ImportConfig] Error restoring embeddings config:', embErr);
+          }
         }
 
         toast({
@@ -830,8 +891,22 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
   };
 
   // Export everything (config + characters + sessions + groups)
-  const handleExportAll = () => {
+  const handleExportAll = async () => {
     try {
+      // Fetch embeddings config from server (not in Zustand store)
+      let embeddingsConfig = null;
+      try {
+        const embResp = await fetch('/api/embeddings/config');
+        if (embResp.ok) {
+          const embData = await embResp.json();
+          if (embData.success && embData.data) {
+            // Strip tableDimension (runtime-only, not a config field)
+            const { tableDimension, ...config } = embData.data;
+            embeddingsConfig = config;
+          }
+        }
+      } catch { /* non-critical */ }
+
       const allData = {
         version: '2.0',
         exportedAt: new Date().toISOString(),
@@ -897,6 +972,8 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
           activeOverlayBack: store.activeOverlayBack,
           activeOverlayFront: store.activeOverlayFront,
           activePersonaId: store.activePersonaId,
+          // Knowledge / Embeddings config (server-side only, not in store)
+          ...(embeddingsConfig ? { embeddingsConfig } : {}),
         }
       };
 
@@ -929,7 +1006,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const content = e.target?.result as string;
         const imported = JSON.parse(content);
@@ -941,7 +1018,7 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
         const { data } = imported;
         const updates: Record<string, unknown> = {};
 
-        // All data keys (same as in export)
+        // All data keys (same as in export) — excludes embeddingsConfig (server-side only)
         const allDataKeys = [
           // Config
           'settings', 'llmConfigs', 'ttsConfigs', 'promptTemplates',
@@ -970,11 +1047,23 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
           }
         });
 
-        // Deep-merge inventorySettings to preserve equipmentSlots and other fields
-        // that may not exist in older exports
+        // Deep-merge complex settings to preserve new fields that may not exist
+        // in older exports. This prevents wiping out newly-added nested properties.
+        const deepMergeKeys = ['settings', 'dialogueSettings', 'summarySettings', 'questSettings', 'atmosphereSettings', 'inventorySettings'];
+        for (const mergeKey of deepMergeKeys) {
+          if (data[mergeKey] !== undefined) {
+            const currentVal = (useTavernStore.getState() as Record<string, unknown>)[mergeKey];
+            const importedVal = data[mergeKey] as Record<string, unknown>;
+            if (currentVal && typeof currentVal === 'object' && !Array.isArray(currentVal)) {
+              updates[mergeKey] = { ...currentVal, ...importedVal };
+            }
+          }
+        }
+
+        // Special handling for inventorySettings equipmentSlots
         if (data.inventorySettings !== undefined) {
           const currentSettings = store.inventorySettings;
-          const importedSettings = data.inventorySettings as Record<string, unknown>;
+          const importedSettings = updates.inventorySettings as Record<string, unknown> ?? data.inventorySettings as Record<string, unknown>;
           updates.inventorySettings = {
             ...currentSettings,
             ...importedSettings,
@@ -987,6 +1076,42 @@ export function SettingsPanel({ open, onOpenChange, initialTab = 'llm' }: Settin
 
         if (Object.keys(updates).length > 0) {
           useTavernStore.setState(updates);
+        }
+
+        // Persist quest templates to disk via API (they live in individual JSON files on server)
+        if (data.questTemplates && Array.isArray(data.questTemplates)) {
+          try {
+            for (const template of data.questTemplates) {
+              if (template && template.id) {
+                await fetch('/api/quest-templates', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ template }),
+                });
+              }
+            }
+            console.log(`[ImportAll] Persisted ${data.questTemplates.length} quest templates to disk`);
+          } catch (questErr) {
+            console.warn('[ImportAll] Error persisting quest templates to disk:', questErr);
+          }
+        }
+
+        // Restore embeddings config to server (it's not in Zustand store)
+        if (data.embeddingsConfig && typeof data.embeddingsConfig === 'object') {
+          try {
+            const resp = await fetch('/api/embeddings/config', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data.embeddingsConfig),
+            });
+            if (resp.ok) {
+              console.log('[ImportAll] Embeddings config restored to server');
+            } else {
+              console.warn('[ImportAll] Failed to restore embeddings config:', resp.status);
+            }
+          } catch (embErr) {
+            console.warn('[ImportAll] Error restoring embeddings config:', embErr);
+          }
         }
 
         toast({

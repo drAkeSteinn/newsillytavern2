@@ -8,7 +8,7 @@
 // - All sections are processed consistently
 
 import { NextRequest } from 'next/server';
-import type { ChatMessage, CharacterCard, CharacterGroup, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestTemplate, SessionQuestInstance, SessionSummary, SolicitudInstance, CharacterStatsConfig, CharacterMemory, InventoryV2Settings, SessionEquipmentEntry } from '@/types';
+import type { ChatMessage, CharacterCard, CharacterGroup, PromptSection, Lorebook, SessionStats, HUDContextConfig, QuestTemplate, SessionQuestInstance, SessionSummary, SolicitudInstance, CharacterStatsConfig, CharacterMemory, InventoryV2Settings, SessionEquipmentEntry, SoundTrigger } from '@/types';
 
 import type { LorebookInjectionPlan, LorebookChatInjection } from '@/lib/lorebook';
 import { DEFAULT_QUEST_SETTINGS } from '@/types';
@@ -31,6 +31,7 @@ import {
   buildLorebookSectionForPrompt,
   buildHUDContextSection,
   buildInventorySection,
+  buildMemorySection,
   injectHUDContextIntoMessages,
   injectHUDContextIntoSections,
   resolveAllKeys,
@@ -429,6 +430,24 @@ async function executeGroupToolCalls(
       }));
     }
 
+    // Check for stat modification from modify_stat tool and send SSE event
+    if (toolResult.statActivation) {
+      const stat = toolResult.statActivation;
+      console.log(`[GroupStream-Tools] Stat activation from ${tc.name}:`, stat.attributeKey, stat.oldValue, '→', stat.newValue);
+      
+      controller.enqueue(createSSEJSON({
+        type: 'stat_activation',
+        toolName: tc.name,
+        characterId: stat.characterId,
+        attributeKey: stat.attributeKey,
+        attributeName: stat.attributeName,
+        attributeType: stat.attributeType,
+        oldValue: stat.oldValue,
+        newValue: stat.newValue,
+        reason: stat.reason,
+      }));
+    }
+
     // Check for solicitud activation/completion and send SSE event
     if (toolResult.solicitudActivation) {
       const sol = toolResult.solicitudActivation;
@@ -446,6 +465,24 @@ async function executeGroupToolCalls(
         description: sol.description,
         completionDescription: sol.completionDescription,
         peticionKey: sol.peticionKey,
+      }));
+    }
+
+    // Check for memory activation (sync to client-side Character Memory)
+    if (toolResult.memoryActivation) {
+      const mem = toolResult.memoryActivation;
+      console.log(`[GroupStream-Tools] Memory activation from ${tc.name}:`, mem.type);
+      
+      controller.enqueue(createSSEJSON({
+        type: 'memory_activation',
+        toolName: tc.name,
+        activationType: mem.type,
+        characterId: mem.characterId,
+        eventData: mem.eventData,
+        relationshipData: mem.relationshipData,
+        noteContent: mem.noteContent,
+        deleteEventId: mem.deleteEventId,
+        deleteEmbeddingId: mem.deleteEmbeddingId,
       }));
     }
 
@@ -482,6 +519,11 @@ async function executeGroupToolCalls(
 
 export async function POST(request: NextRequest) {
   try {
+    // Capture auth headers from Z.ai gateway for token resolution
+    // Only use actual JWT tokens - session IDs are NOT valid X-Tokens
+    const incomingXToken = request.headers.get('X-Token');
+    const fcSecurityToken = request.headers.get('x-fc-security-token');
+
     const body = await request.json();
 
     // Validate request (automatically detects group request)
@@ -541,6 +583,10 @@ export async function POST(request: NextRequest) {
     // Extract inventory data for Inventory V2 system
     const inventoryData: InventoryPromptData | undefined = body.inventoryData;
 
+    // Extract Sound data for {{sonidos}} key resolution
+    const soundTriggers: SoundTrigger[] = body.soundTriggers || [];
+    const soundSettings = body.settings?.sound;
+
     // Cast sessionStats to proper type
     const typedSessionStats = sessionStats as SessionStats | undefined;
 
@@ -598,6 +644,34 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('No LLM configuration provided', 400);
     }
 
+    // Validate API key for providers that require one
+    const providersRequiringApiKey = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'grok'];
+    if (providersRequiringApiKey.includes(llmConfig.provider) && !llmConfig.apiKey) {
+      return createErrorResponse(
+        `API Key is required for ${llmConfig.provider} provider. Please configure it in Settings.`,
+        400
+      );
+    }
+
+    // Validate endpoint for providers that require one
+    const providersRequiringEndpoint = ['openai', 'vllm', 'lm-studio', 'custom', 'anthropic', 'ollama', 'text-generation-webui', 'koboldcpp'];
+    if (providersRequiringEndpoint.includes(llmConfig.provider) && !llmConfig.endpoint) {
+      return createErrorResponse(
+        `Endpoint URL is required for ${llmConfig.provider} provider. Please configure it in Settings.`,
+        400
+      );
+    }
+
+    // Resolve Z.ai runtime token from gateway headers
+    let zaiRuntimeToken: string | undefined;
+    if (llmConfig.provider === 'z-ai') {
+      const gatewayToken = incomingXToken || fcSecurityToken || undefined;
+      if (gatewayToken) {
+        zaiRuntimeToken = gatewayToken;
+        console.log(`[Group Stream Route] Z.ai runtime token available (${gatewayToken.length} chars, source: ${incomingXToken ? 'X-Token' : 'fc-security-token'})`);
+      }
+    }
+
     // Sanitize user message
     const sanitizedMessage = sanitizeInput(message);
 
@@ -641,8 +715,9 @@ export async function POST(request: NextRequest) {
 
     // Build group-level lorebook injection plan if group has lorebooks
     let groupLorebookPlan: LorebookInjectionPlan | null = null;
+    let groupLorebookAttributeKeys: Record<string, string> = {};
     if (useGroupLorebooks && lorebooks.length > 0) {
-      const { plan, lorebookAttributeKeys: groupLorebookAttributeKeys } = buildLorebookSectionForPrompt(
+      const { plan, lorebookAttributeKeys: _groupAttrKeys } = buildLorebookSectionForPrompt(
         messages,
         lorebooks,
         {
@@ -654,6 +729,7 @@ export async function POST(request: NextRequest) {
         { sessionStats: typedSessionStats, characters: allCharacters }
       );
       groupLorebookPlan = plan;
+      groupLorebookAttributeKeys = _groupAttrKeys || {};
     }
 
     // Note: HUD context section is built inside the character loop
@@ -662,17 +738,35 @@ export async function POST(request: NextRequest) {
     // ========================================
     // Narrator Integration
     // ========================================
-    // Add narrator to responders based on response mode and conditions
+    // Build the final responders list with narrator inserted in the correct positions
     let narratorAddedToResponders = false;
     if (narratorCharacter && narratorCanIntervene && narratorSettings) {
       const mode = narratorSettings.responseMode;
       if (mode === 'turn_start') {
-        // Add narrator at the beginning
         responders.unshift(narratorCharacter);
         narratorAddedToResponders = true;
-      } else if (mode === 'turn_end' || mode === 'before_each' || mode === 'after_each') {
-        // Add narrator at the end (for turn_end, before_each, after_each we treat similarly for now)
+      } else if (mode === 'turn_end') {
         responders.push(narratorCharacter);
+        narratorAddedToResponders = true;
+      } else if (mode === 'before_each') {
+        // Insert narrator before each non-narrator responder
+        const expandedResponders: typeof responders = [];
+        for (const r of responders) {
+          expandedResponders.push(narratorCharacter);
+          expandedResponders.push(r);
+        }
+        responders.length = 0;
+        responders.push(...expandedResponders);
+        narratorAddedToResponders = true;
+      } else if (mode === 'after_each') {
+        // Insert narrator after each non-narrator responder
+        const expandedResponders: typeof responders = [];
+        for (const r of responders) {
+          expandedResponders.push(r);
+          expandedResponders.push(narratorCharacter);
+        }
+        responders.length = 0;
+        responders.push(...expandedResponders);
         narratorAddedToResponders = true;
       }
     }
@@ -682,6 +776,9 @@ export async function POST(request: NextRequest) {
       async start(controller) {
         const responsesThisTurn: Array<{ characterId: string; characterName: string; content: string }> = [];
         let allQuestActivations: QuestActivation[] = [];
+        let allToolsUsed: Array<{ name: string; label: string; icon: string; success: boolean }> = [];
+        // Track effectiveEmbeddingsChat outside loop for memory reinforcement after all responses
+        let effectiveEmbeddingsChatForReinforcement: typeof embeddingsChat = embeddingsChat;
 
         try {
           // Generate responses sequentially
@@ -699,6 +796,8 @@ export async function POST(request: NextRequest) {
 
             // Determine lorebook plan for this character
             let lorebookSectionForCharacter: LorebookInjectionPlan | null = groupLorebookPlan;
+            // Use group-level attribute keys by default, override with character-level if available
+            let lorebookAttributeKeys: Record<string, string> = groupLorebookAttributeKeys;
 
             // ========================================
             // Embeddings Context Retrieval (per-character)
@@ -711,6 +810,8 @@ export async function POST(request: NextRequest) {
               : (characterNamespaces && characterNamespaces.length > 0)
                 ? { ...embeddingsChat, customNamespaces: characterNamespaces }
                 : embeddingsChat;
+            // Update outer scope for memory reinforcement after all responses
+            effectiveEmbeddingsChatForReinforcement = effectiveEmbeddingsChat;
 
             // Enrich search query with recent context for better semantic matching
             const searchCtxDepth = effectiveEmbeddingsChat.searchContextDepth || 0;
@@ -779,7 +880,7 @@ export async function POST(request: NextRequest) {
                 );
 
                 if (characterLorebooksFiltered.length > 0) {
-                  const { plan, lorebookAttributeKeys } = buildLorebookSectionForPrompt(
+                  const { plan, lorebookAttributeKeys: charAttrKeys } = buildLorebookSectionForPrompt(
                     messages,
                     characterLorebooksFiltered,
                     {
@@ -791,6 +892,7 @@ export async function POST(request: NextRequest) {
                     { sessionStats: typedSessionStats, characterId: responder.id, characters: allCharacters }
                   );
                   lorebookSectionForCharacter = plan;
+                  if (charAttrKeys) lorebookAttributeKeys = charAttrKeys;
                 }
               } else {
                 lorebookSectionForCharacter = null;
@@ -861,8 +963,8 @@ export async function POST(request: NextRequest) {
               persona,
               resolvedStats,
               effectiveGroupSessionStats,  // sessionStats (with inventory effects) for {{eventos}} key resolution
-              undefined,          // soundTriggers
-              undefined,          // soundSettings
+              soundTriggers,       // sound triggers for {{sonidos}} key resolution
+              soundSettings,       // sound settings for {{sonidos}} template
               groupPersonaResolvedStats,  // persona resolved stats
               questTemplates,     // quest templates for {{activeQuests}}
               sessionQuests,      // session quests for {{activeQuests}}
@@ -889,11 +991,23 @@ export async function POST(request: NextRequest) {
             const responderMember = group.members?.find(m => m.characterId === responder.id);
             const isResponderNarrator = responderMember?.isNarrator || false;
 
+            // Build character memory section for this responder (from Zustand store)
+            const responderMemory = characterMemoryMap[responder.id];
+            const characterMemorySection = responderMemory
+              ? buildMemorySection(responderMemory, responder.name || 'Character')
+              : null;
+
             // Build combined embeddings context: [CONTEXTO RELEVANTE] then [MEMORIA RELEVANTE]
             // Both injected before chat history (not in system prompt)
             const contextParts: string[] = [];
             if (embeddingsResult.nonMemoryContextString?.trim()) {
               contextParts.push(embeddingsResult.nonMemoryContextString);
+            }
+            // Add character memory section BEFORE embeddings memory (with deduplication)
+            // If embeddings already found memory results, skip the character memory to avoid duplication
+            const embeddingsFoundMemory = embeddingsResult.memoryContextString?.trim()?.length > 0;
+            if (characterMemorySection && !embeddingsFoundMemory) {
+              contextParts.push(characterMemorySection.content);
             }
             if (embeddingsResult.memoryContextString?.trim()) {
               contextParts.push(embeddingsResult.memoryContextString);
@@ -1024,8 +1138,8 @@ export async function POST(request: NextRequest) {
             const postPersonaSections = personaIndex >= 0 ? promptSections.slice(personaIndex + 1) : [];
 
             let allPromptSections: PromptSection[] = chatHistorySection
-              ? [...prePersonaSections, ...postPersonaSections, ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []), ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []), chatHistorySection, ...(postHistorySection ? [postHistorySection] : [])]
-              : [...prePersonaSections, ...postPersonaSections, ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []), ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []), ...(postHistorySection ? [postHistorySection] : [])];
+              ? [...prePersonaSections, ...postPersonaSections, ...(characterMemorySection && !embeddingsFoundMemory ? [characterMemorySection] : []), ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []), ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []), chatHistorySection, ...(postHistorySection ? [postHistorySection] : [])]
+              : [...prePersonaSections, ...postPersonaSections, ...(characterMemorySection && !embeddingsFoundMemory ? [characterMemorySection] : []), ...(embeddingsResult.nonMemorySection ? [embeddingsResult.nonMemorySection] : []), ...(embeddingsResult.memorySection ? [embeddingsResult.memorySection] : []), ...(postHistorySection ? [postHistorySection] : [])];
 
             // Inject HUD context into sections if enabled
             if (hudContextSection && typedHUDContext) {
@@ -1078,7 +1192,7 @@ export async function POST(request: NextRequest) {
                     const zaiAccumulator = createToolCallAccumulator(charAvailableTools);
                     let zaiRoundContent = '';
                     
-                    for await (const chunk of streamZAIWithTools(finalChatMessages, charAvailableTools, zaiAccumulator, llmConfig.apiKey || undefined)) {
+                    for await (const chunk of streamZAIWithTools(finalChatMessages, charAvailableTools, zaiAccumulator, zaiRuntimeToken || llmConfig.apiKey || undefined)) {
                       zaiRoundContent += chunk;
                       fullContent += chunk;
                     }
@@ -1091,12 +1205,13 @@ export async function POST(request: NextRequest) {
                           }));
                         }
                       }
-                      const { results: displayMessages, shouldContinue, questActivations, toolsUsed } = await executeGroupToolCalls(
+                      const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
                         zaiAccumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
                         responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
+                      if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
                       if (shouldContinue) {
                         const toolResultPairs = zaiAccumulator.toolCalls.map(tc => ({
                           success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
@@ -1106,7 +1221,7 @@ export async function POST(request: NextRequest) {
                         
                         fullContent = '';
                         let zaiFollowUpContent = '';
-                        for await (const chunk of streamZAI(followUpMessages as any)) {
+                        for await (const chunk of streamZAI(followUpMessages as any, zaiRuntimeToken || llmConfig.apiKey || undefined)) {
                           zaiFollowUpContent += chunk;
                         }
                         const cleanedZaiFollowUp = cleanModelArtifacts(zaiFollowUpContent);
@@ -1126,7 +1241,7 @@ export async function POST(request: NextRequest) {
                       }
                     }
                   } else {
-                    generator = streamZAI(finalChatMessages);
+                    generator = streamZAI(finalChatMessages, zaiRuntimeToken || llmConfig.apiKey || undefined);
                   }
                   break;
                 }
@@ -1162,12 +1277,13 @@ export async function POST(request: NextRequest) {
                           }));
                         }
                       }
-                      const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
+                      const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
                         responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
+                      if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
                       if (shouldContinue) {
                         const toolResultPairs = accumulator.toolCalls.map(tc => ({
                           success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
@@ -1211,11 +1327,12 @@ export async function POST(request: NextRequest) {
                           rawArguments: JSON.stringify(tc.arguments),
                         }));
 
-                        const { results: displayMessages, shouldContinue } = await executeGroupToolCalls(
+                        const { results: displayMessages, shouldContinue, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
                           nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
                         responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
+                        if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
                         if (shouldContinue) {
                           fullContent = '';
                           const toolNames = textToolCalls.map(tc => tc.name).join(', ');
@@ -1292,12 +1409,13 @@ export async function POST(request: NextRequest) {
                           }));
                         }
                       }
-                        const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
-                          nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
+                        const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
+                          toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
                         responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                         allQuestActivations = [...allQuestActivations, ...questActivations];
+                      if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
                         if (shouldContinue) {
                         const toolResultPairs = toolCalls.map(tc => ({
                           success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
@@ -1335,12 +1453,13 @@ export async function POST(request: NextRequest) {
                           id: `text_call_${Date.now()}_${idx}`, name: tc.name,
                           arguments: tc.arguments, rawArguments: JSON.stringify(tc.arguments),
                         }));
-                        const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
+                        const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
                           nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
                         responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                         allQuestActivations = [...allQuestActivations, ...questActivations];
+                      if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
                         if (shouldContinue) {
                           fullContent = '';
                           const toolNames = textToolCalls.map(tc => tc.name).join(', ');
@@ -1413,12 +1532,13 @@ export async function POST(request: NextRequest) {
                           }));
                         }
                       }
-                      const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
+                      const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
                         responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
+                      if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
                       if (shouldContinue) {
                         const toolResultPairs = accumulator.toolCalls.map(tc => ({
                           success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
@@ -1459,12 +1579,13 @@ export async function POST(request: NextRequest) {
                           id: `text_call_${Date.now()}_${idx}`, name: tc.name,
                           arguments: tc.arguments, rawArguments: JSON.stringify(tc.arguments),
                         }));
-                        const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
+                        const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
                           nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
                         responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                         allQuestActivations = [...allQuestActivations, ...questActivations];
+                      if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
                         if (shouldContinue) {
                           fullContent = '';
                           const toolNames = textToolCalls.map(tc => tc.name).join(', ');
@@ -1548,12 +1669,13 @@ export async function POST(request: NextRequest) {
                           }));
                         }
                       }
-                      const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
+                      const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
                         responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
+                      if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
                       if (shouldContinue) {
                         const toolResultPairs = accumulator.toolCalls.map(tc => ({
                           success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
@@ -1586,7 +1708,7 @@ export async function POST(request: NextRequest) {
                             }));
                           }
                         }
-                        const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
+                        const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
                           textToolCalls.map((tc, idx) => ({
                             id: `text_call_${Date.now()}_${idx}`,
                             name: tc.name,
@@ -1597,6 +1719,7 @@ export async function POST(request: NextRequest) {
                         responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                         allQuestActivations = [...allQuestActivations, ...questActivations];
+                      if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
                         if (shouldContinue) {
                           fullContent = '';
                           const toolNames = textToolCalls.map(tc => tc.name).join(', ');
@@ -1665,12 +1788,13 @@ export async function POST(request: NextRequest) {
                           }));
                         }
                       }
-                      const { results: displayMessages, shouldContinue, questActivations } = await executeGroupToolCalls(
+                      const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
                         responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
+                      if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
                       if (shouldContinue) {
                         const toolResultPairs = accumulator.toolCalls.map(tc => ({
                           success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
@@ -1780,12 +1904,15 @@ export async function POST(request: NextRequest) {
           // Check if responders referenced any existing memories and boost their importance
           // ========================================
           if (responsesThisTurn.length > 0) {
-            const reinforcementEnabled = isReinforcementEnabled(effectiveEmbeddingsChat);
+            const reinforcementEnabled = isReinforcementEnabled(effectiveEmbeddingsChatForReinforcement);
             if (reinforcementEnabled) {
               // Build memory namespaces from session context
               const memoryNamespaces: string[] = [];
               if (sessionId) {
-                if (characterId) memoryNamespaces.push(`memory-character-${characterId}-${sessionId}`);
+                // Add per-character memory namespaces for each responder
+                for (const r of responsesThisTurn) {
+                  memoryNamespaces.push(`memory-character-${r.characterId}-${sessionId}`);
+                }
                 if (group.id) memoryNamespaces.push(`memory-group-${group.id}-${sessionId}`);
               }
 
@@ -1800,7 +1927,7 @@ export async function POST(request: NextRequest) {
                   // Fire and forget - don't block the response
                   setTimeout(async () => {
                     try {
-                      const threshold = effectiveEmbeddingsChat.memoryReinforcementThreshold || 0.7;
+                      const threshold = effectiveEmbeddingsChatForReinforcement.memoryReinforcementThreshold || 0.7;
                       const result = await processResponseAndReinforceMemories(
                         allResponseContent,
                         memoryNamespaces,
@@ -1840,6 +1967,7 @@ export async function POST(request: NextRequest) {
             type: 'done',
             responses: responsesThisTurn,
             questActivations: allQuestActivations,
+            toolsUsed: allToolsUsed,
             shouldExtract: shouldExtractGroupMemory,
           }));
           controller.close();

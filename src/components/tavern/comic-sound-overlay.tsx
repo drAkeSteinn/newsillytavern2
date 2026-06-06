@@ -1,16 +1,23 @@
 // ============================================
-// Comic Sound Overlay (v4) - Displays manga-style visual effects when sounds play
+// Comic Sound Overlay (v6) - Displays manga-style visual effects when sounds play
 // ============================================
 //
-// v4: Effects now appear NEAR the character sprite that triggered them.
-// - Uses data-character-id to locate sprite elements in the DOM
-// - Falls back to the active sprite if no characterId is provided
-// - Small random offset so effects don't stack exactly on top of each other
-// - Effect appears at ~40% from the top of the sprite (head/upper body area)
+// v6: Fixed animation flickering caused by React re-rendering existing effects
+// when new ones are added. The root cause was that setEffects() triggered a
+// re-render of ALL effect items, and dangerouslySetInnerHTML would re-apply
+// innerHTML, destroying running CSS animations.
+//
+// Fixes applied:
+// - Bug #1 (v5): Double-removal race condition in addEffect → single atomic update
+// - Bug #2 (v4): SVG filter ID collisions → instance-unique IDs
+// - Bug #3 (v5): Re-subscription instability → ref pattern
+// - Bug #4 (v6): Animation restart on re-render → React.memo + ref-based innerHTML
+// - Bug #5 (v6): Duration from parent state → stored in effect object at creation
+// - Bug #6 (v6): Inline style objects recreated each render → memoized per effect
 
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTavernStore } from '@/store/tavern-store';
 import {
   subscribeToComicSound,
@@ -31,7 +38,8 @@ import type { ComicTemplateType } from '@/types';
 
 interface ActiveSoundEffect {
   id: string;
-  event: ComicSoundEvent;
+  /** Display text for the sound effect */
+  displayText: string;
   templateType: ComicTemplateType;
   scale: number;
   /** Position as percentage of container (0-100), using top-based coordinates */
@@ -39,6 +47,8 @@ interface ActiveSoundEffect {
   y: number;
   /** Rotation in degrees */
   rotation: number;
+  /** Duration captured at effect creation time (from settings) */
+  duration: number;
   /** When the effect was created */
   createdAt: number;
 }
@@ -48,44 +58,31 @@ interface ActiveSoundEffect {
 // ============================================
 
 /**
- * Find the position of a character's sprite element relative to the overlay container.
- * Returns the center of the sprite's upper body area (about 35-45% from top of sprite).
- *
- * The sprites use `bottom: Y%` and `left: X%` positioning with `transform: translate(-50%, 0)`.
- * The overlay uses `top: Y%` and `left: X%` positioning.
- * We use getBoundingClientRect() for accurate cross-system positioning.
+ * Cache sprite positions to avoid calling getBoundingClientRect()
+ * during animation frames, which forces synchronous layout reflow
+ * and can interrupt running CSS animations.
  */
-function getSpritePosition(
+const spritePositionCache = new Map<string, { x: number; y: number; timestamp: number }>();
+const SPRITE_CACHE_TTL = 500; // ms — cache for half a second
+
+function getSpritePositionCached(
   characterId: string,
   overlayContainer: HTMLElement | null
 ): { x: number; y: number } | null {
-  // Find the sprite element by its data-character-id attribute
-  const spriteEl = document.querySelector(`[data-character-id="${characterId}"]`) as HTMLElement;
-  if (!spriteEl || !overlayContainer) return null;
+  if (!overlayContainer) return null;
 
-  const containerRect = overlayContainer.getBoundingClientRect();
-  const spriteRect = spriteEl.getBoundingClientRect();
+  const cacheKey = characterId || '__any__';
+  const cached = spritePositionCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < SPRITE_CACHE_TTL) {
+    return cached;
+  }
 
-  // Calculate center of sprite relative to container (in percentages)
-  const spriteCenterX = ((spriteRect.left + spriteRect.width / 2 - containerRect.left) / containerRect.width) * 100;
-  
-  // Position at ~40% from the top of the sprite (upper body / head area)
-  const spriteTopY = ((spriteRect.top - containerRect.top) / containerRect.height) * 100;
-  const spriteHeightPct = (spriteRect.height / containerRect.height) * 100;
-  const spriteUpperBodyY = spriteTopY + spriteHeightPct * 0.38;
+  // Find the sprite element
+  const spriteEl = characterId
+    ? document.querySelector(`[data-character-id="${characterId}"]`) as HTMLElement
+    : document.querySelector('[data-character-id]') as HTMLElement;
 
-  return { x: spriteCenterX, y: spriteUpperBodyY };
-}
-
-/**
- * Find position for ANY visible sprite when no characterId is available.
- * Looks for the first sprite element with data-character-id.
- */
-function getAnySpritePosition(
-  overlayContainer: HTMLElement | null
-): { x: number; y: number } | null {
-  const spriteEl = document.querySelector('[data-character-id]') as HTMLElement;
-  if (!spriteEl || !overlayContainer) return null;
+  if (!spriteEl) return cached || null; // Return stale cache if sprite gone
 
   const containerRect = overlayContainer.getBoundingClientRect();
   const spriteRect = spriteEl.getBoundingClientRect();
@@ -95,17 +92,13 @@ function getAnySpritePosition(
   const spriteHeightPct = (spriteRect.height / containerRect.height) * 100;
   const spriteUpperBodyY = spriteTopY + spriteHeightPct * 0.38;
 
-  return { x: spriteCenterX, y: spriteUpperBodyY };
+  const pos = { x: spriteCenterX, y: spriteUpperBodyY, timestamp: Date.now() };
+  spritePositionCache.set(cacheKey, pos);
+  return pos;
 }
 
 /**
  * Add a controlled random offset to a position.
- * The offset is small enough to keep the effect near the sprite,
- * but varied enough to prevent stacking in the exact same spot.
- *
- * @param base - Base position in percentage (0-100)
- * @param offsetX - Max horizontal offset in percentage (default: 8%)
- * @param offsetY - Max vertical offset in percentage (default: 6%)
  */
 function addControlledRandomness(
   base: { x: number; y: number },
@@ -129,21 +122,71 @@ function clampPosition(pos: { x: number; y: number }, margin: number = 10): { x:
 }
 
 function getRandomRotation(): number {
-  return -12 + Math.random() * 24; // -12 to +12 degrees (slightly tighter than before)
+  return -12 + Math.random() * 24;
 }
 
-/**
- * Fallback position when no sprite is found at all.
- * Places effect in a reasonable area (center-ish, not at the edges).
- */
 function getFallbackPosition(): { x: number; y: number } {
-  const x = 35 + Math.random() * 30; // 35-65%
-  const y = 30 + Math.random() * 25; // 30-55%
-  return { x, y };
+  return {
+    x: 35 + Math.random() * 30,
+    y: 30 + Math.random() * 25,
+  };
 }
 
 // ============================================
-// Component
+// Memoized Effect Item Component
+// ============================================
+
+/**
+ * Individual effect item wrapped in React.memo.
+ * Since all props are primitive values (strings, numbers) that don't change
+ * after creation, this component will NEVER re-render after initial mount.
+ * Combined with ComicSoundTemplate's ref-based innerHTML, this ensures
+ * CSS animations run uninterrupted even when new effects are added.
+ */
+const ComicEffectItem = React.memo(function ComicEffectItem({
+  displayText,
+  templateType,
+  scale,
+  x,
+  y,
+  rotation,
+  duration,
+  instanceId,
+}: {
+  displayText: string;
+  templateType: ComicTemplateType;
+  scale: number;
+  x: number;
+  y: number;
+  rotation: number;
+  duration: number;
+  instanceId: string;
+}) {
+  // Memoize the positioning style — it never changes after creation
+  const positionStyle = useMemo(() => ({
+    position: 'absolute' as const,
+    left: `${x}%`,
+    top: `${y}%`,
+    transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+    // Isolate this element's layout from siblings
+    contain: 'layout style',
+  }), [x, y, rotation]);
+
+  return (
+    <div style={positionStyle}>
+      <ComicSoundTemplate
+        text={displayText}
+        templateType={templateType}
+        scale={scale}
+        duration={duration}
+        instanceId={instanceId}
+      />
+    </div>
+  );
+});
+
+// ============================================
+// Main Overlay Component
 // ============================================
 
 export function ComicSoundOverlay() {
@@ -159,6 +202,7 @@ export function ComicSoundOverlay() {
   const maxScale = comicSettings.maxScale;
   const allowedTemplates = comicSettings.allowedTemplates;
 
+  // Clean effect removal
   const removeEffect = useCallback((id: string) => {
     setEffects(prev => prev.filter(e => e.id !== id));
     const timer = timersRef.current.get(id);
@@ -168,99 +212,114 @@ export function ComicSoundOverlay() {
     }
   }, []);
 
+  // Add effect with single atomic state update
   const addEffect = useCallback((event: ComicSoundEvent) => {
     if (!comicSettings.enabled) return;
 
     const displayText = event.triggerName || event.keyword;
-    // Auto-select the best preset, or use random from allowed list
     const templateType = allowedTemplates.length > 0
       ? getRandomTemplateType(allowedTemplates)
       : autoSelectPreset(displayText);
 
-    // ========================================
-    // POSITIONING: Near the character sprite
-    // ========================================
-    // Strategy:
-    // 1. If event has characterId → find that sprite's position
-    // 2. If no characterId → find any visible sprite (active character)
-    // 3. If no sprite found at all → fallback to center-ish area
-    // 4. Always add small random offset to prevent stacking
-    let basePos: { x: number; y: number } | null = null;
+    // Use cached sprite position to avoid getBoundingClientRect during animations
+    let basePos = getSpritePositionCached(event.characterId || '', containerRef.current);
 
-    if (event.characterId) {
-      basePos = getSpritePosition(event.characterId, containerRef.current);
-    }
-    
-    if (!basePos) {
-      basePos = getAnySpritePosition(containerRef.current);
+    // If no characterId-specific position, try any sprite
+    if (!basePos && event.characterId) {
+      basePos = getSpritePositionCached('', containerRef.current);
     }
 
     let pos: { x: number; y: number };
     if (basePos) {
-      // Add controlled randomness near the sprite position
       pos = clampPosition(addControlledRandomness(basePos));
     } else {
-      // Fallback: no sprite found
       pos = getFallbackPosition();
     }
 
     const newEffect: ActiveSoundEffect = {
       id: event.id,
-      event,
+      displayText,
       templateType,
       scale: getRandomScale(minScale, maxScale),
       x: pos.x,
       y: pos.y,
       rotation: getRandomRotation(),
+      duration, // Capture duration at creation time
       createdAt: Date.now(),
     };
 
+    // Single atomic state update
     setEffects(prev => {
-      const current = [...prev];
+      let current = [...prev];
+
+      // If at max capacity, remove the oldest in this same update
       if (current.length >= maxEffects) {
-        const oldest = current[0];
-        if (oldest) {
-          removeEffect(oldest.id);
+        const removed = current.shift();
+        if (removed) {
+          const timer = timersRef.current.get(removed.id);
+          if (timer) {
+            clearTimeout(timer);
+            timersRef.current.delete(removed.id);
+          }
         }
-        current.shift();
       }
+
       return [...current, newEffect];
     });
 
-    // Remove from DOM after the SVG animation completes (duration + small buffer)
+    // Remove from DOM after the SVG animation completes
     const removeTimer = setTimeout(() => {
       removeEffect(event.id);
     }, duration + 200);
 
     timersRef.current.set(event.id, removeTimer);
+  }, [comicSettings.enabled, maxEffects, duration, minScale, maxScale, allowedTemplates, removeEffect]);
 
-    console.log(`[ComicSoundOverlay] Effect: "${displayText}" (${templateType}) at (${pos.x.toFixed(0)}%, ${pos.y.toFixed(0)}%)${event.characterId ? ` near sprite "${event.characterId}"` : ' (any sprite)'}`);
-  }, [removeEffect, comicSettings.enabled, maxEffects, duration, minScale, maxScale, allowedTemplates]);
-
-  // Subscribe to comic sound events
+  // Stable subscription via ref pattern
+  const addEffectRef = useRef(addEffect);
   useEffect(() => {
-    const unsubscribe = subscribeToComicSound(addEffect);
+    addEffectRef.current = addEffect;
+  }, [addEffect]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToComicSound((event) => addEffectRef.current(event));
     return () => {
       unsubscribe();
       timersRef.current.forEach(timer => clearTimeout(timer));
       timersRef.current.clear();
     };
-  }, [addEffect]);
+  }, []);
 
-  // Periodic cleanup for stale effects
+  // Periodic cleanup for stale effects (safety net)
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
-      const maxLifetime = duration + 500;
 
-      setEffects(prev => prev.filter(e => {
-        const age = now - e.createdAt;
-        return age <= maxLifetime;
-      }));
+      setEffects(prev => {
+        // Use each effect's own duration for lifetime calculation
+        const cleaned = prev.filter(e => {
+          const maxLifetime = e.duration + 500;
+          const age = now - e.createdAt;
+          return age <= maxLifetime;
+        });
+        if (cleaned.length === prev.length) return prev;
+
+        // Clean up timers for removed effects
+        const removedIds = new Set(prev.map(e => e.id).filter(id => !cleaned.some(c => c.id === id)));
+        removedIds.forEach(id => {
+          const timer = timersRef.current.get(id);
+          if (timer) {
+            clearTimeout(timer);
+            timersRef.current.delete(id);
+          }
+        });
+
+        return cleaned;
+      });
     }, 300);
 
     return () => clearInterval(interval);
-  }, [duration]);
+  }, []);
 
   // Don't render if disabled
   if (!comicSettings.enabled) return null;
@@ -273,22 +332,17 @@ export function ComicSoundOverlay() {
       style={{ zIndex: 12 }}
     >
       {effects.map((effect) => (
-        <div
+        <ComicEffectItem
           key={effect.id}
-          style={{
-            position: 'absolute',
-            left: `${effect.x}%`,
-            top: `${effect.y}%`,
-            transform: `translate(-50%, -50%) rotate(${effect.rotation}deg)`,
-          }}
-        >
-          <ComicSoundTemplate
-            text={effect.event.triggerName || effect.event.keyword}
-            templateType={effect.templateType}
-            scale={effect.scale}
-            duration={duration}
-          />
-        </div>
+          displayText={effect.displayText}
+          templateType={effect.templateType}
+          scale={effect.scale}
+          x={effect.x}
+          y={effect.y}
+          rotation={effect.rotation}
+          duration={effect.duration}
+          instanceId={effect.id}
+        />
       ))}
     </div>
   );

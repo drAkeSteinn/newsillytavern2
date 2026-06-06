@@ -1,6 +1,13 @@
 // ============================================
-// Comic Sound Effect SVG Templates (v3 - Manga Pack)
+// Comic Sound Effect SVG Templates (v5 - Manga Pack)
 // ============================================
+//
+// v5: Fixed animation restart flickering by using ref-based innerHTML
+// instead of dangerouslySetInnerHTML. When multiple effects are in the
+// DOM and React re-renders the parent, existing SVGs with CSS animations
+// would get their innerHTML reapplied, destroying and restarting the
+// animations from 0%. Now we use a ref + useEffect to set innerHTML
+// only once on mount, and React.memo to prevent unnecessary re-renders.
 //
 // Based on the comic_sfx_manga_pack_v4 reference:
 // - Boiling line effect (3 alternating outline paths)
@@ -15,7 +22,7 @@
 
 'use client';
 
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import type { ComicTemplateType } from '@/types';
 import { COMIC_TEMPLATE_TYPES } from '@/types';
 
@@ -42,6 +49,8 @@ export interface ComicSoundTemplateProps {
   templateType: ComicTemplateType;
   scale: number;
   duration?: number;
+  /** Unique instance ID for SVG filter scoping */
+  instanceId?: string;
 }
 
 // ============================================
@@ -75,13 +84,16 @@ const SHAPES = {
 // ============================================
 // SVG Inline CSS (from reference - core animation system)
 // ============================================
+// v4+: Instance-unique filter IDs to prevent collisions
 
-function generateStyle(duration: number): string {
+function generateStyle(duration: number, instanceId: string): string {
+  const inkId = `inkWobble_${instanceId}`;
+  const rattleId = `textRattle_${instanceId}`;
   return `<style><![CDATA[
     :root { --dur: ${duration}ms; --font: KOMIKAHB, "Komika Hand", "Comic Sans MS", cursive; }
     svg { overflow: visible; background: transparent; }
     .sfx-root { transform-box: fill-box; transform-origin: center; animation: sfx-pop var(--dur) cubic-bezier(.16,.96,.2,1) forwards; pointer-events:none; }
-    .ink { filter:url(#inkWobble); }
+    .ink { filter:url(#${inkId}); }
     .boil-a,.boil-b,.boil-c { fill:#fffef8; stroke:#0b0b0b; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
     .boil-a { stroke-width:3.05; animation: boilA .18s steps(1,end) infinite; }
     .boil-b { stroke-width:2.65; animation: boilB .18s steps(1,end) infinite; opacity:0; }
@@ -92,10 +104,10 @@ function generateStyle(duration: number): string {
     .dot { fill:#0b0b0b; opacity:1; animation: dot-pop calc(var(--dur) * .7) ease-out forwards; }
     .heart { fill:none; stroke:#0b0b0b; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; opacity:1; animation: heart-pop calc(var(--dur) * .78) cubic-bezier(.13,1.06,.32,1) forwards; vector-effect:non-scaling-stroke; }
     .arrow { fill:none; stroke:#0b0b0b; stroke-width:2.1; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; opacity:1; animation: arrow-drop calc(var(--dur) * .72) ease-out forwards; animation-delay:120ms; }
-    .sfx-text { font-family:var(--font); fill:#0b0b0b; font-weight:700; paint-order:stroke; stroke:#0b0b0b; stroke-width:.25; filter:url(#textRattle); }
-    .ghost-text { font-family:var(--font); fill:#0b0b0b; opacity:.14; filter:none; }
+    .sfx-text { font-family:var(--font); fill:#0b0b0b; font-weight:700; paint-order:stroke; stroke:#ffffff; stroke-width:3.5; stroke-linejoin:round; filter:url(#${rattleId}); }
+    .ghost-text { font-family:var(--font); fill:#0b0b0b; opacity:.14; paint-order:stroke; stroke:#ffffff; stroke-width:4.2; stroke-linejoin:round; filter:none; }
     .text-pop { transform-box: fill-box; transform-origin:center; animation: text-pop var(--dur) cubic-bezier(.14,.88,.18,1) forwards; }
-    .stack-char { font-family:var(--font); fill:#0b0b0b; font-weight:700; text-anchor:middle; dominant-baseline:middle; paint-order:stroke; stroke:#0b0b0b; stroke-width:.2; filter:url(#textRattle); }
+    .stack-char { font-family:var(--font); fill:#0b0b0b; font-weight:700; text-anchor:middle; dominant-baseline:middle; paint-order:stroke; stroke:#ffffff; stroke-width:3.2; stroke-linejoin:round; filter:url(#${rattleId}); }
     @keyframes sfx-pop {
       0% { opacity:0; transform:translateY(8px) scale(.06,.1) rotate(-7deg); }
       10% { opacity:1; transform:translateY(-3px) scale(1.12,.88) rotate(3deg); }
@@ -126,21 +138,26 @@ function generateStyle(duration: number): string {
 // ============================================
 // SVG Defs (filters for ink wobble + text rattle)
 // ============================================
+// v4+: Instance-unique filter IDs to prevent DOM ID collisions
 
-const SVG_DEFS = `<defs>
-  <filter id="inkWobble" x="-12%" y="-12%" width="124%" height="124%">
+function generateSVGDefs(instanceId: string): string {
+  const inkId = `inkWobble_${instanceId}`;
+  const rattleId = `textRattle_${instanceId}`;
+  return `<defs>
+  <filter id="${inkId}" x="-12%" y="-12%" width="124%" height="124%">
     <feTurbulence type="fractalNoise" baseFrequency="0.018 0.072" numOctaves="1" seed="4" result="noise">
       <animate attributeName="seed" values="2;5;9;3;7;2" dur="0.22s" repeatCount="indefinite" />
     </feTurbulence>
     <feDisplacementMap in="SourceGraphic" in2="noise" scale="0.9" xChannelSelector="R" yChannelSelector="G" />
   </filter>
-  <filter id="textRattle" x="-8%" y="-8%" width="116%" height="116%">
+  <filter id="${rattleId}" x="-8%" y="-8%" width="116%" height="116%">
     <feTurbulence type="fractalNoise" baseFrequency="0.026 0.09" numOctaves="1" seed="6" result="noise">
       <animate attributeName="seed" values="1;3;8;4;1" dur="0.18s" repeatCount="indefinite" />
     </feTurbulence>
     <feDisplacementMap in="SourceGraphic" in2="noise" scale="0.45" />
   </filter>
 </defs>`;
+}
 
 // ============================================
 // SVG Body Generators
@@ -232,15 +249,21 @@ function verticalText(text: string, opt: { x?: number; y?: number; spacing?: num
  * Generate a complete comic SFX SVG string based on the reference pack.
  * This creates a self-contained SVG with inline CSS animations that plays
  * through its entire lifecycle (pop-in → stabilize → rise → disappear) once.
+ *
+ * v4+: Each SVG instance uses unique filter IDs to prevent DOM ID collisions
+ * when multiple effects are rendered simultaneously.
  */
 export function createComicSFX(options: {
   text: string;
   preset?: ComicTemplateType;
   duration?: number;
+  /** Unique instance ID to scope SVG filter IDs (prevents DOM collisions) */
+  instanceId?: string;
 }): string {
   const text = options.text || 'sfx';
   const preset = options.preset || 'vertical';
   const duration = options.duration || 880;
+  const instanceId = options.instanceId || `sfx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
   let body = '';
 
@@ -293,7 +316,7 @@ export function createComicSFX(options: {
     }
   }
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320" style="--dur:${duration}ms" role="img" aria-label="${esc(text)} comic sound effect">${SVG_DEFS}${generateStyle(duration)}<g class="sfx-root">${shapeGroup(preset)}${decorations(preset)}${body}</g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320" style="--dur:${duration}ms" role="img" aria-label="${esc(text)} comic sound effect">${generateSVGDefs(instanceId)}${generateStyle(duration, instanceId)}<g class="sfx-root">${shapeGroup(preset)}${decorations(preset)}${body}</g></svg>`;
 }
 
 // ============================================
@@ -325,44 +348,80 @@ export function autoSelectPreset(text: string): ComicTemplateType {
 }
 
 // ============================================
-// React Component (renders the SVG via dangerouslySetInnerHTML)
+// React Component (renders the SVG via ref-based innerHTML)
 // ============================================
 
 /**
  * Renders a specific comic template type with the given props.
- * Uses dangerouslySetInnerHTML to render the self-contained SVG
- * with inline CSS animations.
+ *
+ * v5 CRITICAL FIX: Uses ref-based innerHTML instead of dangerouslySetInnerHTML.
+ *
+ * The problem: When a new effect is added to the overlay, React re-renders ALL
+ * effect items. With dangerouslySetInnerHTML, React would re-apply innerHTML
+ * even when the SVG string hasn't changed, destroying the existing SVG DOM and
+ * restarting all CSS animations from 0%. This caused visible flickering on
+ * earlier effects when later effects were added.
+ *
+ * The solution: Set innerHTML only once via a ref + useEffect on mount.
+ * Combined with React.memo, this ensures existing animations are never
+ * interrupted when new effects are added.
  */
-export function ComicSoundTemplate({
+export const ComicSoundTemplate = React.memo(function ComicSoundTemplate({
   text,
   templateType,
   scale,
   duration,
+  instanceId,
 }: ComicSoundTemplateProps) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const mountedRef = useRef(false);
+
+  // Generate the SVG string once (memoized by all inputs)
   const svgString = React.useMemo(() =>
-    createComicSFX({ text, preset: templateType, duration }),
-    [text, templateType, duration]
+    createComicSFX({ text, preset: templateType, duration, instanceId }),
+    [text, templateType, duration, instanceId]
   );
+
+  // Set innerHTML ONLY on mount — never re-apply to avoid restarting CSS animations
+  useEffect(() => {
+    if (hostRef.current && !mountedRef.current) {
+      hostRef.current.innerHTML = svgString;
+      mountedRef.current = true;
+    }
+  }, [svgString]);
 
   return (
     <div
+      ref={hostRef}
       className="comic-sfx-host"
       style={{
         width: `${150 * (scale || 1)}px`,
         pointerEvents: 'none',
+        // Hint browser to composite this element independently
+        // so reflows in siblings don't affect this animation
+        contain: 'layout style',
       }}
-      dangerouslySetInnerHTML={{ __html: svgString }}
     />
   );
-}
+}, function areEqual(prevProps: ComicSoundTemplateProps, nextProps: ComicSoundTemplateProps) {
+  // Custom comparison: these props are set once at creation and never change
+  // for an existing effect, so this should always return true for existing items
+  return (
+    prevProps.text === nextProps.text &&
+    prevProps.templateType === nextProps.templateType &&
+    prevProps.scale === nextProps.scale &&
+    prevProps.duration === nextProps.duration &&
+    prevProps.instanceId === nextProps.instanceId
+  );
+});
 
 // ============================================
 // Preview Component (for settings UI - static, no animation)
 // ============================================
 
 /**
- * Static preview of a comic template for the settings UI.
- * Uses a shorter duration and restarts animation on key change.
+ * Preview of a comic template for the settings UI.
+ * Uses dangerouslySetInnerHTML with a key to force remount on replay.
  */
 export function ComicTemplatePreview({
   text,
@@ -376,9 +435,10 @@ export function ComicTemplatePreview({
   onReplay?: () => void;
 }) {
   const [key, setKey] = React.useState(0);
+  const previewId = React.useMemo(() => `preview_${key}`, [key]);
   const svgString = React.useMemo(() =>
-    createComicSFX({ text, preset, duration }),
-    [text, preset, duration, key]
+    createComicSFX({ text, preset, duration, instanceId: previewId }),
+    [text, preset, duration, previewId]
   );
 
   const handleReplay = () => {

@@ -42,13 +42,17 @@ import {
   Check,
   Loader2,
   AlertCircle,
+  Globe,
+  Sparkles,
+  User,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { 
   CharacterVoiceSettings, 
   CharacterVoiceConfig, 
   VoiceInfo,
-  TTSWebUIConfig 
+  TTSWebUIConfig,
+  OmniVoiceProfile,
 } from '@/types';
 import { 
   DEFAULT_CHARACTER_VOICE_SETTINGS, 
@@ -83,8 +87,11 @@ export function CharacterVoicePanel({
   globalConfig 
 }: CharacterVoicePanelProps) {
   const [availableVoices, setAvailableVoices] = useState<VoiceInfo[]>([]);
+  const [omniVoiceProfiles, setOmniVoiceProfiles] = useState<OmniVoiceProfile[]>([]);
   const [isLoadingVoices, setIsLoadingVoices] = useState(false);
   const [activeSection, setActiveSection] = useState<'dialogue' | 'narrator'>('dialogue');
+
+  const isOmniVoice = globalConfig?.provider === 'omnivoice';
 
   // Initialize settings if null, ensuring all nested objects exist
   const settings: CharacterVoiceSettings = {
@@ -100,28 +107,39 @@ export function CharacterVoicePanel({
     },
   };
 
-  // Load voices from TTS-WebUI via server-side proxy (avoids CORS and direct connection errors)
+  // Load voices from TTS provider via server-side proxy (avoids CORS and direct connection errors)
   const loadVoices = useCallback(async () => {
     const baseUrl = globalConfig?.baseUrl || 'http://localhost:7778';
+    const provider = globalConfig?.provider || 'tts-webui';
     setIsLoadingVoices(true);
 
     try {
-      const response = await fetch(`/api/tts/available-voices?endpoint=${encodeURIComponent(baseUrl)}`);
+      const response = await fetch(`/api/tts/available-voices?endpoint=${encodeURIComponent(baseUrl)}&provider=${provider}`);
       
       if (response.ok) {
         const data = await response.json();
-        let voices: VoiceInfo[] = [];
         
+        // Use the voices array directly - the API now returns properly parsed voices
         if (data.voices && Array.isArray(data.voices)) {
-          voices = data.voices.map((voice: { id: string; name?: string }) => ({
-            id: voice.id,
-            name: voice.name || voice.id.split('/').pop() || voice.id,
-            path: voice.id,
-            language: extractLanguage(voice.id),
-          }));
+          setAvailableVoices(data.voices);
+        } else {
+          setAvailableVoices([]);
         }
-        
-        setAvailableVoices(voices);
+      }
+
+      // Also load OmniVoice profiles if using OmniVoice provider
+      if (provider === 'omnivoice') {
+        try {
+          const profilesResponse = await fetch(`/api/tts/omnivoice/profiles?endpoint=${encodeURIComponent(baseUrl)}`);
+          if (profilesResponse.ok) {
+            const profilesData = await profilesResponse.json();
+            if (profilesData.success && profilesData.profiles) {
+              setOmniVoiceProfiles(profilesData.profiles);
+            }
+          }
+        } catch {
+          // Silently fail - profiles may not be available
+        }
       }
     } catch (error) {
       // Silently fail - TTS service may not be available
@@ -131,7 +149,7 @@ export function CharacterVoicePanel({
     } finally {
       setIsLoadingVoices(false);
     }
-  }, [globalConfig?.baseUrl]);
+  }, [globalConfig?.baseUrl, globalConfig?.provider]);
 
   // Load voices on mount
   useEffect(() => {
@@ -287,9 +305,11 @@ export function CharacterVoicePanel({
                     config={settings.dialogueVoice}
                     onChange={(updates) => updateVoiceConfig('dialogueVoice', updates)}
                     voices={availableVoices}
+                    profiles={omniVoiceProfiles}
                     isLoadingVoices={isLoadingVoices}
                     onRefreshVoices={loadVoices}
                     globalLanguage={globalConfig?.language}
+                    isOmniVoice={isOmniVoice}
                   />
                 </CardContent>
               </Card>
@@ -316,9 +336,11 @@ export function CharacterVoicePanel({
                     config={settings.narratorVoice}
                     onChange={(updates) => updateVoiceConfig('narratorVoice', updates)}
                     voices={availableVoices}
+                    profiles={omniVoiceProfiles}
                     isLoadingVoices={isLoadingVoices}
                     onRefreshVoices={loadVoices}
                     globalLanguage={globalConfig?.language}
+                    isOmniVoice={isOmniVoice}
                   />
                 </CardContent>
               </Card>
@@ -346,18 +368,22 @@ interface VoiceConfigEditorProps {
   config: CharacterVoiceConfig;
   onChange: (updates: Partial<CharacterVoiceConfig>) => void;
   voices: VoiceInfo[];
+  profiles: OmniVoiceProfile[];
   isLoadingVoices: boolean;
   onRefreshVoices: () => void;
   globalLanguage?: string;
+  isOmniVoice?: boolean;
 }
 
 function VoiceConfigEditor({
   config,
   onChange,
   voices,
+  profiles,
   isLoadingVoices,
   onRefreshVoices,
   globalLanguage,
+  isOmniVoice,
 }: VoiceConfigEditorProps) {
   // Safety check: ensure config exists
   if (!config) {
@@ -414,7 +440,49 @@ function VoiceConfigEditor({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="default">Por defecto (global)</SelectItem>
-                {filteredVoices.map((voice) => (
+                
+                {/* OmniVoice: Show profiles as a separate group */}
+                {isOmniVoice && profiles.length > 0 && (
+                  <>
+                    <div className="px-2 py-1.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <User className="w-3 h-3" />
+                      Perfiles de Voz
+                    </div>
+                    {profiles.map((profile) => (
+                      <SelectItem key={profile.id} value={profile.id}>
+                        <span className="flex items-center gap-1">
+                          {profile.name}
+                          {profile.is_demo === 1 && (
+                            <span className="text-[9px] bg-blue-500/10 text-blue-500 px-1 rounded">demo</span>
+                          )}
+                          {profile.language && profile.language !== 'Auto' && (
+                            <span className="text-[9px] text-muted-foreground">({profile.language})</span>
+                          )}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </>
+                )}
+                
+                {/* OmniVoice: Show system voices (OpenAI aliases, etc.) */}
+                {isOmniVoice && voices.filter(v => v.type === 'openai_alias').length > 0 && (
+                  <>
+                    <div className="px-2 py-1.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                      <Sparkles className="w-3 h-3" />
+                      Voces OpenAI
+                    </div>
+                    {voices
+                      .filter(v => v.type === 'openai_alias')
+                      .map((voice) => (
+                        <SelectItem key={voice.id} value={voice.id}>
+                          {voice.name}
+                        </SelectItem>
+                      ))}
+                  </>
+                )}
+                
+                {/* TTS-WebUI: Show all voices */}
+                {!isOmniVoice && filteredVoices.map((voice) => (
                   <SelectItem key={voice.id} value={voice.id}>
                     {voice.name}
                     {voice.language && (

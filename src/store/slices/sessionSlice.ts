@@ -385,6 +385,9 @@ function initializeSessionStatsForCharacters(
     ultima_accion_realizada: undefined,
     initialized: true,
     lastModified: now,
+    // Reset timer state - start fresh from now
+    lastTimerUpdate: now,
+    keywordCycleIndex: {},
   };
 }
 
@@ -756,6 +759,11 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     const characterId = session?.characterId;
     const groupId = session?.groupId;
 
+    // Stop timer for this session before deleting
+    try {
+      (get() as any).stopSessionTimer?.(id);
+    } catch { /* non-critical */ }
+
     // Delete from state
     set((state: any) => ({
       sessions: state.sessions.filter((s: ChatSession) => s.id !== id),
@@ -794,6 +802,26 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
   },
 
   setActiveSession: async (id) => {
+    const state = get();
+    
+    // Stop timer for the previous session (if any)
+    const prevSessionId = state.activeSessionId;
+    if (prevSessionId && prevSessionId !== id) {
+      try {
+        (state as any).stopSessionTimer?.(prevSessionId);
+      } catch { /* non-critical */ }
+    }
+    
+    // If deselecting (id is null), just clear the active session
+    if (!id) {
+      set({
+        activeSessionId: null,
+        activeCharacterId: null,
+        activeGroupId: null
+      });
+      return;
+    }
+    
     const session = get().getSessionById(id);
     set({
       activeSessionId: id,
@@ -803,6 +831,29 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
 
     // Ensure memory namespaces exist for this session (async, don't wait)
     if (session) {
+      // Start timer for the new session if applicable
+      try {
+        if (session.characterId) {
+          const character = get().getCharacterById?.(session.characterId);
+          if (character?.statsConfig?.timerEnabled) {
+            (get() as any).startSessionTimer?.(id, session.characterId, character.statsConfig);
+          }
+        }
+        if (session.groupId) {
+          const group = get().getGroupById?.(session.groupId);
+          if (group?.members) {
+            for (const member of group.members) {
+              const char = get().getCharacterById?.(member.characterId);
+              if (char?.statsConfig?.timerEnabled) {
+                (get() as any).startSessionTimer?.(id, char.id, char.statsConfig);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[Session] Failed to start session timer:', err);
+      }
+      
       try {
         let memberIds: string[] = [];
         let memberNames: string[] = [];

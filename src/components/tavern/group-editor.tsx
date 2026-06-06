@@ -438,8 +438,8 @@ export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
       lorebookIds,
       questTemplateIds,
       embeddingNamespaces,
-      // Only include narratorSettings if there's a narrator in the group
-      ...(hasNarrator && { narratorSettings })
+      // Always include narratorSettings to preserve config even if narrator is temporarily removed
+      narratorSettings
     };
 
     if (isNewGroup) {

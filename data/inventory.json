@@ -2756,9 +2756,11 @@
     "enabled": true,
     "showInChat": true,
     "showNotifications": true,
-    "autoDetect": true,
     "promptInclude": false,
+    "promptTemplate": "[Inventario Activo]\n{{activeItems}}\n\n[Efectos Activos]\n{{activeEffects}}\n\n[Divisa]\n{{currency}}",
+    "autoDetect": true,
     "currencyName": "Puntos",
+    "currencyIcon": "💰",
     "equipmentSlots": [
       {
         "id": "slot-1780243589021-wpam34n",

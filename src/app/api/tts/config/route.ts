@@ -14,6 +14,7 @@ const CONFIG_FILE = path.join(CONFIG_DIR, 'tts-config.json');
 const DEFAULT_TTS_CONFIG: TTSWebUIConfig = {
   enabled: false,
   autoGeneration: false,
+  provider: 'tts-webui',
   baseUrl: 'http://localhost:7778',
   model: 'multilingual',
   whisperModel: 'whisper-large-v3',
@@ -27,6 +28,8 @@ const DEFAULT_TTS_CONFIG: TTSWebUIConfig = {
   generateNarrations: true,
   generatePlainText: true,
   applyRegex: false,
+  voiceDesign: '',
+  instruct: '',
 };
 
 const DEFAULT_ASR_CONFIG: ASRConfig = {

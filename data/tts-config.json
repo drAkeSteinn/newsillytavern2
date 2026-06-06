@@ -2,8 +2,9 @@
   "tts": {
     "enabled": true,
     "autoGeneration": true,
-    "baseUrl": "http://localhost:7778",
-    "model": "multilingual",
+    "provider": "omnivoice",
+    "baseUrl": "http://localhost:3900",
+    "model": "omnivoice",
     "whisperModel": "whisper-large-v3",
     "speed": 1,
     "responseFormat": "wav",
@@ -15,6 +16,8 @@
     "generateNarrations": false,
     "generatePlainText": false,
     "applyRegex": false,
+    "voiceDesign": "",
+    "instruct": "",
     "defaultVoice": "voices/chatterbox/es-rick.wav"
   },
   "asr": {
@@ -22,5 +25,5 @@
     "provider": "tts-webui",
     "model": "whisper-large-v3"
   },
-  "updatedAt": "2026-03-21T16:14:32.330Z"
+  "updatedAt": "2026-06-05T18:21:10.873Z"
 }

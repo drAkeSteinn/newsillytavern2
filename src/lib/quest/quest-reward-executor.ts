@@ -811,13 +811,13 @@ export function executeReward(
       // For now, we store it as a regular attribute on __user__
       // The inventory system will also track it via persona.currency
       const personaId = '__user__';
-      const currentCurrency = sessionStats?.characterStats?.[personaId]?.attributeValues?.['currency'];
+      const currentCurrency = context.sessionStats?.characterStats?.[personaId]?.attributeValues?.['currency'];
       const currentNum = typeof currentCurrency === 'number' ? currentCurrency : (parseFloat(String(currentCurrency)) || 0);
       const newCurrency = Math.max(0, currentNum + curr.amount);
 
       // Update via character stat (persona currency is synced)
       storeActions.updateCharacterStat(
-        sessionId,
+        context.sessionId,
         personaId,
         'currency',
         newCurrency,

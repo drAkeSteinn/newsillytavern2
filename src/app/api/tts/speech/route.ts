@@ -1,21 +1,31 @@
 // ============================================
 // TTS Speech API Route - Generate audio from text
-// Supports TTS-WebUI (OpenAI compatible) and other providers
+// Supports TTS-WebUI, OmniVoice Studio, and other providers
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
 
 // TTS-WebUI configuration
 const TTS_WEBUI_DEFAULT_URL = 'http://localhost:7778';
+const OMNIVOICE_DEFAULT_URL = 'http://localhost:3900';
 
-// Available TTS models
-const TTS_MODELS = [
+// Available TTS models per provider
+const TTS_WEBUI_MODELS = [
   { id: 'multilingual', name: 'Chatterbox Multilingual', description: 'Multi-language TTS with voice cloning' },
   { id: 'chatterbox', name: 'Chatterbox', description: 'English TTS with voice cloning' },
   { id: 'chatterbox-turbo', name: 'Chatterbox Turbo', description: 'Fast TTS (350M params)' },
 ];
 
-// Supported languages for multilingual model
+const OMNIVOICE_MODELS = [
+  { id: 'omnivoice', name: 'OmniVoice', description: 'Default multi-engine TTS (646+ languages)' },
+  { id: 'cosyvoice', name: 'CosyVoice 3', description: '9 languages + 18 dialects, voice cloning' },
+  { id: 'voxcpm2', name: 'VoxCPM2', description: '30 languages, voice cloning + instruct' },
+  { id: 'moss-tts-nano', name: 'MOSS-TTS-Nano', description: '20 languages, lightweight' },
+  { id: 'kitten-tts', name: 'KittenTTS', description: 'English, lightweight CPU-friendly' },
+  { id: 'gpt-sovits', name: 'GPT-SoVITS', description: 'Voice cloning + instruct' },
+];
+
+// Supported languages
 const SUPPORTED_LANGUAGES = [
   { code: 'es', name: 'Español' },
   { code: 'en', name: 'English' },
@@ -36,11 +46,11 @@ interface TTSRequest {
   model?: string;
   voice?: string;
   speed?: number;
-  response_format?: 'mp3' | 'wav' | 'ogg' | 'flac';
+  response_format?: 'mp3' | 'wav' | 'ogg' | 'flac' | 'opus' | 'aac' | 'pcm';
   language?: string;
   reference_audio?: string;
   // Provider settings
-  provider?: 'tts-webui' | 'z-ai' | 'custom';
+  provider?: 'tts-webui' | 'omnivoice' | 'z-ai' | 'custom';
   endpoint?: string;
   apiKey?: string;
   // Advanced TTS parameters
@@ -50,6 +60,9 @@ interface TTSRequest {
   // Additional params for TTS-WebUI
   device?: string;
   dtype?: string;
+  // OmniVoice-specific
+  voiceDesign?: string;           // Voice design description
+  instruct?: string;              // Style instruction
 }
 
 interface TTSWebUIResponse {
@@ -128,8 +141,6 @@ async function generateWithTTSWebUI(
     if (voice && voice !== 'default' && voice !== 'none') {
       requestBody.voice = voice;
     }
-    // If no valid voice provided, don't set 'voice' at all
-    // TTS-WebUI will use its default behavior for the selected model
 
     // Add speed if specified
     if (speed !== undefined && speed !== 1.0) {
@@ -167,14 +178,12 @@ async function generateWithTTSWebUI(
       requestBody.params = params;
     }
 
-    console.log(`[TTS] Request to ${baseUrl}/v1/audio/speech:`);
-    console.log(`[TTS] Full request details:`);
-    console.log(`  - endpoint: ${baseUrl}`);
-    console.log(`  - model: ${requestBody.model}`);
-    console.log(`  - voice: ${requestBody.voice}`);
-    console.log(`  - response_format: ${requestBody.response_format}`);
-    console.log(`  - params:`, JSON.stringify(params, null, 2));
-    console.log(`[TTS] Full JSON body:`, JSON.stringify(requestBody, null, 2));
+    console.log(`[TTS-WebUI] Request to ${baseUrl}/v1/audio/speech:`, {
+      model: requestBody.model,
+      voice: requestBody.voice || '(none)',
+      format: requestBody.response_format,
+      params,
+    });
 
     const response = await fetch(`${baseUrl}/v1/audio/speech`, {
       method: 'POST',
@@ -186,7 +195,7 @@ async function generateWithTTSWebUI(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[TTS] Error ${response.status}:`, errorText);
+      console.error(`[TTS-WebUI] Error ${response.status}:`, errorText);
       return { error: `TTS-WebUI error: ${response.status} - ${errorText}` };
     }
 
@@ -194,11 +203,123 @@ async function generateWithTTSWebUI(
     const audioBuffer = await response.arrayBuffer();
     const base64Audio = Buffer.from(audioBuffer).toString('base64');
 
-    console.log(`[TTS] Success: ${audioBuffer.byteLength} bytes received`);
+    console.log(`[TTS-WebUI] Success: ${audioBuffer.byteLength} bytes received`);
     return { audio: base64Audio };
   } catch (error) {
-    console.error(`[TTS] Connection error:`, error);
+    console.error(`[TTS-WebUI] Connection error:`, error);
     return { error: `Failed to connect to TTS-WebUI: ${error instanceof Error ? error.message : 'Unknown error'}` };
+  }
+}
+
+/**
+ * Generate speech using OmniVoice Studio (OpenAI compatible API)
+ * 
+ * OmniVoice uses a standard OpenAI-compatible format with extensions:
+ * {
+ *   "model": "omnivoice",
+ *   "input": "text",
+ *   "voice": "profile_id",
+ *   "response_format": "mp3",
+ *   "speed": 1.0,
+ *   "language": "es",
+ *   "description": "young female, warm tone",
+ *   "instruct": "speak slowly"
+ * }
+ */
+async function generateWithOmniVoice(
+  text: string,
+  options: {
+    endpoint: string;
+    model: string;
+    voice?: string;
+    speed?: number;
+    response_format?: string;
+    language?: string;
+    voiceDesign?: string;
+    instruct?: string;
+  }
+): Promise<TTSWebUIResponse> {
+  const {
+    endpoint,
+    model,
+    voice,
+    speed,
+    response_format,
+    language,
+    voiceDesign,
+    instruct,
+  } = options;
+
+  try {
+    // Normalize endpoint
+    let baseUrl = endpoint.replace(/\/v1$/, '').replace(/\/$/, '');
+
+    // Build request body for OmniVoice (OpenAI compatible)
+    const requestBody: Record<string, unknown> = {
+      model: model || 'omnivoice',
+      input: text,
+      response_format: response_format || 'mp3',
+    };
+
+    // Add voice (profile ID, OpenAI voice name, or default)
+    if (voice && voice !== 'default' && voice !== 'none') {
+      requestBody.voice = voice;
+    } else {
+      requestBody.voice = 'default';
+    }
+
+    // Add speed
+    if (speed !== undefined && speed !== 1.0) {
+      requestBody.speed = speed;
+    }
+
+    // Add language (OmniVoice extension - direct field, not in params)
+    if (language) {
+      requestBody.language = language;
+    }
+
+    // Add voice design description (OmniVoice extension)
+    if (voiceDesign && voiceDesign.trim()) {
+      requestBody.description = voiceDesign.trim();
+    }
+
+    // Add style instruction (OmniVoice extension)
+    if (instruct && instruct.trim()) {
+      requestBody.instruct = instruct.trim();
+    }
+
+    console.log(`[OmniVoice] Request to ${baseUrl}/v1/audio/speech:`, {
+      model: requestBody.model,
+      voice: requestBody.voice,
+      language: requestBody.language || '(default)',
+      description: requestBody.description || '(none)',
+      instruct: requestBody.instruct || '(none)',
+      format: requestBody.response_format,
+    });
+
+    const response = await fetch(`${baseUrl}/v1/audio/speech`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[OmniVoice] Error ${response.status}:`, errorText);
+      return { error: `OmniVoice error: ${response.status} - ${errorText}` };
+    }
+
+    // The response is audio binary data
+    const audioBuffer = await response.arrayBuffer();
+    const base64Audio = Buffer.from(audioBuffer).toString('base64');
+
+    console.log(`[OmniVoice] Success: ${audioBuffer.byteLength} bytes received`);
+    return { audio: base64Audio };
+  } catch (error) {
+    console.error(`[OmniVoice] Connection error:`, error);
+    return { error: `Failed to connect to OmniVoice: ${error instanceof Error ? error.message : 'Unknown error'}` };
   }
 }
 
@@ -249,7 +370,7 @@ export async function POST(request: NextRequest) {
     }
 
     const provider = body.provider || 'tts-webui';
-    const endpoint = body.endpoint || TTS_WEBUI_DEFAULT_URL;
+    const endpoint = body.endpoint || (provider === 'omnivoice' ? OMNIVOICE_DEFAULT_URL : TTS_WEBUI_DEFAULT_URL);
 
     let result: TTSWebUIResponse;
 
@@ -265,6 +386,19 @@ export async function POST(request: NextRequest) {
           exaggeration: body.exaggeration,
           cfg_weight: body.cfg_weight,
           temperature: body.temperature,
+        });
+        break;
+
+      case 'omnivoice':
+        result = await generateWithOmniVoice(body.text, {
+          endpoint,
+          model: body.model || 'omnivoice',
+          voice: body.voice,
+          speed: body.speed,
+          response_format: body.response_format,
+          language: body.language,
+          voiceDesign: body.voiceDesign,
+          instruct: body.instruct,
         });
         break;
 
@@ -322,13 +456,54 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const endpoint = searchParams.get('endpoint') || TTS_WEBUI_DEFAULT_URL;
+  const provider = searchParams.get('provider') || 'tts-webui';
 
   // Normalize endpoint
   let baseUrl = endpoint.replace(/\/v1$/, '').replace(/\/$/, '');
 
   try {
-    // Try a simple TTS request to check if service is running
-    // Use multilingual model without voice (synthetic voice)
+    // For OmniVoice, check with a simpler health endpoint
+    if (provider === 'omnivoice') {
+      const healthResponse = await fetch(`${baseUrl}/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (healthResponse.ok) {
+        return NextResponse.json({
+          status: 'online',
+          endpoint: baseUrl,
+          provider: 'omnivoice',
+          models: OMNIVOICE_MODELS,
+          languages: SUPPORTED_LANGUAGES,
+        });
+      }
+
+      // Try /v1/audio/voices as fallback
+      const voicesResponse = await fetch(`${baseUrl}/v1/audio/voices`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (voicesResponse.ok) {
+        return NextResponse.json({
+          status: 'online',
+          endpoint: baseUrl,
+          provider: 'omnivoice',
+          models: OMNIVOICE_MODELS,
+          languages: SUPPORTED_LANGUAGES,
+        });
+      }
+
+      return NextResponse.json({
+        status: 'offline',
+        endpoint: baseUrl,
+        provider: 'omnivoice',
+        error: `Service returned ${voicesResponse.status}`,
+      });
+    }
+
+    // TTS-WebUI: Try a simple TTS request to check if service is running
     const testResponse = await fetch(`${baseUrl}/v1/audio/speech`, {
       method: 'POST',
       headers: {
@@ -348,11 +523,11 @@ export async function GET(request: NextRequest) {
     });
 
     if (testResponse.ok || (testResponse.status >= 400 && testResponse.status < 500)) {
-      // Service is online (even if request was rejected, it's responding)
       return NextResponse.json({
         status: 'online',
         endpoint: baseUrl,
-        models: TTS_MODELS,
+        provider: 'tts-webui',
+        models: TTS_WEBUI_MODELS,
         languages: SUPPORTED_LANGUAGES,
       });
     }
@@ -360,12 +535,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       status: 'offline',
       endpoint: baseUrl,
+      provider: 'tts-webui',
       error: `Service returned ${testResponse.status}`,
     });
   } catch (error) {
     return NextResponse.json({
       status: 'offline',
       endpoint: baseUrl,
+      provider,
       error: error instanceof Error ? error.message : 'Cannot connect to TTS service',
     });
   }

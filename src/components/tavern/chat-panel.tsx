@@ -18,7 +18,7 @@ import { InventoryHUD } from '@/components/inventory/inventory-hud';
 import { TTSFloatingIndicator } from './tts-playback-controls';
 import { ComicSoundOverlay } from './comic-sound-overlay';
 import { Sparkles } from 'lucide-react';
-import type { CharacterCard, SummaryData, ChatMessage } from '@/types';
+import type { CharacterCard, SummaryData, ChatMessage, CharacterMemory } from '@/types';
 import { EmbeddingsContextContainer } from '@/components/embeddings/embeddings-context-indicator';
 import { ToolCallNotification, type ToolCallPhase } from '@/components/tools/tool-call-notification';
 import { toast } from 'sonner';
@@ -388,6 +388,28 @@ export function ChatPanel() {
     }
   }, [activeSessionId, summarySettings.enabled, isGroupMode, initSessionTracking]);
 
+  // ============================================
+  // TIMER INTEGRATION
+  // Start timer when session changes or on app reload
+  // ============================================
+  useEffect(() => {
+    if (!activeSessionId) return;
+    
+    const store = useTavernStore.getState() as any;
+    
+    // Start timer for the active session (handles app reload / session restore)
+    if (!isGroupMode && activeCharacter?.statsConfig?.timerEnabled) {
+      store.startSessionTimer?.(activeSessionId, activeCharacter.id, activeCharacter.statsConfig);
+    } else if (isGroupMode && activeGroup?.members) {
+      for (const member of activeGroup.members) {
+        const char = store.getCharacterById?.(member.characterId);
+        if (char?.statsConfig?.timerEnabled) {
+          store.startSessionTimer?.(activeSessionId, char.id, char.statsConfig);
+        }
+      }
+    }
+  }, [activeSessionId, isGroupMode, activeCharacter?.id, activeCharacter?.statsConfig?.timerEnabled, activeGroup?.members]);
+
   // Function to generate summary when threshold is reached
   const generateSummaryIfNeeded = useCallback(async () => {
     if (!activeSessionId || !summarySettings.enabled || !summarySettings.autoSummarize) {
@@ -505,6 +527,23 @@ export function ChatPanel() {
     if (isGenerating || isGenerationInProgressRef.current) return;
     if (!activeSessionId) return;
     
+    // Process timer ticks before sending message (lazy evaluation of elapsed time)
+    try {
+      const store = useTavernStore.getState() as any;
+      if (activeSessionId) {
+        if (!isGroupMode && activeCharacter?.statsConfig?.timerEnabled) {
+          store.processTimerTicks?.(activeSessionId, activeCharacter.id, activeCharacter.statsConfig);
+        } else if (isGroupMode && activeGroup?.members) {
+          for (const member of activeGroup.members) {
+            const char = store.getCharacterById?.(member.characterId);
+            if (char?.statsConfig?.timerEnabled) {
+              store.processTimerTicks?.(activeSessionId, char.id, char.statsConfig);
+            }
+          }
+        }
+      }
+    } catch { /* non-critical timer tick processing */ }
+
     // For group mode, we don't need activeCharacter
     if (!isGroupMode && !activeCharacter) return;
 
@@ -634,6 +673,41 @@ export function ChatPanel() {
               ...settings.embeddingsChat,
               customNamespaces: activeGroup?.embeddingNamespaces,
             },  // Pass embeddings chat settings + group namespace override
+            // Summary for memory/context compression
+            summary: currentSession?.summary,
+            // Per-character memory map for deduplication
+            characterMemoryMap: (() => {
+              const map: Record<string, CharacterMemory> = {};
+              for (const char of groupCharacters) {
+                const mem = getCharacterMemory(char.id);
+                if (mem) map[char.id] = mem;
+              }
+              return map;
+            })(),
+            // Last responder ID for round-robin rotation
+            lastResponderId: (() => {
+              // Find the last assistant message to determine who responded last
+              const lastAssistantMsg = [...currentMessages].reverse().find((m: any) => m.role === 'assistant' && !m.isDeleted);
+              return lastAssistantMsg?.characterId || undefined;
+            })(),
+            // Turn count for narrator conditional settings
+            turnCount: currentSession?.turnCount || currentMessages.filter((m: any) => m.role === 'user' && !m.isDeleted).length,
+            // Whether narrator spoke last turn (for narrator interval tracking)
+            // Calculate the actual TURN NUMBER when the narrator last spoke
+            narratorLastTurn: (() => {
+              const userMsgs = currentMessages.filter((m: any) => m.role === 'user' && !m.isDeleted);
+              // Walk messages in reverse to find the last narrator message
+              for (let idx = currentMessages.length - 1; idx >= 0; idx--) {
+                const m = currentMessages[idx] as any;
+                if (m.role === 'assistant' && !m.isDeleted && m.isNarratorMessage) {
+                  // Find which user turn this narrator message is after
+                  const msgsUpToNarrator = currentMessages.slice(0, idx + 1);
+                  const userTurnsBefore = msgsUpToNarrator.filter((um: any) => um.role === 'user' && !um.isDeleted).length;
+                  return userTurnsBefore;
+                }
+              }
+              return -999; // No narrator message found
+            })(),
             inventoryData: (() => {
               // CRITICAL: Re-read store state fresh to ensure we have the latest
               // equipment/consumable data. When equipItem/useConsumable runs,
@@ -793,6 +867,18 @@ export function ChatPanel() {
                     parsed.skillCompletedDescription || '',
                   );
                   toast.success(`⚔️ Acción: ${parsed.skillName}`);
+                } else if (parsed.type === 'stat_activation') {
+                  // Stat modified by tool - execute on client side
+                  console.log('[ChatPanel] Stat activation from tool:', parsed.toolName, parsed.attributeKey, parsed.oldValue, '→', parsed.newValue);
+                  const store = useTavernStore.getState();
+                  store.updateCharacterStat?.(
+                    activeSessionId,
+                    parsed.characterId,
+                    parsed.attributeKey,
+                    parsed.newValue,
+                    'llm_detection'
+                  );
+                  toast.success(`📊 ${parsed.attributeName || parsed.attributeKey}: ${parsed.oldValue} → ${parsed.newValue}`);
                 } else if (parsed.type === 'solicitud_activation') {
                   // Solicitud activated/completed by tool - execute on client side
                   console.log('[ChatPanel] Solicitud activation from tool:', parsed.toolName, parsed.activationType, parsed.solicitudKey);
@@ -1419,6 +1505,18 @@ export function ChatPanel() {
                     parsed.skillCompletedDescription || '',
                   );
                   toast.success(`⚔️ Acción: ${parsed.skillName}`);
+                } else if (parsed.type === 'stat_activation') {
+                  // Stat modified by tool - execute on client side
+                  console.log('[ChatPanel] Stat activation from tool:', parsed.toolName, parsed.attributeKey, parsed.oldValue, '→', parsed.newValue);
+                  const store = useTavernStore.getState();
+                  store.updateCharacterStat?.(
+                    activeSessionId,
+                    parsed.characterId,
+                    parsed.attributeKey,
+                    parsed.newValue,
+                    'llm_detection'
+                  );
+                  toast.success(`📊 ${parsed.attributeName || parsed.attributeKey}: ${parsed.oldValue} → ${parsed.newValue}`);
                 } else if (parsed.type === 'solicitud_activation') {
                   // Solicitud activated/completed by tool - execute on client side
                   console.log('[ChatPanel] Solicitud activation from tool:', parsed.toolName, parsed.activationType, parsed.solicitudKey);

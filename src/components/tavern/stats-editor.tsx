@@ -47,6 +47,8 @@ import {
   Gift,
   X,
   Inbox,
+  Timer,
+  Clock,
 } from 'lucide-react';
 import type {
   CharacterStatsConfig,
@@ -144,6 +146,12 @@ function AttributeEditor({ attribute, index, onChange, onDelete, allAttributes, 
           )}>
             {attribute.type === 'number' ? '🔢 Numérico' : attribute.type === 'keyword' ? '🏷️ Estado' : '📝 Texto'}
           </Badge>
+          {attribute.timer?.enabled && (
+            <Badge variant="outline" className="text-xs border-emerald-500/30 text-emerald-400">
+              <Timer className="w-2.5 h-2.5 mr-0.5" />
+              {attribute.timer.intervalMinutes}min
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-1">
           <span className="text-xs text-muted-foreground mr-2">
@@ -1463,6 +1471,320 @@ function AttributeEditor({ attribute, index, onChange, onDelete, allAttributes, 
               </div>
             </div>
           )}
+          
+          {/* Timer - Automatic attribute changes over time */}
+          <div className="space-y-3 p-3 bg-emerald-500/5 rounded-lg border border-emerald-500/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Timer className="w-4 h-4 text-emerald-400" />
+                <Label className="text-xs font-medium text-emerald-400">Timer automático</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-sm">
+                    <p>El atributo cambia automáticamente con el tiempo.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">• Numérico: suma/resta/multiplica/divide cada X minutos</p>
+                    <p className="text-xs text-muted-foreground">• Estado/Texto: cicla, aleatorio o establece valores</p>
+                    <p className="text-xs text-muted-foreground">• Solo aplica cuando se cumplen las condiciones (si las hay)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Switch
+                checked={attribute.timer?.enabled ?? false}
+                onCheckedChange={(checked) => onChange(index, {
+                  timer: {
+                    ...attribute.timer,
+                    enabled: checked,
+                    intervalMinutes: attribute.timer?.intervalMinutes || 5,
+                  }
+                })}
+              />
+            </div>
+            
+            {attribute.timer?.enabled && (
+              <div className="space-y-3">
+                {/* Interval */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs mb-1 block">Intervalo (minutos)</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={attribute.timer.intervalMinutes || 5}
+                      onChange={(e) => onChange(index, {
+                        timer: {
+                          ...attribute.timer!,
+                          intervalMinutes: Math.max(1, parseInt(e.target.value) || 5),
+                        }
+                      })}
+                      className="h-8"
+                      placeholder="5"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Cada cuántos minutos se actualiza
+                    </p>
+                  </div>
+                  
+                  {/* Numeric operation */}
+                  {attribute.type === 'number' && (
+                    <div>
+                      <Label className="text-xs mb-1 block">Operación</Label>
+                      <Select
+                        value={attribute.timer.numericOperation || 'add'}
+                        onValueChange={(value) => onChange(index, {
+                          timer: {
+                            ...attribute.timer!,
+                            numericOperation: value as 'add' | 'subtract' | 'multiply' | 'divide' | 'set',
+                          }
+                        })}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="add">➕ Sumar (+)</SelectItem>
+                          <SelectItem value="subtract">➖ Restar (-)</SelectItem>
+                          <SelectItem value="multiply">✖️ Multiplicar (×)</SelectItem>
+                          <SelectItem value="divide">➗ Dividir (÷)</SelectItem>
+                          <SelectItem value="set">📌 Establecer (=)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  
+                  {/* Text/Keyword operation */}
+                  {(attribute.type === 'keyword' || attribute.type === 'text') && (
+                    <div>
+                      <Label className="text-xs mb-1 block">Operación</Label>
+                      <Select
+                        value={attribute.timer.textOperation || 'set'}
+                        onValueChange={(value) => onChange(index, {
+                          timer: {
+                            ...attribute.timer!,
+                            textOperation: value as 'cycle' | 'random' | 'set',
+                          }
+                        })}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cycle">🔄 Cíclico (rotar)</SelectItem>
+                          <SelectItem value="random">🎲 Aleatorio</SelectItem>
+                          <SelectItem value="set">📌 Establecer</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Numeric value */}
+                {attribute.type === 'number' && (
+                  <div>
+                    <Label className="text-xs mb-1 block">
+                      Valor {attribute.timer.numericOperation === 'add' ? '(cantidad a sumar)' :
+                             attribute.timer.numericOperation === 'subtract' ? '(cantidad a restar)' :
+                             attribute.timer.numericOperation === 'multiply' ? '(multiplicador)' :
+                             attribute.timer.numericOperation === 'divide' ? '(divisor)' :
+                             '(valor a establecer)'}
+                    </Label>
+                    <Input
+                      type="number"
+                      value={attribute.timer.numericValue ?? 1}
+                      onChange={(e) => onChange(index, {
+                        timer: {
+                          ...attribute.timer!,
+                          numericValue: parseFloat(e.target.value) || 0,
+                        }
+                      })}
+                      className="h-8"
+                      placeholder="1"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {attribute.timer.numericOperation === 'add' || !attribute.timer.numericOperation
+                        ? `Ej: Cada ${attribute.timer.intervalMinutes || 5} min, +${attribute.timer.numericValue || 1}`
+                        : attribute.timer.numericOperation === 'subtract'
+                        ? `Ej: Cada ${attribute.timer.intervalMinutes || 5} min, -${attribute.timer.numericValue || 1}`
+                        : attribute.timer.numericOperation === 'set'
+                        ? `Ej: Cada ${attribute.timer.intervalMinutes || 5} min, = ${attribute.timer.numericValue || 0}`
+                        : `Ej: Cada ${attribute.timer.intervalMinutes || 5} min, ${attribute.timer.numericOperation === 'multiply' ? '×' : '÷'}${attribute.timer.numericValue || 1}`
+                      }
+                    </p>
+                  </div>
+                )}
+                
+                {/* Text values for cycle/random */}
+                {(attribute.type === 'keyword' || attribute.type === 'text') && 
+                 (attribute.timer.textOperation === 'cycle' || attribute.timer.textOperation === 'random') && (
+                  <div>
+                    <Label className="text-xs mb-1 block">
+                      Valores (separar con comas)
+                    </Label>
+                    <Input
+                      value={attribute.timer.textValues || ''}
+                      onChange={(e) => onChange(index, {
+                        timer: {
+                          ...attribute.timer!,
+                          textValues: e.target.value,
+                        }
+                      })}
+                      placeholder="caja, roca, botella"
+                      className="h-8"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {attribute.timer.textOperation === 'cycle'
+                        ? 'Rotará ciclicamente por estos valores'
+                        : 'Seleccionará un valor aleatorio cada tick'
+                      }
+                    </p>
+                    {attribute.timer.textValues && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {attribute.timer.textValues.split(',').map((v, i) => v.trim()).filter(Boolean).map((v, i) => (
+                          <Badge key={i} variant="outline" className="text-[10px]">
+                            {v}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {/* Text value for set */}
+                {(attribute.type === 'keyword' || attribute.type === 'text') && 
+                 attribute.timer.textOperation === 'set' && (
+                  <div>
+                    <Label className="text-xs mb-1 block">Valor a establecer</Label>
+                    <Input
+                      value={attribute.timer.textValue || ''}
+                      onChange={(e) => onChange(index, {
+                        timer: {
+                          ...attribute.timer!,
+                          textValue: e.target.value,
+                        }
+                      })}
+                      placeholder="nuevo valor"
+                      className="h-8"
+                    />
+                  </div>
+                )}
+                
+                {/* Timer conditions */}
+                <div className="space-y-2 p-2 bg-background/50 rounded border border-emerald-500/10">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-3 h-3 text-emerald-400" />
+                    <Label className="text-xs font-medium">Condiciones (opcional)</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-sm">
+                        <p>El timer solo se aplicará cuando todas las condiciones se cumplan.</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Ejemplo: Vida &gt; 0 (no regenerar si está muerto)</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  
+                  {(attribute.timer.condition || []).map((cond, condIdx) => (
+                    <div key={condIdx} className="flex items-center gap-2">
+                      <Select
+                        value={cond.attributeKey}
+                        onValueChange={(value) => {
+                          const newConditions = [...(attribute.timer?.condition || [])];
+                          newConditions[condIdx] = { ...newConditions[condIdx], attributeKey: value };
+                          onChange(index, { timer: { ...attribute.timer!, condition: newConditions } });
+                        }}
+                      >
+                        <SelectTrigger className="h-7 w-28">
+                          <SelectValue placeholder="Atributo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allAttributes.map(attr => (
+                            <SelectItem key={attr.key} value={attr.key}>
+                              {attr.name || attr.key}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={cond.operator}
+                        onValueChange={(value) => {
+                          const newConditions = [...(attribute.timer?.condition || [])];
+                          newConditions[condIdx] = { ...newConditions[condIdx], operator: value as any };
+                          onChange(index, { timer: { ...attribute.timer!, condition: newConditions } });
+                        }}
+                      >
+                        <SelectTrigger className="h-7 w-16">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value=">">&gt;</SelectItem>
+                          <SelectItem value=">=">&ge;</SelectItem>
+                          <SelectItem value="<">&lt;</SelectItem>
+                          <SelectItem value="<=">&le;</SelectItem>
+                          <SelectItem value="==">=</SelectItem>
+                          <SelectItem value="!=">&ne;</SelectItem>
+                          <SelectItem value="contains">contiene</SelectItem>
+                          <SelectItem value="not_contains">no contiene</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {cond.operator === 'contains' || cond.operator === 'not_contains' ? (
+                        <Input
+                          value={typeof cond.value === 'string' ? cond.value : ''}
+                          onChange={(e) => {
+                            const newConditions = [...(attribute.timer?.condition || [])];
+                            newConditions[condIdx] = { ...newConditions[condIdx], value: e.target.value };
+                            onChange(index, { timer: { ...attribute.timer!, condition: newConditions } });
+                          }}
+                          className="h-7 w-20"
+                          placeholder="texto"
+                        />
+                      ) : (
+                        <Input
+                          type="number"
+                          value={typeof cond.value === 'number' ? cond.value : ''}
+                          onChange={(e) => {
+                            const newConditions = [...(attribute.timer?.condition || [])];
+                            newConditions[condIdx] = { ...newConditions[condIdx], value: parseFloat(e.target.value) || 0 };
+                            onChange(index, { timer: { ...attribute.timer!, condition: newConditions } });
+                          }}
+                          className="h-7 w-16"
+                          placeholder="valor"
+                        />
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => {
+                          const newConditions = (attribute.timer?.condition || []).filter((_, i) => i !== condIdx);
+                          onChange(index, { timer: { ...attribute.timer!, condition: newConditions.length > 0 ? newConditions : undefined } });
+                        }}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ))}
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 text-[10px] border-emerald-500/30 hover:bg-emerald-500/10"
+                    onClick={() => {
+                      const newConditions = [...(attribute.timer?.condition || []), {
+                        attributeKey: allAttributes[0]?.key || '',
+                        operator: '>' as const,
+                        value: 0,
+                      }];
+                      onChange(index, { timer: { ...attribute.timer!, condition: newConditions } });
+                    }}
+                  >
+                    <Plus className="w-2.5 h-2.5 mr-0.5" /> Agregar condición
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -3708,6 +4030,106 @@ export function StatsEditor({ statsConfig, onChange, allCharacters = [], questTe
         )}
         
         {config.enabled && (
+          <>
+            {/* Global Timer Configuration */}
+            <div className="p-3 bg-emerald-500/5 rounded-lg border border-emerald-500/20">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-emerald-400" />
+                  <span className="font-medium text-sm text-emerald-400">Timer de Atributos</span>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>Sistema de timer para que los atributos cambien automáticamente con el tiempo.</p>
+                      <p className="mt-1 text-xs text-muted-foreground">• Cada atributo puede tener su propio timer</p>
+                      <p className="text-xs text-muted-foreground">• Se evalúa al cargar la sesión y periódicamente</p>
+                      <p className="text-xs text-muted-foreground">• Los cambios offline se aplican al volver</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <Switch
+                  checked={config.timerEnabled ?? false}
+                  onCheckedChange={(checked) => updateConfig({ timerEnabled: checked })}
+                />
+              </div>
+              
+              {config.timerEnabled && (
+                <div className="space-y-3 mt-3 pt-3 border-t border-emerald-500/10">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Label className="text-xs">Intervalo de tick</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p>Cada cuántos segundos se verifica si hay timers que aplicar. Menor = más preciso pero más procesamiento.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min={10}
+                          max={3600}
+                          value={config.timerTickSeconds ?? 60}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            if (!isNaN(val) && val >= 10) updateConfig({ timerTickSeconds: val });
+                          }}
+                          className="h-8 w-20"
+                        />
+                        <span className="text-xs text-muted-foreground">segundos</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Label className="text-xs">Máx. ticks acumulados</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p>Máximo de ticks que se acumulan cuando la sesión está inactiva. Previene cambios masivos tras mucho tiempo offline.</p>
+                            <p className="mt-1 text-xs text-muted-foreground">Para keywords cíclicos, el máximo es siempre 10.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={1000}
+                        value={config.timerMaxAccumulatedTicks ?? 100}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          if (!isNaN(val) && val >= 1) updateConfig({ timerMaxAccumulatedTicks: val });
+                        }}
+                        className="h-8"
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Active timers summary */}
+                  {config.attributes.some(attr => attr.timer?.enabled) && (
+                    <div className="p-2 bg-emerald-500/10 rounded border border-emerald-500/15">
+                      <p className="text-[10px] font-medium text-emerald-400 mb-1">Timers activos:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {config.attributes.filter(attr => attr.timer?.enabled).map(attr => (
+                          <Badge key={attr.key} variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-400">
+                            <Timer className="w-2.5 h-2.5 mr-0.5" />
+                            {attr.name || attr.key}: cada {attr.timer!.intervalMinutes}min
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
           <Accordion type="multiple" defaultValue={['attributes']} className="space-y-2">
             {/* Attributes Section */}
             <AccordionItem value="attributes" className="border rounded-lg">
@@ -4062,6 +4484,7 @@ export function StatsEditor({ statsConfig, onChange, allCharacters = [], questTe
               </AccordionContent>
             </AccordionItem>
           </Accordion>
+          </>
         )}
         
         {/* Usage Help */}

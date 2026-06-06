@@ -644,6 +644,9 @@ export function exportCharacterCardAsJson(character: CharacterCard): string {
         // Quick Replies & Proactive Messages
         quickReplies: character.quickReplies,
         proactiveMessages: character.proactiveMessages,
+        // Character-level memory & stats
+        memory: character.memory,
+        chatStats: character.chatStats,
       }
     }
   };

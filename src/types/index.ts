@@ -418,6 +418,13 @@ export interface CharacterCard {
   statsConfig?: CharacterStatsConfig;  // Stats system configuration (attributes, skills, etc.)
   proactiveMessages?: ProactiveMessagesConfig;  // Proactive message configuration
   quickReplies?: CharacterQuickReply[];          // Character-specific quick replies with optional attribute modifiers
+  // Import/Export extended fields (preserved through character-card.ts parse/serialize)
+  spriteLibraries?: unknown;       // Sprite library collections (legacy import support)
+  chatStats?: unknown;             // Character-level chat stats (legacy import support)
+  memory?: unknown;                // Character-level memory data (legacy import support)
+  creator?: string;                // Creator name from TavernCard spec
+  characterVersion?: string;       // Character version from TavernCard spec
+  extensions?: Record<string, unknown>;  // Raw extensions blob from V2 spec
   createdAt: string;
   updatedAt: string;
 }
@@ -722,6 +729,7 @@ export interface TTSConfig {
 
 export type TTSProvider = 
   | 'tts-webui'                      // TTS-WebUI (OpenAI compatible, Chatterbox, Whisper)
+  | 'omnivoice'                      // OmniVoice Studio (OpenAI compatible, multi-engine)
   | 'edge-tts'
   | 'elevenlabs'
   | 'coqui'
@@ -730,12 +738,96 @@ export type TTSProvider =
   | 'z-ai'                           // Z.ai SDK TTS
   | 'custom';
 
+export type TTSProviderType = 'tts-webui' | 'omnivoice' | 'z-ai' | 'custom';
+
+// ============================================
+// VOICE INFO & OMNIVOICE TYPES
+// ============================================
+
+/**
+ * Voice info from TTS providers
+ * Works for both TTS-WebUI (path-based) and OmniVoice (profile-based)
+ */
+export interface VoiceInfo {
+  id: string;                              // Voice ID (path for TTS-WebUI, profile_id for OmniVoice)
+  name: string;                            // Display name
+  path: string;                            // Same as id, for compatibility
+  language?: string;                       // Language code (es, en, ja, etc.)
+  type?: 'profile' | 'openai_alias' | string;  // OmniVoice voice type
+  description?: string;                    // Voice description (OmniVoice)
+  engineId?: string;                       // Associated TTS engine (OmniVoice)
+}
+
+/**
+ * OmniVoice engine info from /v1/audio/voices
+ */
+export interface OmniVoiceEngine {
+  id: string;
+  display_name: string;
+  available: boolean;
+  reason: string;
+}
+
+/**
+ * OmniVoice voice profile from /profiles endpoint
+ * Contains full profile details including reference audio and instruct
+ */
+export interface OmniVoiceProfile {
+  id: string;
+  name: string;
+  ref_audio_path: string;
+  ref_text: string;
+  instruct: string;                        // Voice design instruction (e.g., "female, young adult, high pitch")
+  language: string;                        // Language code or "Auto"
+  locked_audio_path: string;
+  seed: number | null;
+  is_locked: number;                       // 0=unlocked, 1=locked
+  personality: string;                     // Archetype ID that created this profile
+  description: string;                     // Human-readable description
+  is_demo: number;                         // Whether this is a bundled demo profile
+  created_at: number;                      // Unix timestamp
+}
+
+/**
+ * OmniVoice voice archetype from /archetypes endpoint
+ * Curated voice designs with predefined attributes
+ */
+export interface OmniVoiceArchetype {
+  id: string;
+  name: string;
+  icon: string;
+  use_case: string;                        // e.g., "narration", "dialogue"
+  instruct: string;                        // Voice design instruction string
+  attrs: {
+    Gender?: string;
+    Age?: string;
+    Pitch?: string;
+    Style?: string;
+    EnglishAccent?: string;
+    [key: string]: string | undefined;
+  };
+  facets: {
+    gender?: string;
+    age?: string;
+    pitch?: string;
+    accent?: string;
+    whisper?: boolean;
+    lang?: string;
+    [key: string]: string | boolean | undefined;
+  };
+  sample_script: string;
+  preview_url: string | null;
+  is_featured: boolean;
+  language: string;
+}
+
 // TTS-WebUI specific configuration
 export interface TTSWebUIConfig {
   enabled: boolean;
   autoGeneration: boolean;           // Auto-play TTS on new messages
-  baseUrl: string;                   // e.g., 'http://localhost:7778'
-  model: string;                     // Default TTS model (chatterbox, multilingual, chatterbox-turbo, etc.)
+  provider: TTSProviderType;         // Active TTS provider
+  baseUrl: string;                   // e.g., 'http://localhost:7778' or 'http://localhost:3900'
+  model: string;                     // Default TTS model (chatterbox, multilingual, omnivoice, etc.)
   whisperModel: string;              // Default Whisper model for ASR
   defaultVoice?: string;             // Default voice/reference audio path (e.g., 'voices/chatterbox/es-rick.wav')
   speed: number;                     // Speech speed multiplier
@@ -752,6 +844,9 @@ export interface TTSWebUIConfig {
   generatePlainText: boolean;        // Generate plain text (no quotes or asterisks)
   applyRegex: boolean;               // Apply custom regex filter
   customRegex?: string;              // Custom regex pattern to apply
+  // OmniVoice-specific settings
+  voiceDesign?: string;              // Voice design description (e.g., "young female, warm tone")
+  instruct?: string;                 // Style instruction (e.g., "speak slowly")
 }
 
 // Voice reference for voice cloning
@@ -3527,6 +3622,12 @@ export type RequirementOperator = '<' | '<=' | '>' | '>=' | '==' | '!=' | 'betwe
 // Cost operator for activation costs (how to modify attribute)
 export type CostOperator = '+' | '-' | '*' | '/' | '=' | 'set_min' | 'set_max';
 
+// Timer operation for numeric attributes
+export type TimerNumericOperation = 'add' | 'subtract' | 'multiply' | 'divide' | 'set';
+
+// Timer operation for keyword/text attributes
+export type TimerTextOperation = 'cycle' | 'random' | 'set';
+
 // Single requirement for skills/intentions/invitations
 export interface StatRequirement {
   attributeKey: string;      // Key del atributo: "vida", "mana" (empty when target mode)
@@ -3593,6 +3694,24 @@ export interface AttributeDefinition {
   showInHUD?: boolean;       // Show this attribute in the HUD overlay (default: true if color/icon set)
   hudStyle?: HUDFieldStyle;  // How to display in HUD: 'progress', 'badge', 'gauge', etc.
   hudUnit?: string;          // Unit to show after value: "%", "pts", etc.
+
+  // Timer - automatic attribute changes over time
+  timer?: {
+    enabled: boolean;                    // Whether timer is active for this attribute
+    intervalMinutes: number;             // How often the timer ticks (in minutes)
+
+    // For number type attributes:
+    numericOperation?: TimerNumericOperation;  // Operation: add, subtract, multiply, divide, set
+    numericValue?: number;                     // Value for the operation (+5, -2, *1.5, /2, =100)
+
+    // For keyword/text type attributes:
+    textOperation?: TimerTextOperation;  // Operation: cycle, random, set
+    textValues?: string;                 // Comma-separated values for cycle/random: "caja,roca,botella"
+    textValue?: string;                  // Fixed value for set operation
+
+    // Conditions (optional) - timer only applies when these requirements are met
+    condition?: StatRequirement[];        // Uses existing StatRequirement system
+  };
 }
 
 // Skill/Action type - determines when the action can be used
@@ -3726,6 +3845,11 @@ export interface CharacterStatsConfig {
 
   // Customizable block headers
   blockHeaders: StatsBlockHeaders;
+
+  // Timer configuration (global settings)
+  timerEnabled?: boolean;                // Master switch for timer system (default: false)
+  timerTickSeconds?: number;             // Tick resolution in seconds (default: 60)
+  timerMaxAccumulatedTicks?: number;     // Max accumulated ticks to prevent overflow (default: 100 for number, 10 for cycle)
 }
 
 // Stat change log entry (for history/debug)
@@ -3735,7 +3859,7 @@ export interface StatChangeLogEntry {
   attributeName: string;
   oldValue: number | string;
   newValue: number | string;
-  reason: 'llm_detection' | 'manual' | 'trigger' | 'initialization';
+  reason: 'llm_detection' | 'manual' | 'trigger' | 'initialization' | 'timer';
   timestamp: number;
 }
 
@@ -3769,6 +3893,10 @@ export interface SessionStats {
   // Metadata
   initialized: boolean;      // Whether stats were initialized from defaults
   lastModified: number;      // Global timestamp of last change
+
+  // Timer state (persistent timer tracking)
+  lastTimerUpdate?: number;             // Timestamp of last timer evaluation
+  keywordCycleIndex?: Record<string, number>;  // Current cycle position per attribute key
 }
 
 // Stats trigger hit result (Post-LLM detection)

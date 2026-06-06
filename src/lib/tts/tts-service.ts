@@ -211,8 +211,8 @@ class TTSService {
     }
 
     try {
-      const baseUrl = this.config.baseUrl.replace(/\/v1$/, '').replace(/\/$/, '');
-      const response = await fetch(`${baseUrl}/v1/audio/voices`);
+      // Use the Next.js API proxy instead of direct server call (avoids CORS)
+      const response = await fetch(`/api/tts/available-voices?endpoint=${encodeURIComponent(this.config.baseUrl)}&provider=${this.config.provider || 'tts-webui'}`);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch voices: ${response.status}`);
@@ -222,12 +222,8 @@ class TTSService {
       
       let voices: VoiceInfo[] = [];
       if (data.voices && Array.isArray(data.voices)) {
-        voices = data.voices.map((voice: { id: string; name?: string }) => ({
-          id: voice.id,
-          name: voice.name || voice.id.split('/').pop() || voice.id,
-          path: voice.id,
-          language: extractLanguage(voice.id),
-        }));
+        // The API proxy now returns properly parsed VoiceInfo objects
+        voices = data.voices;
       }
 
       this.voicesCache = voices;
@@ -257,18 +253,22 @@ class TTSService {
       responseFormat?: 'mp3' | 'wav' | 'ogg' | 'flac';
     }
   ): Promise<{ audioBlob: Blob; format: string }> {
-    const baseUrl = this.config.baseUrl.replace(/\/v1$/, '').replace(/\/$/, '');
-    
-    // Build request body
+    const provider = this.config.provider || 'tts-webui';
+    const model = options?.model || this.config.model;
+    const format = options?.responseFormat || this.config.responseFormat;
+
+    // Build request body for the /api/tts/speech proxy endpoint.
+    // The proxy handles all provider-specific formatting (TTS-WebUI, OmniVoice, etc.)
+    // This avoids CORS issues and ensures the backend handles direct server connections.
     const requestBody: Record<string, unknown> = {
-      input: text,
-      model: 'chatterbox',
-      response_format: options?.responseFormat || this.config.responseFormat,
+      text,
+      model,
+      provider,
+      endpoint: this.config.baseUrl,
+      response_format: format,
     };
 
-    // Set voice - only if we have a valid voice ID
-    const model = options?.model || this.config.model;
-    
+    // Add voice ID
     if (voiceConfig.voiceId && 
         voiceConfig.voiceId !== 'default' && 
         voiceConfig.voiceId !== 'none') {
@@ -279,36 +279,48 @@ class TTSService {
       requestBody.voice = this.config.defaultVoice;
     }
 
-    // Build params object
-    const params: Record<string, unknown> = {
-      device: 'auto',
-      dtype: 'bfloat16',
-    };
-
-    // Set model type (multilingual or standard)
-    if (model === 'multilingual') {
-      params.model_name = 'multilingual';
-      params.language_id = voiceConfig.language || options?.language || this.config.language || 'es';
+    // Add speed
+    const speed = voiceConfig.speed ?? this.config.speed;
+    if (speed !== undefined && speed !== 1.0) {
+      requestBody.speed = speed;
     }
 
-    // Set voice parameters
-    params.exaggeration = voiceConfig.exaggeration ?? this.config.exaggeration;
-    params.cfg_weight = voiceConfig.cfgWeight ?? this.config.cfgWeight;
-    params.temperature = voiceConfig.temperature ?? this.config.temperature;
+    // Add language
+    const language = voiceConfig.language || options?.language || this.config.language;
+    if (language) {
+      requestBody.language = language;
+    }
 
-    requestBody.params = params;
+    // Add TTS-WebUI specific parameters
+    if (provider === 'tts-webui') {
+      requestBody.exaggeration = voiceConfig.exaggeration ?? this.config.exaggeration;
+      requestBody.cfg_weight = voiceConfig.cfgWeight ?? this.config.cfgWeight;
+      requestBody.temperature = voiceConfig.temperature ?? this.config.temperature;
+    }
 
-    console.log('[TTS] Generating speech for:', text.substring(0, 50) + '...');
-    console.log('[TTS] Voice config:', {
-      voiceId: requestBody.voice || '(none — synthetic)',
-      model: model,
-      language: params.language_id || params.language || '(default)',
-      exaggeration: params.exaggeration,
-      cfg_weight: params.cfg_weight,
-      temperature: params.temperature,
+    // Add OmniVoice specific parameters
+    if (provider === 'omnivoice') {
+      requestBody.temperature = voiceConfig.temperature ?? this.config.temperature;
+      if (this.config.voiceDesign?.trim()) {
+        requestBody.voiceDesign = this.config.voiceDesign.trim();
+      }
+      if (this.config.instruct?.trim()) {
+        requestBody.instruct = this.config.instruct.trim();
+      }
+    }
+
+    const providerLabel = provider === 'omnivoice' ? 'OmniVoice' : 'TTS-WebUI';
+    console.log(`[${providerLabel}] Generating speech via proxy for:`, text.substring(0, 50) + '...');
+    console.log(`[${providerLabel}] Request:`, {
+      provider,
+      model,
+      voice: requestBody.voice || '(default)',
+      language: requestBody.language || '(default)',
     });
 
-    const response = await fetch(`${baseUrl}/v1/audio/speech`, {
+    // Call the Next.js API proxy endpoint instead of the TTS server directly.
+    // This avoids CORS issues and lets the backend handle provider-specific logic.
+    const response = await fetch('/api/tts/speech', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -317,31 +329,30 @@ class TTSService {
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`TTS generation failed: ${response.status} - ${errorText}`);
-    }
-
-    // Validate content type — reject non-audio responses (e.g. JSON error bodies)
-    const contentType = response.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-      // Server returned JSON instead of audio — something went wrong
-      const jsonBody = await response.json().catch(() => null);
-      const errorMsg = jsonBody?.error || jsonBody?.detail || 'Server returned JSON instead of audio';
+      const errorData = await response.json().catch(() => null);
+      const errorMsg = errorData?.error || `Server returned ${response.status}`;
       throw new Error(`TTS generation failed: ${errorMsg}`);
     }
 
-    const audioBlob = await response.blob();
-
-    // Validate blob has actual content
-    if (audioBlob.size === 0) {
-      throw new Error('TTS generation failed: received empty audio');
+    // The proxy returns JSON with base64-encoded audio
+    const data = await response.json();
+    
+    if (!data.success || !data.audio) {
+      throw new Error(data.error || 'TTS generation failed: no audio returned');
     }
 
-    console.log(`[TTS] Audio received: ${audioBlob.size} bytes, type: ${audioBlob.type}`);
+    // Decode base64 audio to blob
+    const audioBlob = base64ToBlob(data.audio, `audio/${data.format || format}`);
+    
+    if (audioBlob.size < TTSService.MIN_AUDIO_SIZE) {
+      throw new Error(`Audio response too small (${audioBlob.size} bytes)`);
+    }
+
+    console.log(`[${providerLabel}] Audio received: ${audioBlob.size} bytes, format: ${data.format || format}`);
 
     return { 
       audioBlob, 
-      format: options?.responseFormat || this.config.responseFormat 
+      format: data.format || format 
     };
   }
 
@@ -737,7 +748,7 @@ class TTSService {
             console.error('[TTS] Play error:', errorMsg);
             item.status = 'error';
             item.error = errorMsg;
-            this.onPlaybackError?.(item, item.error);
+            this.onPlaybackError?.(item, item.error || 'Unknown playback error');
             this.cleanupCurrentItem();
             this.playNext();
             safeResolve();
@@ -896,25 +907,26 @@ class TTSService {
     }
 
     try {
-      const baseUrl = this.config.baseUrl.replace(/\/v1$/, '').replace(/\/$/, '');
-      const response = await fetch(`${baseUrl}/v1/audio/voices`, {
+      // Use the Next.js API proxy instead of direct server call (avoids CORS)
+      const response = await fetch(`/api/tts/speech?endpoint=${encodeURIComponent(this.config.baseUrl)}&provider=${this.config.provider || 'tts-webui'}`, {
         method: 'GET',
-        signal: AbortSignal.timeout(5000), // 5s timeout to avoid hanging
+        signal: AbortSignal.timeout(10000), // 10s timeout
       });
 
       this.lastConnectionCheck = Date.now();
 
-      if (response.ok) {
+      const data = await response.json();
+      
+      if (data.status === 'online') {
         this.connectionStatus = 'online';
         return { status: 'online' };
       } else {
         this.connectionStatus = 'offline';
-        return { status: 'offline', error: `Server returned ${response.status}` };
+        return { status: 'offline', error: data.error || 'Server offline' };
       }
     } catch (error) {
       this.lastConnectionCheck = Date.now();
       this.connectionStatus = 'offline';
-      // Log as warn, not error — connection refused is expected when TTS server is not running
       console.warn('[TTS] Connection check failed:', error instanceof Error ? error.message : 'Unknown error');
       return { 
         status: 'offline', 
@@ -931,6 +943,26 @@ class TTSService {
 function extractLanguage(voiceId: string): string | undefined {
   const match = voiceId.match(/\/([a-z]{2})-/);
   return match ? match[1] : undefined;
+}
+
+/**
+ * Convert a base64-encoded string to a Blob.
+ * Used to decode audio data returned by the /api/tts/speech proxy.
+ */
+function base64ToBlob(base64: string, mimeType: string): Blob {
+  const byteCharacters = atob(base64);
+  const byteArrays: Uint8Array[] = [];
+
+  for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+    const slice = byteCharacters.slice(offset, offset + 512);
+    const byteNumbers = new Array(slice.length);
+    for (let i = 0; i < slice.length; i++) {
+      byteNumbers[i] = slice.charCodeAt(i);
+    }
+    byteArrays.push(new Uint8Array(byteNumbers));
+  }
+
+  return new Blob(byteArrays, { type: mimeType });
 }
 
 // ============================================

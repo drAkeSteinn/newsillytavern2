@@ -15,6 +15,7 @@ import type {
   SolicitudInstance,
   SessionSolicitudes,
 } from '@/types';
+import { evaluateTimerTicks, hasActiveTimers, type TimerEvaluationResult } from '@/lib/stats/timer-processor';
 
 // ============================================
 // Types
@@ -50,14 +51,14 @@ export interface StatsSlice {
     characterId: string,
     attributeKey: string,
     value: number | string,
-    reason?: 'llm_detection' | 'manual' | 'trigger' | 'initialization'
+    reason?: 'llm_detection' | 'manual' | 'trigger' | 'initialization' | 'timer'
   ) => UpdateCharacterStatResult;
   
   batchUpdateCharacterStats: (
     sessionId: string,
     characterId: string,
     updates: Array<{ attributeKey: string; value: number | string }>,
-    reason?: 'llm_detection' | 'manual' | 'trigger'
+    reason?: 'llm_detection' | 'manual' | 'trigger' | 'timer' | 'initialization'
   ) => void;
   
   resetCharacterStats: (
@@ -122,6 +123,17 @@ export interface StatsSlice {
     eventType: 'ultimo_objetivo_completado' | 'ultima_solicitud_completada' | 'ultima_solicitud_realizada' | 'ultima_accion_realizada' | 'ultima_accion_character',
     description: string
   ) => void;
+
+  // Timer System (automatic attribute changes over time)
+  processTimerTicks: (
+    sessionId: string,
+    characterId: string,
+    statsConfig: CharacterStatsConfig
+  ) => import('@/lib/stats/timer-processor').TimerEvaluationResult | null;
+
+  startSessionTimer: (sessionId: string, characterId: string, statsConfig: CharacterStatsConfig) => void;
+  stopSessionTimer: (sessionId: string) => void;
+  getTimerRunning: (sessionId: string) => boolean;
 }
 
 // ============================================
@@ -260,8 +272,15 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
     
     const newSessionStats: SessionStats = {
       characterStats,
+      solicitudes: {
+        characterSolicitudes: {},
+        lastModified: now,
+      },
       initialized: true,
       lastModified: now,
+      // Initialize timer state
+      lastTimerUpdate: now,
+      keywordCycleIndex: {},
     };
     
     // Update session with new stats
@@ -558,7 +577,17 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
       const stats = sessionStats.characterStats[characterId];
       if (!stats) return state;
       
-      const character = state.characters.find((c: any) => c.id === characterId);
+      // Look up statsConfig for the character (or persona for __user__)
+      let statsConfig: CharacterStatsConfig | undefined;
+      if (characterId === '__user__') {
+        const activePersonaId = (state as any).activePersonaId;
+        const personas: any[] = (state as any).personas || [];
+        const activePersona = personas.find((p: any) => p.id === activePersonaId);
+        statsConfig = activePersona?.statsConfig;
+      } else {
+        const character = state.characters.find((c: any) => c.id === characterId);
+        statsConfig = character?.statsConfig;
+      }
       const now = Date.now();
       
       // Apply all updates
@@ -568,7 +597,7 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
 
       for (const update of updates) {
         const oldValue = newAttributeValues[update.attributeKey];
-        const attributeDef = character?.statsConfig?.attributes?.find(
+        const attributeDef = statsConfig?.attributes?.find(
           (a: AttributeDefinition) => a.key === update.attributeKey
         );
 
@@ -1249,6 +1278,220 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
     });
     
     console.log(`[SessionEvent] Updated ${eventType}: ${description}`);
+  },
+
+  // ============================================
+  // Timer System (automatic attribute changes over time)
+  // ============================================
+
+  processTimerTicks: (sessionId, characterId, statsConfig) => {
+    const state = get();
+    const sessions = state.sessions as Array<{
+      id: string;
+      sessionStats?: SessionStats;
+    }>;
+    const session = sessions.find(s => s.id === sessionId);
+
+    if (!session?.sessionStats) return null;
+
+    // Check if timer is enabled
+    if (!statsConfig.timerEnabled) return null;
+
+    // Evaluate timer ticks
+    const result = evaluateTimerTicks(statsConfig, session.sessionStats, characterId);
+
+    if (result.updates.length === 0) {
+      // No updates needed — preserve lastTimerUpdate for fractional progress
+      // Only update if timer state changed (e.g., newLastTimerUpdate advanced from consumed ticks)
+      const currentLastTimerUpdate = session.sessionStats.lastTimerUpdate;
+      if (result.newLastTimerUpdate !== currentLastTimerUpdate) {
+        set((state: any) => ({
+          sessions: state.sessions.map((s: any) =>
+            s.id === sessionId
+              ? {
+                  ...s,
+                  sessionStats: {
+                    ...s.sessionStats,
+                    lastTimerUpdate: result.newLastTimerUpdate,
+                    keywordCycleIndex: {
+                      ...s.sessionStats?.keywordCycleIndex,
+                      ...result.newCycleIndex,
+                    },
+                  },
+                  updatedAt: new Date().toISOString(),
+                }
+              : s
+          ),
+        }));
+      }
+      return result;
+    }
+
+    // Apply all updates via batchUpdateCharacterStats
+    const storeActions = {
+      updateCharacterStat: get().updateCharacterStat,
+    };
+
+    // Apply each update individually to get proper clamping, logging, and threshold detection
+    for (const update of result.updates) {
+      storeActions.updateCharacterStat(
+        sessionId,
+        characterId,
+        update.attributeKey,
+        update.value,
+        'timer'
+      );
+    }
+
+    // Update timer state (lastTimerUpdate + keywordCycleIndex)
+    set((state: any) => {
+      const sessions = state.sessions as Array<{
+        id: string;
+        sessionStats?: SessionStats;
+      }>;
+      const session = sessions.find(s => s.id === sessionId);
+      if (!session?.sessionStats) return state;
+
+      const newSessionStats: SessionStats = {
+        ...session.sessionStats,
+        lastTimerUpdate: result.newLastTimerUpdate,
+        keywordCycleIndex: {
+          ...session.sessionStats.keywordCycleIndex,
+          ...result.newCycleIndex,
+        },
+        lastModified: Date.now(),
+      };
+
+      return {
+        sessions: state.sessions.map((s: any) =>
+          s.id === sessionId
+            ? {
+                ...s,
+                sessionStats: newSessionStats,
+                updatedAt: new Date().toISOString(),
+              }
+            : s
+        ),
+      };
+    });
+
+    // Log timer results
+    if (result.details.length > 0) {
+      console.log(`[Timer] Processed ${result.details.length} timer updates for character ${characterId}:`);
+      for (const detail of result.details) {
+        console.log(`  ${detail.attributeName}: ${detail.oldValue} → ${detail.newValue} (${detail.operation})`);
+      }
+    }
+
+    return result;
+  },
+
+  startSessionTimer: (sessionId, characterId, statsConfig) => {
+    // First, process any accumulated ticks from offline time for this character
+    get().processTimerTicks(sessionId, characterId, statsConfig);
+
+    // Check if timer should run
+    if (!hasActiveTimers(statsConfig)) {
+      console.log(`[Timer] No active timers for character ${characterId}, not starting periodic timer`);
+      return;
+    }
+
+    // Get tick interval from config (default 60 seconds)
+    const tickSeconds = statsConfig.timerTickSeconds || 60;
+
+    // Store timer reference
+    const timerKey = `timer_${sessionId}`;
+    const existingInterval = (get() as any)._timerIntervals?.[timerKey];
+    if (existingInterval) {
+      // Timer already running for this session - check if we need a faster interval
+      const existingTickSeconds = (get() as any)._timerTickSeconds?.[timerKey] || 60;
+      if (tickSeconds < existingTickSeconds) {
+        // Restart with the faster interval to honor this character's requirement
+        clearInterval(existingInterval);
+        console.log(`[Timer] Restarting timer for session ${sessionId} with faster interval: ${existingTickSeconds}s → ${tickSeconds}s`);
+      } else {
+        // Existing interval is fast enough, no need to restart
+        console.log(`[Timer] Timer already running for session ${sessionId} at ${existingTickSeconds}s, requested ${tickSeconds}s is slower or equal`);
+        return;
+      }
+    }
+
+    const intervalId = setInterval(() => {
+      // Process timer ticks for ALL characters in this session that have timerEnabled
+      const currentState = get();
+      const currentSession = (currentState.sessions as any[])?.find((s: any) => s.id === sessionId);
+      if (!currentSession) {
+        get().stopSessionTimer(sessionId);
+        return;
+      }
+
+      let anyTimerActive = false;
+
+      // Collect all character IDs that have stats in this session
+      const charIds = Object.keys(currentSession.sessionStats?.characterStats || {});
+      for (const charId of charIds) {
+        if (charId === '__user__') continue; // Skip persona
+        const charStatsConfig = currentState.characters?.find((c: any) => c.id === charId)?.statsConfig;
+        if (charStatsConfig?.timerEnabled && hasActiveTimers(charStatsConfig)) {
+          get().processTimerTicks(sessionId, charId, charStatsConfig);
+          anyTimerActive = true;
+        }
+      }
+
+      // If no timers are active anymore, stop the interval
+      if (!anyTimerActive) {
+        console.log(`[Timer] No active timers remaining for session ${sessionId}, stopping`);
+        get().stopSessionTimer(sessionId);
+      }
+    }, tickSeconds * 1000);
+
+    // Store interval reference
+    set((state: any) => ({
+      ...state,
+      _timerIntervals: {
+        ...(state._timerIntervals || {}),
+        [timerKey]: intervalId,
+      },
+      _timerTickSeconds: {
+        ...(state._timerTickSeconds || {}),
+        [timerKey]: tickSeconds,
+      },
+      _timerRunning: {
+        ...(state._timerRunning || {}),
+        [sessionId]: true,
+      },
+    }));
+
+    console.log(`[Timer] Started session timer for ${sessionId} (tick: ${tickSeconds}s)`);
+  },
+
+  stopSessionTimer: (sessionId) => {
+    const timerKey = `timer_${sessionId}`;
+    const state = get();
+    const intervalId = (state as any)._timerIntervals?.[timerKey];
+
+    if (intervalId) {
+      clearInterval(intervalId);
+      set((state: any) => {
+        const newIntervals = { ...(state._timerIntervals || {}) };
+        delete newIntervals[timerKey];
+        const newTickSeconds = { ...(state._timerTickSeconds || {}) };
+        delete newTickSeconds[timerKey];
+        const newRunning = { ...(state._timerRunning || {}) };
+        delete newRunning[sessionId];
+        return {
+          _timerIntervals: newIntervals,
+          _timerTickSeconds: newTickSeconds,
+          _timerRunning: newRunning,
+        };
+      });
+      console.log(`[Timer] Stopped session timer for ${sessionId}`);
+    }
+  },
+
+  getTimerRunning: (sessionId) => {
+    const state = get();
+    return (state as any)._timerRunning?.[sessionId] === true;
   },
 });
 

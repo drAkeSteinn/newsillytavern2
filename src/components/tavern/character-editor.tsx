@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useRef, useMemo, useEffect } from 'react';
+import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { useTavernStore } from '@/store/tavern-store';
+import type { TTSWebUIConfig } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -103,6 +104,27 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
 
   // Active tab state
   const [activeTab, setActiveTab] = useState('info');
+
+  // Global TTS config for voice panel (OmniVoice provider awareness)
+  const [globalTTSConfig, setGlobalTTSConfig] = useState<TTSWebUIConfig | null>(null);
+
+  const loadTTSConfig = useCallback(async () => {
+    try {
+      const response = await fetch('/api/tts/config');
+      const data = await response.json();
+      if (data.success && data.config?.tts) {
+        setGlobalTTSConfig(data.config.tts);
+      }
+    } catch {
+      // Silently fail — TTS config is optional for voice panel
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      loadTTSConfig();
+    }
+  }, [open, loadTTSConfig]);
 
   // Reset tab when opening
   useEffect(() => {
@@ -841,6 +863,7 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
     <CharacterVoicePanel
       voiceSettings={character.voice}
       onChange={(voice) => setCharacter(prev => ({ ...prev, voice }))}
+      globalConfig={globalTTSConfig}
     />
   );
 

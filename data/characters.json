@@ -6607,7 +6607,12 @@
           "icon": "😈",
           "color": "red",
           "hudStyle": "progress",
-          "min": 0
+          "min": 0,
+          "timer": {
+            "enabled": true,
+            "intervalMinutes": 1,
+            "numericValue": 3
+          }
         },
         {
           "id": "attr-decemone-exigencia",
@@ -6670,11 +6675,12 @@
         "invitations": "Invitaciones disponibles:",
         "solicitudesRecibidas": "[SOLICITUDES RECIBIDAS POR COMPLETAR]"
       },
-      "solicitudDefinitions": []
+      "solicitudDefinitions": [],
+      "timerEnabled": true
     },
     "id": "a736edfc-c3df-4218-afb4-969ef530543c",
     "createdAt": "2026-05-31T02:10:29.237Z",
-    "updatedAt": "2026-06-04T00:20:34.286Z",
+    "updatedAt": "2026-06-05T11:14:02.289Z",
     "lorebookIds": [
       "c7313714-3b49-4976-b315-7b644bf70524",
       "272bfce2-1a68-41c0-9043-cd548cc8de58"

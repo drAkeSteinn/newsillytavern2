@@ -36,6 +36,7 @@ import {
   buildKeyResolutionContext,
   resolveStats,
 } from '@/lib/llm';
+import type { InventoryPromptData } from '@/lib/llm';
 import {
   sanitizeInput
 } from '@/lib/validations';
@@ -193,6 +194,24 @@ async function executeToolCallsAndContinue(
         activationCosts: action.activationCosts,
         activationRewards: action.activationRewards,
         characterId: action.characterId,
+      }));
+    }
+
+    // Check for stat modification from modify_stat tool and send SSE event
+    if (toolResult.statActivation) {
+      const stat = toolResult.statActivation;
+      console.log(`[Tools] Stat activation from ${tc.name}:`, stat.attributeKey, stat.oldValue, '→', stat.newValue);
+      
+      controller.enqueue(createSSEJSON({
+        type: 'stat_activation',
+        toolName: tc.name,
+        characterId: stat.characterId,
+        attributeKey: stat.attributeKey,
+        attributeName: stat.attributeName,
+        attributeType: stat.attributeType,
+        oldValue: stat.oldValue,
+        newValue: stat.newValue,
+        reason: stat.reason,
       }));
     }
 
@@ -358,6 +377,7 @@ export async function POST(request: NextRequest) {
     const characterMemory: CharacterMemory | undefined = body.characterMemory;
     const sessionId: string | undefined = body.sessionId;
     const characterId: string | undefined = body.characterId;
+    const inventoryData: InventoryPromptData | undefined = body.inventoryData;
 
     // Extract tools settings
     const toolsSettings: ToolsSettings = {
@@ -503,7 +523,8 @@ export async function POST(request: NextRequest) {
       questTemplates,
       sessionQuests,
       questSettings,
-      lorebookAttributeKeys
+      lorebookAttributeKeys,
+      inventoryData     // Pass inventory data for Inventory V2 section
     );
 
     // Build key resolution context for HUD context and quest sections
@@ -550,7 +571,8 @@ export async function POST(request: NextRequest) {
       sessionQuests,
       questSettings,
       outletSections,
-      lorebookAttributeKeys
+      lorebookAttributeKeys,
+      inventoryData     // Pass inventory data for {{inventory}} and {{currency}} key resolution
     );
 
     // Build HUD context section if enabled (now resolves keys!)

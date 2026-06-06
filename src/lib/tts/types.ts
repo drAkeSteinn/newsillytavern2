@@ -44,12 +44,18 @@ export interface CharacterVoiceSettings {
 }
 
 /**
+ * TTS Provider type
+ */
+export type TTSProviderType = 'tts-webui' | 'omnivoice' | 'z-ai' | 'custom';
+
+/**
  * Global TTS configuration
  */
 export interface TTSWebUIConfig {
   enabled: boolean;
   autoGeneration: boolean;       // Auto-play TTS on new messages
-  baseUrl: string;               // TTS-WebUI endpoint
+  provider: TTSProviderType;     // Active TTS provider
+  baseUrl: string;               // TTS service endpoint
   model: string;                 // Default TTS model
   whisperModel: string;          // Whisper model for ASR
   
@@ -70,6 +76,10 @@ export interface TTSWebUIConfig {
   
   applyRegex: boolean;
   customRegex?: string;
+  
+  // OmniVoice-specific settings
+  voiceDesign?: string;           // Voice design description (e.g., "young female, warm tone")
+  instruct?: string;              // Style instruction (e.g., "speak slowly")
 }
 
 /**
@@ -139,6 +149,7 @@ export const DEFAULT_CHARACTER_VOICE_SETTINGS: CharacterVoiceSettings = {
 export const DEFAULT_TTS_WEBUI_CONFIG: TTSWebUIConfig = {
   enabled: false,
   autoGeneration: false,
+  provider: 'tts-webui',
   baseUrl: 'http://localhost:7778',
   model: 'multilingual',
   whisperModel: 'whisper-large-v3',
@@ -152,4 +163,6 @@ export const DEFAULT_TTS_WEBUI_CONFIG: TTSWebUIConfig = {
   generateNarrations: true,
   generatePlainText: true,
   applyRegex: false,
+  voiceDesign: '',
+  instruct: '',
 };

@@ -109,6 +109,16 @@ export interface ToolExecutionResult {
     completionDescription?: string;
     peticionKey?: string;
   };
+  /** Special result for stat modification tools — syncs to client-side store */
+  statActivation?: {
+    characterId: string;
+    attributeKey: string;
+    attributeName: string;
+    attributeType: 'number' | 'keyword' | 'text';
+    oldValue: number | string | undefined;
+    newValue: number | string;
+    reason: string;
+  };
   /** Special result for memory tools — syncs to client-side Character Memory */
   memoryActivation?: {
     type: 'save_memory' | 'update_relationship' | 'save_note' | 'delete_memory';

@@ -27,6 +27,18 @@
     "soundListSuffix": "- reglas",
     "globalMute": true
   },
+  "comicSound": {
+    "enabled": true,
+    "maxEffects": 5,
+    "duration": 880,
+    "minScale": 0.7,
+    "maxScale": 2.1,
+    "allowedTemplates": [
+      "wail",
+      "tall",
+      "vertical"
+    ]
+  },
   "backgroundTriggers": {
     "enabled": true,
     "globalCooldown": 0,
@@ -40,9 +52,9 @@
   },
   "chatLayout": {
     "novelMode": true,
-    "chatWidth": 41.94444444444444,
+    "chatWidth": 71.42243830319572,
     "chatHeight": 39.053497942386834,
-    "chatX": 73.84920634920634,
+    "chatX": 47.23712856005588,
     "chatY": 80.47325102880659,
     "chatOpacity": 0.95,
     "blurBackground": false,
@@ -186,13 +198,5 @@
       "manage_quest",
       "manage_solicitud"
     ]
-  },
-  "comicSound": {
-    "enabled": true,
-    "maxEffects": 5,
-    "duration": 880,
-    "minScale": 0.7,
-    "maxScale": 2.1,
-    "allowedTemplates": []
   }
 }

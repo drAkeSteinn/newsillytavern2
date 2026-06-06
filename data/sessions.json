@@ -1978,25 +1978,926 @@
       }
     ],
     "createdAt": "2026-06-03T22:59:56.431Z",
-    "updatedAt": "2026-06-04T10:29:56.194Z",
+    "updatedAt": "2026-06-05T19:52:59.961Z",
     "sessionStats": {
       "characterStats": {
         "a736edfc-c3df-4218-afb4-969ef530543c": {
           "attributeValues": {
-            "lujuria": 45,
+            "lujuria": 100,
             "exigencia": 75,
             "adiccion": 0,
             "hentaistyle": 100,
             "sensibilidad_pezones": 15
           },
           "lastUpdated": {
-            "lujuria": 1780554058909,
+            "lujuria": 1780689179950,
             "exigencia": 1780554058909,
             "adiccion": 1780554058909,
             "hentaistyle": 1780554058909,
             "sensibilidad_pezones": 1780554058909
           },
-          "changeLog": []
+          "changeLog": [
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780683073955
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780683133954
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780683193960
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780683253960
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780683313968
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780683373958
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780683433952
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780683493961
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780683553950
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780683613954
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780683673967
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780683733957
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780683793965
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780683853960
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780683913966
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780683973959
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780684033957
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780684093966
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780684153958
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780684213957
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780684273967
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780684333963
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780684393972
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780684453953
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780684513961
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780684573965
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780684633957
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780684693963
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780684753956
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780684810615
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780684870616
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780684930948
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780684993952
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780685053955
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780685113960
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780685173961
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780685233958
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780685293953
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780685353958
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780685413960
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780685473956
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780685533957
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780685593960
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780685653952
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780685713958
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780685773959
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780685833958
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780685893965
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780685953968
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780686013955
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780686073961
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780686133964
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780686193960
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780686253955
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780686313962
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780686373960
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780686430617
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780686507959
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780686567957
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780686627951
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780686687958
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780686747952
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780686807948
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780686913948
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780686973964
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780687033957
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780687093967
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780687153963
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780687213956
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780687287822
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780687347823
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780687407948
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780687513957
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780687587823
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780687647811
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780687707811
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780687767822
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780687827811
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780687887811
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780687938482
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780687987920
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780688067811
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780688127811
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780688218992
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780688278990
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780688338992
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780688398986
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780688458991
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780688518991
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780688578990
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780688638992
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780688698989
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780688758993
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780688818993
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780688878993
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780688938993
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780688998993
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780689058993
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780689118992
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1780689179950
+            }
+          ]
         },
         "__user__": {
           "attributeValues": {
@@ -2031,7 +2932,9 @@
         "lastModified": 1780554058909
       },
       "initialized": true,
-      "lastModified": 1780554058909
+      "lastModified": 1780689179961,
+      "lastTimerUpdate": 1780689122324,
+      "keywordCycleIndex": {}
     },
     "sessionQuests": [],
     "turnCount": 0,

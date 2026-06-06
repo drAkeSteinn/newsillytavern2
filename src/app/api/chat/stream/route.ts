@@ -202,6 +202,24 @@ async function executeToolCallsAndContinue(
       }));
     }
 
+    // Check for stat modification from modify_stat tool and send SSE event
+    if (toolResult.statActivation) {
+      const stat = toolResult.statActivation;
+      console.log(`[Tools] Stat activation from ${tc.name}:`, stat.attributeKey, stat.oldValue, '→', stat.newValue);
+      
+      controller.enqueue(createSSEJSON({
+        type: 'stat_activation',
+        toolName: tc.name,
+        characterId: stat.characterId,
+        attributeKey: stat.attributeKey,
+        attributeName: stat.attributeName,
+        attributeType: stat.attributeType,
+        oldValue: stat.oldValue,
+        newValue: stat.newValue,
+        reason: stat.reason,
+      }));
+    }
+
     // Check for solicitud activation/completion and send SSE event
     if (toolResult.solicitudActivation) {
       const sol = toolResult.solicitudActivation;
