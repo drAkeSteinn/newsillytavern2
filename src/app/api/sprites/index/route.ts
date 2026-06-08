@@ -6,7 +6,7 @@ const SPRITES_DIR = path.join(process.cwd(), 'public', 'sprites');
 const METADATA_FILENAME = 'metadata.json';
 
 // Supported sprite formats
-const ALL_SPRITE_EXTENSIONS = /\.(png|jpg|jpeg|webp|gif|webm|apng)$/i;
+const ALL_SPRITE_EXTENSIONS = /\.(png|jpg|jpeg|webp|gif|webm|apng|mp4|mov|avi|mkv|ogv)$/i;
 
 interface SpriteIndexEntry {
   label: string;

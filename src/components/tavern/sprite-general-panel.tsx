@@ -25,6 +25,7 @@ import {
   Edit2,
   Check,
   X,
+  Pencil,
 } from 'lucide-react';
 import { useTavernStore } from '@/store/tavern-store';
 import { useToast } from '@/hooks/use-toast';
@@ -49,6 +50,9 @@ function CollectionManager({ onCollectionSelect }: CollectionManagerProps) {
   const [editingName, setEditingName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
+  const [editingSpriteKey, setEditingSpriteKey] = useState<string | null>(null);
+  const [editingSpriteLabel, setEditingSpriteLabel] = useState('');
+  const [deletingSpriteKey, setDeletingSpriteKey] = useState<string | null>(null);
 
   // Fetch collections
   const fetchCollections = useCallback(async () => {
@@ -211,10 +215,12 @@ function CollectionManager({ onCollectionSelect }: CollectionManagerProps) {
     }
   };
 
-  // Delete sprite
-  const handleDeleteSprite = async (spriteUrl: string, spriteName: string) => {
-    if (!confirm(`¿Eliminar el sprite "${spriteName}"?`)) return;
+  // Delete sprite (also deletes the file)
+  const handleDeleteSprite = async (spriteUrl: string, spriteName: string, spriteKey: string) => {
+    const displayName = spriteName.replace(/\.[^/.]+$/, '');
+    if (!confirm(`¿Eliminar el sprite "${displayName}"?\n\nSe eliminará el archivo del servidor.`)) return;
 
+    setDeletingSpriteKey(spriteKey);
     try {
       const response = await fetch(`/api/sprites/manage?url=${encodeURIComponent(spriteUrl)}`, {
         method: 'DELETE',
@@ -225,7 +231,7 @@ function CollectionManager({ onCollectionSelect }: CollectionManagerProps) {
         await fetchCollections();
         toast({
           title: 'Sprite eliminado',
-          description: `El sprite "${spriteName}" ha sido eliminado`,
+          description: `El sprite "${displayName}" y su archivo han sido eliminados`,
         });
       } else {
         throw new Error(data.error);
@@ -234,6 +240,49 @@ function CollectionManager({ onCollectionSelect }: CollectionManagerProps) {
       toast({
         title: 'Error',
         description: 'No se pudo eliminar el sprite',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingSpriteKey(null);
+    }
+  };
+
+  // Rename sprite label
+  const handleRenameSpriteLabel = async (collectionName: string, filename: string, oldLabel: string, newLabel: string) => {
+    if (!newLabel.trim() || newLabel.trim() === oldLabel) {
+      setEditingSpriteKey(null);
+      setEditingSpriteLabel('');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/sprites/index', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          oldLabel,
+          newLabel: newLabel.trim(),
+          pack: collectionName,
+          filename,
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setEditingSpriteKey(null);
+        setEditingSpriteLabel('');
+        await fetchCollections();
+        toast({
+          title: 'Etiqueta actualizada',
+          description: `Sprite renombrado a "${newLabel.trim()}"`,
+        });
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'No se pudo renombrar el sprite',
         variant: 'destructive',
       });
     }
@@ -429,48 +478,104 @@ function CollectionManager({ onCollectionSelect }: CollectionManagerProps) {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 pr-2">
-                  {selectedCollection.files.map((file, index) => (
-                    <div
-                      key={`${file.name}-${index}`}
-                      className="group relative rounded border overflow-hidden bg-muted/30"
-                    >
-                      <div className="aspect-square flex items-center justify-center">
-                        {file.type === 'animation' ? (
-                          <div className="relative w-full h-full">
-                            <video
-                              src={file.url}
-                              className="w-full h-full object-cover"
-                              muted
-                              playsInline
-                              preload="metadata"
-                            />
-                            <div className="absolute bottom-1 right-1 bg-black/60 rounded p-0.5">
-                              <Film className="w-3 h-3 text-white" />
-                            </div>
-                          </div>
-                        ) : (
-                          <img
-                            src={file.url}
-                            alt={file.name}
-                            className="w-full h-full object-cover"
-                          />
-                        )}
-                      </div>
-                      <div className="p-2 bg-background/80">
-                        <p className="text-xs truncate" title={file.name}>
-                          {file.name.replace(/\.[^/.]+$/, '')}
-                        </p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute top-1 right-1 h-6 w-6 bg-destructive/80 hover:bg-destructive text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => handleDeleteSprite(file.url, file.name)}
+                  {selectedCollection.files.map((file, index) => {
+                    const spriteKey = `${selectedCollection.id}-${file.name}-${index}`;
+                    const displayLabel = file.label || file.name.replace(/\.[^/.]+$/, '');
+                    const isEditingLabel = editingSpriteKey === spriteKey;
+                    const isDeleting = deletingSpriteKey === spriteKey;
+
+                    return (
+                      <div
+                        key={spriteKey}
+                        className="group relative rounded border overflow-hidden bg-muted/30"
                       >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  ))}
+                        <div className="aspect-square flex items-center justify-center">
+                          {file.type === 'animation' ? (
+                            <div className="relative w-full h-full">
+                              <video
+                                src={file.url}
+                                className="w-full h-full object-cover"
+                                autoPlay
+                                loop
+                                muted
+                                playsInline
+                                disablePictureInPicture
+                                controls={false}
+                              />
+                              <div className="absolute bottom-1 right-1 bg-black/60 rounded p-0.5">
+                                <Film className="w-3 h-3 text-white" />
+                              </div>
+                            </div>
+                          ) : (
+                            <img
+                              src={file.url}
+                              alt={displayLabel}
+                              className="w-full h-full object-cover"
+                            />
+                          )}
+                        </div>
+                        <div className="p-2 bg-background/80 flex items-center gap-1">
+                          {isEditingLabel ? (
+                            <div className="flex items-center gap-1 flex-1 min-w-0">
+                              <Input
+                                value={editingSpriteLabel}
+                                onChange={(e) => setEditingSpriteLabel(e.target.value)}
+                                className="h-6 text-xs flex-1 min-w-0"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    handleRenameSpriteLabel(selectedCollection.name, file.name, displayLabel, editingSpriteLabel);
+                                  }
+                                  if (e.key === 'Escape') {
+                                    setEditingSpriteKey(null);
+                                    setEditingSpriteLabel('');
+                                  }
+                                }}
+                                onBlur={() => {
+                                  handleRenameSpriteLabel(selectedCollection.name, file.name, displayLabel, editingSpriteLabel);
+                                }}
+                                autoFocus
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </div>
+                          ) : (
+                            <>
+                              <p className="text-xs truncate flex-1 min-w-0" title={displayLabel}>
+                                {displayLabel}
+                              </p>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => {
+                                  setEditingSpriteKey(spriteKey);
+                                  setEditingSpriteLabel(displayLabel);
+                                }}
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                        {/* Delete button - always visible */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={cn(
+                            "absolute top-1 right-1 h-7 w-7 bg-destructive/90 hover:bg-destructive text-white transition-opacity",
+                            isDeleting ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                          )}
+                          disabled={isDeleting}
+                          onClick={() => handleDeleteSprite(file.url, file.name, spriteKey)}
+                        >
+                          {isDeleting ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-3 h-3" />
+                          )}
+                        </Button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </ScrollArea>

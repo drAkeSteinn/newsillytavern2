@@ -130,6 +130,16 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Disable font ligatures on monospace textareas and inputs.
+     Programming fonts (like Geist Mono) enable ligatures by default,
+     which causes "..." → "…", "<>" → "◇", "<=" → "≤", etc.
+     This is desirable in code editors but problematic in content textareas
+     where users need to see exactly what they type (lorebook entries,
+     character descriptions, actions, etc.). */
+  textarea.font-mono,
+  input.font-mono {
+    font-variant-ligatures: none;
+  }
 }
 
 /* Streaming cursor animation */

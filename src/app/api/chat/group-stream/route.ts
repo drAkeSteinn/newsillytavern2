@@ -352,6 +352,7 @@ async function executeGroupToolCalls(
   sessionStats?: SessionStats,
   allCharacters?: CharacterCard[],
   characterMemory?: CharacterMemory,
+  lorebooks?: Lorebook[],
 ): Promise<{ results: string; shouldContinue: boolean; questActivations: QuestActivation[]; toolsUsed: Array<{ name: string; label: string; icon: string; success: boolean }> }> {
   if (toolCalls.length === 0) {
     return { results: '', shouldContinue: false, questActivations: [], toolsUsed: [] };
@@ -393,6 +394,7 @@ async function executeGroupToolCalls(
         sessionStats,
         allCharacters,
         characterMemory,
+        lorebooks,
       },
     );
 
@@ -716,8 +718,9 @@ export async function POST(request: NextRequest) {
     // Build group-level lorebook injection plan if group has lorebooks
     let groupLorebookPlan: LorebookInjectionPlan | null = null;
     let groupLorebookAttributeKeys: Record<string, string> = {};
+    let groupLorebookEntryKeyMap: Record<string, string> = {};
     if (useGroupLorebooks && lorebooks.length > 0) {
-      const { plan, lorebookAttributeKeys: _groupAttrKeys } = buildLorebookSectionForPrompt(
+      const { plan, lorebookAttributeKeys: _groupAttrKeys, lorebookEntryKeyMap: _groupEntryKeyMap } = buildLorebookSectionForPrompt(
         messages,
         lorebooks,
         {
@@ -730,6 +733,7 @@ export async function POST(request: NextRequest) {
       );
       groupLorebookPlan = plan;
       groupLorebookAttributeKeys = _groupAttrKeys || {};
+      groupLorebookEntryKeyMap = _groupEntryKeyMap || {};
     }
 
     // Note: HUD context section is built inside the character loop
@@ -798,6 +802,7 @@ export async function POST(request: NextRequest) {
             let lorebookSectionForCharacter: LorebookInjectionPlan | null = groupLorebookPlan;
             // Use group-level attribute keys by default, override with character-level if available
             let lorebookAttributeKeys: Record<string, string> = groupLorebookAttributeKeys;
+            let lorebookEntryKeyMap: Record<string, string> = groupLorebookEntryKeyMap;
 
             // ========================================
             // Embeddings Context Retrieval (per-character)
@@ -880,7 +885,7 @@ export async function POST(request: NextRequest) {
                 );
 
                 if (characterLorebooksFiltered.length > 0) {
-                  const { plan, lorebookAttributeKeys: charAttrKeys } = buildLorebookSectionForPrompt(
+                  const { plan, lorebookAttributeKeys: charAttrKeys, lorebookEntryKeyMap: charEntryKeyMap } = buildLorebookSectionForPrompt(
                     messages,
                     characterLorebooksFiltered,
                     {
@@ -893,6 +898,7 @@ export async function POST(request: NextRequest) {
                   );
                   lorebookSectionForCharacter = plan;
                   if (charAttrKeys) lorebookAttributeKeys = charAttrKeys;
+                  if (charEntryKeyMap) lorebookEntryKeyMap = charEntryKeyMap;
                 }
               } else {
                 lorebookSectionForCharacter = null;
@@ -919,7 +925,8 @@ export async function POST(request: NextRequest) {
               sessionQuests,  // Pass session quests for {{activeQuests}} key resolution
               questSettings,   // Pass quest settings for {{activeQuests}} key resolution
               lorebookAttributeKeys,
-              inventoryData     // Pass inventory data for Inventory V2 section
+              inventoryData,     // Pass inventory data for Inventory V2 section
+              lorebookEntryKeyMap // Pass lorebook entry key map for {{entryKey}} resolution
             );
 
             // Build key resolution context for this character
@@ -1208,7 +1215,8 @@ export async function POST(request: NextRequest) {
                       const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
                         zaiAccumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id],
+                        lorebooks
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
@@ -1280,7 +1288,8 @@ export async function POST(request: NextRequest) {
                       const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id],
+                        lorebooks
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
@@ -1330,7 +1339,8 @@ export async function POST(request: NextRequest) {
                         const { results: displayMessages, shouldContinue, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
                           nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id],
+                        lorebooks
                       );
                         if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
                         if (shouldContinue) {
@@ -1412,7 +1422,8 @@ export async function POST(request: NextRequest) {
                         const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
                           toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id],
+                        lorebooks
                       );
                         allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
@@ -1456,7 +1467,8 @@ export async function POST(request: NextRequest) {
                         const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
                           nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id],
+                        lorebooks
                       );
                         allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
@@ -1535,7 +1547,8 @@ export async function POST(request: NextRequest) {
                       const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id],
+                        lorebooks
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
@@ -1582,7 +1595,8 @@ export async function POST(request: NextRequest) {
                         const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
                           nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id],
+                        lorebooks
                       );
                         allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
@@ -1672,7 +1686,8 @@ export async function POST(request: NextRequest) {
                       const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id],
+                        lorebooks
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
@@ -1716,7 +1731,8 @@ export async function POST(request: NextRequest) {
                             rawArguments: JSON.stringify(tc.arguments)
                           })), charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id],
+                        lorebooks
                       );
                         allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
@@ -1791,7 +1807,8 @@ export async function POST(request: NextRequest) {
                       const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
                         accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
                         sessionQuests, questTemplates,
-                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id]
+                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id],
+                        lorebooks
                       );
                       allQuestActivations = [...allQuestActivations, ...questActivations];
                       if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];

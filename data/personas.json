@@ -6,7 +6,7 @@
     "avatar": "",
     "isActive": true,
     "createdAt": "2026-03-01T21:37:31.485Z",
-    "updatedAt": "2026-06-01T06:57:22.868Z",
+    "updatedAt": "2026-06-06T18:04:34.938Z",
     "statsConfig": {
       "enabled": true,
       "attributes": [
@@ -101,7 +101,8 @@
       {
         "itemId": "dildo-002",
         "quantity": 1,
-        "equipped": false
+        "equipped": true,
+        "equippedSlotId": "main_hand"
       },
       {
         "itemId": "cum-002",
@@ -126,10 +127,11 @@
       {
         "itemId": "plug-001",
         "quantity": 1,
-        "equipped": false
+        "equipped": true,
+        "equippedSlotId": "slot-1780243589021-wpam34n"
       }
     ],
-    "currency": 888,
+    "currency": 112,
     "currencyName": "Puntos",
     "currencyIcon": "💰"
   }

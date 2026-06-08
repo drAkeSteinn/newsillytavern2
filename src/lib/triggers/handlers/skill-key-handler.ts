@@ -8,7 +8,7 @@
 import type { DetectedKey } from '../key-detector';
 import type { KeyHandler, TriggerMatch, TriggerMatchResult } from '../types';
 import type { TriggerContext } from '../trigger-bus';
-import type { CharacterStatsConfig, SessionStats, SkillDefinition } from '@/types';
+import type { CharacterStatsConfig, SessionStats, SkillDefinition, Lorebook } from '@/types';
 import type { UpdateCharacterStatResult, ThresholdReachedInfo } from '@/store/slices/statsSlice';
 import { normalizeKey, keyMatches } from '../key-detector';
 import {
@@ -19,6 +19,8 @@ import {
   type SkillActivationHandlerState,
   type SkillActivationTriggerContext,
 } from './skill-activation-handler';
+import { resolveAllKeys, buildKeyResolutionContext } from '@/lib/key-resolver';
+import { buildLorebookEntryKeyMap } from '@/lib/lorebook';
 
 // ============================================
 // Types
@@ -30,6 +32,8 @@ export interface SkillKeyHandlerContext extends TriggerContext {
   statsConfig: CharacterStatsConfig | undefined;
   sessionStats: SessionStats | undefined;
   sessionId: string;
+  /** Lorebooks for resolving {{key}} in completedDescription */
+  lorebooks?: Lorebook[];
   storeActions?: {
     updateCharacterStat: (
       sessionId: string,
@@ -265,9 +269,30 @@ export class SkillKeyHandler implements KeyHandler {
     
     // Save ultima_accion_realizada for {{eventos}} key
     // Use completedDescription (fallback to description) for the event text
+    // Resolve lorebook {{key}} patterns in the completed description before saving
     if (skillContext.storeActions?.updateSessionEvent) {
       const characterName = skillContext.characterName || skillContext.characterId;
-      const completedDesc = skillCompletedDescription || skillDescription || '';
+      let completedDesc = skillCompletedDescription || skillDescription || '';
+
+      // Resolve lorebook entry keys in the completed description
+      // This handles {{key}} patterns that reference lorebook entries
+      if (completedDesc && skillContext.lorebooks && skillContext.lorebooks.length > 0) {
+        const lorebookEntryKeys = buildLorebookEntryKeyMap(skillContext.lorebooks).keys;
+        const keyContext = buildKeyResolutionContext(
+          { id: skillContext.characterId, name: characterName } as import('@/types').CharacterCard,
+          undefined, // userName
+          undefined, // persona
+          undefined, // resolvedStats
+          skillContext.sessionStats,
+          undefined, undefined, undefined, undefined, undefined, undefined,
+          undefined, // outletSections
+          undefined, // lorebookAttributeKeys
+          undefined, // inventoryData
+          lorebookEntryKeys
+        );
+        completedDesc = resolveAllKeys(completedDesc, keyContext);
+      }
+
       skillContext.storeActions.updateSessionEvent(
         skillContext.sessionId,
         'ultima_accion_realizada',
@@ -320,7 +345,7 @@ export class SkillKeyHandler implements KeyHandler {
         if (result.thresholdsReached.length > 0) {
           allThresholdsReached.push(...result.thresholdsReached);
           for (const threshold of result.thresholdsReached) {
-            console.log(`[SkillKeyHandler] Threshold reached: ${threshold.attributeName} ${threshold.thresholdType} (${threshold.thresholdValue}), ${threshold.rewards.length} effects to execute`);
+            console.log(`[SkillKeyHandler] Threshold reached: ${threshold.attributeName} ${threshold.thresholdType}${threshold.thresholdValue !== undefined ? ` (${threshold.thresholdValue})` : threshold.effectName ? ` "${threshold.effectName}"` : ''}, ${threshold.rewards.length} effects to execute`);
           }
         }
       }

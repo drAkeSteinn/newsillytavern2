@@ -12,10 +12,13 @@ import type {
   QuestRewardObjective,
   QuestRewardSolicitud,
   QuestRewardTargetAttribute,
+  QuestRewardConditionalSpriteCollection,
+  QuestRewardActivateSpritePack,
   QuestRewardCondition,
   AttributeAction,
   TriggerCategory,
   TriggerTargetMode,
+  TriggerFallbackMode,
 } from '@/types';
 import { generateId } from '@/lib/utils';
 
@@ -175,6 +178,81 @@ export function createCurrencyReward(
     currency: {
       amount,
     },
+    condition: options?.condition,
+  };
+}
+
+/**
+ * Crea una recompensa de activate_sprite_pack
+ * Activa un Sprite Pack directamente. Si el pack tiene conditionalMode,
+ * evalúa las condiciones de cada sprite para seleccionar el correcto.
+ */
+export function createActivateSpritePackReward(
+  packId: string,
+  options?: {
+    id?: string;
+    behavior?: 'principal' | 'random' | 'list';
+    principalSpriteId?: string;
+    targetMode?: TriggerTargetMode;
+    targetCharacterId?: string;
+    returnToIdleMs?: number;
+    fallbackMode?: TriggerFallbackMode;
+    condition?: QuestRewardCondition;
+  }
+): QuestReward {
+  const config: QuestRewardActivateSpritePack = {
+    packId,
+    behavior: options?.behavior,
+    principalSpriteId: options?.principalSpriteId,
+    targetMode: options?.targetMode || 'self',
+    targetCharacterId: options?.targetCharacterId,
+    returnToIdleMs: options?.returnToIdleMs,
+    fallbackMode: options?.fallbackMode,
+  };
+
+  return {
+    id: options?.id || generateId(),
+    type: 'activate_sprite_pack',
+    activate_sprite_pack: config,
+    condition: options?.condition,
+  };
+}
+
+/**
+ * Crea una recompensa de conditional_sprite_collection
+ * Activa una TriggerCollection en modo condicional, evaluando atributos
+ * para determinar qué sprite mostrar.
+ */
+export function createConditionalSpriteCollectionReward(
+  collectionId: string,
+  targetMode: TriggerTargetMode = 'self',
+  options?: {
+    id?: string;
+    targetCharacterId?: string;
+    returnToIdleMs?: number;
+    fallbackMode?: TriggerFallbackMode;
+    condition?: QuestRewardCondition;
+  }
+): QuestReward {
+  const config: QuestRewardConditionalSpriteCollection = {
+    collectionId,
+    targetMode,
+  };
+
+  if (options?.targetCharacterId) {
+    config.targetCharacterId = options.targetCharacterId;
+  }
+  if (options?.returnToIdleMs !== undefined) {
+    config.returnToIdleMs = options.returnToIdleMs;
+  }
+  if (options?.fallbackMode) {
+    config.fallbackMode = options.fallbackMode;
+  }
+
+  return {
+    id: options?.id || generateId(),
+    type: 'conditional_sprite_collection',
+    conditional_sprite_collection: config,
     condition: options?.condition,
   };
 }
@@ -372,6 +450,41 @@ export function validateReward(reward: QuestReward): { valid: boolean; errors: s
     }
   }
 
+  if (reward.type === 'conditional_sprite_collection') {
+    if (!reward.conditional_sprite_collection) {
+      errors.push('Conditional sprite collection reward must have conditional_sprite_collection config');
+    } else {
+      if (!reward.conditional_sprite_collection.collectionId) {
+        errors.push('Conditional sprite collection reward must have conditional_sprite_collection.collectionId');
+      }
+      if (!reward.conditional_sprite_collection.targetMode) {
+        errors.push('Conditional sprite collection reward must have conditional_sprite_collection.targetMode');
+      }
+      if (!['self', 'all', 'target'].includes(reward.conditional_sprite_collection.targetMode)) {
+        errors.push('Conditional sprite collection reward must have valid targetMode (self, all, target)');
+      }
+      if (reward.conditional_sprite_collection.targetMode === 'target' && !reward.conditional_sprite_collection.targetCharacterId) {
+        errors.push('Conditional sprite collection reward with targetMode "target" must have targetCharacterId');
+      }
+    }
+  }
+
+  if (reward.type === 'activate_sprite_pack') {
+    if (!reward.activate_sprite_pack) {
+      errors.push('Activate sprite pack reward must have activate_sprite_pack config');
+    } else {
+      if (!reward.activate_sprite_pack.packId) {
+        errors.push('Activate sprite pack reward must have packId');
+      }
+      if (!reward.activate_sprite_pack.targetMode) {
+        errors.push('Activate sprite pack reward must have targetMode');
+      }
+      if (reward.activate_sprite_pack.targetMode === 'target' && !reward.activate_sprite_pack.targetCharacterId) {
+        errors.push('Activate sprite pack reward with target mode must have targetCharacterId');
+      }
+    }
+  }
+
   return {
     valid: errors.length === 0,
     errors,
@@ -486,6 +599,34 @@ export function describeReward(reward: QuestReward): string {
     return `💰 Divisa: ${curr.amount > 0 ? '+' : ''}${curr.amount}`;
   }
 
+  if (reward.type === 'conditional_sprite_collection') {
+    const csc = reward.conditional_sprite_collection;
+    if (!csc) return 'Sprite condicional inválido';
+    const targetLabels: Record<string, string> = {
+      self: '',
+      all: ' (todos)',
+      target: ' (objetivo)',
+    };
+    const targetLabel = targetLabels[csc.targetMode] || '';
+    const fallback = csc.returnToIdleMs && csc.returnToIdleMs > 0
+      ? ` [${csc.returnToIdleMs}ms]`
+      : ' [persistente]';
+    return `🎨 Sprite Condicional: ${csc.collectionId}${targetLabel}${fallback}`;
+  }
+
+  if (reward.type === 'activate_sprite_pack' && reward.activate_sprite_pack) {
+    const asp = reward.activate_sprite_pack;
+    const mode = asp.targetMode || 'self';
+    if (mode === 'target') {
+      const targetLabel = asp.targetCharacterId === '__user__' ? '👤 Persona' : `@${asp.targetCharacterId || '?'}`;
+      const packLabel = asp.targetPackId ? ` → ${asp.targetPackId}` : '';
+      return `🎨 Sprite Pack → ${targetLabel}${packLabel}`;
+    }
+    const fallback = asp.fallbackPackId ? ` (fallback: ${asp.fallbackPackId})` : '';
+    const persistLabel = asp.returnToIdleMs && asp.returnToIdleMs > 0 ? ` [${asp.returnToIdleMs}ms]` : '';
+    return `🎨 Sprite Pack: ${asp.packId || 'sin pack'}${fallback}${persistLabel}`;
+  }
+
   return 'Recompensa desconocida';
 }
 
@@ -522,6 +663,12 @@ export function normalizeReward(reward: QuestReward): QuestReward {
     return reward;
   }
   if (reward.type === 'currency' && reward.currency) {
+    return reward;
+  }
+  if (reward.type === 'conditional_sprite_collection' && reward.conditional_sprite_collection) {
+    return reward;
+  }
+  if (reward.type === 'activate_sprite_pack' && reward.activate_sprite_pack) {
     return reward;
   }
 
@@ -582,6 +729,36 @@ export function normalizeReward(reward: QuestReward): QuestReward {
         key: reward.target_attribute?.key || '',
         value: reward.target_attribute?.value ?? 0,
         action: reward.target_attribute?.action || 'set',
+      },
+    };
+  }
+
+  // Handle conditional_sprite_collection type
+  if (reward.type === 'conditional_sprite_collection') {
+    return {
+      ...reward,
+      conditional_sprite_collection: {
+        collectionId: reward.conditional_sprite_collection?.collectionId || '',
+        targetMode: reward.conditional_sprite_collection?.targetMode || 'self',
+        targetCharacterId: reward.conditional_sprite_collection?.targetCharacterId,
+        returnToIdleMs: reward.conditional_sprite_collection?.returnToIdleMs,
+        fallbackMode: reward.conditional_sprite_collection?.fallbackMode,
+      },
+    };
+  }
+
+  // Handle activate_sprite_pack type
+  if (reward.type === 'activate_sprite_pack') {
+    return {
+      ...reward,
+      activate_sprite_pack: {
+        packId: reward.activate_sprite_pack?.packId || '',
+        behavior: reward.activate_sprite_pack?.behavior,
+        principalSpriteId: reward.activate_sprite_pack?.principalSpriteId,
+        targetMode: reward.activate_sprite_pack?.targetMode || 'self',
+        targetCharacterId: reward.activate_sprite_pack?.targetCharacterId,
+        returnToIdleMs: reward.activate_sprite_pack?.returnToIdleMs,
+        fallbackMode: reward.activate_sprite_pack?.fallbackMode,
       },
     };
   }

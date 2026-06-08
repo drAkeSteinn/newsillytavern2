@@ -21,10 +21,11 @@ import {
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import type { SpriteState, CharacterCard, SpritePackV2, StateCollectionV2 } from '@/types';
+import type { SpriteState, CharacterCard, SpritePackV2, StateCollectionV2, SessionStats } from '@/types';
 import { SpritePreview } from './sprite-preview';
 import { useTavernStore } from '@/store';
 import { createDefaultCharacterState } from '@/store/slices/spriteSlice';
+import { evaluatePackConditionalSprites } from '@/lib/sprites/condition-evaluator';
 
 interface SpriteSettings {
   x: number;        // percentage (0-100) - horizontal position
@@ -81,34 +82,31 @@ function advanceRotationIndex(characterId: string, state: SpriteState): number {
   return next;
 }
 
-// Get sprite from State Collection V2 (uses sprite packs)
-function getSpriteFromStateCollectionV2(
-  state: SpriteState,
-  stateCollectionsV2: StateCollectionV2[],
-  spritePacksV2: SpritePackV2[],
-  characterId: string
+// Helper: resolve a sprite from a pack given behavior config
+function resolveSpriteFromPack(
+  pack: SpritePackV2,
+  behavior: 'principal' | 'random' | 'list',
+  principalSpriteId: string | undefined,
+  characterId: string,
+  state: SpriteState
 ): { url: string | null; label: string | null } {
-  const stateCollection = stateCollectionsV2.find(c => c.state === state);
-  if (!stateCollection) return { url: null, label: null };
-  
-  const pack = spritePacksV2.find(p => p.id === stateCollection.packId);
-  if (!pack || pack.sprites.length === 0) return { url: null, label: null };
-  
-  switch (stateCollection.behavior) {
+  if (pack.sprites.length === 0) return { url: null, label: null };
+
+  switch (behavior) {
     case 'principal':
       // Use principal sprite if specified, otherwise first sprite
-      if (stateCollection.principalSpriteId) {
-        const principal = pack.sprites.find(s => s.id === stateCollection.principalSpriteId);
+      if (principalSpriteId) {
+        const principal = pack.sprites.find(s => s.id === principalSpriteId);
         if (principal) return { url: principal.url, label: principal.label };
       }
       return { url: pack.sprites[0].url, label: pack.sprites[0].label };
-    
+
     case 'random':
       // Random selection
       const randomIndex = Math.floor(Math.random() * pack.sprites.length);
       const randomSprite = pack.sprites[randomIndex];
       return { url: randomSprite.url, label: randomSprite.label };
-    
+
     case 'list': {
       // Rotate through sprites using the rotation tracker
       const index = getRotationIndex(characterId, state);
@@ -116,10 +114,68 @@ function getSpriteFromStateCollectionV2(
       const listSprite = pack.sprites[safeIndex];
       return { url: listSprite.url, label: listSprite.label };
     }
-    
+
     default:
       return { url: pack.sprites[0].url, label: pack.sprites[0].label };
   }
+}
+
+// Get sprite from State Collection V2 (uses sprite packs)
+// Now supports conditional mode at the pack level
+function getSpriteFromStateCollectionV2(
+  state: SpriteState,
+  stateCollectionsV2: StateCollectionV2[],
+  spritePacksV2: SpritePackV2[],
+  characterId: string,
+  sessionStats?: SessionStats | null
+): { url: string | null; label: string | null } {
+  const stateCollection = stateCollectionsV2.find(c => c.state === state);
+  if (!stateCollection) return { url: null, label: null };
+
+  const pack = spritePacksV2.find(p => p.id === stateCollection.packId);
+  if (!pack || pack.sprites.length === 0) return { url: null, label: null };
+
+  // ============================================
+  // Evaluate pack-level conditional sprites (if pack has conditionalMode)
+  // ============================================
+  if (pack.conditionalMode) {
+    const winningSprite = evaluatePackConditionalSprites(
+      pack.sprites,
+      sessionStats,
+      characterId
+    );
+
+    if (winningSprite) {
+      return { url: winningSprite.url, label: winningSprite.label };
+    }
+
+    // No conditional sprite matched - try defaultSpriteId
+    if (pack.defaultSpriteId) {
+      const defaultSprite = pack.sprites.find(s => s.id === pack.defaultSpriteId);
+      if (defaultSprite) {
+        return { url: defaultSprite.url, label: defaultSprite.label };
+      }
+    }
+
+    // Also check for sprites marked as isDefault
+    const markedDefault = pack.sprites.find(s => s.isDefault);
+    if (markedDefault) {
+      return { url: markedDefault.url, label: markedDefault.label };
+    }
+
+    // Fall through to behavior-based resolution
+  }
+
+  // ============================================
+  // Default: use the state collection's behavior
+  // ============================================
+  return resolveSpriteFromPack(
+    pack,
+    stateCollection.behavior,
+    stateCollection.principalSpriteId,
+    characterId,
+    state
+  );
 }
 
 // Get the appropriate sprite URL based on state and config
@@ -128,7 +184,8 @@ function getSpriteUrl(
   state: SpriteState,
   avatarUrl?: string,
   character?: CharacterCard,
-  characterId?: string
+  characterId?: string,
+  sessionStats?: SessionStats | null
 ): { url: string; label: string | null } {
   const charId = characterId || '';
   // Try V2 state collections (new system)
@@ -141,7 +198,8 @@ function getSpriteUrl(
       state,
       character.stateCollectionsV2,
       character.spritePacksV2,
-      charId
+      charId,
+      sessionStats
     );
     if (v2Result.url) {
       return v2Result;
@@ -155,7 +213,8 @@ function getSpriteUrl(
         'idle',
         character!.stateCollectionsV2,
         character!.spritePacksV2,
-        charId
+        charId,
+        sessionStats
       );
       if (v2IdleResult.url) {
         return v2IdleResult;
@@ -250,6 +309,14 @@ export function CharacterSprite({
   const executeReturnToIdleForCharacter = useTavernStore((state) => state.executeReturnToIdleForCharacter);
   const clearSpriteLock = useTavernStore((state) => state.clearSpriteLock);
   const setSpriteStateForCharacter = useTavernStore((state) => state.setSpriteStateForCharacter);
+
+  // Get sessionStats from the active session for conditional sprite evaluation
+  const sessionStats = useTavernStore((state) => {
+    const activeSessionId = state.activeSessionId;
+    if (!activeSessionId) return null;
+    const session = state.sessions.find(s => s.id === activeSessionId);
+    return session?.sessionStats ?? null;
+  });
   
   // Get per-character sprite state from the unified store
   // This is now reactive because characterSpriteStates is a proper selector
@@ -362,7 +429,8 @@ export function CharacterSprite({
         effectiveSpriteState,
         avatarUrl,
         character,
-        characterId
+        characterId,
+        sessionStats
       );
   const currentSpriteUrl = spriteResult.url;
   const currentSpriteLabel = spriteResult.label;

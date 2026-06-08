@@ -68,6 +68,8 @@ export interface ToolContext {
   allCharacters?: CharacterCard[];
   /** Character Memory data from Zustand store (events, relationships, notes) */
   characterMemory?: import('@/types').CharacterMemory;
+  /** Lorebooks for resolving {{key}} in action descriptions and completion descriptions */
+  lorebooks?: import('@/types').Lorebook[];
 }
 
 /** Result from tool execution */

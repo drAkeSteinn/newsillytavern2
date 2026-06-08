@@ -158,6 +158,12 @@ export interface SpritePackEntryV2 {
   tags?: string[];           // For filtering/searching
   isAnimated?: boolean;      // Is GIF/WebM
 
+  // Conditional mode fields (when pack.conditionalMode is true)
+  conditionalEnabled?: boolean;      // Whether this sprite has conditions
+  priority?: number;                 // Priority for condition evaluation (higher = wins)
+  conditions?: StatRequirement[];    // Conditions for when this sprite should show
+  isDefault?: boolean;              // This sprite is the fallback when no conditions match
+
   // Timeline data for sounds (optional)
   // When configured, sounds will play when this sprite is activated
   timeline?: SpriteTimelineData;
@@ -172,6 +178,10 @@ export interface SpritePackV2 {
   name: string;
   description?: string;
   sprites: SpritePackEntryV2[];
+  // Conditional mode: pack uses attribute-driven sprite selection
+  conditionalMode?: boolean;         // When true, sprites are selected by conditions+priority
+  defaultSpriteId?: string;          // Fallback sprite ID when no conditions match
+
   createdAt: string;
   updatedAt: string;
 }
@@ -204,6 +214,59 @@ export interface StateCollectionV2 {
   
   // Current index for 'list' mode rotation
   currentIndex?: number;
+
+  // REMOVED: conditionalVariants - conditions are now defined at the SpritePack level
+}
+
+// ============================================
+// CONDITIONAL STATE VARIANT
+// ============================================
+
+/**
+ * @deprecated Conditions are now defined at the SpritePack level instead of State Collections.
+ * This interface is kept for backward compatibility but should not be used in new code.
+ * Use SpritePackV2.conditionalMode + SpritePackEntryV2.conditions instead.
+ *
+ * Conditional State Variant - Attribute-driven sprite variant for a state collection.
+ *
+ * When a character has attributes (e.g., "exhaustion", "vida"), these variants
+ * allow the idle/talk/thinking sprite to change dynamically based on attribute values.
+ *
+ * Priority system (like lorebook dynamic conditions):
+ * - Higher priority wins when multiple variants match
+ * - If no variant matches, the default state collection pack is used
+ *
+ * Example:
+ *   Variant "Exhausted" → Priority 2, Condition: exhaustion >= 80 → pack_exhausted
+ *   Variant "Tired"     → Priority 1, Condition: exhaustion >= 50 → pack_tired
+ *   Variant "Normal"    → (no conditions, default pack)
+ *
+ * When exhaustion = 90: Both match, but "Exhausted" (P2) wins
+ * When exhaustion = 60: "Tired" (P1) wins
+ * When exhaustion = 30: Default pack is used
+ */
+export interface ConditionalStateVariant {
+  id: string;
+  name: string;                        // Display name: "Exhausted Idle", "Injured Idle"
+  enabled: boolean;                    // Enable/disable this variant
+
+  // Priority - Higher number = higher priority (wins when multiple match)
+  priority: number;                    // Default: 0
+
+  // Conditions - ALL must match (AND logic)
+  // Reuses StatRequirement which supports:
+  //   - Operators: <, <=, >, >=, ==, !=, between, contains, not_contains
+  //   - Cross-character: targetCharacterId for other characters' or persona's attributes
+  conditions: StatRequirement[];
+
+  // Which pack to use when this variant is active
+  packId: string;                      // References SpritePackV2.id
+
+  // Behavior when selecting sprite from the pack
+  behavior: 'principal' | 'random' | 'list';
+  principalSpriteId?: string;          // For 'principal' mode
+  spriteOrder?: string[];              // For 'list' mode custom ordering
+  excludedSpriteIds?: string[];        // Sprites to exclude
 }
 
 // ============================================
@@ -283,6 +346,42 @@ export interface SpriteTriggerConfig {
   enabled: boolean;
 }
 
+// ============================================
+// CONDITIONAL SPRITE ENTRY (for Trigger Collections)
+// ============================================
+
+/**
+ * Conditional Sprite Entry - Attribute-driven sprite within a trigger collection.
+ *
+ * Used when a Trigger Collection is in conditional mode. Instead of matching keys
+ * to select a sprite, it evaluates attribute conditions with priority.
+ *
+ * When a Skill/Action reward activates a conditional sprite collection,
+ * the entries are evaluated by priority (highest first). The first entry
+ * whose conditions all match determines the sprite to display.
+ * If no entry matches, the default sprite (principalSpriteId) is used.
+ *
+ * Example (Trigger Collection "Attack Faces"):
+ *   Entry "Desperate"  → Priority 2, Condition: vida <= 20  → attack_desperate.webp
+ *   Entry "Empowered"  → Priority 1, Condition: mana >= 50  → attack_empowered.webp
+ *   Default             → attack_normal.webp
+ */
+export interface ConditionalSpriteEntry {
+  id: string;
+  name: string;                        // Display name: "Desperate Attack", "Low HP Face"
+  enabled: boolean;                    // Enable/disable this entry
+
+  // Priority - Higher number = higher priority (wins when multiple match)
+  priority: number;                    // Default: 0
+
+  // Conditions - ALL must match (AND logic)
+  // Reuses StatRequirement for cross-character and all operator support
+  conditions: StatRequirement[];
+
+  // Which sprite from the pack to show when this entry matches
+  spriteId: string;                    // References SpritePackEntryV2.id
+}
+
 /**
  * Trigger Collection - Collection of triggers using a sprite pack
  */
@@ -322,6 +421,16 @@ export interface TriggerCollection {
 
   // Individual sprite configurations
   spriteConfigs: Record<string, SpriteTriggerConfig>;
+
+  // ============================================
+  // CONDITIONAL MODE - Attribute-driven sprite selection
+  // ============================================
+  // When enabled, this collection can be activated by a
+  // conditional_sprite_collection reward (from Skills/Actions).
+  // Instead of key-based selection, it evaluates conditions + priority.
+  conditionalMode?: boolean;                         // Enable conditional mode
+  conditionalEntries?: ConditionalSpriteEntry[];      // Attribute-conditioned sprites
+  defaultSpriteId?: string;                          // Fallback when no condition matches
 
   // Metadata
   createdAt: string;
@@ -496,6 +605,27 @@ export interface SpriteFile {
   name: string;
   url: string;
   type: 'image' | 'animation';
+  label?: string;
+  duration?: number;
+  timeline?: {
+    duration: number;
+    loop: boolean;
+    tracks: Array<{
+      id: string;
+      type: string;
+      name: string;
+      keyframes: Array<{
+        id: string;
+        time: number;
+        value: Record<string, unknown>;
+        interpolation: string;
+      }>;
+      enabled: boolean;
+      locked: boolean;
+      muted: boolean;
+      volume: number;
+    }>;
+  };
 }
 
 // ============ Chat Types ============
@@ -2559,7 +2689,7 @@ export interface QuestObjectiveTemplate {
 // Los triggers se ejecutan a través del UnifiedTriggerExecutor,
 // que simula que el TokenDetector encontró la key.
 
-export type QuestRewardType = 'attribute' | 'trigger' | 'objective' | 'solicitud' | 'target_attribute' | 'currency';
+export type QuestRewardType = 'attribute' | 'trigger' | 'objective' | 'solicitud' | 'target_attribute' | 'currency' | 'conditional_sprite_collection' | 'activate_sprite_pack';
 
 // Target mode para grupos
 export type TriggerTargetMode = 'self' | 'all' | 'target';
@@ -2623,6 +2753,70 @@ export interface QuestRewardTargetAttribute {
   action: AttributeAction;    // Tipo de operación: set, add, subtract, etc.
 }
 
+// ============================================
+// CONDITIONAL SPRITE COLLECTION REWARD
+// ============================================
+
+/**
+ * Quest Reward: Conditional Sprite Collection
+ *
+ * Activates a Trigger Collection that is in conditional mode.
+ * Instead of a simple key-based trigger, this reward evaluates
+ * the collection's ConditionalSpriteEntries against current attribute values,
+ * selecting the sprite based on priority and conditions.
+ *
+ * Flow:
+ * 1. Find TriggerCollection by collectionId
+ * 2. If collection.conditionalMode = true:
+ *    a. Sort conditionalEntries by priority (DESC)
+ *    b. Evaluate each entry's conditions against sessionStats
+ *    c. First matching entry → use its spriteId
+ *    d. No match → use defaultSpriteId or principalSpriteId
+ * 3. Apply sprite as trigger + schedule fallback
+ */
+export interface QuestRewardConditionalSpriteCollection {
+  collectionId: string;              // TriggerCollection to activate (must have conditionalMode = true)
+  targetMode: TriggerTargetMode;     // Who receives the sprite
+  targetCharacterId?: string;        // For 'target' mode
+  returnToIdleMs?: number;           // Time before returning to idle (0 = persist)
+  fallbackMode?: TriggerFallbackMode; // What happens after trigger expires
+}
+
+// ============================================
+// ACTIVATE SPRITE PACK REWARD
+// ============================================
+
+/**
+ * Quest Reward: Activate Sprite Pack
+ *
+ * Activates a SpritePackV2 directly. If the pack has conditionalMode enabled,
+ * it evaluates each sprite's conditions (by priority) to pick the right sprite.
+ * If no conditions match, uses the defaultSpriteId or falls back to behavior.
+ *
+ * Flow:
+ * 1. Find SpritePackV2 by packId from character's spritePacksV2
+ * 2. If pack.conditionalMode = true:
+ *    a. Sort sprites with conditionalEnabled by priority (DESC)
+ *    b. Evaluate each sprite's conditions against sessionStats
+ *    c. First matching sprite → use it
+ *    d. No match → use defaultSpriteId or first sprite
+ * 3. If pack.conditionalMode = false:
+ *    a. Use behavior-based resolution (principal/random/list)
+ * 4. Apply sprite as trigger for the target character(s)
+ * 5. Schedule return to idle if returnToIdleMs > 0
+ */
+export interface QuestRewardActivateSpritePack {
+  packId: string;                      // SpritePackV2 ID to activate
+  behavior?: 'principal' | 'random' | 'list';  // Behavior override (defaults to principal)
+  principalSpriteId?: string;          // For 'principal' behavior
+  targetMode: TriggerTargetMode;       // Who receives the sprite
+  targetCharacterId?: string;          // For 'target' mode - which character to apply the pack to
+  returnToIdleMs?: number;             // Time before returning to idle (0 = persist)
+  fallbackMode?: TriggerFallbackMode;  // What happens after trigger expires
+  fallbackPackId?: string;             // Fallback sprite pack to activate when this one expires (for 'self' mode)
+  targetPackId?: string;               // Sprite pack to activate on target character (for 'target' mode)
+}
+
 // Opción para dropdown de selección de objetivos en UI
 export interface ObjectiveDropdownOption {
   questId: string;
@@ -2664,6 +2858,12 @@ export interface QuestReward {
 
   // Para type: 'currency' - recompensa de divisa del inventario
   currency?: QuestRewardCurrency;
+
+  // Para type: 'conditional_sprite_collection' - activa colección con evaluación de condiciones
+  conditional_sprite_collection?: QuestRewardConditionalSpriteCollection;
+
+  // Para type: 'activate_sprite_pack' - activa un sprite pack con evaluación condicional
+  activate_sprite_pack?: QuestRewardActivateSpritePack;
 
   // Condiciones opcionales para ejecutar el reward
   condition?: QuestRewardCondition;
@@ -3648,6 +3848,17 @@ export interface ActivationCost {
   description?: string;      // Optional description: "Cuesta 10 de maná"
 }
 
+// Threshold Effect - Flexible threshold with conditions, priority, and full reward support
+// Replaces the old onMinReached/onMaxReached binary system
+export interface ThresholdEffect {
+  id: string;
+  name: string;              // Display name: "Vida Crítica", "Maná Lleno", "Enfado"
+  enabled: boolean;          // Whether this threshold effect is active
+  priority: number;          // Higher = wins when multiple thresholds match (default: 0)
+  conditions: StatRequirement[];  // Flexible conditions: >=, >, <=, <, ==, !=, between, etc.
+  rewards: QuestReward[];    // Full reward support including sprite packs, attributes, triggers, etc.
+}
+
 // Attribute definition (stored in CharacterCard)
 export interface AttributeDefinition {
   id: string;
@@ -3660,8 +3871,12 @@ export interface AttributeDefinition {
   min?: number;
   max?: number;
   
-  // Threshold Effects - Efectos al alcanzar mínimo o máximo
-  // Se ejecutan cuando el valor llega al límite después de clamping
+  // Threshold Effects V2 - Flexible thresholds with conditions, priority, and full reward support
+  // Evaluated whenever the attribute value changes
+  thresholdEffects?: ThresholdEffect[];
+  
+  // Legacy Threshold Effects (deprecated - migrated to thresholdEffects)
+  // Kept for backward compatibility during migration
   onMinReached?: {
     enabled: boolean;        // Activar efectos al llegar al mínimo
     rewards: QuestReward[];  // Recompensas a ejecutar (atributos, sprites, sonidos, backgrounds)

@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
     const contextWindow = selectContextMessages(messagesBeforeRegenerate, llmConfig, ctxConfig);
 
     // Process lorebooks and get matched entries
-    const { plan: lorebookPlan, lorebookAttributeKeys } = buildLorebookSectionForPrompt(
+    const { plan: lorebookPlan, lorebookAttributeKeys, lorebookEntryKeyMap } = buildLorebookSectionForPrompt(
       messagesBeforeRegenerate,
       typedLorebooks,
       {
@@ -218,7 +218,9 @@ export async function POST(request: NextRequest) {
       questTemplates,     // Pass quest templates for {{activeQuests}} key resolution
       sessionQuests,      // Pass session quests for {{activeQuests}} key resolution
       questSettings,       // Pass quest settings for {{activeQuests}} key resolution
-      lorebookAttributeKeys
+      lorebookAttributeKeys,
+      undefined,          // inventoryData
+      lorebookEntryKeyMap // Pass lorebook entry key map for {{entryKey}} resolution
     );
 
     // Build key resolution context for all sections outside buildSystemPrompt

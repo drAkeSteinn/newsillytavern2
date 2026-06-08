@@ -25,6 +25,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import {
   Plus,
@@ -49,6 +56,11 @@ import {
   Inbox,
   Timer,
   Clock,
+  Package,
+  GitBranch,
+  Pencil,
+  ArrowUpNarrowWide,
+  Layers,
 } from 'lucide-react';
 import type {
   CharacterStatsConfig,
@@ -65,10 +77,13 @@ import type {
   QuestReward,
   TriggerCategory,
   TriggerTargetMode,
+  TriggerFallbackMode,
   ActionType,
   ObjectiveDropdownOption,
   QuestTemplate,
   SolicitudDropdownOption,
+  SpritePackV2,
+  ThresholdEffect,
 } from '@/types';
 import { DEFAULT_STATS_BLOCK_HEADERS, DEFAULT_STATS_CONFIG } from '@/types';
 import {
@@ -77,6 +92,7 @@ import {
   createSolicitudReward,
   createTargetAttributeReward,
   createCurrencyReward,
+  createActivateSpritePackReward,
   describeReward,
   normalizeReward,
 } from '@/lib/quest/quest-reward-utils';
@@ -97,7 +113,9 @@ interface StatsEditorProps {
       min?: number;
       max?: number;
     }>;
+    spritePacks?: Array<{ id: string; name: string; conditionalMode?: boolean; spriteCount: number }>;
   }[];
+  spritePacksV2?: SpritePackV2[];  // for activate_sprite_pack reward
 }
 
 // ============================================
@@ -111,9 +129,10 @@ interface AttributeEditorProps {
   onDelete: (index: number) => void;
   allAttributes: AttributeDefinition[];
   availableTargets?: StatsEditorProps['availableTargets'];
+  spritePacksV2?: SpritePackV2[];
 }
 
-function AttributeEditor({ attribute, index, onChange, onDelete, allAttributes, availableTargets = [] }: AttributeEditorProps) {
+function AttributeEditor({ attribute, index, onChange, onDelete, allAttributes, availableTargets = [], spritePacksV2 }: AttributeEditorProps) {
   const [expanded, setExpanded] = useState(false);
   
   // Get display info
@@ -355,918 +374,18 @@ function AttributeEditor({ attribute, index, onChange, onDelete, allAttributes, 
             </div>
           )}
 
-          {/* Threshold Effects - Efectos al alcanzar min/max */}
-          {attribute.type === 'number' && (attribute.min !== undefined || attribute.max !== undefined) && (
-            <div className="space-y-3 p-3 bg-purple-500/5 rounded-lg border border-purple-500/20">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-purple-400" />
-                <Label className="text-xs font-medium text-purple-400">Efectos de Umbral</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    <p>Efectos que se ejecutan cuando el atributo alcanza su valor mínimo o máximo.</p>
-                    <p className="mt-1 text-xs text-muted-foreground">• Triggers: Sprites, sonidos, fondos</p>
-                    <p className="text-xs text-muted-foreground">• Atributos: Modificar otros atributos</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-
-              {/* On Min Reached */}
-              {attribute.min !== undefined && (
-                <div className="space-y-2 p-2 bg-red-500/5 rounded border border-red-500/10">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        checked={attribute.onMinReached?.enabled ?? false}
-                        onCheckedChange={(checked) => onChange(index, {
-                          onMinReached: {
-                            enabled: checked,
-                            rewards: attribute.onMinReached?.rewards || []
-                          }
-                        })}
-                      />
-                      <Label className="text-xs font-medium text-red-400">
-                        Al llegar al mínimo ({attribute.min})
-                      </Label>
-                    </div>
-                    {attribute.onMinReached?.enabled && (
-                      <div className="flex gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-5 text-[10px] border-purple-500/30 hover:bg-purple-500/10"
-                          onClick={() => {
-                            const newReward = {
-                              id: `attr-min-reward-${Date.now().toString(36)}`,
-                              type: 'trigger' as const,
-                              trigger: {
-                                category: 'sprite' as const,
-                                key: '',
-                                targetMode: 'self' as const,
-                              }
-                            };
-                            onChange(index, {
-                              onMinReached: {
-                                enabled: true,
-                                rewards: [...(attribute.onMinReached?.rewards || []), newReward]
-                              }
-                            });
-                          }}
-                        >
-                          <Plus className="w-2.5 h-2.5 mr-0.5" /> Efecto
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-5 text-[10px] text-blue-400 hover:bg-blue-500/10 border border-dashed border-blue-500/30"
-                          onClick={() => {
-                            const newReward = createTargetAttributeReward('', '', 0, 'set');
-                            onChange(index, {
-                              onMinReached: {
-                                enabled: true,
-                                rewards: [...(attribute.onMinReached?.rewards || []), newReward]
-                              }
-                            });
-                          }}
-                        >
-                          <Plus className="w-2.5 h-2.5 mr-0.5" /> Atributo Target
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-5 text-[10px] text-amber-400 hover:bg-amber-500/10 border border-dashed border-amber-500/30"
-                          onClick={() => {
-                            const newReward = createCurrencyReward(0);
-                            onChange(index, {
-                              onMinReached: {
-                                enabled: true,
-                                rewards: [...(attribute.onMinReached?.rewards || []), newReward]
-                              }
-                            });
-                          }}
-                        >
-                          <Plus className="w-2.5 h-2.5 mr-0.5" /> 💰 Divisa
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-
-                  {attribute.onMinReached?.enabled && (
-                    <div className="space-y-1">
-                      {(attribute.onMinReached?.rewards || []).map((reward, rewardIdx) => {
-                        const normalized = normalizeReward(reward);
-                        const isTrig = normalized.type === 'trigger';
-                        const isAttr = normalized.type === 'attribute';
-                        const isTargetAttr = normalized.type === 'target_attribute';
-                        const isCurrency = normalized.type === 'currency';
-
-                        return (
-                          <div key={reward.id} className={`p-1.5 rounded border ${isAttr ? 'bg-amber-500/5 border-amber-500/10' : isTargetAttr ? 'bg-blue-500/5 border-blue-500/10' : isCurrency ? 'bg-amber-500/5 border-amber-500/10' : 'bg-purple-500/5 border-purple-500/10'}`}>
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <Badge variant="outline" className={`text-[9px] ${isAttr ? 'text-amber-400 border-amber-500/30' : isTargetAttr ? 'text-blue-400 border-blue-500/30' : isCurrency ? 'text-amber-400 border-amber-500/30' : 'text-purple-400 border-purple-500/30'}`}>
-                                {isAttr ? '📊 Atributo' : isTargetAttr ? '🔗 Atributo Target' : isCurrency ? '💰 Divisa' : '⚡ Trigger'}
-                              </Badge>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-4 w-4 p-0 text-red-500 hover:bg-red-500/10 ml-auto"
-                                onClick={() => {
-                                  const updatedRewards = (attribute.onMinReached?.rewards || []).filter((_, i) => i !== rewardIdx);
-                                  onChange(index, {
-                                    onMinReached: {
-                                      enabled: true,
-                                      rewards: updatedRewards
-                                    }
-                                  });
-                                }}
-                              >
-                                <X className="w-2.5 h-2.5" />
-                              </Button>
-                            </div>
-
-                            {isTrig && normalized.trigger && (
-                              <div className="grid grid-cols-3 gap-1">
-                                <Select
-                                  value={normalized.trigger.category}
-                                  onValueChange={(v) => {
-                                    const updatedRewards = [...(attribute.onMinReached?.rewards || [])];
-                                    updatedRewards[rewardIdx] = {
-                                      ...reward,
-                                      trigger: { ...normalized.trigger!, category: v as TriggerCategory }
-                                    };
-                                    onChange(index, {
-                                      onMinReached: { enabled: true, rewards: updatedRewards }
-                                    });
-                                  }}
-                                >
-                                  <SelectTrigger className="bg-background h-5 text-[10px]">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="sprite">🖼️ Sprite</SelectItem>
-                                    <SelectItem value="sound">🔊 Sonido</SelectItem>
-                                    <SelectItem value="background">🌄 Fondo</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                <Input
-                                  value={normalized.trigger.key}
-                                  onChange={(e) => {
-                                    const updatedRewards = [...(attribute.onMinReached?.rewards || [])];
-                                    updatedRewards[rewardIdx] = {
-                                      ...reward,
-                                      trigger: { ...normalized.trigger!, key: e.target.value }
-                                    };
-                                    onChange(index, {
-                                      onMinReached: { enabled: true, rewards: updatedRewards }
-                                    });
-                                  }}
-                                  placeholder="Key"
-                                  className="bg-background h-5 text-[10px]"
-                                />
-                                <Select
-                                  value={normalized.trigger.targetMode}
-                                  onValueChange={(v) => {
-                                    const updatedRewards = [...(attribute.onMinReached?.rewards || [])];
-                                    updatedRewards[rewardIdx] = {
-                                      ...reward,
-                                      trigger: { ...normalized.trigger!, targetMode: v as TriggerTargetMode }
-                                    };
-                                    onChange(index, {
-                                      onMinReached: { enabled: true, rewards: updatedRewards }
-                                    });
-                                  }}
-                                >
-                                  <SelectTrigger className="bg-background h-5 text-[10px]">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="self">👤 Self</SelectItem>
-                                    <SelectItem value="all">👥 Todos</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            )}
-
-                            {isAttr && normalized.attribute && (
-                              <div className="grid grid-cols-3 gap-1">
-                                <Select
-                                  value={normalized.attribute.key}
-                                  onValueChange={(v) => {
-                                    const updatedRewards = [...(attribute.onMinReached?.rewards || [])];
-                                    updatedRewards[rewardIdx] = {
-                                      ...reward,
-                                      attribute: { ...normalized.attribute!, key: v }
-                                    };
-                                    onChange(index, {
-                                      onMinReached: { enabled: true, rewards: updatedRewards }
-                                    });
-                                  }}
-                                >
-                                  <SelectTrigger className="bg-background h-5 text-[10px]">
-                                    <SelectValue placeholder="Atributo" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {allAttributes.map((attr) => (
-                                      <SelectItem key={attr.key} value={attr.key}>
-                                        {attr.name} ({attr.key})
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <Select
-                                  value={normalized.attribute.action}
-                                  onValueChange={(v) => {
-                                    const updatedRewards = [...(attribute.onMinReached?.rewards || [])];
-                                    updatedRewards[rewardIdx] = {
-                                      ...reward,
-                                      attribute: { ...normalized.attribute!, action: v as any }
-                                    };
-                                    onChange(index, {
-                                      onMinReached: { enabled: true, rewards: updatedRewards }
-                                    });
-                                  }}
-                                >
-                                  <SelectTrigger className="bg-background h-5 text-[10px]">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="set">= Set</SelectItem>
-                                    <SelectItem value="add">+ Add</SelectItem>
-                                    <SelectItem value="subtract">- Sub</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                <Input
-                                  type="number"
-                                  value={normalized.attribute.value}
-                                  onChange={(e) => {
-                                    const updatedRewards = [...(attribute.onMinReached?.rewards || [])];
-                                    updatedRewards[rewardIdx] = {
-                                      ...reward,
-                                      attribute: { ...normalized.attribute!, value: Number(e.target.value) }
-                                    };
-                                    onChange(index, {
-                                      onMinReached: { enabled: true, rewards: updatedRewards }
-                                    });
-                                  }}
-                                  placeholder="Valor"
-                                  className="bg-background h-5 text-[10px]"
-                                />
-                              </div>
-                            )}
-                            {isTargetAttr && normalized.target_attribute && (
-                              <div className="space-y-2">
-                                {/* Target selection dropdown */}
-                                <div className="grid grid-cols-2 gap-1">
-                                  <div className="col-span-2">
-                                    <Label className="text-[10px] text-muted-foreground mb-1 block">Target (personaje o persona)</Label>
-                                    <Select
-                                      value={normalized.target_attribute.targetCharacterId}
-                                      onValueChange={(v) => {
-                                        const updatedRewards = [...(attribute.onMinReached?.rewards || [])];
-                                        updatedRewards[rewardIdx] = {
-                                          ...reward,
-                                          target_attribute: { ...normalized.target_attribute!, targetCharacterId: v, key: '', value: 0 }
-                                        };
-                                        onChange(index, { onMinReached: { enabled: true, rewards: updatedRewards } });
-                                      }}
-                                    >
-                                      <SelectTrigger className="bg-background h-5 text-[10px]">
-                                        <SelectValue placeholder="Seleccionar target..." />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {availableTargets.map(t => (
-                                          <SelectItem key={t.id} value={t.id}>
-                                            {t.id === '__user__' ? '👤 ' : '🎭 '}{t.name}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                </div>
-
-                                {/* Attribute selection + action + value */}
-                                {normalized.target_attribute.targetCharacterId && (() => {
-                                  const selectedTarget = availableTargets.find(t => t.id === normalized.target_attribute!.targetCharacterId);
-                                  const targetAttrs = selectedTarget?.attributes || [];
-                                  const selectedAttr = targetAttrs.find(a => a.key === normalized.target_attribute!.key);
-                                  const isNumeric = selectedAttr?.type === 'number';
-
-                                  return (
-                                    <div className="grid grid-cols-3 gap-1">
-                                      {/* Attribute key */}
-                                      <Select
-                                        value={normalized.target_attribute.key}
-                                        onValueChange={(v) => {
-                                          const attr = targetAttrs.find(a => a.key === v);
-                                          const updatedRewards = [...(attribute.onMinReached?.rewards || [])];
-                                          updatedRewards[rewardIdx] = {
-                                            ...reward,
-                                            target_attribute: { ...normalized.target_attribute!, key: v, value: attr?.type === 'number' ? 0 : '' }
-                                          };
-                                          onChange(index, { onMinReached: { enabled: true, rewards: updatedRewards } });
-                                        }}
-                                      >
-                                        <SelectTrigger className="bg-background h-5 text-[10px]">
-                                          <SelectValue placeholder="Atributo..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {targetAttrs.map((attr, i) => (
-                                            <SelectItem key={attr.key || `attr-${i}`} value={attr.key}>
-                                              {attr.name} ({attr.key})
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-
-                                      {/* Action (only for numeric) */}
-                                      {isNumeric ? (
-                                        <Select
-                                          value={normalized.target_attribute.action}
-                                          onValueChange={(v) => {
-                                            const updatedRewards = [...(attribute.onMinReached?.rewards || [])];
-                                            updatedRewards[rewardIdx] = {
-                                              ...reward,
-                                              target_attribute: { ...normalized.target_attribute!, action: v as any }
-                                            };
-                                            onChange(index, { onMinReached: { enabled: true, rewards: updatedRewards } });
-                                          }}
-                                        >
-                                          <SelectTrigger className="bg-background h-5 text-[10px]">
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="set">= Set</SelectItem>
-                                            <SelectItem value="add">+ Sumar</SelectItem>
-                                            <SelectItem value="subtract">- Restar</SelectItem>
-                                            <SelectItem value="multiply">×</SelectItem>
-                                            <SelectItem value="divide">÷ Dividir</SelectItem>
-                                            <SelectItem value="percent">% Porcentaje</SelectItem>
-                                          </SelectContent>
-                                        </Select>
-                                      ) : (
-                                        <div className="flex items-center justify-center h-5">
-                                          <span className="text-[10px] text-muted-foreground">= Set</span>
-                                        </div>
-                                      )}
-
-                                      {/* Value */}
-                                      {isNumeric ? (
-                                        <Input
-                                          type="number"
-                                          value={normalized.target_attribute.value}
-                                          onChange={(e) => {
-                                            const updatedRewards = [...(attribute.onMinReached?.rewards || [])];
-                                            updatedRewards[rewardIdx] = {
-                                              ...reward,
-                                              target_attribute: { ...normalized.target_attribute!, value: Number(e.target.value) }
-                                            };
-                                            onChange(index, { onMinReached: { enabled: true, rewards: updatedRewards } });
-                                          }}
-                                          placeholder="Valor"
-                                          className="bg-background h-5 text-[10px]"
-                                        />
-                                      ) : (
-                                        <Input
-                                          value={normalized.target_attribute.value}
-                                          onChange={(e) => {
-                                            const updatedRewards = [...(attribute.onMinReached?.rewards || [])];
-                                            updatedRewards[rewardIdx] = {
-                                              ...reward,
-                                              target_attribute: { ...normalized.target_attribute!, value: e.target.value }
-                                            };
-                                            onChange(index, { onMinReached: { enabled: true, rewards: updatedRewards } });
-                                          }}
-                                          placeholder="Texto"
-                                          className="bg-background h-5 text-[10px]"
-                                        />
-                                      )}
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            )}
-                            {isCurrency && normalized.currency && (
-                              <div className="flex items-center gap-2 mt-1">
-                                <Label className="text-[10px] text-muted-foreground">Cantidad:</Label>
-                                <Input
-                                  type="number"
-                                  value={normalized.currency.amount}
-                                  onChange={(e) => {
-                                    const updatedRewards = [...(attribute.onMinReached?.rewards || [])];
-                                    updatedRewards[rewardIdx] = {
-                                      ...updatedRewards[rewardIdx],
-                                      type: 'currency',
-                                      currency: { amount: Number(e.target.value) }
-                                    };
-                                    onChange(index, { onMinReached: { enabled: true, rewards: updatedRewards } });
-                                  }}
-                                  className="bg-background h-5 text-[10px] w-20"
-                                />
-                                <span className="text-[10px] text-muted-foreground">divisa para persona</span>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-
-                      {/* Add attribute reward button */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-5 w-full text-[10px] text-amber-400 hover:bg-amber-500/10 border border-dashed border-amber-500/30"
-                        onClick={() => {
-                          const newReward = {
-                            id: `attr-min-reward-${Date.now().toString(36)}`,
-                            type: 'attribute' as const,
-                            attribute: {
-                              key: '',
-                              value: 0,
-                              action: 'set' as const
-                            }
-                          };
-                          onChange(index, {
-                            onMinReached: {
-                              enabled: true,
-                              rewards: [...(attribute.onMinReached?.rewards || []), newReward]
-                            }
-                          });
-                        }}
-                      >
-                        <Plus className="w-2.5 h-2.5 mr-0.5" /> Atributo
-                      </Button>
-
-                      {/* Add target attribute reward button */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-5 w-full text-[10px] text-blue-400 hover:bg-blue-500/10 border border-dashed border-blue-500/30"
-                        onClick={() => {
-                          const newReward = createTargetAttributeReward('', '', 0, 'set');
-                          onChange(index, {
-                            onMinReached: {
-                              enabled: true,
-                              rewards: [...(attribute.onMinReached?.rewards || []), newReward]
-                            }
-                          });
-                        }}
-                      >
-                        <Plus className="w-2.5 h-2.5 mr-0.5" /> Atributo Target
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* On Max Reached */}
-              {attribute.max !== undefined && (
-                <div className="space-y-2 p-2 bg-green-500/5 rounded border border-green-500/10">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        checked={attribute.onMaxReached?.enabled ?? false}
-                        onCheckedChange={(checked) => onChange(index, {
-                          onMaxReached: {
-                            enabled: checked,
-                            rewards: attribute.onMaxReached?.rewards || []
-                          }
-                        })}
-                      />
-                      <Label className="text-xs font-medium text-green-400">
-                        Al llegar al máximo ({attribute.max})
-                      </Label>
-                    </div>
-                    {attribute.onMaxReached?.enabled && (
-                      <div className="flex gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-5 text-[10px] border-purple-500/30 hover:bg-purple-500/10"
-                          onClick={() => {
-                            const newReward = {
-                              id: `attr-max-reward-${Date.now().toString(36)}`,
-                              type: 'trigger' as const,
-                              trigger: {
-                                category: 'sprite' as const,
-                                key: '',
-                                targetMode: 'self' as const,
-                              }
-                            };
-                            onChange(index, {
-                              onMaxReached: {
-                                enabled: true,
-                                rewards: [...(attribute.onMaxReached?.rewards || []), newReward]
-                              }
-                            });
-                          }}
-                        >
-                          <Plus className="w-2.5 h-2.5 mr-0.5" /> Efecto
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-5 text-[10px] text-blue-400 hover:bg-blue-500/10 border border-dashed border-blue-500/30"
-                          onClick={() => {
-                            const newReward = createTargetAttributeReward('', '', 0, 'set');
-                            onChange(index, {
-                              onMaxReached: {
-                                enabled: true,
-                                rewards: [...(attribute.onMaxReached?.rewards || []), newReward]
-                              }
-                            });
-                          }}
-                        >
-                          <Plus className="w-2.5 h-2.5 mr-0.5" /> Atributo Target
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-5 text-[10px] text-amber-400 hover:bg-amber-500/10 border border-dashed border-amber-500/30"
-                          onClick={() => {
-                            const newReward = createCurrencyReward(0);
-                            onChange(index, {
-                              onMaxReached: {
-                                enabled: true,
-                                rewards: [...(attribute.onMaxReached?.rewards || []), newReward]
-                              }
-                            });
-                          }}
-                        >
-                          <Plus className="w-2.5 h-2.5 mr-0.5" /> 💰 Divisa
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-
-                  {attribute.onMaxReached?.enabled && (
-                    <div className="space-y-1">
-                      {(attribute.onMaxReached?.rewards || []).map((reward, rewardIdx) => {
-                        const normalized = normalizeReward(reward);
-                        const isTrig = normalized.type === 'trigger';
-                        const isAttr = normalized.type === 'attribute';
-                        const isTargetAttr = normalized.type === 'target_attribute';
-                        const isCurrency = normalized.type === 'currency';
-
-                        return (
-                          <div key={reward.id} className={`p-1.5 rounded border ${isAttr ? 'bg-amber-500/5 border-amber-500/10' : isTargetAttr ? 'bg-blue-500/5 border-blue-500/10' : isCurrency ? 'bg-amber-500/5 border-amber-500/10' : 'bg-green-500/5 border-green-500/10'}`}>
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <Badge variant="outline" className={`text-[9px] ${isAttr ? 'text-amber-400 border-amber-500/30' : isTargetAttr ? 'text-blue-400 border-blue-500/30' : isCurrency ? 'text-amber-400 border-amber-500/30' : 'text-green-400 border-green-500/30'}`}>
-                                {isAttr ? '📊 Atributo' : isTargetAttr ? '🔗 Atributo Target' : isCurrency ? '💰 Divisa' : '⚡ Trigger'}
-                              </Badge>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-4 w-4 p-0 text-red-500 hover:bg-red-500/10 ml-auto"
-                                onClick={() => {
-                                  const updatedRewards = (attribute.onMaxReached?.rewards || []).filter((_, i) => i !== rewardIdx);
-                                  onChange(index, {
-                                    onMaxReached: {
-                                      enabled: true,
-                                      rewards: updatedRewards
-                                    }
-                                  });
-                                }}
-                              >
-                                <X className="w-2.5 h-2.5" />
-                              </Button>
-                            </div>
-
-                            {isTrig && normalized.trigger && (
-                              <div className="grid grid-cols-3 gap-1">
-                                <Select
-                                  value={normalized.trigger.category}
-                                  onValueChange={(v) => {
-                                    const updatedRewards = [...(attribute.onMaxReached?.rewards || [])];
-                                    updatedRewards[rewardIdx] = {
-                                      ...reward,
-                                      trigger: { ...normalized.trigger!, category: v as TriggerCategory }
-                                    };
-                                    onChange(index, {
-                                      onMaxReached: { enabled: true, rewards: updatedRewards }
-                                    });
-                                  }}
-                                >
-                                  <SelectTrigger className="bg-background h-5 text-[10px]">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="sprite">🖼️ Sprite</SelectItem>
-                                    <SelectItem value="sound">🔊 Sonido</SelectItem>
-                                    <SelectItem value="background">🌄 Fondo</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                <Input
-                                  value={normalized.trigger.key}
-                                  onChange={(e) => {
-                                    const updatedRewards = [...(attribute.onMaxReached?.rewards || [])];
-                                    updatedRewards[rewardIdx] = {
-                                      ...reward,
-                                      trigger: { ...normalized.trigger!, key: e.target.value }
-                                    };
-                                    onChange(index, {
-                                      onMaxReached: { enabled: true, rewards: updatedRewards }
-                                    });
-                                  }}
-                                  placeholder="Key"
-                                  className="bg-background h-5 text-[10px]"
-                                />
-                                <Select
-                                  value={normalized.trigger.targetMode}
-                                  onValueChange={(v) => {
-                                    const updatedRewards = [...(attribute.onMaxReached?.rewards || [])];
-                                    updatedRewards[rewardIdx] = {
-                                      ...reward,
-                                      trigger: { ...normalized.trigger!, targetMode: v as TriggerTargetMode }
-                                    };
-                                    onChange(index, {
-                                      onMaxReached: { enabled: true, rewards: updatedRewards }
-                                    });
-                                  }}
-                                >
-                                  <SelectTrigger className="bg-background h-5 text-[10px]">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="self">👤 Self</SelectItem>
-                                    <SelectItem value="all">👥 Todos</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            )}
-
-                            {isAttr && normalized.attribute && (
-                              <div className="grid grid-cols-3 gap-1">
-                                <Select
-                                  value={normalized.attribute.key}
-                                  onValueChange={(v) => {
-                                    const updatedRewards = [...(attribute.onMaxReached?.rewards || [])];
-                                    updatedRewards[rewardIdx] = {
-                                      ...reward,
-                                      attribute: { ...normalized.attribute!, key: v }
-                                    };
-                                    onChange(index, {
-                                      onMaxReached: { enabled: true, rewards: updatedRewards }
-                                    });
-                                  }}
-                                >
-                                  <SelectTrigger className="bg-background h-5 text-[10px]">
-                                    <SelectValue placeholder="Atributo" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {allAttributes.map((attr) => (
-                                      <SelectItem key={attr.key} value={attr.key}>
-                                        {attr.name} ({attr.key})
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <Select
-                                  value={normalized.attribute.action}
-                                  onValueChange={(v) => {
-                                    const updatedRewards = [...(attribute.onMaxReached?.rewards || [])];
-                                    updatedRewards[rewardIdx] = {
-                                      ...reward,
-                                      attribute: { ...normalized.attribute!, action: v as any }
-                                    };
-                                    onChange(index, {
-                                      onMaxReached: { enabled: true, rewards: updatedRewards }
-                                    });
-                                  }}
-                                >
-                                  <SelectTrigger className="bg-background h-5 text-[10px]">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="set">= Set</SelectItem>
-                                    <SelectItem value="add">+ Add</SelectItem>
-                                    <SelectItem value="subtract">- Sub</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                <Input
-                                  type="number"
-                                  value={normalized.attribute.value}
-                                  onChange={(e) => {
-                                    const updatedRewards = [...(attribute.onMaxReached?.rewards || [])];
-                                    updatedRewards[rewardIdx] = {
-                                      ...reward,
-                                      attribute: { ...normalized.attribute!, value: Number(e.target.value) }
-                                    };
-                                    onChange(index, {
-                                      onMaxReached: { enabled: true, rewards: updatedRewards }
-                                    });
-                                  }}
-                                  placeholder="Valor"
-                                  className="bg-background h-5 text-[10px]"
-                                />
-                              </div>
-                            )}
-                            {isTargetAttr && normalized.target_attribute && (
-                              <div className="space-y-2">
-                                {/* Target selection dropdown */}
-                                <div className="grid grid-cols-2 gap-1">
-                                  <div className="col-span-2">
-                                    <Label className="text-[10px] text-muted-foreground mb-1 block">Target (personaje o persona)</Label>
-                                    <Select
-                                      value={normalized.target_attribute.targetCharacterId}
-                                      onValueChange={(v) => {
-                                        const updatedRewards = [...(attribute.onMaxReached?.rewards || [])];
-                                        updatedRewards[rewardIdx] = {
-                                          ...reward,
-                                          target_attribute: { ...normalized.target_attribute!, targetCharacterId: v, key: '', value: 0 }
-                                        };
-                                        onChange(index, { onMaxReached: { enabled: true, rewards: updatedRewards } });
-                                      }}
-                                    >
-                                      <SelectTrigger className="bg-background h-5 text-[10px]">
-                                        <SelectValue placeholder="Seleccionar target..." />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {availableTargets.map(t => (
-                                          <SelectItem key={t.id} value={t.id}>
-                                            {t.id === '__user__' ? '👤 ' : '🎭 '}{t.name}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                </div>
-
-                                {/* Attribute selection + action + value */}
-                                {normalized.target_attribute.targetCharacterId && (() => {
-                                  const selectedTarget = availableTargets.find(t => t.id === normalized.target_attribute!.targetCharacterId);
-                                  const targetAttrs = selectedTarget?.attributes || [];
-                                  const selectedAttr = targetAttrs.find(a => a.key === normalized.target_attribute!.key);
-                                  const isNumeric = selectedAttr?.type === 'number';
-
-                                  return (
-                                    <div className="grid grid-cols-3 gap-1">
-                                      {/* Attribute key */}
-                                      <Select
-                                        value={normalized.target_attribute.key}
-                                        onValueChange={(v) => {
-                                          const attr = targetAttrs.find(a => a.key === v);
-                                          const updatedRewards = [...(attribute.onMaxReached?.rewards || [])];
-                                          updatedRewards[rewardIdx] = {
-                                            ...reward,
-                                            target_attribute: { ...normalized.target_attribute!, key: v, value: attr?.type === 'number' ? 0 : '' }
-                                          };
-                                          onChange(index, { onMaxReached: { enabled: true, rewards: updatedRewards } });
-                                        }}
-                                      >
-                                        <SelectTrigger className="bg-background h-5 text-[10px]">
-                                          <SelectValue placeholder="Atributo..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {targetAttrs.map((attr, i) => (
-                                            <SelectItem key={attr.key || `attr-${i}`} value={attr.key}>
-                                              {attr.name} ({attr.key})
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-
-                                      {/* Action (only for numeric) */}
-                                      {isNumeric ? (
-                                        <Select
-                                          value={normalized.target_attribute.action}
-                                          onValueChange={(v) => {
-                                            const updatedRewards = [...(attribute.onMaxReached?.rewards || [])];
-                                            updatedRewards[rewardIdx] = {
-                                              ...reward,
-                                              target_attribute: { ...normalized.target_attribute!, action: v as any }
-                                            };
-                                            onChange(index, { onMaxReached: { enabled: true, rewards: updatedRewards } });
-                                          }}
-                                        >
-                                          <SelectTrigger className="bg-background h-5 text-[10px]">
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="set">= Set</SelectItem>
-                                            <SelectItem value="add">+ Sumar</SelectItem>
-                                            <SelectItem value="subtract">- Restar</SelectItem>
-                                            <SelectItem value="multiply">×</SelectItem>
-                                            <SelectItem value="divide">÷ Dividir</SelectItem>
-                                            <SelectItem value="percent">% Porcentaje</SelectItem>
-                                          </SelectContent>
-                                        </Select>
-                                      ) : (
-                                        <div className="flex items-center justify-center h-5">
-                                          <span className="text-[10px] text-muted-foreground">= Set</span>
-                                        </div>
-                                      )}
-
-                                      {/* Value */}
-                                      {isNumeric ? (
-                                        <Input
-                                          type="number"
-                                          value={normalized.target_attribute.value}
-                                          onChange={(e) => {
-                                            const updatedRewards = [...(attribute.onMaxReached?.rewards || [])];
-                                            updatedRewards[rewardIdx] = {
-                                              ...reward,
-                                              target_attribute: { ...normalized.target_attribute!, value: Number(e.target.value) }
-                                            };
-                                            onChange(index, { onMaxReached: { enabled: true, rewards: updatedRewards } });
-                                          }}
-                                          placeholder="Valor"
-                                          className="bg-background h-5 text-[10px]"
-                                        />
-                                      ) : (
-                                        <Input
-                                          value={normalized.target_attribute.value}
-                                          onChange={(e) => {
-                                            const updatedRewards = [...(attribute.onMaxReached?.rewards || [])];
-                                            updatedRewards[rewardIdx] = {
-                                              ...reward,
-                                              target_attribute: { ...normalized.target_attribute!, value: e.target.value }
-                                            };
-                                            onChange(index, { onMaxReached: { enabled: true, rewards: updatedRewards } });
-                                          }}
-                                          placeholder="Texto"
-                                          className="bg-background h-5 text-[10px]"
-                                        />
-                                      )}
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-                            )}
-                            {isCurrency && normalized.currency && (
-                              <div className="flex items-center gap-2 mt-1">
-                                <Label className="text-[10px] text-muted-foreground">Cantidad:</Label>
-                                <Input
-                                  type="number"
-                                  value={normalized.currency.amount}
-                                  onChange={(e) => {
-                                    const updatedRewards = [...(attribute.onMaxReached?.rewards || [])];
-                                    updatedRewards[rewardIdx] = {
-                                      ...updatedRewards[rewardIdx],
-                                      type: 'currency',
-                                      currency: { amount: Number(e.target.value) }
-                                    };
-                                    onChange(index, { onMaxReached: { enabled: true, rewards: updatedRewards } });
-                                  }}
-                                  className="bg-background h-5 text-[10px] w-20"
-                                />
-                                <span className="text-[10px] text-muted-foreground">divisa para persona</span>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-
-                      {/* Add attribute reward button */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-5 w-full text-[10px] text-amber-400 hover:bg-amber-500/10 border border-dashed border-amber-500/30"
-                        onClick={() => {
-                          const newReward = {
-                            id: `attr-max-reward-${Date.now().toString(36)}`,
-                            type: 'attribute' as const,
-                            attribute: {
-                              key: '',
-                              value: 0,
-                              action: 'set' as const
-                            }
-                          };
-                          onChange(index, {
-                            onMaxReached: {
-                              enabled: true,
-                              rewards: [...(attribute.onMaxReached?.rewards || []), newReward]
-                            }
-                          });
-                        }}
-                      >
-                        <Plus className="w-2.5 h-2.5 mr-0.5" /> Atributo
-                      </Button>
-
-                      {/* Add target attribute reward button */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-5 w-full text-[10px] text-blue-400 hover:bg-blue-500/10 border border-dashed border-blue-500/30"
-                        onClick={() => {
-                          const newReward = createTargetAttributeReward('', '', 0, 'set');
-                          onChange(index, {
-                            onMaxReached: {
-                              enabled: true,
-                              rewards: [...(attribute.onMaxReached?.rewards || []), newReward]
-                            }
-                          });
-                        }}
-                      >
-                        <Plus className="w-2.5 h-2.5 mr-0.5" /> Atributo Target
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+          {/* Threshold Effects V2 - Flexible conditions with priority */}
+          {attribute.type === 'number' && (
+            <ThresholdEffectsSection
+              attribute={attribute}
+              index={index}
+              onChange={onChange}
+              allAttributes={allAttributes}
+              availableTargets={availableTargets}
+              spritePacksV2={spritePacksV2}
+            />
           )}
-          
+
           {/* Detection Keys (Post-LLM) - Similar to HUD Field System */}
           <div className="space-y-3 p-3 bg-muted/50 rounded-lg border">
             <div className="flex items-center gap-2">
@@ -2326,6 +1445,1050 @@ function ActivationCostEditor({ cost, availableAttributes, onChange, onDelete }:
 }
 
 // ============================================
+// Threshold Effect Dialog - Edit a single threshold effect in a dialog
+// ============================================
+
+interface ThresholdEffectDialogProps {
+  effect: ThresholdEffect;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (updatedEffect: ThresholdEffect) => void;
+  allAttributes: AttributeDefinition[];
+  availableTargets: StatsEditorProps['availableTargets'];
+  spritePacksV2?: SpritePackV2[];
+  attributeKey: string;  // The parent attribute's key (for self-referencing conditions)
+}
+
+function ThresholdEffectDialog({ effect, open, onOpenChange, onSave, allAttributes, availableTargets, spritePacksV2, attributeKey }: ThresholdEffectDialogProps) {
+  // Local state for editing
+  const [localEffect, setLocalEffect] = useState<ThresholdEffect>({ ...effect });
+
+  // Sync when effect prop changes or dialog opens
+  const prevOpenRef = useState(false);
+  if (open && !prevOpenRef[0]) {
+    setLocalEffect({ ...effect });
+    prevOpenRef[1](true);
+  }
+  if (!open && prevOpenRef[0]) {
+    prevOpenRef[1](false);
+  }
+
+  const updateEffect = (updates: Partial<ThresholdEffect>) => {
+    setLocalEffect(prev => ({ ...prev, ...updates }));
+  };
+
+  // Condition management
+  const addCondition = () => {
+    const newCondition: StatRequirement = {
+      attributeKey: attributeKey,  // Default to self attribute
+      operator: '<=',
+      value: 0,
+    };
+    updateEffect({ conditions: [...localEffect.conditions, newCondition] });
+  };
+
+  const removeCondition = (idx: number) => {
+    updateEffect({ conditions: localEffect.conditions.filter((_, i) => i !== idx) });
+  };
+
+  const updateCondition = (idx: number, updates: Partial<StatRequirement>) => {
+    const updated = [...localEffect.conditions];
+    updated[idx] = { ...updated[idx], ...updates };
+    updateEffect({ conditions: updated });
+  };
+
+  // Reward management
+  const addReward = (type: QuestReward['type']) => {
+    let newReward: QuestReward;
+    switch (type) {
+      case 'trigger':
+        newReward = createTriggerReward('sprite', '', 'self');
+        break;
+      case 'attribute':
+        newReward = {
+          id: `threshold-reward-${Date.now().toString(36)}`,
+          type: 'attribute',
+          attribute: { key: '', value: 0, action: 'set' }
+        };
+        break;
+      case 'target_attribute':
+        newReward = createTargetAttributeReward('', '', 0, 'set');
+        break;
+      case 'currency':
+        newReward = createCurrencyReward(0);
+        break;
+      case 'activate_sprite_pack':
+        newReward = createActivateSpritePackReward('', { targetMode: 'self' });
+        break;
+      case 'conditional_sprite_collection':
+        newReward = {
+          id: `threshold-reward-${Date.now().toString(36)}`,
+          type: 'conditional_sprite_collection',
+          conditional_sprite_collection: {
+            collectionId: '',
+            targetMode: 'self',
+          }
+        };
+        break;
+      default:
+        newReward = createTriggerReward('sprite', '', 'self');
+    }
+    updateEffect({ rewards: [...localEffect.rewards, newReward] });
+  };
+
+  const removeReward = (idx: number) => {
+    updateEffect({ rewards: localEffect.rewards.filter((_, i) => i !== idx) });
+  };
+
+  const updateReward = (idx: number, updatedReward: QuestReward) => {
+    const updated = [...localEffect.rewards];
+    updated[idx] = updatedReward;
+    updateEffect({ rewards: updated });
+  };
+
+  // Operator display helper
+  const operatorSymbol = (op: RequirementOperator) => {
+    switch (op) {
+      case '<': return '< Menor que';
+      case '<=': return '≤ Menor o igual';
+      case '>': return '> Mayor que';
+      case '>=': return '≥ Mayor o igual';
+      case '==': return '= Igual a';
+      case '!=': return '≠ Diferente de';
+      case 'between': return '↔ Entre';
+      case 'contains': return '∋ Contiene';
+      case 'not_contains': return '∌ No contiene';
+      default: return op;
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-purple-400" />
+            Editar Efecto de Umbral
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          {/* Name & Priority */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-2 space-y-1.5">
+              <Label className="text-xs font-medium">Nombre del Efecto</Label>
+              <Input
+                value={localEffect.name}
+                onChange={(e) => updateEffect({ name: e.target.value })}
+                placeholder="Ej: Vida Crítica, Maná Lleno..."
+                className="bg-background"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium flex items-center gap-1">
+                <ArrowUpNarrowWide className="w-3 h-3" /> Prioridad
+              </Label>
+              <Input
+                type="number"
+                value={localEffect.priority}
+                onChange={(e) => updateEffect({ priority: Number(e.target.value) })}
+                className="bg-background"
+              />
+              <p className="text-[10px] text-muted-foreground">Mayor = más importante</p>
+            </div>
+          </div>
+
+          {/* Enabled toggle */}
+          <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
+            <Switch
+              checked={localEffect.enabled}
+              onCheckedChange={(checked) => updateEffect({ enabled: checked })}
+            />
+            <Label className="text-sm">{localEffect.enabled ? '✅ Activado' : '⏸ Desactivado'}</Label>
+          </div>
+
+          {/* Conditions Section */}
+          <div className="space-y-3 p-3 bg-purple-500/5 rounded-lg border border-purple-500/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-purple-400" />
+                <Label className="text-sm font-medium text-purple-400">Condiciones</Label>
+                <Badge variant="outline" className="text-[10px] text-purple-300 border-purple-500/30">
+                  {localEffect.conditions.length} {localEffect.conditions.length === 1 ? 'regla' : 'reglas'}
+                </Badge>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs border-purple-500/30 hover:bg-purple-500/10"
+                onClick={addCondition}
+              >
+                <Plus className="w-3 h-3 mr-1" /> Condición
+              </Button>
+            </div>
+
+            {localEffect.conditions.length === 0 && (
+              <div className="text-center py-4 text-sm text-muted-foreground">
+                <p>Sin condiciones. Agrega una para definir cuándo se activa este efecto.</p>
+                <p className="text-xs mt-1">Ej: Vida ≤ 20, Maná ≥ 80</p>
+              </div>
+            )}
+
+            {localEffect.conditions.map((cond, condIdx) => (
+              <div key={condIdx} className="p-2 bg-background rounded border border-purple-500/10 space-y-2">
+                <div className="flex items-center justify-between">
+                  <Badge variant="outline" className="text-[10px] text-purple-300 border-purple-500/30">
+                    Condición {condIdx + 1}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 w-5 p-0 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                    onClick={() => removeCondition(condIdx)}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-[1fr_140px_1fr] gap-2">
+                  {/* Attribute selector */}
+                  <Select
+                    value={cond.targetCharacterId ? `__target__:${cond.targetCharacterId}:${cond.attributeKey}` : cond.attributeKey}
+                    onValueChange={(v) => {
+                      if (v.startsWith('__target__:')) {
+                        const parts = v.split(':');
+                        updateCondition(condIdx, { targetCharacterId: parts[1], attributeKey: parts[2] });
+                      } else {
+                        updateCondition(condIdx, { attributeKey: v, targetCharacterId: undefined, targetAttributeName: undefined });
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="bg-background h-8 text-xs">
+                      <SelectValue placeholder="Atributo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={attributeKey}>
+                        🔢 {allAttributes.find(a => a.key === attributeKey)?.name || attributeKey} (self)
+                      </SelectItem>
+                      {allAttributes.filter(a => a.key !== attributeKey).map(attr => (
+                        <SelectItem key={attr.key} value={attr.key}>
+                          {attr.type === 'number' ? '🔢' : attr.type === 'keyword' ? '🏷️' : '📝'} {attr.name}
+                        </SelectItem>
+                      ))}
+                      {availableTargets.length > 0 && (
+                        <>
+                          <SelectItem value="__separator__" disabled className="text-[10px] text-muted-foreground">
+                            ─── Otros personajes ───
+                          </SelectItem>
+                          {availableTargets.flatMap(t =>
+                            t.attributes.map(attr => ({
+                              value: `__target__:${t.id}:${attr.key}`,
+                              label: `${t.id === '__user__' ? '👤' : '🎭'} ${t.name} → ${attr.name}`,
+                            }))
+                          ).map(item => (
+                            <SelectItem key={item.value} value={item.value}>
+                              {item.label}
+                            </SelectItem>
+                          ))}
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Operator selector */}
+                  <Select
+                    value={cond.operator}
+                    onValueChange={(v) => updateCondition(condIdx, { operator: v as RequirementOperator })}
+                  >
+                    <SelectTrigger className="bg-background h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="<">{'< Menor que'}</SelectItem>
+                      <SelectItem value="<=">{'≤ Menor o igual'}</SelectItem>
+                      <SelectItem value=">">{'> Mayor que'}</SelectItem>
+                      <SelectItem value=">=">{'≥ Mayor o igual'}</SelectItem>
+                      <SelectItem value="==">{'= Igual a'}</SelectItem>
+                      <SelectItem value="!=">{'≠ Diferente de'}</SelectItem>
+                      <SelectItem value="between">{'↔ Entre'}</SelectItem>
+                      <SelectItem value="contains">{'∋ Contiene'}</SelectItem>
+                      <SelectItem value="not_contains">{'∌ No contiene'}</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {/* Value input */}
+                  {cond.operator === 'between' ? (
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        value={typeof cond.value === 'number' ? cond.value : Number(cond.value) || 0}
+                        onChange={(e) => updateCondition(condIdx, { value: Number(e.target.value) })}
+                        placeholder="Min"
+                        className="bg-background h-8 text-xs"
+                      />
+                      <span className="text-xs text-muted-foreground">y</span>
+                      <Input
+                        type="number"
+                        value={cond.valueMax || 0}
+                        onChange={(e) => updateCondition(condIdx, { valueMax: Number(e.target.value) })}
+                        placeholder="Max"
+                        className="bg-background h-8 text-xs"
+                      />
+                    </div>
+                  ) : (
+                    <Input
+                      type={allAttributes.find(a => a.key === cond.attributeKey)?.type === 'number' || !isNaN(Number(cond.value)) ? 'number' : 'text'}
+                      value={cond.value}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        const attrType = allAttributes.find(a => a.key === cond.attributeKey)?.type;
+                        updateCondition(condIdx, { value: attrType === 'number' || !isNaN(Number(v)) ? Number(v) : v });
+                      }}
+                      placeholder="Valor"
+                      className="bg-background h-8 text-xs"
+                    />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Rewards Section */}
+          <div className="space-y-3 p-3 bg-amber-500/5 rounded-lg border border-amber-500/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Gift className="w-4 h-4 text-amber-400" />
+                <Label className="text-sm font-medium text-amber-400">Recompensas</Label>
+                <Badge variant="outline" className="text-[10px] text-amber-300 border-amber-500/30">
+                  {localEffect.rewards.length} {localEffect.rewards.length === 1 ? 'recompensa' : 'recompensas'}
+                </Badge>
+              </div>
+            </div>
+
+            {/* Add reward buttons */}
+            <div className="flex flex-wrap gap-1.5">
+              <Button variant="outline" size="sm" className="h-6 text-[10px] border-purple-500/30 hover:bg-purple-500/10" onClick={() => addReward('trigger')}>
+                <Plus className="w-2.5 h-2.5 mr-0.5" /> ⚡ Efecto
+              </Button>
+              <Button variant="ghost" size="sm" className="h-6 text-[10px] text-amber-400 hover:bg-amber-500/10 border border-dashed border-amber-500/30" onClick={() => addReward('attribute')}>
+                <Plus className="w-2.5 h-2.5 mr-0.5" /> 📊 Atributo
+              </Button>
+              <Button variant="ghost" size="sm" className="h-6 text-[10px] text-blue-400 hover:bg-blue-500/10 border border-dashed border-blue-500/30" onClick={() => addReward('target_attribute')}>
+                <Plus className="w-2.5 h-2.5 mr-0.5" /> 🔗 Atributo Target
+              </Button>
+              <Button variant="ghost" size="sm" className="h-6 text-[10px] text-amber-400 hover:bg-amber-500/10 border border-dashed border-amber-500/30" onClick={() => addReward('currency')}>
+                <Plus className="w-2.5 h-2.5 mr-0.5" /> 💰 Divisa
+              </Button>
+              <Button variant="ghost" size="sm" className="h-6 text-[10px] text-emerald-400 hover:bg-emerald-500/10 border border-dashed border-emerald-500/30" onClick={() => addReward('activate_sprite_pack')}>
+                <Plus className="w-2.5 h-2.5 mr-0.5" /> 🎨 Sprite Pack
+              </Button>
+              <Button variant="ghost" size="sm" className="h-6 text-[10px] text-cyan-400 hover:bg-cyan-500/10 border border-dashed border-cyan-500/30" onClick={() => addReward('conditional_sprite_collection')}>
+                <Plus className="w-2.5 h-2.5 mr-0.5" /> 🖼️ Colección Condicional
+              </Button>
+            </div>
+
+            {localEffect.rewards.length === 0 && (
+              <div className="text-center py-3 text-sm text-muted-foreground">
+                Sin recompensas. Agrega efectos, atributos o sprite packs.
+              </div>
+            )}
+
+            {localEffect.rewards.map((reward, rewardIdx) => {
+              const normalized = normalizeReward(reward);
+              const isTrig = normalized.type === 'trigger';
+              const isAttr = normalized.type === 'attribute';
+              const isTargetAttr = normalized.type === 'target_attribute';
+              const isCurrency = normalized.type === 'currency';
+              const isSpritePack = normalized.type === 'activate_sprite_pack';
+              const isCondSprite = normalized.type === 'conditional_sprite_collection';
+
+              return (
+                <div key={reward.id} className={`p-2.5 rounded border space-y-2 ${
+                  isSpritePack ? 'bg-emerald-500/5 border-emerald-500/10' :
+                  isCondSprite ? 'bg-cyan-500/5 border-cyan-500/10' :
+                  isAttr ? 'bg-amber-500/5 border-amber-500/10' :
+                  isTargetAttr ? 'bg-blue-500/5 border-blue-500/10' :
+                  isCurrency ? 'bg-amber-500/5 border-amber-500/10' :
+                  'bg-purple-500/5 border-purple-500/10'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className={`text-[10px] ${
+                      isSpritePack ? 'text-emerald-400 border-emerald-500/30' :
+                      isCondSprite ? 'text-cyan-400 border-cyan-500/30' :
+                      isAttr ? 'text-amber-400 border-amber-500/30' :
+                      isTargetAttr ? 'text-blue-400 border-blue-500/30' :
+                      isCurrency ? 'text-amber-400 border-amber-500/30' :
+                      'text-purple-400 border-purple-500/30'
+                    }`}>
+                      {isSpritePack ? '🎨 Sprite Pack' : isCondSprite ? '🖼️ Col. Condicional' : isAttr ? '📊 Atributo' : isTargetAttr ? '🔗 Atributo Target' : isCurrency ? '💰 Divisa' : '⚡ Trigger'}
+                    </Badge>
+                    <span className="text-[10px] text-muted-foreground ml-auto">
+                      {describeReward(normalized)}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 w-5 p-0 text-red-400 hover:bg-red-500/10"
+                      onClick={() => removeReward(rewardIdx)}
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+
+                  {/* Trigger reward editor */}
+                  {isTrig && normalized.trigger && (
+                    <div className="grid grid-cols-3 gap-2">
+                      <Select
+                        value={normalized.trigger.category}
+                        onValueChange={(v) => updateReward(rewardIdx, { ...reward, trigger: { ...normalized.trigger!, category: v as TriggerCategory } })}
+                      >
+                        <SelectTrigger className="bg-background h-7 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="sprite">🖼️ Sprite</SelectItem>
+                          <SelectItem value="sound">🔊 Sonido</SelectItem>
+                          <SelectItem value="background">🌄 Fondo</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        value={normalized.trigger.key}
+                        onChange={(e) => updateReward(rewardIdx, { ...reward, trigger: { ...normalized.trigger!, key: e.target.value } })}
+                        placeholder="Key"
+                        className="bg-background h-7 text-xs"
+                      />
+                      <Select
+                        value={normalized.trigger.targetMode}
+                        onValueChange={(v) => updateReward(rewardIdx, { ...reward, trigger: { ...normalized.trigger!, targetMode: v as TriggerTargetMode } })}
+                      >
+                        <SelectTrigger className="bg-background h-7 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="self">👤 Self</SelectItem>
+                          <SelectItem value="all">👥 Todos</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* Attribute reward editor */}
+                  {isAttr && normalized.attribute && (
+                    <div className="grid grid-cols-3 gap-2">
+                      <Select
+                        value={normalized.attribute.key}
+                        onValueChange={(v) => updateReward(rewardIdx, { ...reward, attribute: { ...normalized.attribute!, key: v } })}
+                      >
+                        <SelectTrigger className="bg-background h-7 text-xs">
+                          <SelectValue placeholder="Atributo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allAttributes.map(attr => (
+                            <SelectItem key={attr.key} value={attr.key}>{attr.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={normalized.attribute.action}
+                        onValueChange={(v) => updateReward(rewardIdx, { ...reward, attribute: { ...normalized.attribute!, action: v as any } })}
+                      >
+                        <SelectTrigger className="bg-background h-7 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="set">= Set</SelectItem>
+                          <SelectItem value="add">+ Sumar</SelectItem>
+                          <SelectItem value="subtract">- Restar</SelectItem>
+                          <SelectItem value="multiply">×</SelectItem>
+                          <SelectItem value="divide">÷ Dividir</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        value={normalized.attribute.value}
+                        onChange={(e) => updateReward(rewardIdx, { ...reward, attribute: { ...normalized.attribute!, value: Number(e.target.value) } })}
+                        placeholder="Valor"
+                        className="bg-background h-7 text-xs"
+                      />
+                    </div>
+                  )}
+
+                  {/* Target Attribute reward editor */}
+                  {isTargetAttr && normalized.target_attribute && (
+                    <div className="space-y-2">
+                      <Select
+                        value={normalized.target_attribute.targetCharacterId}
+                        onValueChange={(v) => updateReward(rewardIdx, { ...reward, target_attribute: { ...normalized.target_attribute!, targetCharacterId: v, key: '', value: 0 } })}
+                      >
+                        <SelectTrigger className="bg-background h-7 text-xs">
+                          <SelectValue placeholder="Target..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableTargets.map(t => (
+                            <SelectItem key={t.id} value={t.id}>
+                              {t.id === '__user__' ? '👤 ' : '🎭 '}{t.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {normalized.target_attribute.targetCharacterId && (() => {
+                        const selectedTarget = availableTargets.find(t => t.id === normalized.target_attribute!.targetCharacterId);
+                        const targetAttrs = selectedTarget?.attributes || [];
+                        const isNumeric = targetAttrs.find(a => a.key === normalized.target_attribute!.key)?.type === 'number';
+                        return (
+                          <div className="grid grid-cols-3 gap-2">
+                            <Select value={normalized.target_attribute.key} onValueChange={(v) => updateReward(rewardIdx, { ...reward, target_attribute: { ...normalized.target_attribute!, key: v } })}>
+                              <SelectTrigger className="bg-background h-7 text-xs"><SelectValue placeholder="Atributo" /></SelectTrigger>
+                              <SelectContent>
+                                {targetAttrs.map((a, i) => <SelectItem key={a.key || `a-${i}`} value={a.key}>{a.name}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                            {isNumeric ? (
+                              <Select value={normalized.target_attribute.action} onValueChange={(v) => updateReward(rewardIdx, { ...reward, target_attribute: { ...normalized.target_attribute!, action: v as any } })}>
+                                <SelectTrigger className="bg-background h-7 text-xs"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="set">= Set</SelectItem>
+                                  <SelectItem value="add">+ Sumar</SelectItem>
+                                  <SelectItem value="subtract">- Restar</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            ) : <div className="flex items-center justify-center"><span className="text-[10px] text-muted-foreground">= Set</span></div>}
+                            <Input
+                              type={isNumeric ? 'number' : 'text'}
+                              value={normalized.target_attribute.value}
+                              onChange={(e) => updateReward(rewardIdx, { ...reward, target_attribute: { ...normalized.target_attribute!, value: isNumeric ? Number(e.target.value) : e.target.value } })}
+                              placeholder={isNumeric ? 'Valor' : 'Texto'}
+                              className="bg-background h-7 text-xs"
+                            />
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Currency reward editor */}
+                  {isCurrency && normalized.currency && (
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-muted-foreground">Cantidad:</Label>
+                      <Input
+                        type="number"
+                        value={normalized.currency.amount}
+                        onChange={(e) => updateReward(rewardIdx, { ...reward, type: 'currency', currency: { amount: Number(e.target.value) } })}
+                        className="bg-background h-7 text-xs w-24"
+                      />
+                      <span className="text-xs text-muted-foreground">divisa para persona</span>
+                    </div>
+                  )}
+
+                  {/* Sprite Pack reward editor */}
+                  {isSpritePack && normalized.activate_sprite_pack && (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">Modo Target</Label>
+                          <Select
+                            value={normalized.activate_sprite_pack.targetMode || 'self'}
+                            onValueChange={(v) => updateReward(rewardIdx, {
+                              ...reward,
+                              type: 'activate_sprite_pack',
+                              activate_sprite_pack: {
+                                ...normalized.activate_sprite_pack!,
+                                targetMode: v as TriggerTargetMode,
+                                targetCharacterId: v === 'target' ? normalized.activate_sprite_pack!.targetCharacterId : undefined,
+                                targetPackId: v === 'target' ? normalized.activate_sprite_pack!.targetPackId : undefined,
+                                fallbackPackId: v === 'self' ? normalized.activate_sprite_pack!.fallbackPackId : undefined,
+                              }
+                            })}
+                          >
+                            <SelectTrigger className="bg-background h-7 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="self">👤 Self</SelectItem>
+                              <SelectItem value="all">👥 Todos</SelectItem>
+                              <SelectItem value="target">🎯 Target</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">Sprite Pack</Label>
+                          <Select
+                            value={normalized.activate_sprite_pack.packId}
+                            onValueChange={(v) => updateReward(rewardIdx, {
+                              ...reward,
+                              type: 'activate_sprite_pack',
+                              activate_sprite_pack: { ...normalized.activate_sprite_pack!, packId: v }
+                            })}
+                          >
+                            <SelectTrigger className="bg-background h-7 text-xs"><SelectValue placeholder="Seleccionar pack..." /></SelectTrigger>
+                            <SelectContent>
+                              {(spritePacksV2 || []).map(p => (
+                                <SelectItem key={p.id} value={p.id}>
+                                  🎨 {p.name} {p.conditionalMode ? '(condicional)' : `(${p.sprites.length} sprites)`}
+                                </SelectItem>
+                              ))}
+                              {(spritePacksV2 || []).length === 0 && (
+                                <SelectItem value="__none__" disabled>Sin packs disponibles</SelectItem>
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {/* Self mode: fallback options */}
+                      {(normalized.activate_sprite_pack.targetMode || 'self') === 'self' && normalized.activate_sprite_pack.packId && (
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground">Fallback Pack</Label>
+                            <Select
+                              value={normalized.activate_sprite_pack.fallbackPackId || '__none__'}
+                              onValueChange={(v) => updateReward(rewardIdx, {
+                                ...reward,
+                                type: 'activate_sprite_pack',
+                                activate_sprite_pack: {
+                                  ...normalized.activate_sprite_pack!,
+                                  fallbackPackId: v === '__none__' ? undefined : v,
+                                  fallbackMode: v === '__none__' ? normalized.activate_sprite_pack!.fallbackMode : 'custom_sprite' as const,
+                                }
+                              })}
+                            >
+                              <SelectTrigger className="bg-background h-7 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">Ninguno</SelectItem>
+                                {(spritePacksV2 || []).filter(p => p.id !== normalized.activate_sprite_pack!.packId).map(p => (
+                                  <SelectItem key={p.id} value={p.id}>🎨 {p.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground">Idle (ms)</Label>
+                            <Input
+                              type="number"
+                              value={normalized.activate_sprite_pack.returnToIdleMs || 0}
+                              onChange={(e) => updateReward(rewardIdx, {
+                                ...reward,
+                                type: 'activate_sprite_pack',
+                                activate_sprite_pack: { ...normalized.activate_sprite_pack!, returnToIdleMs: Number(e.target.value) }
+                              })}
+                              className="bg-background h-7 text-xs"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground">Fallback</Label>
+                            <Select
+                              value={normalized.activate_sprite_pack.fallbackMode || 'idle_collection'}
+                              onValueChange={(v) => updateReward(rewardIdx, {
+                                ...reward,
+                                type: 'activate_sprite_pack',
+                                activate_sprite_pack: { ...normalized.activate_sprite_pack!, fallbackMode: v as TriggerFallbackMode }
+                              })}
+                            >
+                              <SelectTrigger className="bg-background h-7 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="idle_collection">Colección Idle</SelectItem>
+                                <SelectItem value="default_pack">Pack Default</SelectItem>
+                                <SelectItem value="custom_sprite">Custom</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Target mode: target character + pack */}
+                      {normalized.activate_sprite_pack.targetMode === 'target' && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground">Personaje Target</Label>
+                            <Select
+                              value={normalized.activate_sprite_pack.targetCharacterId || ''}
+                              onValueChange={(v) => updateReward(rewardIdx, {
+                                ...reward,
+                                type: 'activate_sprite_pack',
+                                activate_sprite_pack: { ...normalized.activate_sprite_pack!, targetCharacterId: v }
+                              })}
+                            >
+                              <SelectTrigger className="bg-background h-7 text-xs"><SelectValue placeholder="Target..." /></SelectTrigger>
+                              <SelectContent>
+                                {availableTargets.map(t => (
+                                  <SelectItem key={t.id} value={t.id}>
+                                    {t.id === '__user__' ? '👤 ' : '🎭 '}{t.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground">Pack del Target</Label>
+                            <Select
+                              value={normalized.activate_sprite_pack.targetPackId || ''}
+                              onValueChange={(v) => updateReward(rewardIdx, {
+                                ...reward,
+                                type: 'activate_sprite_pack',
+                                activate_sprite_pack: { ...normalized.activate_sprite_pack!, targetPackId: v }
+                              })}
+                            >
+                              <SelectTrigger className="bg-background h-7 text-xs"><SelectValue placeholder="Pack del target..." /></SelectTrigger>
+                              <SelectContent>
+                                {(spritePacksV2 || []).map(p => (
+                                  <SelectItem key={p.id} value={p.id}>🎨 {p.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Pack preview */}
+                      {normalized.activate_sprite_pack.packId && (() => {
+                        const selectedPack = (spritePacksV2 || []).find(p => p.id === normalized.activate_sprite_pack!.packId);
+                        if (!selectedPack) return null;
+                        return (
+                          <div className="text-[10px] text-muted-foreground p-1.5 bg-background/50 rounded">
+                            Pack: {selectedPack.name} • {selectedPack.sprites.length} sprites • {selectedPack.conditionalMode ? 'Modo Condicional' : `Comportamiento: ${selectedPack.behavior || 'principal'}`}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Conditional Sprite Collection reward editor */}
+                  {isCondSprite && normalized.conditional_sprite_collection && (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">Modo Target</Label>
+                          <Select
+                            value={normalized.conditional_sprite_collection.targetMode || 'self'}
+                            onValueChange={(v) => updateReward(rewardIdx, {
+                              ...reward,
+                              type: 'conditional_sprite_collection',
+                              conditional_sprite_collection: { ...normalized.conditional_sprite_collection!, targetMode: v as TriggerTargetMode }
+                            })}
+                          >
+                            <SelectTrigger className="bg-background h-7 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="self">👤 Self</SelectItem>
+                              <SelectItem value="all">👥 Todos</SelectItem>
+                              <SelectItem value="target">🎯 Target</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">Idle / Fallback</Label>
+                          <div className="flex gap-1">
+                            <Input
+                              type="number"
+                              value={normalized.conditional_sprite_collection.returnToIdleMs || 0}
+                              onChange={(e) => updateReward(rewardIdx, {
+                                ...reward,
+                                type: 'conditional_sprite_collection',
+                                conditional_sprite_collection: { ...normalized.conditional_sprite_collection!, returnToIdleMs: Number(e.target.value) }
+                              })}
+                              placeholder="ms"
+                              className="bg-background h-7 text-xs w-16"
+                            />
+                            <Select
+                              value={normalized.conditional_sprite_collection.fallbackMode || 'idle_collection'}
+                              onValueChange={(v) => updateReward(rewardIdx, {
+                                ...reward,
+                                type: 'conditional_sprite_collection',
+                                conditional_sprite_collection: { ...normalized.conditional_sprite_collection!, fallbackMode: v as TriggerFallbackMode }
+                              })}
+                            >
+                              <SelectTrigger className="bg-background h-7 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="idle_collection">Idle</SelectItem>
+                                <SelectItem value="default_pack">Default</SelectItem>
+                                <SelectItem value="custom_sprite">Custom</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button onClick={() => { onSave(localEffect); onOpenChange(false); }}>
+            Guardar Cambios
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================
+// Threshold Effects Section - Card list + Add/Edit/Delete
+// ============================================
+
+interface ThresholdEffectsSectionProps {
+  attribute: AttributeDefinition;
+  index: number;
+  onChange: (index: number, updates: Partial<AttributeDefinition>) => void;
+  allAttributes: AttributeDefinition[];
+  availableTargets: StatsEditorProps['availableTargets'];
+  spritePacksV2?: SpritePackV2[];
+}
+
+function ThresholdEffectsSection({ attribute, index, onChange, allAttributes, availableTargets, spritePacksV2 }: ThresholdEffectsSectionProps) {
+  const [editingEffect, setEditingEffect] = useState<ThresholdEffect | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  // Migrate old onMinReached/onMaxReached to new thresholdEffects
+  const effects: ThresholdEffect[] = attribute.thresholdEffects || [];
+
+  // Auto-migrate old format if no new format exists
+  const needsMigration = !attribute.thresholdEffects && (attribute.onMinReached?.enabled || attribute.onMaxReached?.enabled);
+
+  const handleMigrate = () => {
+    const migrated: ThresholdEffect[] = [];
+    if (attribute.onMinReached?.enabled && attribute.onMinReached.rewards.length > 0) {
+      migrated.push({
+        id: `migrated-min-${Date.now().toString(36)}`,
+        name: `Al mínimo (${attribute.min ?? 0})`,
+        enabled: true,
+        priority: 0,
+        conditions: [{
+          attributeKey: attribute.key,
+          operator: '<=',
+          value: attribute.min ?? 0,
+        }],
+        rewards: attribute.onMinReached.rewards,
+      });
+    }
+    if (attribute.onMaxReached?.enabled && attribute.onMaxReached.rewards.length > 0) {
+      migrated.push({
+        id: `migrated-max-${Date.now().toString(36)}`,
+        name: `Al máximo (${attribute.max ?? 100})`,
+        enabled: true,
+        priority: 0,
+        conditions: [{
+          attributeKey: attribute.key,
+          operator: '>=',
+          value: attribute.max ?? 100,
+        }],
+        rewards: attribute.onMaxReached.rewards,
+      });
+    }
+    onChange(index, {
+      thresholdEffects: migrated,
+      onMinReached: undefined,
+      onMaxReached: undefined,
+    });
+  };
+
+  const addEffect = () => {
+    const newEffect: ThresholdEffect = {
+      id: `threshold-${Date.now().toString(36)}`,
+      name: '',
+      enabled: true,
+      priority: effects.length,
+      conditions: [{
+        attributeKey: attribute.key,
+        operator: '<=',
+        value: 0,
+      }],
+      rewards: [],
+    };
+    setEditingEffect(newEffect);
+    setDialogOpen(true);
+  };
+
+  const editEffect = (effect: ThresholdEffect) => {
+    setEditingEffect({ ...effect });
+    setDialogOpen(true);
+  };
+
+  const saveEffect = (updatedEffect: ThresholdEffect) => {
+    const existingIdx = effects.findIndex(e => e.id === updatedEffect.id);
+    let updatedEffects: ThresholdEffect[];
+    if (existingIdx >= 0) {
+      updatedEffects = effects.map(e => e.id === updatedEffect.id ? updatedEffect : e);
+    } else {
+      updatedEffects = [...effects, updatedEffect];
+    }
+    onChange(index, { thresholdEffects: updatedEffects });
+  };
+
+  const deleteEffect = (effectId: string) => {
+    onChange(index, { thresholdEffects: effects.filter(e => e.id !== effectId) });
+  };
+
+  const toggleEffect = (effectId: string) => {
+    onChange(index, {
+      thresholdEffects: effects.map(e => e.id === effectId ? { ...e, enabled: !e.enabled } : e)
+    });
+  };
+
+  // Describe a condition for the card summary
+  const describeCondition = (cond: StatRequirement) => {
+    const attrName = cond.targetCharacterId
+      ? (availableTargets.find(t => t.id === cond.targetCharacterId)?.name || cond.targetCharacterId) + ' → ' + (cond.targetAttributeName || cond.attributeKey)
+      : (allAttributes.find(a => a.key === cond.attributeKey)?.name || cond.attributeKey);
+    const opSymbol: Record<string, string> = { '<': '<', '<=': '≤', '>': '>', '>=': '≥', '==': '=', '!=': '≠', 'between': '↔', 'contains': '∋', 'not_contains': '∌' };
+    if (cond.operator === 'between') {
+      return `${attrName} ${opSymbol[cond.operator]} ${cond.value} y ${cond.valueMax}`;
+    }
+    return `${attrName} ${opSymbol[cond.operator] || cond.operator} ${cond.value}`;
+  };
+
+  return (
+    <div className="space-y-3 p-3 bg-purple-500/5 rounded-lg border border-purple-500/20">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-purple-400" />
+          <Label className="text-xs font-medium text-purple-400">Efectos de Umbral</Label>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p>Efectos que se activan cuando el atributo cumple ciertas condiciones.</p>
+              <p className="mt-1 text-xs text-muted-foreground">• Condiciones flexibles: ≤, ≥, &lt;, &gt;, =, ≠, entre</p>
+              <p className="text-xs text-muted-foreground">• Prioridad: el efecto con mayor prioridad gana</p>
+              <p className="text-xs text-muted-foreground">• Recompensas: Sprites, atributos, sonidos, fondos, sprite packs</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 text-[10px] border-purple-500/30 hover:bg-purple-500/10"
+          onClick={addEffect}
+        >
+          <Plus className="w-2.5 h-2.5 mr-0.5" /> Agregar Umbral
+        </Button>
+      </div>
+
+      {/* Migration banner */}
+      {needsMigration && (
+        <div className="flex items-center gap-2 p-2 bg-amber-500/10 rounded border border-amber-500/20 text-xs">
+          <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <span className="text-amber-300">Existen efectos de umbral en formato antiguo (min/max).</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-5 text-[10px] text-amber-300 hover:bg-amber-500/10 ml-auto shrink-0"
+            onClick={handleMigrate}
+          >
+            Migrar al nuevo formato
+          </Button>
+        </div>
+      )}
+
+      {/* Effects list */}
+      {effects.length === 0 && !needsMigration && (
+        <div className="text-center py-3 text-xs text-muted-foreground">
+          Sin efectos de umbral. Agrega uno para activar efectos cuando cambie este atributo.
+        </div>
+      )}
+
+      <div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar">
+        {effects.map(effect => (
+          <div
+            key={effect.id}
+            className={`p-2.5 rounded-lg border transition-colors ${
+              effect.enabled
+                ? 'bg-purple-500/5 border-purple-500/15 hover:border-purple-500/30'
+                : 'bg-muted/30 border-muted/20 opacity-60'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-1.5">
+              <Switch
+                checked={effect.enabled}
+                onCheckedChange={() => toggleEffect(effect.id)}
+                className="scale-75"
+              />
+              <span className={`text-sm font-medium ${effect.enabled ? 'text-foreground' : 'text-muted-foreground'}`}>
+                {effect.name || 'Sin nombre'}
+              </span>
+              {effect.priority > 0 && (
+                <Badge variant="outline" className="text-[9px] text-amber-400 border-amber-500/30">
+                  ⬆ Prio: {effect.priority}
+                </Badge>
+              )}
+              <div className="ml-auto flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 text-purple-400 hover:bg-purple-500/10"
+                  onClick={() => editEffect(effect)}
+                >
+                  <Pencil className="w-3 h-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 text-red-400 hover:bg-red-500/10"
+                  onClick={() => deleteEffect(effect.id)}
+                >
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Condition summary */}
+            <div className="flex flex-wrap gap-1 mb-1.5">
+              {effect.conditions.map((cond, ci) => (
+                <Badge key={ci} variant="outline" className="text-[9px] text-purple-300 border-purple-500/20 bg-purple-500/5">
+                  {describeCondition(cond)}
+                </Badge>
+              ))}
+            </div>
+
+            {/* Reward summary */}
+            <div className="flex flex-wrap gap-1">
+              {effect.rewards.map((reward, ri) => {
+                const normalized = normalizeReward(reward);
+                return (
+                  <Badge key={ri} variant="outline" className={`text-[9px] ${
+                    normalized.type === 'activate_sprite_pack' ? 'text-emerald-400 border-emerald-500/20' :
+                    normalized.type === 'conditional_sprite_collection' ? 'text-cyan-400 border-cyan-500/20' :
+                    normalized.type === 'attribute' ? 'text-amber-400 border-amber-500/20' :
+                    normalized.type === 'target_attribute' ? 'text-blue-400 border-blue-500/20' :
+                    normalized.type === 'currency' ? 'text-amber-400 border-amber-500/20' :
+                    'text-purple-400 border-purple-500/20'
+                  }`}>
+                    {normalized.type === 'activate_sprite_pack' ? '🎨' :
+                     normalized.type === 'conditional_sprite_collection' ? '🖼️' :
+                     normalized.type === 'attribute' ? '📊' :
+                     normalized.type === 'target_attribute' ? '🔗' :
+                     normalized.type === 'currency' ? '💰' : '⚡'} {describeReward(normalized)}
+                  </Badge>
+                );
+              })}
+              {effect.rewards.length === 0 && (
+                <span className="text-[10px] text-muted-foreground italic">Sin recompensas</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Threshold Effect Edit Dialog */}
+      {editingEffect && (
+        <ThresholdEffectDialog
+          effect={editingEffect}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          onSave={saveEffect}
+          allAttributes={allAttributes}
+          availableTargets={availableTargets}
+          spritePacksV2={spritePacksV2}
+          attributeKey={attribute.key}
+        />
+      )}
+    </div>
+  );
+}
+
+// ============================================
 // Skill Editor Component
 // ============================================
 
@@ -2336,11 +2499,12 @@ interface SkillEditorProps {
   availableObjectives?: ObjectiveDropdownOption[];
   availableSolicitudes?: SolicitudDropdownOption[];
   availableTargets?: StatsEditorProps['availableTargets'];
+  spritePacksV2?: SpritePackV2[];  // for activate_sprite_pack reward
   onChange: (index: number, updates: Partial<SkillDefinition>) => void;
   onDelete: (index: number) => void;
 }
 
-function SkillEditor({ skill, index, availableAttributes, availableObjectives = [], availableSolicitudes = [], availableTargets = [], onChange, onDelete }: SkillEditorProps) {
+function SkillEditor({ skill, index, availableAttributes, availableObjectives = [], availableSolicitudes = [], availableTargets = [], spritePacksV2, onChange, onDelete }: SkillEditorProps) {
   const [expanded, setExpanded] = useState(false);
   
   return (
@@ -2757,6 +2921,17 @@ function SkillEditor({ skill, index, availableAttributes, availableObjectives = 
                 >
                   <Plus className="w-3 h-3 mr-1" /> 💰 Divisa
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 text-xs border-purple-500/30 hover:bg-purple-500/10"
+                  onClick={() => {
+                    const newReward = createActivateSpritePackReward('', { id: `skill-reward-${Date.now().toString(36)}` });
+                    onChange(index, { activationRewards: [...(skill.activationRewards || []), newReward] });
+                  }}
+                >
+                  <Plus className="w-3 h-3 mr-1" /> 🎨 Sprite Pack
+                </Button>
               </div>
             </div>
             <div className="space-y-1">
@@ -2767,12 +2942,13 @@ function SkillEditor({ skill, index, availableAttributes, availableObjectives = 
                 const isSol = normalized.type === 'solicitud';
                 const isTargetAttr = normalized.type === 'target_attribute';
                 const isCurrency = normalized.type === 'currency';
+                const isActivateSpritePack = normalized.type === 'activate_sprite_pack';
 
                 return (
-                  <div key={reward.id} className={`p-2 rounded border space-y-2 ${isObj ? 'bg-amber-500/5 border-amber-500/10' : isSol ? 'bg-violet-500/5 border-violet-500/10' : isTargetAttr ? 'bg-blue-500/5 border-blue-500/10' : isCurrency ? 'bg-amber-500/5 border-amber-500/10' : 'bg-green-500/5 border-green-500/10'}`}>
+                  <div key={reward.id} className={`p-2 rounded border space-y-2 ${isObj ? 'bg-amber-500/5 border-amber-500/10' : isSol ? 'bg-violet-500/5 border-violet-500/10' : isTargetAttr ? 'bg-blue-500/5 border-blue-500/10' : isCurrency ? 'bg-amber-500/5 border-amber-500/10' : isActivateSpritePack ? 'bg-purple-500/5 border-purple-500/10' : 'bg-green-500/5 border-green-500/10'}`}>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className={`text-[10px] ${isObj ? 'text-amber-400 border-amber-500/30' : isSol ? 'text-violet-400 border-violet-500/30' : isTargetAttr ? 'text-blue-400 border-blue-500/30' : isCurrency ? 'text-amber-400 border-amber-500/30' : 'text-green-400 border-green-500/30'}`}>
-                        {isObj ? '🎯 Objetivo' : isSol ? '📋 Solicitud' : isTargetAttr ? '🔗 Atributo Target' : isCurrency ? '💰 Divisa' : '⚡ Trigger'}
+                      <Badge variant="outline" className={`text-[10px] ${isObj ? 'text-amber-400 border-amber-500/30' : isSol ? 'text-violet-400 border-violet-500/30' : isTargetAttr ? 'text-blue-400 border-blue-500/30' : isCurrency ? 'text-amber-400 border-amber-500/30' : isActivateSpritePack ? 'text-purple-400 border-purple-500/30' : 'text-green-400 border-green-500/30'}`}>
+                        {isObj ? '🎯 Objetivo' : isSol ? '📋 Solicitud' : isTargetAttr ? '🔗 Atributo Target' : isCurrency ? '💰 Divisa' : isActivateSpritePack ? '🎨 Sprite Pack' : '⚡ Trigger'}
                       </Badge>
                       <Badge variant="outline" className="text-[10px]">
                         {describeReward(normalized)}
@@ -3176,6 +3352,333 @@ function SkillEditor({ skill, index, availableAttributes, availableObjectives = 
                           className="bg-background h-5 text-[10px] w-20"
                         />
                         <span className="text-[10px] text-muted-foreground">divisa para persona</span>
+                      </div>
+                    )}
+                    {/* Activate Sprite Pack Editor */}
+                    {isActivateSpritePack && normalized.activate_sprite_pack && (
+                      <div className="space-y-2">
+                        {/* Target Mode selector */}
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">Objetivo</Label>
+                          <Select
+                            value={normalized.activate_sprite_pack.targetMode || 'self'}
+                            onValueChange={(v) => {
+                              const updatedRewards = [...(skill.activationRewards || [])];
+                              updatedRewards[rewardIdx] = {
+                                ...reward,
+                                type: 'activate_sprite_pack',
+                                activate_sprite_pack: { 
+                                  ...normalized.activate_sprite_pack!, 
+                                  targetMode: v as TriggerTargetMode,
+                                  // Reset target-specific fields when switching mode
+                                  targetCharacterId: v === 'target' ? normalized.activate_sprite_pack!.targetCharacterId : undefined,
+                                  targetPackId: v === 'target' ? normalized.activate_sprite_pack!.targetPackId : undefined,
+                                  fallbackPackId: v === 'self' ? normalized.activate_sprite_pack!.fallbackPackId : undefined,
+                                }
+                              };
+                              onChange(index, { activationRewards: updatedRewards });
+                            }}
+                          >
+                            <SelectTrigger className="bg-background h-6 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="self">👤 Mismo personaje (Self)</SelectItem>
+                              <SelectItem value="all">👥 Todos</SelectItem>
+                              <SelectItem value="target">🎯 Personaje objetivo</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* SELF mode: Select own sprite pack + fallback collection */}
+                        {(normalized.activate_sprite_pack.targetMode || 'self') === 'self' && (
+                          <div className="space-y-2 p-2 rounded-md bg-purple-500/5 border border-purple-500/10">
+                            <div className="text-[10px] text-purple-500 font-medium">Activar en sí mismo</div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground">Sprite Pack</Label>
+                                <Select
+                                  value={normalized.activate_sprite_pack.packId}
+                                  onValueChange={(v) => {
+                                    const updatedRewards = [...(skill.activationRewards || [])];
+                                    updatedRewards[rewardIdx] = {
+                                      ...reward,
+                                      type: 'activate_sprite_pack',
+                                      activate_sprite_pack: { ...normalized.activate_sprite_pack!, packId: v }
+                                    };
+                                    onChange(index, { activationRewards: updatedRewards });
+                                  }}
+                                >
+                                  <SelectTrigger className="bg-background h-6 text-xs">
+                                    <SelectValue placeholder="Seleccionar pack..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {(spritePacksV2 || []).length > 0 ? (
+                                      spritePacksV2!.map(p => (
+                                        <SelectItem key={p.id} value={p.id}>
+                                          <div className="flex items-center gap-1.5">
+                                            <Package className="w-3 h-3" />
+                                            {p.name} ({p.sprites.length})
+                                            {p.conditionalMode && (
+                                              <span className="text-purple-500 text-[9px]">cond.</span>
+                                            )}
+                                          </div>
+                                        </SelectItem>
+                                      ))
+                                    ) : (
+                                      <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                                        No hay packs creados
+                                      </div>
+                                    )}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground">Fallback Pack</Label>
+                                <Select
+                                  value={normalized.activate_sprite_pack.fallbackPackId || '__none__'}
+                                  onValueChange={(v) => {
+                                    const updatedRewards = [...(skill.activationRewards || [])];
+                                    updatedRewards[rewardIdx] = {
+                                      ...reward,
+                                      type: 'activate_sprite_pack',
+                                      activate_sprite_pack: { 
+                                        ...normalized.activate_sprite_pack!, 
+                                        fallbackPackId: v === '__none__' ? undefined : v,
+                                        fallbackMode: v === '__none__' ? normalized.activate_sprite_pack!.fallbackMode : 'custom_sprite' as const,
+                                      }
+                                    };
+                                    onChange(index, { activationRewards: updatedRewards });
+                                  }}
+                                >
+                                  <SelectTrigger className="bg-background h-6 text-xs">
+                                    <SelectValue placeholder="Ninguno..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="__none__">Ninguno (volver a idle)</SelectItem>
+                                    {(spritePacksV2 || [])
+                                      .filter(p => p.id !== normalized.activate_sprite_pack!.packId)
+                                      .map(p => (
+                                        <SelectItem key={p.id} value={p.id}>
+                                          <div className="flex items-center gap-1.5">
+                                            <Package className="w-3 h-3" />
+                                            {p.name} ({p.sprites.length})
+                                            {p.conditionalMode && (
+                                              <span className="text-purple-500 text-[9px]">cond.</span>
+                                            )}
+                                          </div>
+                                        </SelectItem>
+                                      ))
+                                    }
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ALL mode: Select sprite pack that applies to everyone */}
+                        {(normalized.activate_sprite_pack.targetMode) === 'all' && (
+                          <div className="space-y-2 p-2 rounded-md bg-purple-500/5 border border-purple-500/10">
+                            <div className="text-[10px] text-purple-500 font-medium">Activar en todos los personajes</div>
+                            <div className="space-y-1">
+                              <Label className="text-[10px] text-muted-foreground">Sprite Pack</Label>
+                              <Select
+                                value={normalized.activate_sprite_pack.packId}
+                                onValueChange={(v) => {
+                                  const updatedRewards = [...(skill.activationRewards || [])];
+                                  updatedRewards[rewardIdx] = {
+                                    ...reward,
+                                    type: 'activate_sprite_pack',
+                                    activate_sprite_pack: { ...normalized.activate_sprite_pack!, packId: v }
+                                  };
+                                  onChange(index, { activationRewards: updatedRewards });
+                                }}
+                              >
+                                <SelectTrigger className="bg-background h-6 text-xs">
+                                  <SelectValue placeholder="Seleccionar pack..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {(spritePacksV2 || []).length > 0 ? (
+                                    spritePacksV2!.map(p => (
+                                      <SelectItem key={p.id} value={p.id}>
+                                        <div className="flex items-center gap-1.5">
+                                          <Package className="w-3 h-3" />
+                                          {p.name} ({p.sprites.length})
+                                          {p.conditionalMode && (
+                                            <span className="text-purple-500 text-[9px]">cond.</span>
+                                          )}
+                                        </div>
+                                      </SelectItem>
+                                    ))
+                                  ) : (
+                                    <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                                      No hay packs creados
+                                    </div>
+                                  )}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* TARGET mode: Select target character + their sprite pack */}
+                        {(normalized.activate_sprite_pack.targetMode) === 'target' && (
+                          <div className="space-y-2 p-2 rounded-md bg-blue-500/5 border border-blue-500/10">
+                            <div className="text-[10px] text-blue-500 font-medium">Activar en personaje objetivo</div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground">Personaje objetivo</Label>
+                                <Select
+                                  value={normalized.activate_sprite_pack.targetCharacterId || ''}
+                                  onValueChange={(v) => {
+                                    const updatedRewards = [...(skill.activationRewards || [])];
+                                    updatedRewards[rewardIdx] = {
+                                      ...reward,
+                                      type: 'activate_sprite_pack',
+                                      activate_sprite_pack: { 
+                                        ...normalized.activate_sprite_pack!, 
+                                        targetCharacterId: v,
+                                        targetPackId: undefined, // Reset pack when character changes
+                                      }
+                                    };
+                                    onChange(index, { activationRewards: updatedRewards });
+                                  }}
+                                >
+                                  <SelectTrigger className="bg-background h-6 text-xs">
+                                    <SelectValue placeholder="Seleccionar personaje..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {availableTargets.length > 0 ? (
+                                      availableTargets.map(t => (
+                                        <SelectItem key={t.id} value={t.id}>
+                                          {t.id === '__user__' ? '👤 ' : '🎭 '}{t.name}
+                                        </SelectItem>
+                                      ))
+                                    ) : (
+                                      <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                                        No hay otros personajes con stats
+                                      </div>
+                                    )}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground">Sprite Pack del objetivo</Label>
+                                <Select
+                                  value={normalized.activate_sprite_pack.targetPackId || ''}
+                                  onValueChange={(v) => {
+                                    const updatedRewards = [...(skill.activationRewards || [])];
+                                    updatedRewards[rewardIdx] = {
+                                      ...reward,
+                                      type: 'activate_sprite_pack',
+                                      activate_sprite_pack: { ...normalized.activate_sprite_pack!, targetPackId: v }
+                                    };
+                                    onChange(index, { activationRewards: updatedRewards });
+                                  }}
+                                >
+                                  <SelectTrigger className="bg-background h-6 text-xs">
+                                    <SelectValue placeholder="Seleccionar pack..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {(() => {
+                                      const selectedTarget = availableTargets.find(t => t.id === normalized.activate_sprite_pack!.targetCharacterId);
+                                      const targetPacks = selectedTarget?.spritePacks || [];
+                                      return targetPacks.length > 0 ? (
+                                        targetPacks.map(p => (
+                                          <SelectItem key={p.id} value={p.id}>
+                                            <div className="flex items-center gap-1.5">
+                                              <Package className="w-3 h-3" />
+                                              {p.name} ({p.spriteCount})
+                                              {p.conditionalMode && (
+                                                <span className="text-purple-500 text-[9px]">cond.</span>
+                                              )}
+                                            </div>
+                                          </SelectItem>
+                                        ))
+                                      ) : (
+                                        <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                                          {normalized.activate_sprite_pack!.targetCharacterId 
+                                            ? 'Este personaje no tiene sprite packs' 
+                                            : 'Selecciona un personaje primero'}
+                                        </div>
+                                      );
+                                    })()}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                            {!normalized.activate_sprite_pack.targetCharacterId && (
+                              <p className="text-[10px] text-muted-foreground italic">Selecciona un personaje objetivo para ver sus sprite packs disponibles</p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Common options: Return to idle + Fallback mode */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="flex items-center gap-2">
+                            <Label className="text-[10px] text-muted-foreground whitespace-nowrap">Idle (ms):</Label>
+                            <Input
+                              type="number"
+                              min={0}
+                              value={normalized.activate_sprite_pack.returnToIdleMs || 0}
+                              onChange={(e) => {
+                                const updatedRewards = [...(skill.activationRewards || [])];
+                                updatedRewards[rewardIdx] = {
+                                  ...reward,
+                                  type: 'activate_sprite_pack',
+                                  activate_sprite_pack: { ...normalized.activate_sprite_pack!, returnToIdleMs: Number(e.target.value) }
+                                };
+                                onChange(index, { activationRewards: updatedRewards });
+                              }}
+                              placeholder="0 = persistir"
+                              className="bg-background h-6 w-24 text-xs"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Label className="text-[10px] text-muted-foreground whitespace-nowrap">Fallback:</Label>
+                            <Select
+                              value={normalized.activate_sprite_pack.fallbackMode || 'idle_collection'}
+                              onValueChange={(v) => {
+                                const updatedRewards = [...(skill.activationRewards || [])];
+                                updatedRewards[rewardIdx] = {
+                                  ...reward,
+                                  type: 'activate_sprite_pack',
+                                  activate_sprite_pack: { ...normalized.activate_sprite_pack!, fallbackMode: v as TriggerFallbackMode }
+                                };
+                                onChange(index, { activationRewards: updatedRewards });
+                              }}
+                            >
+                              <SelectTrigger className="bg-background h-6 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="idle_collection">Idle</SelectItem>
+                                <SelectItem value="collection_default">Default</SelectItem>
+                                <SelectItem value="custom_sprite">Custom</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        {/* Info about conditional mode */}
+                        {normalized.activate_sprite_pack.packId && (() => {
+                          const selectedPack = (spritePacksV2 || []).find(p => p.id === normalized.activate_sprite_pack!.packId);
+                          if (!selectedPack) return null;
+                          return (
+                            <div className="text-[10px] text-muted-foreground p-1.5 bg-background/50 rounded">
+                              {selectedPack.conditionalMode ? (
+                                <span className="text-purple-500 flex items-center gap-1">
+                                  <GitBranch className="w-3 h-3" />
+                                  Pack con modo condicional — evaluará las condiciones de cada sprite por prioridad
+                                </span>
+                              ) : (
+                                <span>
+                                  Pack sin modo condicional — usará el comportamiento definido (principal/aleatorio/lista)
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
@@ -3864,7 +4367,7 @@ function getAvailableSolicitudes(
 // Main Stats Editor Component
 // ============================================
 
-export function StatsEditor({ statsConfig, onChange, allCharacters = [], questTemplates = [], questTemplateIds, availableTargets = [] }: StatsEditorProps) {
+export function StatsEditor({ statsConfig, onChange, allCharacters = [], questTemplates = [], questTemplateIds, availableTargets = [], spritePacksV2 }: StatsEditorProps) {
   const config: CharacterStatsConfig = statsConfig || DEFAULT_STATS_CONFIG;
   
   const updateConfig = (updates: Partial<CharacterStatsConfig>) => {
@@ -4175,6 +4678,7 @@ export function StatsEditor({ statsConfig, onChange, allCharacters = [], questTe
                       onDelete={deleteAttribute}
                       allAttributes={config.attributes}
                       availableTargets={availableTargets}
+                      spritePacksV2={spritePacksV2}
                     />
                   ))}
                   <Button variant="outline" size="sm" onClick={addAttribute} className="w-full">
@@ -4249,6 +4753,7 @@ export function StatsEditor({ statsConfig, onChange, allCharacters = [], questTe
                       availableObjectives={availableObjectives}
                       availableSolicitudes={availableSolicitudes}
                       availableTargets={availableTargets}
+                      spritePacksV2={spritePacksV2}
                       onChange={updateSkill}
                       onDelete={deleteSkill}
                     />
@@ -4324,6 +4829,7 @@ export function StatsEditor({ statsConfig, onChange, allCharacters = [], questTe
                       availableAttributes={config.attributes}
                       availableObjectives={availableObjectives}
                       availableTargets={availableTargets}
+                      spritePacksV2={spritePacksV2}
                       onChange={(i, updates) => updateIntention(i, updates as unknown as Partial<IntentionDefinition>)}
                       onDelete={deleteIntention}
                     />

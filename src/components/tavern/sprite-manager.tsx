@@ -23,13 +23,8 @@ interface SpriteManagerProps {
 
 export function SpriteManager({ character, onChange }: SpriteManagerProps) {
   const [collections, setCollections] = useState<SpriteCollection[]>([]);
-  const [customSprites, setCustomSprites] = useState<SpriteIndexEntry[]>([]);
+  const [allSprites, setAllSprites] = useState<SpriteIndexEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  
-  // Selected collection - initialize from character's saved config
-  const [selectedCollectionName, setSelectedCollectionName] = useState<string>(() => {
-    return character.spriteConfig?.collection || 'custom';
-  });
 
   // Get current sprite config - memoized to prevent infinite loops
   const spriteConfig: SpriteConfig = useMemo(() => {
@@ -55,24 +50,7 @@ export function SpriteManager({ character, onChange }: SpriteManagerProps) {
         const spritesData = await spritesRes.json();
         
         setCollections(collectionsData.collections || []);
-        setCustomSprites(spritesData.sprites || []);
-        
-        // Set default collection
-        if (collectionsData.collections?.length > 0) {
-          const collectionNames = collectionsData.collections.map((c: SpriteCollection) => c.name);
-          const savedCollection = character.spriteConfig?.collection;
-          
-          if (savedCollection && collectionNames.includes(savedCollection)) {
-            setSelectedCollectionName(savedCollection);
-          } else {
-            const hasCustom = collectionNames.includes('custom');
-            if (hasCustom) {
-              setSelectedCollectionName('custom');
-            } else {
-              setSelectedCollectionName(collectionsData.collections[0].name);
-            }
-          }
-        }
+        setAllSprites(spritesData.sprites || []);
       } catch (error) {
         spriteLogger.error('Error fetching sprite data', { error });
       } finally {
@@ -82,12 +60,6 @@ export function SpriteManager({ character, onChange }: SpriteManagerProps) {
 
     fetchData();
   }, [character.spriteConfig?.collection]);
-
-  // Filter sprites by selected collection
-  const spritesInSelectedCollection = useMemo(() => {
-    if (!selectedCollectionName) return customSprites;
-    return customSprites.filter(s => s.pack === selectedCollectionName);
-  }, [customSprites, selectedCollectionName]);
 
   if (loading) {
     return (
@@ -116,12 +88,12 @@ export function SpriteManager({ character, onChange }: SpriteManagerProps) {
           </TabsTrigger>
         </TabsList>
 
-        {/* Sprite Packs Tab */}
+        {/* Sprite Packs Tab - Pass ALL sprites so users can add from any collection */}
         <TabsContent value="packs" className="space-y-4 mt-3">
           <SpritePackEditorV2
             character={character}
-            customSprites={spritesInSelectedCollection}
-            selectedCollectionName={selectedCollectionName}
+            customSprites={allSprites}
+            collections={collections}
             onChange={onChange}
           />
         </TabsContent>

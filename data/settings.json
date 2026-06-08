@@ -29,10 +29,10 @@
   },
   "comicSound": {
     "enabled": true,
-    "maxEffects": 5,
+    "maxEffects": 1,
     "duration": 880,
-    "minScale": 0.7,
-    "maxScale": 2.1,
+    "minScale": 0.5,
+    "maxScale": 1,
     "allowedTemplates": [
       "wail",
       "tall",
@@ -52,10 +52,10 @@
   },
   "chatLayout": {
     "novelMode": true,
-    "chatWidth": 71.42243830319572,
-    "chatHeight": 39.053497942386834,
-    "chatX": 47.23712856005588,
-    "chatY": 80.47325102880659,
+    "chatWidth": 72.0436507936508,
+    "chatHeight": 63.740245828841836,
+    "chatX": 49.29563492063491,
+    "chatY": 68.12987708557908,
     "chatOpacity": 0.95,
     "blurBackground": false,
     "showCharacterSprite": true

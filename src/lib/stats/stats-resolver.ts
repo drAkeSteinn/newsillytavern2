@@ -55,6 +55,9 @@ export interface StatsResolutionContext {
   // For comprehensive key resolution ({{userpersona}}, {{eventos}}, stat keys, etc.)
   personaDescription?: string;
   personaResolvedStats?: ResolvedStats | null;
+  // Lorebook entry keys for resolving {{key}} in action descriptions
+  // Built by buildLorebookEntryKeyMap() from active lorebooks
+  lorebookEntryKeys?: Record<string, string>;
 }
 
 export interface ResolvedAttribute {
@@ -200,6 +203,7 @@ function resolveTemplateKeys(
     characterId?: string;
     resolvedStats?: import('@/types').ResolvedStats | null;
     personaResolvedStats?: import('@/types').ResolvedStats | null;
+    lorebookEntryKeys?: Record<string, string>;
   }
 ): string {
   if (!text) return text;
@@ -216,7 +220,14 @@ function resolveTemplateKeys(
       fullContext.sessionStats,
       undefined, // soundTriggers
       undefined, // soundSettings
-      fullContext.personaResolvedStats
+      fullContext.personaResolvedStats,
+      undefined, // questTemplates
+      undefined, // sessionQuests
+      undefined, // questSettings
+      undefined, // outletSections
+      undefined, // lorebookAttributeKeys
+      undefined, // inventoryData
+      fullContext.lorebookEntryKeys
     );
     // Override characterId for event keys
     (keyContext as Record<string, unknown>).characterId = fullContext.characterId;
@@ -295,6 +306,7 @@ export function buildSkillsBlock(
     userName?: string;
     characterName?: string;
     sessionStats?: SessionStats;
+    lorebookEntryKeys?: Record<string, string>;
   }
 ): string {
   const availableSkills = filterSkillsByRequirements(skills, attributeValues, sessionStats);
@@ -338,6 +350,7 @@ export function buildSkillsBlock(
     characterId: fullContext?.characterId,
     resolvedStats: fullContext?.resolvedStats,
     personaResolvedStats: fullContext?.personaResolvedStats,
+    lorebookEntryKeys: fullContext?.lorebookEntryKeys,
   } : undefined;
 
   availableSkills.forEach((skill) => {
@@ -419,6 +432,7 @@ export function buildIntentionsBlock(
     userName?: string;
     characterName?: string;
     sessionStats?: SessionStats;
+    lorebookEntryKeys?: Record<string, string>;
   }
 ): string {
   const availableIntentions = filterIntentionsByRequirements(intentions, attributeValues, sessionStats);
@@ -438,6 +452,7 @@ export function buildIntentionsBlock(
     characterId: fullContext?.characterId,
     resolvedStats: fullContext?.resolvedStats,
     personaResolvedStats: fullContext?.personaResolvedStats,
+    lorebookEntryKeys: fullContext?.lorebookEntryKeys,
   } : undefined;
 
   availableIntentions.forEach((intention, index) => {
@@ -498,6 +513,7 @@ export function buildInvitationsBlock(
     userName?: string;
     characterName?: string;
     sessionStats?: SessionStats;
+    lorebookEntryKeys?: Record<string, string>;
   }
 ): string {
   const availableInvitations = filterInvitationsByRequirements(invitations, attributeValues, sessionStats);
@@ -547,6 +563,7 @@ export function buildInvitationsBlock(
       characterId: fullContext?.characterId,
       resolvedStats: fullContext?.resolvedStats,
       personaResolvedStats: fullContext?.personaResolvedStats,
+      lorebookEntryKeys: fullContext?.lorebookEntryKeys,
     } : undefined;
 
     // Resolve keys in description:
@@ -783,6 +800,7 @@ export function resolveStats(
     userName: context.userName,
     characterName: context.characterName,
     sessionStats,
+    lorebookEntryKeys: context.lorebookEntryKeys,
   };
 
   // Defensive access: statsConfig may have incomplete properties when sent from frontend

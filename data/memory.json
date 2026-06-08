@@ -468,9 +468,39 @@
     },
     "53f96b07-85d6-4148-818a-b64cfc50dd90": {
       "sessionId": "53f96b07-85d6-4148-818a-b64cfc50dd90",
-      "messagesSinceLastSummary": 3,
+      "messagesSinceLastSummary": 5,
       "lastSummaryMessageIndex": 0,
       "isGroupChat": false
+    },
+    "0f3f97bf-7f21-448e-a403-41bf101076a6": {
+      "sessionId": "0f3f97bf-7f21-448e-a403-41bf101076a6",
+      "messagesSinceLastSummary": 0,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "eb1d904f-53eb-4ade-b16f-960d76550519": {
+      "sessionId": "eb1d904f-53eb-4ade-b16f-960d76550519",
+      "messagesSinceLastSummary": 2,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "93a5dfa1-7746-42b1-9fdf-f862b0c64795": {
+      "sessionId": "93a5dfa1-7746-42b1-9fdf-f862b0c64795",
+      "messagesSinceLastSummary": 0,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "2c8572cc-9d59-4a3c-b73a-c9228ee93dec": {
+      "sessionId": "2c8572cc-9d59-4a3c-b73a-c9228ee93dec",
+      "messagesSinceLastSummary": 7,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
+    },
+    "9557ecc0-2287-479b-87c2-7dd86ec22005": {
+      "sessionId": "9557ecc0-2287-479b-87c2-7dd86ec22005",
+      "messagesSinceLastSummary": 1,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": true
     }
   }
 }

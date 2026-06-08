@@ -14,10 +14,17 @@ import type { ToolDefinition, ToolContext, ToolExecutionResult } from '../types'
 import type { SkillDefinition } from '@/types';
 import { checkAllRequirements } from '@/lib/triggers/handlers/skill-activation-handler';
 import { resolveAllKeys, buildKeyResolutionContext } from '@/lib/key-resolver';
+import { buildLorebookEntryKeyMap } from '@/lib/lorebook';
 
-/** Resolve ALL template keys ({{user}}, {{char}}, {{userpersona}}, stats, events, etc.) in text */
+/** Resolve ALL template keys ({{user}}, {{char}}, {{userpersona}}, stats, events, lorebook entries, etc.) in text */
 function resolveToolKeysComprehensive(text: string, context: ToolContext): string {
   if (!text) return text;
+
+  // Build lorebook entry key map from available lorebooks for {{key}} resolution
+  const lorebookEntryKeys = context.lorebooks && context.lorebooks.length > 0
+    ? buildLorebookEntryKeyMap(context.lorebooks).keys
+    : undefined;
+
   const keyContext = buildKeyResolutionContext(
     { id: context.characterId, name: context.characterName } as import('@/types').CharacterCard,
     context.userName,
@@ -26,6 +33,14 @@ function resolveToolKeysComprehensive(text: string, context: ToolContext): strin
     context.sessionStats,
     undefined, // soundTriggers
     undefined, // soundSettings
+    undefined, // personaResolvedStats
+    undefined, // questTemplates
+    undefined, // sessionQuests
+    undefined, // questSettings
+    undefined, // outletSections
+    undefined, // lorebookAttributeKeys
+    undefined, // inventoryData
+    lorebookEntryKeys
   );
   return resolveAllKeys(text, keyContext);
 }

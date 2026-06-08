@@ -16,7 +16,7 @@
 // Keyword/Text: cycle (rotate through list), random (pick random), set (fixed value)
 //
 // Conditions: Timer only applies when configured requirements are met
-// Threshold transitions: onMinReached/onMaxReached are triggered if timer causes them
+// Threshold transitions: New thresholdEffects system + legacy onMinReached/onMaxReached
 // Max accumulated ticks: Prevents runaway updates after long offline periods
 
 import type {
@@ -27,7 +27,9 @@ import type {
   StatRequirement,
   TimerNumericOperation,
   TimerTextOperation,
+  ThresholdEffect,
 } from '@/types';
+import { evaluateThresholdEffects } from '@/lib/sprites/condition-evaluator';
 
 // ============================================
 // Types
@@ -40,7 +42,7 @@ export interface TimerTickResult {
   newValue: number | string;
   operation: string;
   ticksApplied: number;
-  thresholdTriggered?: 'min' | 'max' | null;
+  thresholdTriggered?: 'min' | 'max' | 'custom' | null;
 }
 
 export interface TimerEvaluationResult {
@@ -54,7 +56,11 @@ export interface TimerEvaluationResult {
   thresholdsReached: Array<{
     attributeKey: string;
     attributeName: string;
-    thresholdType: 'min' | 'max';
+    thresholdType: 'min' | 'max' | 'custom';
+    effectName?: string;
+    effectId?: string;
+    priority?: number;
+    rewards?: import('@/types').QuestReward[];
   }>;
 }
 
@@ -318,21 +324,40 @@ export function evaluateTimerTicks(
 
       // Check threshold transitions
       if (clamped) {
-        if (attr.min !== undefined && newValue === attr.min && attr.onMinReached?.enabled) {
-          tickDetail.thresholdTriggered = 'min';
-          result.thresholdsReached.push({
-            attributeKey: attr.key,
-            attributeName: attr.name,
-            thresholdType: 'min',
-          });
+        // V2: Check new thresholdEffects first
+        if (attr.thresholdEffects && attr.thresholdEffects.length > 0) {
+          const matchingEffects = evaluateThresholdEffects(attr.thresholdEffects, sessionStats, characterId);
+          for (const effect of matchingEffects) {
+            tickDetail.thresholdTriggered = 'custom';
+            result.thresholdsReached.push({
+              attributeKey: attr.key,
+              attributeName: attr.name,
+              thresholdType: 'custom',
+              effectName: effect.name,
+              effectId: effect.id,
+              priority: effect.priority,
+              rewards: effect.rewards,
+            });
+          }
         }
-        if (attr.max !== undefined && newValue === attr.max && attr.onMaxReached?.enabled) {
-          tickDetail.thresholdTriggered = 'max';
-          result.thresholdsReached.push({
-            attributeKey: attr.key,
-            attributeName: attr.name,
-            thresholdType: 'max',
-          });
+        // Legacy: Check old onMinReached/onMaxReached (only if no thresholdEffects)
+        if (!attr.thresholdEffects || attr.thresholdEffects.length === 0) {
+          if (attr.min !== undefined && newValue === attr.min && attr.onMinReached?.enabled) {
+            tickDetail.thresholdTriggered = 'min';
+            result.thresholdsReached.push({
+              attributeKey: attr.key,
+              attributeName: attr.name,
+              thresholdType: 'min',
+            });
+          }
+          if (attr.max !== undefined && newValue === attr.max && attr.onMaxReached?.enabled) {
+            tickDetail.thresholdTriggered = 'max';
+            result.thresholdsReached.push({
+              attributeKey: attr.key,
+              attributeName: attr.name,
+              thresholdType: 'max',
+            });
+          }
         }
       }
 

@@ -11,7 +11,8 @@
     "conversationStyle": "sequential",
     "characterIds": [
       "a736edfc-c3df-4218-afb4-969ef530543c",
-      "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1"
+      "d13cdd2f-bb90-4f4c-b163-fcf87e9b15f1",
+      "33bbd96a-3533-43b9-84b8-653f401db619"
     ],
     "members": [
       {
@@ -27,6 +28,13 @@
         "isPresent": true,
         "isNarrator": false,
         "joinOrder": 1
+      },
+      {
+        "characterId": "33bbd96a-3533-43b9-84b8-653f401db619",
+        "isActive": true,
+        "isPresent": true,
+        "isNarrator": false,
+        "joinOrder": 2
       }
     ],
     "avatar": "",
@@ -40,6 +48,15 @@
     "embeddingNamespaces": [],
     "id": "99220264-cd89-4c16-887a-97623efc674e",
     "createdAt": "2026-05-31T05:49:34.742Z",
-    "updatedAt": "2026-05-31T05:49:34.742Z"
+    "updatedAt": "2026-06-05T13:51:52.944Z",
+    "narratorSettings": {
+      "responseMode": "turn_end",
+      "conditional": {
+        "minTurnInterval": 0,
+        "onlyWhenNoActiveQuests": false
+      },
+      "hiddenFromChat": false,
+      "showSprite": false
+    }
   }
 ]

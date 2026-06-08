@@ -14,8 +14,10 @@ import type {
   StatRequirement,
   SolicitudInstance,
   SessionSolicitudes,
+  ThresholdEffect,
 } from '@/types';
 import { evaluateTimerTicks, hasActiveTimers, type TimerEvaluationResult } from '@/lib/stats/timer-processor';
+import { evaluateThresholdEffects } from '@/lib/sprites/condition-evaluator';
 
 // ============================================
 // Types
@@ -24,8 +26,11 @@ import { evaluateTimerTicks, hasActiveTimers, type TimerEvaluationResult } from 
 export interface ThresholdReachedInfo {
   attributeKey: string;
   attributeName: string;
-  thresholdType: 'min' | 'max';
-  thresholdValue: number;
+  thresholdType: 'min' | 'max' | 'custom';  // 'custom' = new thresholdEffects system
+  thresholdValue?: number;                    // Only for legacy min/max
+  effectName?: string;                        // Name of the matching ThresholdEffect
+  effectId?: string;                          // ID of the matching ThresholdEffect
+  priority?: number;                          // Priority of the matching ThresholdEffect
   rewards: import('@/types').QuestReward[];
 }
 
@@ -403,32 +408,74 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
     // Detect threshold reached
     const thresholdsReached: ThresholdReachedInfo[] = [];
     
-    if (attributeDef && typeof clampedValue === 'number') {
-      // Check if reached minimum
-      if (attributeDef.min !== undefined && clampedValue === attributeDef.min) {
-        if (attributeDef.onMinReached?.enabled && attributeDef.onMinReached.rewards.length > 0) {
+    if (attributeDef) {
+      // V2: Evaluate new thresholdEffects (flexible conditions with priority)
+      if (attributeDef.thresholdEffects && attributeDef.thresholdEffects.length > 0) {
+        // Build a temporary session stats with the new value for evaluation
+        const tempSessionStats: SessionStats = {
+          ...sessionStats,
+          characterStats: {
+            ...sessionStats.characterStats,
+            [characterId]: {
+              ...stats,
+              attributeValues: {
+                ...stats.attributeValues,
+                [attributeKey]: clampedValue,
+              },
+            },
+          },
+        };
+        
+        const matchingEffects = evaluateThresholdEffects(
+          attributeDef.thresholdEffects,
+          tempSessionStats,
+          characterId
+        );
+        
+        for (const effect of matchingEffects) {
           thresholdsReached.push({
             attributeKey: attributeDef.key,
             attributeName: attributeDef.name,
-            thresholdType: 'min',
-            thresholdValue: attributeDef.min,
-            rewards: attributeDef.onMinReached.rewards,
+            thresholdType: 'custom',
+            effectName: effect.name,
+            effectId: effect.id,
+            priority: effect.priority,
+            rewards: effect.rewards,
           });
-          console.log(`[StatsSlice] Threshold reached: ${attributeDef.name} hit minimum (${attributeDef.min})`);
+          console.log(`[StatsSlice] Threshold effect "${effect.name}" triggered for ${attributeDef.name} (priority: ${effect.priority})`);
         }
       }
       
-      // Check if reached maximum
-      if (attributeDef.max !== undefined && clampedValue === attributeDef.max) {
-        if (attributeDef.onMaxReached?.enabled && attributeDef.onMaxReached.rewards.length > 0) {
-          thresholdsReached.push({
-            attributeKey: attributeDef.key,
-            attributeName: attributeDef.name,
-            thresholdType: 'max',
-            thresholdValue: attributeDef.max,
-            rewards: attributeDef.onMaxReached.rewards,
-          });
-          console.log(`[StatsSlice] Threshold reached: ${attributeDef.name} hit maximum (${attributeDef.max})`);
+      // Legacy: Check old onMinReached/onMaxReached (only if no thresholdEffects defined)
+      if (!attributeDef.thresholdEffects || attributeDef.thresholdEffects.length === 0) {
+        if (typeof clampedValue === 'number') {
+          // Check if reached minimum
+          if (attributeDef.min !== undefined && clampedValue === attributeDef.min) {
+            if (attributeDef.onMinReached?.enabled && attributeDef.onMinReached.rewards.length > 0) {
+              thresholdsReached.push({
+                attributeKey: attributeDef.key,
+                attributeName: attributeDef.name,
+                thresholdType: 'min',
+                thresholdValue: attributeDef.min,
+                rewards: attributeDef.onMinReached.rewards,
+              });
+              console.log(`[StatsSlice] Threshold reached: ${attributeDef.name} hit minimum (${attributeDef.min})`);
+            }
+          }
+          
+          // Check if reached maximum
+          if (attributeDef.max !== undefined && clampedValue === attributeDef.max) {
+            if (attributeDef.onMaxReached?.enabled && attributeDef.onMaxReached.rewards.length > 0) {
+              thresholdsReached.push({
+                attributeKey: attributeDef.key,
+                attributeName: attributeDef.name,
+                thresholdType: 'max',
+                thresholdValue: attributeDef.max,
+                rewards: attributeDef.onMaxReached.rewards,
+              });
+              console.log(`[StatsSlice] Threshold reached: ${attributeDef.name} hit maximum (${attributeDef.max})`);
+            }
+          }
         }
       }
     }

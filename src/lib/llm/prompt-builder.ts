@@ -31,6 +31,7 @@ import { processExampleDialogue } from '@/lib/prompt-template';
 import {
   buildLorebookInjectionPlan,
   resolveLorebookAttributeKeys,
+  buildLorebookEntryKeyMap,
   type LorebookInjectOptions,
   type LorebookInjectionPlan,
   type LorebookChatInjection,
@@ -511,7 +512,8 @@ export function buildSystemPrompt(
   sessionQuests?: SessionQuestInstance[],
   questSettings?: QuestSettings,
   lorebookAttributeKeys?: Record<string, string>,
-  inventoryData?: InventoryPromptData
+  inventoryData?: InventoryPromptData,
+  lorebookEntryKeyMap?: Record<string, string>
 ): { prompt: string; sections: PromptSection[]; lorebookChatInjections: LorebookChatInjection[]; exampleMessages: ChatApiMessage[] } {
   const sections: PromptSection[] = [];
 
@@ -523,6 +525,7 @@ export function buildSystemPrompt(
       characterId: '__user__',
       statsConfig: persona.statsConfig,
       sessionStats,
+      lorebookEntryKeys: lorebookEntryKeyMap,
     });
   }
 
@@ -537,6 +540,7 @@ export function buildSystemPrompt(
     questTemplates,
     personaDescription: persona?.description,
     personaResolvedStats,
+    lorebookEntryKeys: lorebookEntryKeyMap,
   });
 
   // Build outlet sections map from lorebook plan for {{outlet::name}} macro resolution
@@ -550,7 +554,7 @@ export function buildSystemPrompt(
     }
   }
 
-  // Build unified key resolution context (includes quest data for {{activeQuests}}, outlet sections, lorebook attribute keys, and inventory data for {{slots}})
+  // Build unified key resolution context (includes quest data for {{activeQuests}}, outlet sections, lorebook attribute keys, lorebook entry keys, and inventory data for {{slots}})
   const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, soundTriggers, soundSettings, personaResolvedStats, questTemplates, sessionQuests, questSettings, outletSections, lorebookAttributeKeys, inventoryData ? {
     personaItems: inventoryData.personaItems,
     sessionEquipment: inventoryData.sessionEquipment || inventoryData.equippedItems?.flatMap(({ entry, item }) =>
@@ -561,7 +565,7 @@ export function buildSystemPrompt(
     currencyName: inventoryData.currencyName,
     currencyIcon: inventoryData.currencyIcon,
     inventorySettings: inventoryData.inventorySettings,
-  } : undefined);
+  } : undefined, lorebookEntryKeyMap);
 
   // Main system instruction
   // If character has a custom system prompt, use it instead of the default
@@ -630,8 +634,9 @@ export function buildSystemPrompt(
     });
   }
 
-  // Example Dialogue: Format as [EJEMPLO] text section
-  // Each <START> block becomes a labeled example with speaker names resolved.
+  // Example Dialogue: Format as numbered [EJEMPLO N] text section
+  // Each <START> block becomes a numbered example with --- separators.
+  // Supports both <START> and <START></START> tag formats.
   // This replaces the old approach of injecting as user/assistant chat messages,
   // making examples visible in the Prompt Viewer and clearly identifiable by the LLM.
   if (character.mesExample) {
@@ -639,7 +644,7 @@ export function buildSystemPrompt(
     if (exampleContent) {
       sections.push({
         type: 'example_dialogue',
-        label: 'Example Dialogue',
+        label: 'EJEMPLOS DE MENSAJES',
         content: exampleContent,
         color: SECTION_COLORS.example_dialogue
       });
@@ -693,7 +698,7 @@ export function buildLorebookSectionForPrompt(
   lorebooks: Lorebook[],
   options?: LorebookInjectOptions,
   attributeContext?: LorebookAttributeContext
-): { section: PromptSection | null; plan: LorebookInjectionPlan; lorebookAttributeKeys: Record<string, string>; lorebookDebugEntries?: import('@/lib/lorebook/attribute-resolver').LorebookAttrDebugEntry[] } {
+): { section: PromptSection | null; plan: LorebookInjectionPlan; lorebookAttributeKeys: Record<string, string>; lorebookEntryKeyMap: Record<string, string>; lorebookDebugEntries?: import('@/lib/lorebook/attribute-resolver').LorebookAttrDebugEntry[] } {
   // Resolve attribute-type entries to key→content map
   let lorebookAttributeKeys: Record<string, string> = {};
   let lorebookDebugEntries: import('@/lib/lorebook/attribute-resolver').LorebookAttrDebugEntry[] | undefined;
@@ -703,6 +708,11 @@ export function buildLorebookSectionForPrompt(
     lorebookAttributeKeys = result.keys;
     lorebookDebugEntries = result.debugEntries;
   }
+
+  // Build lorebook entry key map from traditional entries for {{key}} resolution
+  // in action descriptions and other text fields
+  const entryKeyMapResult = buildLorebookEntryKeyMap(lorebooks);
+  const lorebookEntryKeyMap = entryKeyMapResult.keys;
 
   // Build injection plan for traditional entries only (attribute entries are skipped by scanner)
   // Pass userName/charName for <START> dialogue formatting in lorebook entries
@@ -730,7 +740,7 @@ export function buildLorebookSectionForPrompt(
       }
     : null;
 
-  return { section, plan, lorebookAttributeKeys, lorebookDebugEntries };
+  return { section, plan, lorebookAttributeKeys, lorebookEntryKeyMap, lorebookDebugEntries };
 }
 
 /**
@@ -1092,7 +1102,8 @@ export function buildGroupSystemPrompt(
   sessionQuests?: SessionQuestInstance[],
   questSettings?: QuestSettings,
   lorebookAttributeKeys?: Record<string, string>,
-  inventoryData?: InventoryPromptData
+  inventoryData?: InventoryPromptData,
+  lorebookEntryKeyMap?: Record<string, string>
 ): { prompt: string; sections: PromptSection[]; lorebookChatInjections: LorebookChatInjection[]; exampleMessages: ChatApiMessage[] } {
   const sections: PromptSection[] = [];
 
@@ -1103,6 +1114,7 @@ export function buildGroupSystemPrompt(
       characterId: '__user__',
       statsConfig: persona.statsConfig,
       sessionStats,
+      lorebookEntryKeys: lorebookEntryKeyMap,
     });
   }
 
@@ -1117,9 +1129,10 @@ export function buildGroupSystemPrompt(
     questTemplates,
     personaDescription: persona?.description,
     personaResolvedStats,
+    lorebookEntryKeys: lorebookEntryKeyMap,
   });
 
-  // Build unified key resolution context (includes quest data for {{activeQuests}}, lorebook attribute keys, and inventory data for {{slots}})
+  // Build unified key resolution context (includes quest data for {{activeQuests}}, lorebook attribute keys, lorebook entry keys, and inventory data for {{slots}})
   const keyContext = buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, undefined, undefined, personaResolvedStats, questTemplates, sessionQuests, questSettings, undefined, lorebookAttributeKeys, inventoryData ? {
     personaItems: inventoryData.personaItems,
     sessionEquipment: inventoryData.sessionEquipment || inventoryData.equippedItems?.flatMap(({ entry, item }) =>
@@ -1130,7 +1143,7 @@ export function buildGroupSystemPrompt(
     currencyName: inventoryData.currencyName,
     currencyIcon: inventoryData.currencyIcon,
     inventorySettings: inventoryData.inventorySettings,
-  } : undefined);
+  } : undefined, lorebookEntryKeyMap);
 
   // System Prompt Priority: Group > Character > Default
   let systemContent: string;
@@ -1217,13 +1230,13 @@ export function buildGroupSystemPrompt(
     });
   }
 
-  // Example Dialogue: Format as [EJEMPLO] text section (group chat variant)
+  // Example Dialogue: Format as numbered [EJEMPLO N] text section (group chat variant)
   if (character.mesExample) {
     const exampleContent = processExampleDialogue(character.mesExample, userName, character.name);
     if (exampleContent) {
       sections.push({
         type: 'example_dialogue',
-        label: 'Example Dialogue',
+        label: 'EJEMPLOS DE MENSAJES',
         content: exampleContent,
         color: SECTION_COLORS.example_dialogue
       });

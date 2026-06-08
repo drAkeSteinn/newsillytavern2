@@ -2796,6 +2796,26 @@
   },
   "inventoryNotifications": [
     {
+      "type": "item_equipped",
+      "itemId": "dildo-002",
+      "itemName": "Dildo Tentaculo",
+      "quantity": 1,
+      "message": "{{user}} te metio un dildo tentaculo que se mueve solo dentro de tu ano",
+      "id": "notif-1780769072675-y1ydnrh",
+      "timestamp": "2026-06-06T18:04:32.675Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
+      "itemId": "plug-001",
+      "itemName": "Dildo Inflable",
+      "quantity": 1,
+      "message": "{{user}} te metio un dildo inflable que se esta expandiendo dentro de tu Ano",
+      "id": "notif-1780602655997-l6p4e7a",
+      "timestamp": "2026-06-04T19:50:55.997Z",
+      "read": false
+    },
+    {
       "type": "add",
       "itemName": "Item",
       "quantity": 1,
@@ -3254,24 +3274,6 @@
       "message": "Obtained: de metérmela hasta la campanilla y que me ahogue rico",
       "id": "notif-1780217220298-53hvey2",
       "timestamp": "2026-05-31T08:47:00.298Z",
-      "read": false
-    },
-    {
-      "type": "add",
-      "itemName": "Item",
-      "quantity": 1,
-      "message": "Obtained: de metérmela hasta la campanilla y que me ahogue ri",
-      "id": "notif-1780217220277-x6x2jlq",
-      "timestamp": "2026-05-31T08:47:00.277Z",
-      "read": false
-    },
-    {
-      "type": "add",
-      "itemName": "Item",
-      "quantity": 1,
-      "message": "Obtained: de metérmela hasta la campanilla y que me ahogue",
-      "id": "notif-1780217220257-r2szaj5",
-      "timestamp": "2026-05-31T08:47:00.257Z",
       "read": false
     }
   ]

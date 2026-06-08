@@ -18,6 +18,9 @@ import type {
   SessionStats,
   CharacterCard,
   AttributeAction,
+  TriggerFallbackMode,
+  QuestRewardActivateSpritePack,
+  SpritePackV2,
 } from '@/types';
 import {
   normalizeReward,
@@ -32,6 +35,10 @@ import {
   type TriggerTargetMode,
   type SpriteTriggerHit,
 } from '@/lib/triggers/unified-trigger-executor';
+import {
+  evaluateConditionalEntries,
+  evaluatePackConditionalSprites,
+} from '@/lib/sprites/condition-evaluator';
 
 // ============================================
 // Types
@@ -59,7 +66,7 @@ export interface RewardExecutionContext {
 
 export interface RewardExecutionResult {
   rewardId: string;
-  type: 'attribute' | 'trigger' | 'objective' | 'solicitud' | 'target_attribute' | 'currency';
+  type: 'attribute' | 'trigger' | 'objective' | 'solicitud' | 'target_attribute' | 'currency' | 'conditional_sprite_collection' | 'activate_sprite_pack';
   success: boolean;
   key: string;
   value?: string | number;
@@ -70,6 +77,8 @@ export interface RewardExecutionResult {
   // Para objectives, información del objetivo completado
   objectiveKey?: string;
   questId?: string;
+  // Para conditional_sprite_collection, nombre de la entry que coincidió
+  conditionalEntryName?: string;
 }
 
 export interface RewardBatchResult {
@@ -730,6 +739,525 @@ export function executeSolicitudRewardFromAction(
 }
 
 // ============================================
+// Conditional Sprite Collection Reward Execution
+// ============================================
+
+/**
+ * Execute a conditional_sprite_collection reward
+ *
+ * Activates a TriggerCollection that is in conditional mode.
+ * Instead of a simple key-based trigger, this reward evaluates
+ * the collection's ConditionalSpriteEntries against current attribute values,
+ * selecting the sprite based on priority and conditions.
+ *
+ * Flow:
+ * 1. Find TriggerCollection by collectionId from character's triggerCollections
+ * 2. If collection.conditionalMode = true:
+ *    a. Sort conditionalEntries by priority (DESC)
+ *    b. Evaluate each entry's conditions against sessionStats
+ *    c. First matching entry → use its spriteId
+ *    d. No match → use defaultSpriteId or principalSpriteId
+ * 3. Apply sprite as trigger for target character(s)
+ * 4. Schedule return to idle if returnToIdleMs > 0
+ */
+export function executeConditionalSpriteCollectionReward(
+  reward: QuestReward,
+  context: RewardExecutionContext,
+  storeActions: RewardStoreActions
+): RewardExecutionResult {
+  const { characterId, character, allCharacters, sessionStats } = context;
+
+  try {
+    const config = reward.conditional_sprite_collection;
+
+    if (!config) {
+      return {
+        rewardId: reward.id,
+        type: 'conditional_sprite_collection',
+        key: reward.key || 'unknown',
+        success: false,
+        error: 'Invalid conditional_sprite_collection reward structure - missing config',
+      };
+    }
+
+    if (!character) {
+      return {
+        rewardId: reward.id,
+        type: 'conditional_sprite_collection',
+        key: config.collectionId,
+        success: false,
+        error: 'Character not available for conditional sprite execution',
+      };
+    }
+
+    // 1. Find the TriggerCollection by collectionId
+    const collection = character.triggerCollections?.find(
+      c => c.id === config.collectionId
+    );
+
+    if (!collection) {
+      return {
+        rewardId: reward.id,
+        type: 'conditional_sprite_collection',
+        key: config.collectionId,
+        success: false,
+        error: `TriggerCollection "${config.collectionId}" not found in character "${character.name}"`,
+      };
+    }
+
+    // 2. Check that conditionalMode is enabled
+    if (!collection.conditionalMode) {
+      console.warn(
+        `[ConditionalSpriteCollection] Collection "${collection.name}" (${collection.id}) does not have conditionalMode enabled. Falling back to principal sprite.`
+      );
+      // Still proceed but use the principal sprite as fallback
+    }
+
+    // 3. Find the sprite pack
+    const pack = character.spritePacksV2?.find(p => p.id === collection.packId);
+    if (!pack) {
+      return {
+        rewardId: reward.id,
+        type: 'conditional_sprite_collection',
+        key: config.collectionId,
+        success: false,
+        error: `SpritePack "${collection.packId}" not found for collection "${collection.name}"`,
+      };
+    }
+
+    // 4. Evaluate conditional entries to determine which sprite to show
+    const matchedEntry = evaluateConditionalEntries(
+      collection.conditionalEntries,
+      sessionStats ?? null,
+      characterId
+    );
+
+    // Determine which sprite ID to use: matched entry or fallback
+    let spriteId: string;
+    let entryName: string | undefined;
+    let usedFallback = false;
+
+    if (matchedEntry) {
+      spriteId = matchedEntry.spriteId;
+      entryName = matchedEntry.name;
+    } else {
+      // No entry matched - use defaultSpriteId or principalSpriteId
+      spriteId = collection.defaultSpriteId || collection.principalSpriteId || '';
+      usedFallback = true;
+    }
+
+    if (!spriteId) {
+      return {
+        rewardId: reward.id,
+        type: 'conditional_sprite_collection',
+        key: config.collectionId,
+        success: false,
+        error: `No sprite determined for collection "${collection.name}" (no matching entry and no default sprite)`,
+      };
+    }
+
+    // 5. Find the sprite URL from the pack
+    const spriteEntry = pack.sprites.find(s => s.id === spriteId);
+    if (!spriteEntry) {
+      return {
+        rewardId: reward.id,
+        type: 'conditional_sprite_collection',
+        key: config.collectionId,
+        success: false,
+        error: `Sprite "${spriteId}" not found in pack "${pack.name}"`,
+      };
+    }
+
+    const spriteUrl = spriteEntry.url;
+    const spriteLabel = spriteEntry.label;
+
+    console.log(
+      `[ConditionalSpriteCollection] Collection "${collection.name}": ` +
+      `entry="${entryName || '(fallback)'}", ` +
+      `sprite="${spriteLabel}" (${spriteUrl})` +
+      `${usedFallback ? ' [FALLBACK]' : ''}`
+    );
+
+    // 6. Determine target characters based on targetMode
+    const targetCharacters = getTargetCharactersForConditional(
+      config.targetMode,
+      character,
+      allCharacters,
+      config.targetCharacterId
+    );
+
+    if (targetCharacters.length === 0) {
+      return {
+        rewardId: reward.id,
+        type: 'conditional_sprite_collection',
+        key: config.collectionId,
+        success: false,
+        error: 'No target characters found',
+      };
+    }
+
+    // 7. Apply sprite as trigger for each target character
+    const returnToIdleMs = config.returnToIdleMs ?? collection.fallbackDelayMs ?? 0;
+    const fallbackMode: TriggerFallbackMode = config.fallbackMode ?? collection.fallbackMode ?? 'idle_collection';
+
+    for (const targetChar of targetCharacters) {
+      // Apply the sprite
+      storeActions.applyTriggerForCharacter(targetChar.id, {
+        spriteUrl,
+        spriteLabel,
+        returnToIdleMs,
+      });
+
+      // Schedule return to idle if returnToIdleMs > 0
+      if (returnToIdleMs > 0) {
+        let returnSpriteUrl = '';
+        let returnSpriteLabel: string | null = null;
+        let returnToMode: 'idle' | 'talk' | 'thinking' | 'clear' = 'idle';
+
+        if (fallbackMode === 'idle_collection') {
+          // Clear mode lets normal state logic determine what to show
+          returnToMode = 'clear';
+          returnSpriteUrl = '';
+          returnSpriteLabel = null;
+        } else if (fallbackMode === 'collection_default') {
+          // Use the collection's principal sprite or first sprite
+          const principalSprite = collection.principalSpriteId
+            ? pack.sprites.find(s => s.id === collection.principalSpriteId)
+            : pack.sprites[0];
+          if (principalSprite) {
+            returnSpriteUrl = principalSprite.url;
+            returnSpriteLabel = principalSprite.label;
+            returnToMode = 'idle';
+          } else {
+            returnToMode = 'clear';
+            returnSpriteUrl = '';
+            returnSpriteLabel = null;
+          }
+        } else if (fallbackMode === 'custom_sprite' && collection.fallbackSpriteId) {
+          const fallbackSprite = pack.sprites.find(s => s.id === collection.fallbackSpriteId);
+          if (fallbackSprite) {
+            returnSpriteUrl = fallbackSprite.url;
+            returnSpriteLabel = fallbackSprite.label;
+            returnToMode = 'idle';
+          } else {
+            returnToMode = 'clear';
+            returnSpriteUrl = '';
+            returnSpriteLabel = null;
+          }
+        } else {
+          // Default: clear mode
+          returnToMode = 'clear';
+          returnSpriteUrl = '';
+          returnSpriteLabel = null;
+        }
+
+        storeActions.scheduleReturnToIdleForCharacter(
+          targetChar.id,
+          spriteUrl,
+          returnToMode,
+          returnSpriteUrl,
+          returnSpriteLabel,
+          returnToIdleMs
+        );
+      }
+    }
+
+    const targetNames = targetCharacters.map(c => c.name).join(', ');
+    const entryInfo = usedFallback
+      ? 'fallback'
+      : `"${entryName}"`;
+
+    return {
+      rewardId: reward.id,
+      type: 'conditional_sprite_collection',
+      key: config.collectionId,
+      success: true,
+      message: `Sprite "${spriteLabel}" applied to ${targetNames} (entry: ${entryInfo})${returnToIdleMs > 0 ? ` [fallback in ${returnToIdleMs}ms]` : ' [persist]'}`,
+      conditionalEntryName: entryName,
+    };
+  } catch (error) {
+    return {
+      rewardId: reward.id,
+      type: 'conditional_sprite_collection',
+      key: reward.key || 'unknown',
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * Helper: Get target characters for conditional sprite collection reward
+ */
+function getTargetCharactersForConditional(
+  targetMode: string,
+  character: CharacterCard,
+  allCharacters?: CharacterCard[],
+  targetCharacterId?: string
+): CharacterCard[] {
+  switch (targetMode) {
+    case 'self':
+      return [character];
+
+    case 'all':
+      if (allCharacters && allCharacters.length > 0) {
+        return allCharacters;
+      }
+      return [character];
+
+    case 'target':
+      if (targetCharacterId && allCharacters) {
+        const target = allCharacters.find(c => c.id === targetCharacterId);
+        if (target) return [target];
+      }
+      // If target not found, fall back to self
+      console.warn(`[ConditionalSpriteCollection] Target character "${targetCharacterId}" not found, falling back to self`);
+      return [character];
+
+    default:
+      return [character];
+  }
+}
+
+// ============================================
+// Activate Sprite Pack Reward Execution
+// ============================================
+
+/**
+ * Execute an activate_sprite_pack reward
+ * Activates a SpritePackV2, evaluating conditions if the pack has conditionalMode.
+ *
+ * Flow:
+ * 1. Find SpritePackV2 by packId from character's spritePacksV2
+ * 2. If pack.conditionalMode = true:
+ *    a. Evaluate each sprite's conditions against sessionStats (by priority DESC)
+ *    b. First matching sprite → use it
+ *    c. No match → use defaultSpriteId or isDefault sprite
+ * 3. If pack.conditionalMode = false:
+ *    a. Use behavior-based resolution (principal/random/list)
+ * 4. Apply sprite as trigger for the target character(s)
+ * 5. Schedule return to idle if returnToIdleMs > 0
+ */
+async function executeActivateSpritePackReward(
+  reward: QuestReward,
+  context: RewardExecutionContext,
+  storeActions: RewardStoreActions
+): Promise<RewardExecutionResult> {
+  const config = reward.activate_sprite_pack;
+  if (!config) {
+    return {
+      rewardId: reward.id,
+      type: 'activate_sprite_pack',
+      success: false,
+      key: '',
+      error: 'Invalid activate_sprite_pack reward structure - missing config',
+    };
+  }
+
+  if (!config.packId) {
+    return {
+      rewardId: reward.id,
+      type: 'activate_sprite_pack',
+      success: false,
+      key: '',
+      error: 'Missing packId in activate_sprite_pack reward',
+    };
+  }
+
+  // Find the sprite pack from the character's spritePacksV2
+  const character = context.character;
+  if (!character?.spritePacksV2) {
+    return {
+      rewardId: reward.id,
+      type: 'activate_sprite_pack',
+      success: false,
+      key: config.packId,
+      error: 'Character has no sprite packs',
+    };
+  }
+
+  const pack = character.spritePacksV2.find((p: SpritePackV2) => p.id === config.packId);
+  if (!pack) {
+    return {
+      rewardId: reward.id,
+      type: 'activate_sprite_pack',
+      success: false,
+      key: config.packId,
+      error: `Sprite pack "${config.packId}" not found`,
+    };
+  }
+
+  if (pack.sprites.length === 0) {
+    return {
+      rewardId: reward.id,
+      type: 'activate_sprite_pack',
+      success: false,
+      key: config.packId,
+      error: `Sprite pack "${pack.name}" has no sprites`,
+    };
+  }
+
+  // Resolve which sprite to show
+  let spriteUrl: string | null = null;
+  let spriteLabel: string | null = null;
+  let usedConditional = false;
+
+  if (pack.conditionalMode) {
+    // Evaluate conditions at the pack level
+    const winningSprite = evaluatePackConditionalSprites(
+      pack.sprites,
+      context.sessionStats ?? null,
+      context.characterId
+    );
+
+    if (winningSprite) {
+      spriteUrl = winningSprite.url;
+      spriteLabel = winningSprite.label;
+      usedConditional = true;
+    } else {
+      // Try defaultSpriteId
+      if (pack.defaultSpriteId) {
+        const defaultSprite = pack.sprites.find(s => s.id === pack.defaultSpriteId);
+        if (defaultSprite) {
+          spriteUrl = defaultSprite.url;
+          spriteLabel = defaultSprite.label;
+        }
+      }
+      // Try isDefault
+      if (!spriteUrl) {
+        const markedDefault = pack.sprites.find(s => s.isDefault);
+        if (markedDefault) {
+          spriteUrl = markedDefault.url;
+          spriteLabel = markedDefault.label;
+        }
+      }
+    }
+  }
+
+  // If no conditional match, use behavior-based resolution
+  if (!spriteUrl) {
+    const behavior = config.behavior || 'principal';
+    const principalSpriteId = config.principalSpriteId;
+
+    switch (behavior) {
+      case 'principal':
+        if (principalSpriteId) {
+          const principal = pack.sprites.find(s => s.id === principalSpriteId);
+          if (principal) {
+            spriteUrl = principal.url;
+            spriteLabel = principal.label;
+          }
+        }
+        if (!spriteUrl) {
+          spriteUrl = pack.sprites[0].url;
+          spriteLabel = pack.sprites[0].label;
+        }
+        break;
+      case 'random': {
+        const randomIndex = Math.floor(Math.random() * pack.sprites.length);
+        spriteUrl = pack.sprites[randomIndex].url;
+        spriteLabel = pack.sprites[randomIndex].label;
+        break;
+      }
+      case 'list': {
+        // Use first sprite for now (rotation is handled at render time)
+        spriteUrl = pack.sprites[0].url;
+        spriteLabel = pack.sprites[0].label;
+        break;
+      }
+    }
+  }
+
+  if (!spriteUrl) {
+    return {
+      rewardId: reward.id,
+      type: 'activate_sprite_pack',
+      success: false,
+      key: config.packId,
+      error: 'Could not resolve any sprite from pack',
+    };
+  }
+
+  // Determine target characters
+  const targetCharacters = getTargetCharactersForConditional(
+    config.targetMode,
+    character,
+    context.allCharacters,
+    config.targetCharacterId
+  );
+
+  // Apply sprite to each target
+  const results: TriggerExecutionResult[] = [];
+  for (const targetChar of targetCharacters) {
+    storeActions.applyTriggerForCharacter(targetChar.id, {
+      spriteUrl,
+      spriteLabel,
+      returnToIdleMs: config.returnToIdleMs,
+    });
+
+    results.push({
+      characterId: targetChar.id,
+      success: true,
+      triggerKey: `activate_sprite_pack:${pack.name}`,
+      category: 'sprite',
+    });
+
+    // Schedule return to idle if specified
+    if (config.returnToIdleMs && config.returnToIdleMs > 0) {
+      const fallbackMode: TriggerFallbackMode = config.fallbackMode || 'idle_collection';
+      let returnSpriteUrl = '';
+      let returnSpriteLabel: string | null = null;
+      let returnToMode: 'idle' | 'talk' | 'thinking' | 'clear' = 'idle';
+
+      if (fallbackMode === 'idle_collection') {
+        returnToMode = 'clear';
+        returnSpriteUrl = '';
+        returnSpriteLabel = null;
+      } else if (fallbackMode === 'collection_default') {
+        // Use the pack's default sprite or first sprite
+        const defaultSprite = pack.defaultSpriteId
+          ? pack.sprites.find(s => s.id === pack.defaultSpriteId)
+          : pack.sprites[0];
+        if (defaultSprite) {
+          returnSpriteUrl = defaultSprite.url;
+          returnSpriteLabel = defaultSprite.label;
+          returnToMode = 'idle';
+        } else {
+          returnToMode = 'clear';
+        }
+      } else if (fallbackMode === 'custom_sprite') {
+        // For custom_sprite fallback without a specific sprite ID, use clear
+        returnToMode = 'clear';
+      } else {
+        returnToMode = 'clear';
+      }
+
+      storeActions.scheduleReturnToIdleForCharacter(
+        targetChar.id,
+        spriteUrl,
+        returnToMode,
+        returnSpriteUrl,
+        returnSpriteLabel,
+        config.returnToIdleMs
+      );
+    }
+  }
+
+  const targetNames = targetCharacters.map(c => c.name).join(', ');
+
+  return {
+    rewardId: reward.id,
+    type: 'activate_sprite_pack',
+    success: true,
+    key: config.packId,
+    value: spriteUrl,
+    message: `Activated sprite pack "${pack.name}"${usedConditional ? ' (conditional)' : ''} → ${spriteLabel || 'sprite'} for ${targetNames}`,
+    triggerResults: results,
+    conditionalEntryName: usedConditional ? spriteLabel || undefined : undefined,
+  };
+}
+
+// ============================================
 // Main Execution Functions
 // ============================================
 
@@ -834,6 +1362,12 @@ export function executeReward(
         message: `Divisa: ${change} (Total: ${newCurrency})`,
       };
     }
+
+    case 'conditional_sprite_collection':
+      return executeConditionalSpriteCollectionReward(normalized, context, storeActions);
+
+    case 'activate_sprite_pack':
+      return executeActivateSpritePackReward(normalized, context, storeActions);
 
     default:
       return {
@@ -997,6 +1531,20 @@ export function describeReward(reward: QuestReward): string {
     const amount = normalized.currency.amount;
     const sign = amount >= 0 ? '+' : '';
     return `💰 Divisa ${sign}${amount}`;
+  }
+
+  if (normalized.type === 'conditional_sprite_collection' && normalized.conditional_sprite_collection) {
+    const csc = normalized.conditional_sprite_collection;
+    const targetLabels: Record<string, string> = {
+      self: '',
+      all: ' (todos)',
+      target: ' (objetivo)',
+    };
+    const targetLabel = targetLabels[csc.targetMode] || '';
+    const fallback = csc.returnToIdleMs && csc.returnToIdleMs > 0
+      ? ` [${csc.returnToIdleMs}ms]`
+      : ' [persist]';
+    return `🎨 Cond. Sprite: ${csc.collectionId}${targetLabel}${fallback}`;
   }
   
   // Fallback for unknown format

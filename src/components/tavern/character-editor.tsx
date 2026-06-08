@@ -182,6 +182,7 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
       id: string;
       name: string;
       attributes: Array<{ key: string; name: string; type: 'number' | 'keyword' | 'text'; min?: number; max?: number }>;
+      spritePacks?: Array<{ id: string; name: string; conditionalMode?: boolean; spriteCount: number }>;
     }> = [];
     // Helper: map attributes filtering out those without a valid key
     const mapAttrs = (attrs: Array<{ key: string; name: string; type: 'number' | 'keyword' | 'text'; min?: number; max?: number }>) =>
@@ -193,6 +194,10 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
         max: a.max,
       }));
 
+    // Helper: map sprite packs for a character
+    const mapPacks = (packs: Array<{ id: string; name: string; conditionalMode?: boolean; sprites: unknown[] }>) =>
+      packs.map(p => ({ id: p.id, name: p.name, conditionalMode: p.conditionalMode, spriteCount: p.sprites.length }));
+
     // Add OTHER characters with attributes (exclude the one being edited)
     characters.forEach(c => {
       const attrs = mapAttrs(c.statsConfig?.attributes || []);
@@ -201,6 +206,7 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
           id: c.id,
           name: c.name,
           attributes: attrs,
+          spritePacks: mapPacks(c.spritePacksV2 || []),
         });
       }
     });
@@ -212,6 +218,7 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
           id: '__user__',
           name: activePersona.name || 'Persona',
           attributes: attrs,
+          spritePacks: mapPacks(activePersona.spritePacksV2 || []),
         });
       }
     }
@@ -856,6 +863,7 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
       questTemplates={questTemplates}
       questTemplateIds={character.questTemplateIds}
       availableTargets={availableTargets}
+      spritePacksV2={character.spritePacksV2}
     />
   );
 

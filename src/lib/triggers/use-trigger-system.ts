@@ -614,6 +614,7 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
         statsConfig: character?.statsConfig,
         sessionStats: activeSession?.sessionStats,
         sessionId,
+        lorebooks: store.lorebooks,
         storeActions: {
           updateCharacterStat: store.updateCharacterStat.bind(store),
           updateSessionEvent: store.updateSessionEvent?.bind(store),

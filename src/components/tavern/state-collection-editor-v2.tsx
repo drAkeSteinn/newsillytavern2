@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
   SelectContent,
@@ -17,14 +16,14 @@ import {
   Crown,
   Shuffle,
   List,
-  Star,
-  Image as ImageIcon,
   Check,
   Package,
   Sparkles,
   MessageSquare,
   Brain,
   X,
+  GitBranch,
+  Image as ImageIcon,
 } from 'lucide-react';
 import type { 
   SpriteState,
@@ -81,8 +80,6 @@ const STATE_CONFIG: {
 ];
 
 // Behavior configuration per state
-// Idle: all 3 behaviors (principal, aleatorio, lista)
-// Talk & Thinking: only lista and aleatorio (fallback is always idle)
 const BEHAVIOR_BY_STATE: Record<SpriteState, { 
   value: 'principal' | 'random' | 'list'; 
   label: string; 
@@ -166,31 +163,10 @@ export function StateCollectionEditorV2({
   }, [character.stateCollectionsV2]);
 
   // Get sprites from pack
-  const getSpritesFromPack = (packId: string) => {
+  const getSpritesFromPack = useCallback((packId: string) => {
     const pack = spritePacksV2.find(p => p.id === packId);
     return pack?.sprites || [];
-  };
-
-  // Get selected sprite URL
-  const getSelectedSpriteUrl = (packId: string, behavior: 'principal' | 'random' | 'list', principalSpriteId?: string) => {
-    const sprites = getSpritesFromPack(packId);
-    if (sprites.length === 0) return null;
-
-    switch (behavior) {
-      case 'principal':
-        if (principalSpriteId) {
-          const sprite = sprites.find(s => s.id === principalSpriteId);
-          if (sprite) return sprite.url;
-        }
-        return sprites[0]?.url || null;
-      case 'random':
-        return null; // Random is determined at runtime
-      case 'list':
-        return null; // List is determined at runtime
-      default:
-        return sprites[0]?.url || null;
-    }
-  };
+  }, [spritePacksV2]);
 
   // Handle pack selection for state
   const handlePackChange = (state: SpriteState, packId: string) => {
@@ -203,6 +179,7 @@ export function StateCollectionEditorV2({
       spriteOrder: currentCollection?.spriteOrder,
       excludedSpriteIds: currentCollection?.excludedSpriteIds,
       currentIndex: currentCollection?.currentIndex || 0,
+      // No more conditionalVariants - conditions are at pack level now
     };
 
     const existingCollections = character.stateCollectionsV2 || [];
@@ -267,7 +244,7 @@ export function StateCollectionEditorV2({
         </div>
         <p className="text-muted-foreground">
           Cada estado referencia un <strong>Sprite Pack</strong> y define cómo seleccionar el sprite.
-          Los packs se crean en la pestaña "Sprite Packs".
+          Los packs se crean en la pestaña &quot;Sprite Packs&quot;.
         </p>
         <div className="space-y-2 mt-2">
           <div className="font-medium text-muted-foreground">Idle (Reposo)</div>
@@ -297,7 +274,6 @@ export function StateCollectionEditorV2({
           const collection = stateCollectionsV2[stateConfig.key];
           const pack = collection ? spritePacksV2.find(p => p.id === collection.packId) : null;
           const sprites = pack ? getSpritesFromPack(pack.id) : [];
-          const selectedSpriteUrl = collection ? getSelectedSpriteUrl(collection.packId, collection.behavior, collection.principalSpriteId) : null;
 
           return (
             <div
@@ -322,6 +298,12 @@ export function StateCollectionEditorV2({
                   {collection && (
                     <Badge variant="secondary" className="text-xs">
                       {sprites.length} sprites
+                    </Badge>
+                  )}
+                  {pack?.conditionalMode && (
+                    <Badge variant="outline" className="text-xs gap-1 border-purple-500/30 text-purple-500">
+                      <GitBranch className="w-3 h-3" />
+                      Condicional
                     </Badge>
                   )}
                   {collection && (
@@ -374,7 +356,6 @@ export function StateCollectionEditorV2({
                     <Select
                       value={collection.behavior}
                       onValueChange={(v) => handleBehaviorChange(stateConfig.key, v as 'principal' | 'random' | 'list')}
-                    
                     >
                       <SelectTrigger className="h-8">
                         <SelectValue />
@@ -395,64 +376,126 @@ export function StateCollectionEditorV2({
                     </p>
                   </div>
 
-                  {/* Principal Sprite Selector (for 'principal' behavior) */}
+                  {/* Principal Sprite Selector - Horizontal Slider */}
                   {collection.behavior === 'principal' && sprites.length > 1 && (
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       <Label className="text-xs flex items-center gap-1">
                         <Crown className="w-3 h-3 text-amber-500" />
-                        Sprite Principal
+                        Sprite Principal — Selecciona el sprite principal
                       </Label>
-                      <ScrollArea className="h-24">
-                        <div className="grid grid-cols-4 gap-1.5">
-                          {sprites.map(sprite => (
+                      <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: 'thin' }}>
+                        {sprites.map(sprite => (
+                          <div
+                            key={sprite.id}
+                            className={cn(
+                              "relative border-2 rounded-lg overflow-hidden cursor-pointer transition-all shrink-0 w-28",
+                              collection.principalSpriteId === sprite.id
+                                ? "border-amber-500 ring-2 ring-amber-500/30"
+                                : "border-border hover:border-primary"
+                            )}
+                            onClick={() => handlePrincipalSpriteChange(stateConfig.key, sprite.id)}
+                          >
+                            <div className="aspect-square relative bg-muted/30">
+                              <SpritePreview
+                                src={sprite.url}
+                                alt={sprite.label}
+                                className="w-full h-full"
+                                objectFit="contain"
+                              />
+                              {collection.principalSpriteId === sprite.id && (
+                                <div className="absolute inset-0 bg-amber-500/15 flex items-center justify-center">
+                                  <div className="bg-amber-500 text-white rounded-full w-5 h-5 flex items-center justify-center">
+                                    <Check className="w-3 h-3" />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="p-1 border-t bg-background">
+                              <p className="text-[10px] truncate text-center">{sprite.label}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sprites del Pack - Horizontal Slider Preview */}
+                  {collection && sprites.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs flex items-center gap-1">
+                          <Package className="w-3 h-3" />
+                          Sprites del Pack ({sprites.length})
+                          {pack?.conditionalMode && (
+                            <Badge variant="outline" className="text-[9px] h-4 px-1 ml-1 border-purple-500/30 text-purple-500">
+                              <GitBranch className="w-2.5 h-2.5 mr-0.5" />
+                              Condicional
+                            </Badge>
+                          )}
+                        </Label>
+                        <span className="text-[10px] text-muted-foreground">
+                          {collection.behavior === 'principal' 
+                            ? (collection.principalSpriteId ? 'Sprite seleccionado' : 'Primer sprite del pack')
+                            : collection.behavior === 'random' 
+                              ? 'Selección aleatoria' 
+                              : 'Rotación por orden'}
+                        </span>
+                      </div>
+                      <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: 'thin' }}>
+                        {sprites.map(sprite => {
+                          const isSelected = collection.behavior === 'principal' && 
+                            (collection.principalSpriteId === sprite.id || (!collection.principalSpriteId && sprites[0]?.id === sprite.id));
+                          const isCondEnabled = pack?.conditionalMode && sprite.conditionalEnabled;
+                          const isDefault = sprite.isDefault || pack?.defaultSpriteId === sprite.id;
+                          
+                          return (
                             <div
                               key={sprite.id}
                               className={cn(
-                                "relative border rounded overflow-hidden cursor-pointer transition-all",
-                                collection.principalSpriteId === sprite.id
-                                  ? "ring-2 ring-amber-500 border-amber-500"
-                                  : "hover:border-primary"
+                                "relative border rounded-lg overflow-hidden shrink-0 w-32",
+                                isSelected ? "border-amber-500 ring-2 ring-amber-500/20" : "border-border",
+                                isCondEnabled && "border-purple-500/50",
+                                isDefault && pack?.conditionalMode && "border-amber-500/50"
                               )}
-                              onClick={() => handlePrincipalSpriteChange(stateConfig.key, sprite.id)}
                             >
-                              <div className="aspect-square relative">
+                              <div className="aspect-square relative bg-muted/30">
                                 <SpritePreview
                                   src={sprite.url}
                                   alt={sprite.label}
                                   className="w-full h-full"
                                   objectFit="contain"
                                 />
-                                {collection.principalSpriteId === sprite.id && (
-                                  <div className="absolute inset-0 bg-amber-500/20 flex items-center justify-center">
-                                    <Check className="w-4 h-4 text-amber-500" />
+                                {/* Conditional badge */}
+                                {isCondEnabled && (
+                                  <div className="absolute top-1 left-1">
+                                    <Badge variant="secondary" className="text-[8px] h-3.5 px-1 bg-purple-500/80 text-white">
+                                      P:{sprite.priority || 0}
+                                    </Badge>
+                                  </div>
+                                )}
+                                {/* Default badge */}
+                                {isDefault && pack?.conditionalMode && (
+                                  <div className="absolute bottom-1 left-1">
+                                    <Badge variant="secondary" className="text-[8px] h-3.5 px-1 bg-amber-500/80 text-white">
+                                      ★ Default
+                                    </Badge>
+                                  </div>
+                                )}
+                                {/* Selected indicator */}
+                                {isSelected && (
+                                  <div className="absolute top-1 right-1">
+                                    <Badge variant="secondary" className="text-[8px] h-3.5 px-1 bg-amber-500/80 text-white">
+                                      <Crown className="w-2.5 h-2.5" />
+                                    </Badge>
                                   </div>
                                 )}
                               </div>
+                              <div className="p-1.5 border-t bg-background">
+                                <p className="text-[10px] truncate text-center">{sprite.label}</p>
+                              </div>
                             </div>
-                          ))}
-                        </div>
-                      </ScrollArea>
-                    </div>
-                  )}
-
-                  {/* Preview */}
-                  {selectedSpriteUrl && (
-                    <div className="flex items-center gap-3 p-2 bg-background/50 rounded border">
-                      <div className="w-12 h-12 rounded border overflow-hidden relative bg-muted/50">
-                        <SpritePreview
-                          src={selectedSpriteUrl}
-                          alt="Preview"
-                          className="w-full h-full"
-                          objectFit="contain"
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <div className="text-xs font-medium">Sprite actual</div>
-                        <div className="text-[10px] text-muted-foreground">
-                          {collection.behavior === 'principal' ? 'Principal' : 
-                           collection.behavior === 'random' ? 'Aleatorio' : 'Rotación'}
-                          {pack && ` de "${pack.name}"`}
-                        </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -494,9 +537,9 @@ export function StateCollectionEditorV2({
               {collection && pack && sprites.length === 0 && (
                 <div className="text-center py-4 text-amber-600 border border-amber-500/30 rounded-lg bg-amber-500/5">
                   <Package className="w-6 h-6 mx-auto mb-1 opacity-50" />
-                  <p className="text-xs">El pack "{pack?.name}" está vacío</p>
+                  <p className="text-xs">El pack &quot;{pack?.name}&quot; está vacío</p>
                   <p className="text-[10px] mt-0.5">
-                    Agrega sprites al pack en la pestaña "Sprite Packs"
+                    Agrega sprites al pack en la pestaña &quot;Sprite Packs&quot;
                   </p>
                 </div>
               )}
@@ -511,7 +554,7 @@ export function StateCollectionEditorV2({
           <Package className="w-6 h-6 mx-auto mb-2" />
           <p className="text-sm font-medium">No hay Sprite Packs creados</p>
           <p className="text-xs mt-1">
-            Ve a la pestaña "Sprite Packs" para crear tu primer pack
+            Ve a la pestaña &quot;Sprite Packs&quot; para crear tu primer pack
           </p>
         </div>
       )}

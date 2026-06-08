@@ -34,3 +34,10 @@ export {
   type LorebookAttributeContext,
   type LorebookAttrDebugEntry
 } from './attribute-resolver';
+
+// Entry key builder exports (used by prompt-builder for {{key}} resolution in action descriptions)
+export {
+  buildLorebookEntryKeyMap,
+  type LorebookEntryKeyMapResult,
+  type LorebookEntryKeyDebugEntry
+} from './entry-key-builder';

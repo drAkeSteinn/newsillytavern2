@@ -125,28 +125,30 @@ function getVariableValue(varName: string, context: TemplateContext): string | u
  * Parses <START>-delimited blocks and preserves the natural conversation flow.
  * Speaker labels ({{user}}/{{char}}) are kept as-is for later key resolution.
  * 
+ * Supports both open and closed <START> tags:
+ * - <START>\n...content...\n<START> (traditional SillyTavern)
+ * - <START>\n...content...\n</START> (closed tag format)
+ * 
  * Input:
  * <START>
  * {{user}}: Hello, how are you?
  * {{char}}: "I'm doing great, thank you for asking!"
- * {{user}}: That's nice!
- * {{char}}: *smiles*
  * <START>
  * {{user}}: Tell me about yourself.
  * {{char}}: Well, I'm...
  * 
- * Output (preserves turn-by-turn flow):
+ * Output (numbered examples with separators):
+ * ---
+ * [EJEMPLO 1]
  * {{user}}: Hello, how are you?
  * 
  * {{char}}: "I'm doing great, thank you for asking!"
- * 
- * {{user}}: That's nice!
- * 
- * {{char}}: *smiles*
- * 
+ * ---
+ * [EJEMPLO 2]
  * {{user}}: Tell me about yourself.
  * 
  * {{char}}: Well, I'm...
+ * ---
  * 
  * Key resolution ({{user}} → actual name, etc.) happens later in resolveAllKeys().
  */
@@ -167,6 +169,9 @@ export function processExampleDialogue(
   // in one place, including lorebook attribute keys.
   let processed = mesExample;
 
+  // Remove closing </START> tags (support both open and closed tag formats)
+  processed = processed.replace(/<\/START>/gi, '');
+
   // Split by <START> tags (case-insensitive)
   const blocks = processed.split(/<START>/gi).filter(block => block.trim());
   
@@ -175,8 +180,11 @@ export function processExampleDialogue(
     return processed.trim();
   }
 
-  // Process each block with [EJEMPLO] headers for clear identification
-  const formattedBlocks: string[] = [];
+  // Process each block with numbered [EJEMPLO N] headers and --- separators
+  // Format: ---\n[EJEMPLO 1]\ncontent\n---\n[EJEMPLO 2]\ncontent\n---
+  // The --- separator is shared between consecutive examples
+  const parts: string[] = [];
+  let exampleNumber = 0;
   
   for (const block of blocks) {
     const trimmedBlock = block.trim();
@@ -184,11 +192,16 @@ export function processExampleDialogue(
     
     const result = formatDialogueBlock(trimmedBlock, userName, charName);
     if (result) {
-      formattedBlocks.push(`[EJEMPLO]\n${result}`);
+      exampleNumber++;
+      parts.push(`[EJEMPLO ${exampleNumber}]\n${result}`);
     }
   }
   
-  return formattedBlocks.join('\n\n');
+  if (parts.length === 0) return '';
+  
+  // Wrap all examples with --- separators
+  // --- before first, --- between each, --- after last
+  return '---\n' + parts.join('\n---\n') + '\n---';
 }
 
 /**
@@ -212,12 +225,15 @@ export function parseExampleDialogueToMessages(
     return [];
   }
 
+  // Remove closing </START> tags first (support both open and closed tag formats)
+  const cleaned = mesExample.replace(/<\/START>/gi, '');
+
   // Split by <START> tags (case-insensitive)
-  const blocks = mesExample.split(/<START>/gi).filter(block => block.trim());
+  const blocks = cleaned.split(/<START>/gi).filter(block => block.trim());
 
   if (blocks.length === 0) {
     // No <START> tags found, try to parse the whole text as one block
-    return parseDialogueBlockToMessages(mesExample.trim(), userName, charName);
+    return parseDialogueBlockToMessages(cleaned.trim(), userName, charName);
   }
 
   const messages: ChatApiMessage[] = [];
@@ -395,7 +411,7 @@ function escapeRegExp(string: string): string {
  */
 export function containsStartDialogue(text: string): boolean {
   if (!text || !text.trim()) return false;
-  return /<START>/gi.test(text);
+  return /<START>/gi.test(text) || /<\/START>/gi.test(text);
 }
 
 /**

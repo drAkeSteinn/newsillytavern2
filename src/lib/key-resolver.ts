@@ -66,6 +66,11 @@ export interface KeyResolutionContext {
   // Map of injectionKey → resolved content (resolved server-side by attribute-resolver)
   lorebookAttributeKeys?: Record<string, string>;
 
+  // Lorebook entry keys resolved from traditional (non-attribute) lorebook entries
+  // Map of key → content, used to resolve {{key}} in action descriptions and other text
+  // Built by buildLorebookEntryKeyMap() from active lorebooks
+  lorebookEntryKeys?: Record<string, string>;
+
   // Inventory data for {{slots}} and {{currency}} key resolution
   inventoryData?: {
     personaItems: Array<{ entry: PersonaInventoryEntry; item: Item }>;
@@ -662,6 +667,72 @@ export function resolveLorebookAttributeKeys(
 }
 
 // ============================================
+// Phase 6.1: Lorebook Entry Key Resolution
+// ============================================
+
+/**
+ * Resolve lorebook entry keys in text.
+ *
+ * Replaces {{key}} patterns with content from traditional (non-attribute) lorebook entries.
+ * This enables action descriptions (and other text fields) to reference lorebook entries
+ * via {{key}} syntax. For example, if a lorebook entry has "tecnica_fuego" in its key array
+ * with content "Técnica de fuego ancestral...", then {{tecnica_fuego}} in an action description
+ * will be replaced with that content.
+ *
+ * After replacement, the injected content itself may contain template keys
+ * (e.g., {{char}}, {{user}}, {{time}}), so we re-resolve template variables
+ * and stats keys on the result.
+ */
+export function resolveLorebookEntryKeys(
+  text: string,
+  context: KeyResolutionContext
+): string {
+  if (!text) return text;
+
+  const keysCount = context.lorebookEntryKeys ? Object.keys(context.lorebookEntryKeys).length : 0;
+
+  if (!context.lorebookEntryKeys || keysCount === 0) {
+    return text;
+  }
+
+  let result = text;
+  let anyReplaced = false;
+
+  // Sort keys by length descending to avoid partial replacements
+  const sortedKeys = Object.keys(context.lorebookEntryKeys).sort(
+    (a, b) => b.length - a.length
+  );
+
+  for (const key of sortedKeys) {
+    const content = context.lorebookEntryKeys![key];
+    if (content === undefined) continue;
+
+    // Replace all occurrences of {{key}} (case-insensitive)
+    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\{\\{${escapedKey}\\}\\}`, 'gi');
+    const regexMatched = regex.test(result);
+
+    if (!regexMatched) {
+      continue;
+    }
+
+    // Reset regex lastIndex after test() with global flag
+    regex.lastIndex = 0;
+    result = result.replace(regex, content);
+    anyReplaced = true;
+  }
+
+  // After injecting lorebook content, re-resolve template variables and stats keys
+  // because the injected content may contain {{char}}, {{user}}, {{time}}, {{vida}}, etc.
+  if (anyReplaced) {
+    result = resolveTemplateVariables(result, context);
+    result = resolveStatsKeys(result, context.resolvedStats, context.personaResolvedStats);
+  }
+
+  return result;
+}
+
+// ============================================
 // Phase 6.5: Inventory / Slots Key Resolution
 // ============================================
 
@@ -807,17 +878,48 @@ function resolveRemainingKeys(
     }
   }
 
+  // Collect all known lorebook entry keys — these should NOT be cleaned up
+  // because they may be resolved in a later pass (e.g., when lorebookEntryKeys
+  // is not yet available but will be in a subsequent resolution pass)
+  const knownLorebookKeys = new Set<string>();
+  if (context.lorebookEntryKeys) {
+    for (const key of Object.keys(context.lorebookEntryKeys)) {
+      knownLorebookKeys.add(key.toLowerCase());
+    }
+  }
+
+  // Collect all known lorebook attribute injection keys
+  const knownAttributeKeys = new Set<string>();
+  if (context.lorebookAttributeKeys) {
+    for (const key of Object.keys(context.lorebookAttributeKeys)) {
+      knownAttributeKeys.add(key.toLowerCase());
+    }
+  }
+
   const pattern = /\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g;
 
   return text.replace(pattern, (match, key) => {
+    const keyLower = key.toLowerCase();
+
     // Keep known character/persona stat keys as-is (user might want to see them)
     if (knownStatKeys.has(key)) {
       return match;
     }
 
+    // Keep lorebook entry keys — they should have been resolved by Phase 6.1,
+    // but if not (e.g., multi-pass resolution), don't clean them up yet
+    if (knownLorebookKeys.has(keyLower)) {
+      return match;
+    }
+
+    // Keep lorebook attribute injection keys — they should have been resolved by Phase 6,
+    // but if not, don't clean them up
+    if (knownAttributeKeys.has(keyLower)) {
+      return match;
+    }
+
     // Replace all other unresolved keys with empty string
-    // This includes lorebook injection keys from unassigned lorebooks,
-    // typo keys, and any other unrecognized patterns
+    // This includes typo keys and any other unrecognized patterns
     console.log(`[KeyResolver Phase 7] Cleaning unresolved key: {{${key}}}`);
     return '';
   });
@@ -864,6 +966,9 @@ export function resolveAllKeys(
 
   // Phase 6: Resolve lorebook attribute keys
   result = resolveLorebookAttributeKeys(result, context);
+
+  // Phase 6.1: Resolve lorebook entry keys ({{key}} from traditional lorebook entries)
+  result = resolveLorebookEntryKeys(result, context);
 
   // Phase 6.5: Resolve inventory keys ({{slots}}, {{currency}})
   result = resolveInventoryKeys(result, context);
@@ -933,7 +1038,8 @@ export function buildKeyResolutionContext(
   questSettings?: QuestSettings,
   outletSections?: Record<string, string>,
   lorebookAttributeKeys?: Record<string, string>,
-  inventoryData?: KeyResolutionContext['inventoryData']
+  inventoryData?: KeyResolutionContext['inventoryData'],
+  lorebookEntryKeys?: Record<string, string>
 ): KeyResolutionContext {
   return {
     user: persona?.name || userName,
@@ -953,6 +1059,7 @@ export function buildKeyResolutionContext(
     outletSections,
     lorebookAttributeKeys,
     inventoryData,
+    lorebookEntryKeys,
   };
 }
 
@@ -971,9 +1078,10 @@ export function buildGroupKeyResolutionContext(
   sessionQuests?: SessionQuestInstance[],
   questSettings?: QuestSettings,
   lorebookAttributeKeys?: Record<string, string>,
-  inventoryData?: KeyResolutionContext['inventoryData']
+  inventoryData?: KeyResolutionContext['inventoryData'],
+  lorebookEntryKeys?: Record<string, string>
 ): KeyResolutionContext {
-  return buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, undefined, undefined, personaResolvedStats, questTemplates, sessionQuests, questSettings, undefined, lorebookAttributeKeys, inventoryData);
+  return buildKeyResolutionContext(character, userName, persona, resolvedStats, sessionStats, undefined, undefined, personaResolvedStats, questTemplates, sessionQuests, questSettings, undefined, lorebookAttributeKeys, inventoryData, lorebookEntryKeys);
 }
 
 // ============================================

@@ -113,6 +113,7 @@ async function executeToolCallsAndContinue(
   sessionStats?: SessionStats,
   allCharacters?: CharacterCard[],
   characterMemory?: CharacterMemory,
+  lorebooks?: Lorebook[],
 ): Promise<{ newContent: string; shouldContinue: boolean; toolResults: Array<{ success: boolean; displayMessage: string }>; questActivations: QuestActivation[]; toolsUsed: Array<{ name: string; label: string; icon: string; success: boolean }> }> {
   if (toolCalls.length === 0 || currentRound >= maxRounds) {
     return { newContent: '', shouldContinue: false, toolResults: [], questActivations: [], toolsUsed: [] };
@@ -155,6 +156,7 @@ async function executeToolCallsAndContinue(
         sessionStats,
         allCharacters,
         characterMemory,
+        lorebooks,
       },
     );
 
@@ -405,7 +407,7 @@ export async function POST(request: NextRequest) {
     const stats = getContextStats(messages);
 
     // Process lorebooks and get matched entries
-    const { plan: lorebookPlan, lorebookAttributeKeys, lorebookDebugEntries } = buildLorebookSectionForPrompt(
+    const { plan: lorebookPlan, lorebookAttributeKeys, lorebookEntryKeyMap, lorebookDebugEntries } = buildLorebookSectionForPrompt(
       messages,
       lorebooks,
       {
@@ -532,7 +534,8 @@ export async function POST(request: NextRequest) {
       sessionQuests,   // Pass session quests for {{activeQuests}} key resolution
       questSettings,    // Pass quest settings for {{activeQuests}} key resolution
       lorebookAttributeKeys,
-      inventoryData     // Pass inventory data for Inventory V2 section
+      inventoryData,    // Pass inventory data for Inventory V2 section
+      lorebookEntryKeyMap // Pass lorebook entry key map for {{entryKey}} resolution
     );
 
     // Session stats now already include item effects (applied directly to SessionStats
@@ -930,7 +933,8 @@ Y cambiar mi expresión:
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
                       sessionQuests, questTemplates,
-                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
+                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory,
+                      lorebooks
                     );
                     allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                     allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -1096,7 +1100,8 @@ Y cambiar mi expresión:
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
                       sessionQuests, questTemplates,
-                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
+                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory,
+                      lorebooks
                     );
                     allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                     allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -1268,7 +1273,8 @@ Y cambiar mi expresión:
                       toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
                       sessionQuests, questTemplates,
-                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
+                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory,
+                      lorebooks
                     );
                     allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                     allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -1422,7 +1428,8 @@ Y cambiar mi expresión:
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
                       sessionQuests, questTemplates,
-                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
+                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory,
+                      lorebooks
                     );
                     allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                     allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -1548,7 +1555,8 @@ Y cambiar mi expresión:
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
                       sessionQuests, questTemplates,
-                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
+                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory,
+                      lorebooks
                     );
                     allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                     allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
@@ -1656,7 +1664,8 @@ Y cambiar mi expresión:
                       accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
                       effectiveCharacter, sessionId || '', effectiveUserName, controller,
                       sessionQuests, questTemplates,
-                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
+                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory,
+                      lorebooks
                     );
                     allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
                     allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
