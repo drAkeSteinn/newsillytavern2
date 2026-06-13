@@ -1,0 +1,1127 @@
+     1→// ============================================
+     2→// Proactive Messages Panel - Timer Configuration
+     3→// Configures when/how a character sends messages without user input
+     4→// FASE 3: Enhanced with Nudge Variation, Context, Cooldown, Group Chat
+     5→// ============================================
+     6→
+     7→'use client';
+     8→
+     9→import { useState } from 'react';
+    10→import { Button } from '@/components/ui/button';
+    11→import { Label } from '@/components/ui/label';
+    12→import { Switch } from '@/components/ui/switch';
+    13→import { Slider } from '@/components/ui/slider';
+    14→import { Textarea } from '@/components/ui/textarea';
+    15→import { Input } from '@/components/ui/input';
+    16→import {
+    17→  Card,
+    18→  CardContent,
+    19→  CardDescription,
+    20→  CardHeader,
+    21→  CardTitle,
+    22→} from '@/components/ui/card';
+    23→import {
+    24→  Select,
+    25→  SelectContent,
+    26→  SelectItem,
+    27→  SelectTrigger,
+    28→  SelectValue,
+    29→} from '@/components/ui/select';
+    30→import {
+    31→  Tooltip,
+    32→  TooltipContent,
+    33→  TooltipProvider,
+    34→  TooltipTrigger,
+    35→} from '@/components/ui/tooltip';
+    36→import {
+    37→  Sparkles,
+    38→  HelpCircle,
+    39→  Clock,
+    40→  MessageCircle,
+    41→  Shield,
+    42→  Timer,
+    43→  Send,
+    44→  Zap,
+    45→  Shuffle,
+    46→  Eye,
+    47→  Snowflake,
+    48→  Users,
+    49→  Plus,
+    50→  Trash2,
+    51→  GripVertical,
+    52→  Brain,
+    53→  Heart,
+    54→  Layers,
+    55→  BookOpen,
+    56→  ArrowLeftRight,
+    57→} from 'lucide-react';
+    58→import { DEFAULT_PROACTIVE_MESSAGES_CONFIG } from '@/types';
+    59→import type { ProactiveMessagesConfig } from '@/types';
+    60→
+    61→// Preset interval options (in seconds)
+    62→const INTERVAL_PRESETS = [
+    63→  { value: 60, label: '1 min', description: 'Muy frecuente' },
+    64→  { value: 120, label: '2 min', description: 'Frecuente' },
+    65→  { value: 300, label: '5 min', description: 'Normal' },
+    66→  { value: 600, label: '10 min', description: 'Espaciado' },
+    67→  { value: 900, label: '15 min', description: 'Lento' },
+    68→  { value: 1800, label: '30 min', description: 'Muy lento' },
+    69→];
+    70→
+    71→// Default nudge template suggestions for the pool
+    72→const NUDGE_SUGGESTIONS = [
+    73→  '[La escena continúa] {{user}} parece distraído así que {{char}} decide hacer o decir algo para que todo continúe.',
+    74→  '[El silencio se prolonga] {{char}} nota que {{user}} está en silencio y decide romper la quietud con un comentario o acción.',
+    75→  '[Pensando en voz alta] {{char}} murmura algo para sí mismo mientras observa su entorno, buscando algo que decir.',
+    76→  '[Un momento pasa] {{char}} siente la necesidad de llenar el silencio con algo, sea un pensamiento, una pregunta o una pequeña acción.',
+    77→  '[Curiosidad] Algo llama la atención de {{char}}, quien decide compartirlo con {{user}}.',
+    78→  '[Inquietud] {{char}} no puede quedarse callado más tiempo y encuentra una excusa para hablar.',
+    79→];
+    80→
+    81→interface ProactiveMessagesPanelProps {
+    82→  config: ProactiveMessagesConfig | undefined;
+    83→  onChange: (config: ProactiveMessagesConfig) => void;
+    84→  // FASE 4: Micro-reaction config (group chat reactions)
+    85→  microReactionConfig?: import('@/types').MicroReactionConfig;
+    86→  onMicroReactionConfigChange?: (config: import('@/types').MicroReactionConfig) => void;
+    87→}
+    88→
+    89→export function ProactiveMessagesPanel({
+    90→  config,
+    91→  onChange,
+    92→  microReactionConfig,
+    93→  onMicroReactionConfigChange,
+    94→}: ProactiveMessagesPanelProps) {
+    95→  // Initialize with defaults if undefined
+    96→  const settings: ProactiveMessagesConfig = {
+    97→    ...DEFAULT_PROACTIVE_MESSAGES_CONFIG,
+    98→    ...config,
+    99→  };
+   100→
+   101→  const [newTemplateValue, setNewTemplateValue] = useState('');
+   102→
+   103→  const updateSettings = (updates: Partial<ProactiveMessagesConfig>) => {
+   104→    onChange({ ...settings, ...updates });
+   105→  };
+   106→
+   107→  const formatInterval = (seconds: number): string => {
+   108→    if (seconds < 60) return `${seconds}s`;
+   109→    const mins = Math.floor(seconds / 60);
+   110→    const secs = seconds % 60;
+   111→    return secs > 0 ? `${mins}m ${secs}s` : `${mins} min`;
+   112→  };
+   113→
+   114→  const addNudgeTemplate = (template: string) => {
+   115→    if (!template.trim()) return;
+   116→    const existing = settings.nudgeTemplates || [];
+   117→    if (!existing.includes(template.trim())) {
+   118→      updateSettings({ nudgeTemplates: [...existing, template.trim()] });
+   119→    }
+   120→    setNewTemplateValue('');
+   121→  };
+   122→
+   123→  const removeNudgeTemplate = (index: number) => {
+   124→    const existing = settings.nudgeTemplates || [];
+   125→    updateSettings({ nudgeTemplates: existing.filter((_, i) => i !== index) });
+   126→  };
+   127→
+   128→  return (
+   129→    <TooltipProvider>
+   130→      <div className="space-y-4">
+   131→        {/* Main Toggle */}
+   132→        <div className="flex items-center justify-between p-4 rounded-lg border bg-gradient-to-r from-amber-500/5 to-orange-500/5 border-amber-500/20">
+   133→          <div className="flex items-center gap-3">
+   134→            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-500/10">
+   135→              <Sparkles className="w-4 h-4 text-amber-500" />
+   136→            </div>
+   137→            <div>
+   138→              <span className="text-sm font-medium">Mensajes Proactivos</span>
+   139→              <p className="text-xs text-muted-foreground">El personaje envía mensajes automáticamente tras un periodo de inactividad</p>
+   140→            </div>
+   141→          </div>
+   142→          <Switch
+   143→            checked={settings.enabled}
+   144→            onCheckedChange={(checked) => updateSettings({ enabled: checked })}
+   145→          />
+   146→        </div>
+   147→
+   148→        {settings.enabled ? (
+   149→          <>
+   150→            {/* ─── How It Works ─── */}
+   151→            <div className="p-4 rounded-lg border bg-card space-y-3">
+   152→              <div className="flex items-center gap-2">
+   153→                <Zap className="w-4 h-4 text-amber-500" />
+   154→                <h3 className="text-sm font-semibold">Cómo funciona</h3>
+   155→              </div>
+   156→              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+   157→                <div className="flex gap-2.5 p-2.5 rounded-md bg-muted/40">
+   158→                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500/10 shrink-0 mt-0.5">
+   159→                    <span className="text-xs font-bold text-blue-500">1</span>
+   160→                  </div>
+   161→                  <div>
+   162→                    <p className="text-xs font-medium">Temporizador</p>
+   163→                    <p className="text-[11px] text-muted-foreground">Se mide el tiempo desde el último mensaje en el chat</p>
+   164→                  </div>
+   165→                </div>
+   166→                <div className="flex gap-2.5 p-2.5 rounded-md bg-muted/40">
+   167→                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-amber-500/10 shrink-0 mt-0.5">
+   168→                    <span className="text-xs font-bold text-amber-500">2</span>
+   169→                  </div>
+   170→                  <div>
+   171→                    <p className="text-xs font-medium">Condición</p>
+   172→                    <p className="text-[11px] text-muted-foreground">Si hay inactividad ≥ intervalo configurado → se activa</p>
+   173→                  </div>
+   174→                </div>
+   175→                <div className="flex gap-2.5 p-2.5 rounded-md bg-muted/40">
+   176→                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-green-500/10 shrink-0 mt-0.5">
+   177→                    <span className="text-xs font-bold text-green-500">3</span>
+   178→                  </div>
+   179→                  <div>
+   180→                    <p className="text-xs font-medium">Mensaje</p>
+   181→                    <p className="text-[11px] text-muted-foreground">El personaje genera y envía un mensaje en contexto</p>
+   182→                  </div>
+   183→                </div>
+   184→              </div>
+   185→              <div className="flex items-start gap-2 p-2.5 rounded-md bg-muted/30 border border-border/30">
+   186→                <Clock className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+   187→                <p className="text-[11px] text-muted-foreground">
+   188→                  <strong>Reinicio:</strong> Cualquier mensaje nuevo (del usuario o del personaje) reinicia el temporizador. 
+   189→                  Los mensajes proactivos no se envían durante la generación de respuestas.
+   190→                </p>
+   191→              </div>
+   192→            </div>
+   193→
+   194→            {/* ─── Interval Configuration ─── */}
+   195→            <Card>
+   196→              <CardHeader className="pb-3">
+   197→                <CardTitle className="text-sm flex items-center gap-2">
+   198→                  <Clock className="w-4 h-4 text-amber-500" />
+   199→                  Intervalo de Inactividad
+   200→                </CardTitle>
+   201→                <CardDescription>
+   202→                  Tiempo que debe pasar sin mensajes para que el personaje envíe un mensaje proactivo
+   203→                </CardDescription>
+   204→              </CardHeader>
+   205→              <CardContent className="space-y-4">
+   206→                {/* Preset Buttons */}
+   207→                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+   208→                  {INTERVAL_PRESETS.map((preset) => (
+   209→                    <Button
+   210→                      key={preset.value}
+   211→                      variant={settings.intervalSeconds === preset.value ? 'default' : 'outline'}
+   212→                      size="sm"
+   213→                      className="h-9 text-xs"
+   214→                      onClick={() => updateSettings({ intervalSeconds: preset.value })}
+   215→                    >
+   216→                      {preset.label}
+   217→                    </Button>
+   218→                  ))}
+   219→                </div>
+   220→
+   221→                {/* Custom Interval */}
+   222→                <div className="space-y-2">
+   223→                  <div className="flex items-center justify-between">
+   224→                    <Label className="text-xs">Intervalo personalizado</Label>
+   225→                    <span className="text-xs font-mono font-medium text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded">
+   226→                      {formatInterval(settings.intervalSeconds)}
+   227→                    </span>
+   228→                  </div>
+   229→                  <Slider
+   230→                    value={[settings.intervalSeconds]}
+   231→                    min={30}
+   232→                    max={3600}
+   233→                    step={30}
+   234→                    onValueChange={([value]) => updateSettings({ intervalSeconds: value })}
+   235→                    className="py-1"
+   236→                  />
+   237→                  <div className="flex justify-between text-[10px] text-muted-foreground">
+   238→                    <span>30s</span>
+   239→                    <span>30 min</span>
+   240→                    <span>60 min</span>
+   241→                  </div>
+   242→                </div>
+   243→              </CardContent>
+   244→            </Card>
+   245→
+   246→            {/* ─── Conditions ─── */}
+   247→            <Card>
+   248→              <CardHeader className="pb-3">
+   249→                <CardTitle className="text-sm flex items-center gap-2">
+   250→                  <Shield className="w-4 h-4 text-blue-500" />
+   251→                  Condiciones de Activación
+   252→                </CardTitle>
+   253→                <CardDescription>
+   254→                  Define cuándo y cuántos mensajes proactivos se permiten
+   255→                </CardDescription>
+   256→              </CardHeader>
+   257→              <CardContent className="space-y-5">
+   258→                {/* Minimum messages before start */}
+   259→                <div className="space-y-2">
+   260→                  <div className="flex items-center justify-between">
+   261→                    <div className="flex items-center gap-1.5">
+   262→                      <MessageCircle className="w-3.5 h-3.5 text-blue-400" />
+   263→                      <Label className="text-xs font-medium">Mensajes mínimos antes de activar</Label>
+   264→                      <Tooltip>
+   265→                        <TooltipTrigger asChild>
+   266→                          <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   267→                        </TooltipTrigger>
+   268→                        <TooltipContent className="max-w-xs">
+   269→                          <p>El personaje esperará a que haya al menos esta cantidad de mensajes en el chat antes de enviar mensajes proactivos.</p>
+   270→                        </TooltipContent>
+   271→                      </Tooltip>
+   272→                    </div>
+   273→                    <span className="text-xs font-mono font-medium text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">
+   274→                      {settings.minMessagesBeforeStart === 0 ? 'Inmediato' : settings.minMessagesBeforeStart}
+   275→                    </span>
+   276→                  </div>
+   277→                  <Slider
+   278→                    value={[settings.minMessagesBeforeStart]}
+   279→                    min={0}
+   280→                    max={20}
+   281→                    step={1}
+   282→                    onValueChange={([value]) => updateSettings({ minMessagesBeforeStart: value })}
+   283→                    className="py-1"
+   284→                  />
+   285→                  <div className="flex justify-between text-[10px] text-muted-foreground">
+   286→                    <span>Inmediato</span>
+   287→                    <span>10</span>
+   288→                    <span>20 mensajes</span>
+   289→                  </div>
+   290→                </div>
+   291→
+   292→                {/* Max per session */}
+   293→                <div className="space-y-2">
+   294→                  <div className="flex items-center justify-between">
+   295→                    <div className="flex items-center gap-1.5">
+   296→                      <Timer className="w-3.5 h-3.5 text-purple-400" />
+   297→                      <Label className="text-xs font-medium">Máximo por sesión</Label>
+   298→                      <Tooltip>
+   299→                        <TooltipTrigger asChild>
+   300→                          <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   301→                        </TooltipTrigger>
+   302→                        <TooltipContent className="max-w-xs">
+   303→                          <p>Límite de mensajes proactivos por sesión de chat. 0 = sin límite.</p>
+   304→                        </TooltipContent>
+   305→                      </Tooltip>
+   306→                    </div>
+   307→                    <span className="text-xs font-mono font-medium text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded">
+   308→                      {settings.maxPerSession === 0 ? '∞ Sin límite' : settings.maxPerSession}
+   309→                    </span>
+   310→                  </div>
+   311→                  <Slider
+   312→                    value={[settings.maxPerSession]}
+   313→                    min={0}
+   314→                    max={20}
+   315→                    step={1}
+   316→                    onValueChange={([value]) => updateSettings({ maxPerSession: value })}
+   317→                    className="py-1"
+   318→                  />
+   319→                  <div className="flex justify-between text-[10px] text-muted-foreground">
+   320→                    <span>Sin límite</span>
+   321→                    <span>10</span>
+   322→                    <span>20</span>
+   323→                  </div>
+   324→                </div>
+   325→
+   326→                {/* Trigger States */}
+   327→                <div className="space-y-2.5 pt-1">
+   328→                  <Label className="text-xs font-medium">Activar cuando:</Label>
+   329→                  <div className="space-y-2">
+   330→                    <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/30">
+   331→                      <div className="flex items-center gap-2.5">
+   332→                        <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+   333→                        <div>
+   334→                          <span className="text-xs font-medium">Inactividad del usuario</span>
+   335→                          <p className="text-[10px] text-muted-foreground">El chat está abierto pero no hay mensajes nuevos</p>
+   336→                        </div>
+   337→                      </div>
+   338→                      <Switch
+   339→                        checked={settings.allowedStates?.includes('idle') ?? true}
+   340→                        onCheckedChange={(checked) => {
+   341→                          const current = settings.allowedStates ?? ['idle'];
+   342→                          const updated = checked
+   343→                            ? [...new Set([...current, 'idle'])]
+   344→                            : current.filter(s => s !== 'idle');
+   345→                          updateSettings({ allowedStates: updated.length > 0 ? updated : ['idle'] });
+   346→                        }}
+   347→                      />
+   348→                    </div>
+   349→                    <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/30">
+   350→                      <div className="flex items-center gap-2.5">
+   351→                        <div className="w-2.5 h-2.5 rounded-full bg-blue-400" />
+   352→                        <div>
+   353→                          <span className="text-xs font-medium">Usuario fuera de la pestaña</span>
+   354→                          <p className="text-[10px] text-muted-foreground">El usuario cambió a otra pestaña o ventana del navegador</p>
+   355→                        </div>
+   356→                      </div>
+   357→                      <Switch
+   358→                        checked={settings.allowedStates?.includes('user_away') ?? false}
+   359→                        onCheckedChange={(checked) => {
+   360→                          const current = settings.allowedStates ?? ['idle'];
+   361→                          const updated = checked
+   362→                            ? [...new Set([...current, 'user_away'])]
+   363→                            : current.filter(s => s !== 'user_away');
+   364→                          updateSettings({ allowedStates: updated.length > 0 ? updated : ['idle'] });
+   365→                        }}
+   366→                      />
+   367→                    </div>
+   368→                  </div>
+   369→                </div>
+   370→              </CardContent>
+   371→            </Card>
+   372→
+   373→            {/* ─── Custom Prompt ─── */}
+   374→            <Card>
+   375→              <CardHeader className="pb-3">
+   376→                <CardTitle className="text-sm flex items-center gap-2">
+   377→                  <Sparkles className="w-4 h-4 text-pink-500" />
+   378→                  Instrucción Personalizada
+   379→                </CardTitle>
+   380→                <CardDescription>
+   381→                  Instrucciones adicionales para guiar el mensaje proactivo (opcional)
+   382→                </CardDescription>
+   383→              </CardHeader>
+   384→              <CardContent>
+   385→                <Textarea
+   386→                  className="min-h-[100px] text-xs"
+   387→                  placeholder="Ejemplo: Suele iniciar hablando del clima o preguntando cómo está el usuario. A veces comparte pensamientos en voz alta. Le gusta mencionar lo que ve por la ventana..."
+   388→                  value={settings.customPrompt || ''}
+   389→                  onChange={(e) => updateSettings({ customPrompt: e.target.value })}
+   390→                />
+   391→                <div className="mt-2 p-2.5 rounded-md bg-muted/30 border border-border/30">
+   392→                  <p className="text-[11px] text-muted-foreground">
+   393→                    <strong>Si se deja vacío</strong>, se usa la instrucción predeterminada.
+   394→                  </p>
+   395→                </div>
+   396→              </CardContent>
+   397→            </Card>
+   398→
+   399→            {/* ─── Nudge Template ─── */}
+   400→            <Card>
+   401→              <CardHeader className="pb-3">
+   402→                <CardTitle className="text-sm flex items-center gap-2">
+   403→                  <Send className="w-4 h-4 text-emerald-500" />
+   404→                  Mensaje de Impulso (Nudge) Principal
+   405→                </CardTitle>
+   406→                <CardDescription>
+   407→                  Mensaje que se envía como si fuera del usuario para "impulsar" al personaje a responder. Se procesa con las mismas variables de plantilla que el resto del prompt.
+   408→                </CardDescription>
+   409→              </CardHeader>
+   410→              <CardContent>
+   411→                <Textarea
+   412→                  className="min-h-[80px] text-xs"
+   413→                  placeholder="[La escena continúa] {{user}} parece distraído así que {{char}} decide hacer o decir algo para que todo continúe."
+   414→                  value={settings.nudgeTemplate || ''}
+   415→                  onChange={(e) => updateSettings({ nudgeTemplate: e.target.value })}
+   416→                />
+   417→                <div className="mt-2 p-2.5 rounded-md bg-muted/30 border border-border/30">
+   418→                  <p className="text-[11px] text-muted-foreground">
+   419→                    <strong>Si se deja vacío</strong>, se usa el nudge predeterminado:
+   420→                  </p>
+   421→                  <p className="text-[10px] text-muted-foreground/70 mt-1 italic font-mono">
+   422→                    [La escena continúa] {'{{user}}'} parece distraído así que {'{{char}}'} decide hacer o decir algo para que todo continúe.
+   423→                  </p>
+   424→                </div>
+   425→              </CardContent>
+   426→            </Card>
+   427→
+   428→            {/* ═══════════════════════════════════════════════════════════════ */}
+   429→            {/* ─── FASE 3: Proactividad Inteligente ─── */}
+   430→            {/* ═══════════════════════════════════════════════════════════════ */}
+   431→
+   432→            {/* ─── Nudge Variation Pool ─── */}
+   433→            <Card className="border-emerald-500/20">
+   434→              <CardHeader className="pb-3">
+   435→                <CardTitle className="text-sm flex items-center gap-2">
+   436→                  <Shuffle className="w-4 h-4 text-emerald-500" />
+   437→                  Variación de Nudges
+   438→                </CardTitle>
+   439→                <CardDescription>
+   440→                  Agrega plantillas alternativas de nudge que rotan automáticamente, añadiendo variedad a los mensajes proactivos
+   441→                </CardDescription>
+   442→              </CardHeader>
+   443→              <CardContent className="space-y-3">
+   444→                {/* Current templates list */}
+   445→                {(settings.nudgeTemplates || []).length > 0 && (
+   446→                  <div className="space-y-2">
+   447→                    {(settings.nudgeTemplates || []).map((tmpl, index) => (
+   448→                      <div key={index} className="flex items-start gap-2 p-2 rounded-md bg-muted/30 border border-border/30 group">
+   449→                        <GripVertical className="w-3.5 h-3.5 text-muted-foreground mt-2 shrink-0 opacity-50" />
+   450→                        <div className="flex-1 min-w-0">
+   451→                          <p className="text-[11px] text-foreground/80 font-mono truncate">{tmpl}</p>
+   452→                        </div>
+   453→                        <Button
+   454→                          variant="ghost"
+   455→                          size="sm"
+   456→                          className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+   457→                          onClick={() => removeNudgeTemplate(index)}
+   458→                        >
+   459→                          <Trash2 className="w-3 h-3 text-red-400" />
+   460→                        </Button>
+   461→                      </div>
+   462→                    ))}
+   463→                  </div>
+   464→                )}
+   465→
+   466→                {/* Add new template */}
+   467→                <div className="flex gap-2">
+   468→                  <Input
+   469→                    className="text-xs flex-1"
+   470→                    placeholder="Escribe una nueva plantilla de nudge..."
+   471→                    value={newTemplateValue}
+   472→                    onChange={(e) => setNewTemplateValue(e.target.value)}
+   473→                    onKeyDown={(e) => {
+   474→                      if (e.key === 'Enter') {
+   475→                        e.preventDefault();
+   476→                        addNudgeTemplate(newTemplateValue);
+   477→                      }
+   478→                    }}
+   479→                  />
+   480→                  <Button
+   481→                    variant="outline"
+   482→                    size="sm"
+   483→                    className="h-8 px-3 shrink-0"
+   484→                    onClick={() => addNudgeTemplate(newTemplateValue)}
+   485→                    disabled={!newTemplateValue.trim()}
+   486→                  >
+   487→                    <Plus className="w-3.5 h-3.5" />
+   488→                  </Button>
+   489→                </div>
+   490→
+   491→                {/* Quick-add suggestions */}
+   492→                <div className="space-y-1.5">
+   493→                  <p className="text-[10px] text-muted-foreground font-medium">Sugerencias rápidas:</p>
+   494→                  <div className="flex flex-wrap gap-1.5">
+   495→                    {NUDGE_SUGGESTIONS.filter(s => !(settings.nudgeTemplates || []).includes(s) && s !== settings.nudgeTemplate).slice(0, 4).map((suggestion, i) => (
+   496→                      <Button
+   497→                        key={i}
+   498→                        variant="outline"
+   499→                        size="sm"
+   500→                        className="h-6 text-[9px] px-2 max-w-[200px] truncate"
+   501→                        onClick={() => addNudgeTemplate(suggestion)}
+   502→                      >
+   503→                        <Plus className="w-2.5 h-2.5 mr-1 shrink-0" />
+   504→                        {suggestion.slice(0, 40)}...
+   505→                      </Button>
+   506→                    ))}
+   507→                  </div>
+   508→                </div>
+   509→
+   510→                {(settings.nudgeTemplates || []).length > 0 && (
+   511→                  <div className="p-2 rounded-md bg-emerald-500/5 border border-emerald-500/20">
+   512→                    <p className="text-[10px] text-emerald-600 dark:text-emerald-400">
+   513→                      <strong>{(settings.nudgeTemplates || []).length + (settings.nudgeTemplate ? 1 : 0)}</strong> plantillas en rotación. 
+   514→                      Se seleccionan aleatoriamente sin repetir las usadas recientemente.
+   515→                    </p>
+   516→                  </div>
+   517→                )}
+   518→              </CardContent>
+   519→            </Card>
+   520→
+   521→            {/* ─── Context Messages ─── */}
+   522→            <Card className="border-blue-500/20">
+   523→              <CardHeader className="pb-3">
+   524→                <CardTitle className="text-sm flex items-center gap-2">
+   525→                  <Eye className="w-4 h-4 text-blue-500" />
+   526→                  Contexto de Conversación
+   527→                </CardTitle>
+   528→                <CardDescription>
+   529→                  Incluye los últimos mensajes del chat como contexto en el nudge proactivo para que el personaje responda de forma más coherente
+   530→                </CardDescription>
+   531→              </CardHeader>
+   532→              <CardContent className="space-y-3">
+   533→                <div className="flex items-center justify-between">
+   534→                  <div className="flex items-center gap-1.5">
+   535→                    <MessageCircle className="w-3.5 h-3.5 text-blue-400" />
+   536→                    <Label className="text-xs font-medium">Mensajes recientes incluidos</Label>
+   537→                    <Tooltip>
+   538→                      <TooltipTrigger asChild>
+   539→                        <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   540→                      </TooltipTrigger>
+   541→                      <TooltipContent className="max-w-xs">
+   542→                        <p>Número de pares de mensajes (usuario+personaje) que se incluirán como contexto. 0 = desactivado.</p>
+   543→                      </TooltipContent>
+   544→                    </Tooltip>
+   545→                  </div>
+   546→                  <span className="text-xs font-mono font-medium text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">
+   547→                    {settings.contextMessagesCount ?? 3}
+   548→                  </span>
+   549→                </div>
+   550→                <Slider
+   551→                  value={[settings.contextMessagesCount ?? 3]}
+   552→                  min={0}
+   553→                  max={10}
+   554→                  step={1}
+   555→                  onValueChange={([value]) => updateSettings({ contextMessagesCount: value })}
+   556→                  className="py-1"
+   557→                />
+   558→                <div className="flex justify-between text-[10px] text-muted-foreground">
+   559→                  <span>Desactivado</span>
+   560→                  <span>5</span>
+   561→                  <span>10 mensajes</span>
+   562→                </div>
+   563→                {(settings.contextMessagesCount ?? 3) > 0 && (
+   564→                  <div className="p-2 rounded-md bg-blue-500/5 border border-blue-500/20">
+   565→                    <p className="text-[10px] text-blue-600 dark:text-blue-400">
+   566→                      El personaje verá los últimos {(settings.contextMessagesCount ?? 3) * 2} mensajes como contexto antes de generar su respuesta proactiva.
+   567→                    </p>
+   568→                  </div>
+   569→                )}
+   570→              </CardContent>
+   571→            </Card>
+   572→
+   573→            {/* ─── Thematic Cooldown ─── */}
+   574→            <Card className="border-cyan-500/20">
+   575→              <CardHeader className="pb-3">
+   576→                <CardTitle className="text-sm flex items-center gap-2">
+   577→                  <Snowflake className="w-4 h-4 text-cyan-500" />
+   578→                  Enfriamiento Temático
+   579→                </CardTitle>
+   580→                <CardDescription>
+   581→                  Evita que el personaje repita el mismo tema en mensajes proactivos consecutivos
+   582→                </CardDescription>
+   583→              </CardHeader>
+   584→              <CardContent className="space-y-3">
+   585→                <div className="flex items-center justify-between">
+   586→                  <div className="flex items-center gap-1.5">
+   587→                    <Timer className="w-3.5 h-3.5 text-cyan-400" />
+   588→                    <Label className="text-xs font-medium">Tiempo de espera</Label>
+   589→                    <Tooltip>
+   590→                      <TooltipTrigger asChild>
+   591→                        <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   592→                      </TooltipTrigger>
+   593→                      <TooltipContent className="max-w-xs">
+   594→                        <p>Minutos que deben pasar antes de que el personaje pueda hablar de un tema similar. 0 = desactivado.</p>
+   595→                      </TooltipContent>
+   596→                    </Tooltip>
+   597→                  </div>
+   598→                  <span className="text-xs font-mono font-medium text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded">
+   599→                    {settings.thematicCooldownMinutes ?? 0} min
+   600→                  </span>
+   601→                </div>
+   602→                <Slider
+   603→                  value={[settings.thematicCooldownMinutes ?? 0]}
+   604→                  min={0}
+   605→                  max={60}
+   606→                  step={5}
+   607→                  onValueChange={([value]) => updateSettings({ thematicCooldownMinutes: value })}
+   608→                  className="py-1"
+   609→                />
+   610→                <div className="flex justify-between text-[10px] text-muted-foreground">
+   611→                  <span>Desactivado</span>
+   612→                  <span>30 min</span>
+   613→                  <span>60 min</span>
+   614→                </div>
+   615→                {(settings.thematicCooldownMinutes ?? 0) > 0 && (
+   616→                  <div className="p-2 rounded-md bg-cyan-500/5 border border-cyan-500/20">
+   617→                    <p className="text-[10px] text-cyan-600 dark:text-cyan-400">
+   618→                      El personaje evitará repetir temas de sus últimos mensajes proactivos durante {settings.thematicCooldownMinutes} minutos.
+   619→                    </p>
+   620→                  </div>
+   621→                )}
+   622→              </CardContent>
+   623→            </Card>
+   624→
+   625→            {/* ─── Group Chat Proactivity ─── */}
+   626→            <Card className="border-purple-500/20">
+   627→              <CardHeader className="pb-3">
+   628→                <CardTitle className="text-sm flex items-center gap-2">
+   629→                  <Users className="w-4 h-4 text-purple-500" />
+   630→                  Proactividad en Chat Grupal
+   631→                </CardTitle>
+   632→                <CardDescription>
+   633→                  Permite que el personaje envíe mensajes proactivos en conversaciones grupales
+   634→                </CardDescription>
+   635→              </CardHeader>
+   636→              <CardContent className="space-y-3">
+   637→                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/30">
+   638→                  <div className="flex items-center gap-2.5">
+   639→                    <Users className="w-4 h-4 text-purple-400" />
+   640→                    <div>
+   641→                      <span className="text-xs font-medium">Activar en chats grupales</span>
+   642→                      <p className="text-[10px] text-muted-foreground">El personaje puede intervenir proactivamente cuando hay otros personajes en la conversación</p>
+   643→                    </div>
+   644→                  </div>
+   645→                  <Switch
+   646→                    checked={settings.groupChatEnabled ?? false}
+   647→                    onCheckedChange={(checked) => updateSettings({ groupChatEnabled: checked })}
+   648→                  />
+   649→                </div>
+   650→
+   651→                {settings.groupChatEnabled && (
+   652→                  <div className="space-y-2">
+   653→                    <Label className="text-xs font-medium">Estrategia de intervención</Label>
+   654→                    <Select
+   655→                      value={settings.groupChatStrategy ?? 'any_speaker'}
+   656→                      onValueChange={(value: 'any_speaker' | 'mentioned_only' | 'emotional_reaction') => 
+   657→                        updateSettings({ groupChatStrategy: value })
+   658→                      }
+   659→                    >
+   660→                      <SelectTrigger className="h-8 text-xs">
+   661→                        <SelectValue />
+   662→                      </SelectTrigger>
+   663→                      <SelectContent>
+   664→                        <SelectItem value="any_speaker">
+   665→                          <div className="flex items-center gap-2">
+   666→                            <MessageCircle className="w-3 h-3 text-purple-400" />
+   667→                            <span>Cualquier interlocutor</span>
+   668→                          </div>
+   669→                        </SelectItem>
+   670→                        <SelectItem value="mentioned_only">
+   671→                          <div className="flex items-center gap-2">
+   672→                            <Brain className="w-3 h-3 text-amber-400" />
+   673→                            <span>Solo si es mencionado</span>
+   674→                          </div>
+   675→                        </SelectItem>
+   676→                        <SelectItem value="emotional_reaction">
+   677→                          <div className="flex items-center gap-2">
+   678→                            <Sparkles className="w-3 h-3 text-rose-400" />
+   679→                            <span>Reacción emocional</span>
+   680→                          </div>
+   681→                        </SelectItem>
+   682→                      </SelectContent>
+   683→                    </Select>
+   684→                    <div className="p-2.5 rounded-md bg-muted/30 border border-border/30 space-y-1.5">
+   685→                      <p className="text-[10px] text-muted-foreground">
+   686→                        {settings.groupChatStrategy === 'any_speaker' && 'El personaje puede intervenir después de que cualquiera hable, si hay inactividad.'}
+   687→                        {settings.groupChatStrategy === 'mentioned_only' && 'El personaje solo interviene si alguien lo menciona por nombre en el chat grupal.'}
+   688→                        {settings.groupChatStrategy === 'emotional_reaction' && 'El personaje reacciona cuando detecta emociones fuertes en la conversación (enfado, sorpresa, tristeza).'}
+   689→                      </p>
+   690→                    </div>
+   691→                  </div>
+   692→                )}
+   693→              </CardContent>
+   694→            </Card>
+   695→
+   696→            {/* ═══════════════════════════════════════════════════════════════ */}
+   697→            {/* ─── FASE 9: Contexto para Proactividad ─── */}
+   698→            {/* ═══════════════════════════════════════════════════════════════ */}
+   699→            <Card className="border-teal-500/20">
+   700→              <CardHeader className="pb-3">
+   701→                <CardTitle className="text-sm flex items-center gap-2">
+   702→                  <Brain className="w-4 h-4 text-teal-500" />
+   703→                  Contexto para Proactividad
+   704→                  <span className="text-[9px] bg-teal-500/10 text-teal-500 px-1.5 py-0.5 rounded font-medium ml-auto">
+   705→                    FASE 9
+   706→                  </span>
+   707→                </CardTitle>
+   708→                <CardDescription>
+   709→                  Inyecta contexto profundo en el prompt del sistema para que los mensajes proactivos sean más coherentes con la conversación, emociones y relaciones.
+   710→                </CardDescription>
+   711→              </CardHeader>
+   712→              <CardContent className="space-y-3">
+   713→                {/* Context in System Prompt toggle */}
+   714→                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/30">
+   715→                  <div className="flex items-center gap-2.5">
+   716→                    <Layers className="w-4 h-4 text-teal-400" />
+   717→                    <div>
+   718→                      <span className="text-xs font-medium">Inyectar contexto en el prompt del sistema</span>
+   719→                      <p className="text-[10px] text-muted-foreground">El contexto se incluye en el system prompt en vez de solo en el nudge. Más coherente para el LLM.</p>
+   720→                    </div>
+   721→                  </div>
+   722→                  <Switch
+   723→                    checked={settings.contextInSystemPrompt ?? true}
+   724→                    onCheckedChange={(checked) => onChange({ ...settings, contextInSystemPrompt: checked })}
+   725→                  />
+   726→                </div>
+   727→
+   728→                {/* Emotional context */}
+   729→                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/30">
+   730→                  <div className="flex items-center gap-2.5">
+   731→                    <Heart className="w-4 h-4 text-red-400" />
+   732→                    <div>
+   733→                      <span className="text-xs font-medium">Incluir estado emocional</span>
+   734→                      <p className="text-[10px] text-muted-foreground">Si el personaje tiene emociones activas, se incluyen como contexto para el mensaje proactivo.</p>
+   735→                    </div>
+   736→                  </div>
+   737→                  <Switch
+   738→                    checked={settings.includeEmotionalContext ?? true}
+   739→                    onCheckedChange={(checked) => onChange({ ...settings, includeEmotionalContext: checked })}
+   740→                  />
+   741→                </div>
+   742→
+   743→                {/* Relationship context */}
+   744→                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/30">
+   745→                  <div className="flex items-center gap-2.5">
+   746→                    <Users className="w-4 h-4 text-pink-400" />
+   747→                    <div>
+   748→                      <span className="text-xs font-medium">Incluir relaciones</span>
+   749→                      <p className="text-[10px] text-muted-foreground">Incluye la relación actual con el usuario para que el mensaje sea consistente.</p>
+   750→                    </div>
+   751→                  </div>
+   752→                  <Switch
+   753→                    checked={settings.includeRelationshipContext ?? true}
+   754→                    onCheckedChange={(checked) => onChange({ ...settings, includeRelationshipContext: checked })}
+   755→                  />
+   756→                </div>
+   757→
+   758→                {/* Quest context */}
+   759→                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/30">
+   760→                  <div className="flex items-center gap-2.5">
+   761→                    <BookOpen className="w-4 h-4 text-amber-400" />
+   762→                    <div>
+   763→                      <span className="text-xs font-medium">Incluir misiones activas</span>
+   764→                      <p className="text-[10px] text-muted-foreground">Muestra misiones activas para que el personaje pueda hacer referencia a ellas sutilmente.</p>
+   765→                    </div>
+   766→                  </div>
+   767→                  <Switch
+   768→                    checked={settings.includeQuestContext ?? true}
+   769→                    onCheckedChange={(checked) => onChange({ ...settings, includeQuestContext: checked })}
+   770→                  />
+   771→                </div>
+   772→
+   773→                {/* Context message max chars */}
+   774→                <div className="space-y-2 p-3 bg-muted/30 rounded-lg border border-border/30">
+   775→                  <div className="flex items-center justify-between">
+   776→                    <div className="flex items-center gap-1.5">
+   777→                      <MessageCircle className="w-3.5 h-3.5 text-blue-400" />
+   778→                      <Label className="text-xs font-medium">Caracteres máx. por mensaje de contexto</Label>
+   779→                    </div>
+   780→                    <span className="text-xs font-mono font-medium text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">
+   781→                      {settings.contextMessageMaxChars ?? 300}
+   782→                    </span>
+   783→                  </div>
+   784→                  <Slider
+   785→                    value={[settings.contextMessageMaxChars ?? 300]}
+   786→                    min={100}
+   787→                    max={1000}
+   788→                    step={50}
+   789→                    onValueChange={([value]) => onChange({ ...settings, contextMessageMaxChars: value })}
+   790→                    className="py-1"
+   791→                  />
+   792→                  <div className="flex justify-between text-[10px] text-muted-foreground">
+   793→                    <span>100 chars</span>
+   794→                    <span>1000 chars</span>
+   795→                  </div>
+   796→                </div>
+   797→
+   798→                {/* Abandoned topics detection */}
+   799→                <div className="space-y-2">
+   800→                  <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/30">
+   801→                    <div className="flex items-center gap-2.5">
+   802→                      <ArrowLeftRight className="w-4 h-4 text-orange-400" />
+   803→                      <div>
+   804→                        <span className="text-xs font-medium">Retomar temas abandonados</span>
+   805→                        <p className="text-[10px] text-muted-foreground">Si se habló de un tema y se abandonó, el personaje puede retomarlo proactivamente.</p>
+   806→                      </div>
+   807→                    </div>
+   808→                    <Switch
+   809→                      checked={settings.retomarAbandonedTopics ?? false}
+   810→                      onCheckedChange={(checked) => onChange({ ...settings, retomarAbandonedTopics: checked })}
+   811→                    />
+   812→                  </div>
+   813→                  {settings.retomarAbandonedTopics && (
+   814→                    <div className="pl-4 space-y-2">
+   815→                      <div className="flex items-center justify-between">
+   816→                        <div className="flex items-center gap-1.5">
+   817→                          <Clock className="w-3.5 h-3.5 text-orange-400" />
+   818→                          <Label className="text-xs font-medium">Turnos de silencio para considerar "abandonado"</Label>
+   819→                        </div>
+   820→                        <span className="text-xs font-mono font-medium text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded">
+   821→                          {settings.abandonedTopicThreshold ?? 10}
+   822→                        </span>
+   823→                      </div>
+   824→                      <Slider
+   825→                        value={[settings.abandonedTopicThreshold ?? 10]}
+   826→                        min={5}
+   827→                        max={30}
+   828→                        step={5}
+   829→                        onValueChange={([value]) => onChange({ ...settings, abandonedTopicThreshold: value })}
+   830→                        className="py-1"
+   831→                      />
+   832→                      <div className="flex justify-between text-[10px] text-muted-foreground">
+   833→                        <span>5 turnos</span>
+   834→                        <span>30 turnos</span>
+   835→                      </div>
+   836→                    </div>
+   837→                  )}
+   838→                </div>
+   839→              </CardContent>
+   840→            </Card>
+   841→
+   842→            {/* ═══════════════════════════════════════════════════════════════ */}
+   843→            {/* ─── FASE 4: Micro-Reacciones en Chat Grupal ─── */}
+   844→            {/* ═══════════════════════════════════════════════════════════════ */}
+   845→            {onMicroReactionConfigChange && (
+   846→              <Card className="border-violet-500/20">
+   847→                <CardHeader className="pb-3">
+   848→                  <CardTitle className="text-sm flex items-center gap-2">
+   849→                    <Zap className="w-4 h-4 text-violet-500" />
+   850→                    Micro-Reacciones (Chat Grupal)
+   851→                  </CardTitle>
+   852→                  <CardDescription>
+   853→                    Cuando este personaje habla en un chat grupal, otros personajes pueden reaccionar brevemente con acciones como *suspira*, *sonríe*, etc.
+   854→                  </CardDescription>
+   855→                </CardHeader>
+   856→                <CardContent className="space-y-3">
+   857→                  <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/30">
+   858→                    <div className="flex items-center gap-2.5">
+   859→                      <Sparkles className="w-4 h-4 text-violet-400" />
+   860→                      <div>
+   861→                        <span className="text-xs font-medium">Activar micro-reacciones</span>
+   862→                        <p className="text-[10px] text-muted-foreground">Otros personajes reaccionan brevemente cuando este personaje habla</p>
+   863→                      </div>
+   864→                    </div>
+   865→                    <Switch
+   866→                      checked={microReactionConfig?.enabled ?? false}
+   867→                      onCheckedChange={(checked) => onMicroReactionConfigChange({ 
+   868→                        enabled: checked,
+   869→                        maxReactionsPerMessage: microReactionConfig?.maxReactionsPerMessage ?? 2,
+   870→                        reactionChance: microReactionConfig?.reactionChance ?? 0.3,
+   871→                        triggers: microReactionConfig?.triggers ?? ['mention', 'emotional'],
+   872→                      })}
+   873→                    />
+   874→                  </div>
+   875→
+   876→                  {microReactionConfig?.enabled && (() => {
+   877→                    const mrc = microReactionConfig;
+   878→                    return (
+   879→                    <>
+   880→                      <div className="space-y-2">
+   881→                        <div className="flex items-center justify-between">
+   882→                          <div className="flex items-center gap-1.5">
+   883→                            <MessageCircle className="w-3.5 h-3.5 text-violet-400" />
+   884→                            <Label className="text-xs font-medium">Máx. reacciones por mensaje</Label>
+   885→                          </div>
+   886→                          <span className="text-xs font-mono font-medium text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded">
+   887→                            {mrc.maxReactionsPerMessage}
+   888→                          </span>
+   889→                        </div>
+   890→                        <Slider
+   891→                          value={[mrc.maxReactionsPerMessage]}
+   892→                          min={1}
+   893→                          max={5}
+   894→                          step={1}
+   895→                          onValueChange={([value]) => onMicroReactionConfigChange({ ...mrc, maxReactionsPerMessage: value })}
+   896→                          className="py-1"
+   897→                        />
+   898→                        <div className="flex justify-between text-[10px] text-muted-foreground">
+   899→                          <span>1</span>
+   900→                          <span>3</span>
+   901→                          <span>5</span>
+   902→                        </div>
+   903→                      </div>
+   904→
+   905→                      <div className="space-y-2">
+   906→                        <div className="flex items-center justify-between">
+   907→                          <div className="flex items-center gap-1.5">
+   908→                            <Shuffle className="w-3.5 h-3.5 text-violet-400" />
+   909→                            <Label className="text-xs font-medium">Probabilidad de reacción</Label>
+   910→                          </div>
+   911→                          <span className="text-xs font-mono font-medium text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded">
+   912→                            {Math.round((mrc.reactionChance ?? 0.3) * 100)}%
+   913→                          </span>
+   914→                        </div>
+   915→                        <Slider
+   916→                          value={[Math.round((mrc.reactionChance ?? 0.3) * 100)]}
+   917→                          min={10}
+   918→                          max={100}
+   919→                          step={10}
+   920→                          onValueChange={([value]) => onMicroReactionConfigChange({ ...mrc, reactionChance: value / 100 })}
+   921→                          className="py-1"
+   922→                        />
+   923→                        <div className="flex justify-between text-[10px] text-muted-foreground">
+   924→                          <span>10%</span>
+   925→                          <span>50%</span>
+   926→                          <span>100%</span>
+   927→                        </div>
+   928→                      </div>
+   929→
+   930→                      <div className="space-y-2.5">
+   931→                        <Label className="text-xs font-medium">Disparadores de reacción</Label>
+   932→                        <div className="space-y-2">
+   933→                          <div className="flex items-center justify-between p-2.5 bg-muted/30 rounded-lg border border-border/30">
+   934→                            <div>
+   935→                              <span className="text-xs font-medium">Mención</span>
+   936→                              <p className="text-[10px] text-muted-foreground">Reaccionar cuando alguien menciona su nombre</p>
+   937→                            </div>
+   938→                            <Switch
+   939→                              checked={mrc.triggers?.includes('mention') ?? true}
+   940→                              onCheckedChange={(checked) => {
+   941→                                const current = mrc.triggers || ['mention', 'emotional'];
+   942→                                const updated = checked
+   943→                                  ? [...new Set([...current, 'mention'])]
+   944→                                  : current.filter(t => t !== 'mention');
+   945→                                onMicroReactionConfigChange({ ...mrc, triggers: updated.length > 0 ? updated : ['mention'] });
+   946→                              }}
+   947→                            />
+   948→                          </div>
+   949→                          <div className="flex items-center justify-between p-2.5 bg-muted/30 rounded-lg border border-border/30">
+   950→                            <div>
+   951→                              <span className="text-xs font-medium">Emocional</span>
+   952→                              <p className="text-[10px] text-muted-foreground">Reaccionar a contenido emocional (enfado, sorpresa, etc.)</p>
+   953→                            </div>
+   954→                            <Switch
+   955→                              checked={mrc.triggers?.includes('emotional') ?? true}
+   956→                              onCheckedChange={(checked) => {
+   957→                                const current = mrc.triggers || ['mention', 'emotional'];
+   958→                                const updated = checked
+   959→                                  ? [...new Set([...current, 'emotional'])]
+   960→                                  : current.filter(t => t !== 'emotional');
+   961→                                onMicroReactionConfigChange({ ...mrc, triggers: updated.length > 0 ? updated : ['emotional'] });
+   962→                              }}
+   963→                            />
+   964→                          </div>
+   965→                          <div className="flex items-center justify-between p-2.5 bg-muted/30 rounded-lg border border-border/30">
+   966→                            <div>
+   967→                              <span className="text-xs font-medium">Tema</span>
+   968→                              <p className="text-[10px] text-muted-foreground">Reaccionar aleatoriamente al tema de conversación</p>
+   969→                            </div>
+   970→                            <Switch
+   971→                              checked={mrc.triggers?.includes('topic') ?? false}
+   972→                              onCheckedChange={(checked) => {
+   973→                                const current = mrc.triggers || ['mention', 'emotional'];
+   974→                                const updated = checked
+   975→                                  ? [...new Set([...current, 'topic'])]
+   976→                                  : current.filter(t => t !== 'topic');
+   977→                                onMicroReactionConfigChange({ ...mrc, triggers: updated.length > 0 ? updated : ['mention'] });
+   978→                              }}
+   979→                            />
+   980→                          </div>
+   981→                        </div>
+   982→                      </div>
+   983→                    </>
+   984→                  )})()}
+   985→                </CardContent>
+   986→              </Card>
+   987→            )}
+   988→
+   989→            {/* ─── Template Variables Reference ─── */}
+   990→            <div className="p-3 rounded-lg border bg-card">
+   991→              <div className="flex items-center gap-2 mb-2">
+   992→                <HelpCircle className="w-4 h-4 text-muted-foreground" />
+   993→                <h3 className="text-xs font-semibold">Variables de Plantilla Disponibles</h3>
+   994→              </div>
+   995→              <p className="text-[11px] text-muted-foreground mb-2">
+   996→                Puedes usar estas variables tanto en la instrucción personalizada como en el mensaje de impulso. Se reemplazan automáticamente con los valores correspondientes:
+   997→              </p>
+   998→              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+   999→                {[
+  1000→                  { var: '{{char}}', desc: 'Nombre del personaje' },
+  1001→                  { var: '{{user}}', desc: 'Nombre del usuario' },
+  1002→                  { var: '{{userpersona}}', desc: 'Descripción del usuario' },
+  1003→                  { var: '{{stats}}', desc: 'Estadísticas del personaje' },
+  1004→                  { var: '{{activeQuests}}', desc: 'Misiones activas' },
+  1005→                  { var: '{{outlet::*}}', desc: 'Secciones del Lorebook' },
+  1006→                ].map(item => (
+  1007→                  <div key={item.var} className="flex items-start gap-1.5 p-1.5 rounded bg-muted/30">
+  1008→                    <code className="text-[10px] font-mono text-amber-500 bg-amber-500/10 px-1 py-0.5 rounded shrink-0">{item.var}</code>
+  1009→                    <span className="text-[10px] text-muted-foreground leading-tight">{item.desc}</span>
+  1010→                  </div>
+  1011→                ))}
+  1012→              </div>
+  1013→            </div>
+  1014→
+  1015→            {/* ─── Status Summary ─── */}
+  1016→            <div className="p-4 rounded-lg border bg-card">
+  1017→              <div className="flex items-center gap-2 mb-3">
+  1018→                <Send className="w-4 h-4 text-emerald-500" />
+  1019→                <h3 className="text-sm font-semibold">Resumen de Configuración</h3>
+  1020→              </div>
+  1021→              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+  1022→                <div className="p-2.5 rounded-md bg-muted/30 text-center">
+  1023→                  <Clock className="w-4 h-4 mx-auto text-amber-500 mb-1" />
+  1024→                  <p className="text-lg font-bold">{formatInterval(settings.intervalSeconds)}</p>
+  1025→                  <p className="text-[10px] text-muted-foreground">Intervalo</p>
+  1026→                </div>
+  1027→                <div className="p-2.5 rounded-md bg-muted/30 text-center">
+  1028→                  <MessageCircle className="w-4 h-4 mx-auto text-blue-500 mb-1" />
+  1029→                  <p className="text-lg font-bold">{settings.minMessagesBeforeStart === 0 ? '0' : settings.minMessagesBeforeStart}</p>
+  1030→                  <p className="text-[10px] text-muted-foreground">Mensajes mín.</p>
+  1031→                </div>
+  1032→                <div className="p-2.5 rounded-md bg-muted/30 text-center">
+  1033→                  <Timer className="w-4 h-4 mx-auto text-purple-500 mb-1" />
+  1034→                  <p className="text-lg font-bold">{settings.maxPerSession === 0 ? '∞' : settings.maxPerSession}</p>
+  1035→                  <p className="text-[10px] text-muted-foreground">Máx/sesión</p>
+  1036→                </div>
+  1037→                <div className="p-2.5 rounded-md bg-muted/30 text-center">
+  1038→                  <Shield className="w-4 h-4 mx-auto text-green-500 mb-1" />
+  1039→                  <p className="text-lg font-bold">
+  1040→                    {settings.allowedStates?.includes('idle') && settings.allowedStates?.includes('user_away') ? 'Ambos' :
+  1041→                     settings.allowedStates?.includes('user_away') ? 'Ausente' : 'Inactivo'}
+  1042→                  </p>
+  1043→                  <p className="text-[10px] text-muted-foreground">Modo</p>
+  1044→                </div>
+  1045→              </div>
+  1046→              {/* FASE 3 summary row */}
+  1047→              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+  1048→                <div className="p-2.5 rounded-md bg-muted/30 text-center">
+  1049→                  <Shuffle className="w-4 h-4 mx-auto text-emerald-500 mb-1" />
+  1050→                  <p className="text-lg font-bold">{(settings.nudgeTemplates || []).length + (settings.nudgeTemplate ? 1 : 0)}</p>
+  1051→                  <p className="text-[10px] text-muted-foreground">Nudges</p>
+  1052→                </div>
+  1053→                <div className="p-2.5 rounded-md bg-muted/30 text-center">
+  1054→                  <Eye className="w-4 h-4 mx-auto text-blue-500 mb-1" />
+  1055→                  <p className="text-lg font-bold">{settings.contextMessagesCount ?? 3}</p>
+  1056→                  <p className="text-[10px] text-muted-foreground">Ctx msgs</p>
+  1057→                </div>
+  1058→                <div className="p-2.5 rounded-md bg-muted/30 text-center">
+  1059→                  <Snowflake className="w-4 h-4 mx-auto text-cyan-500 mb-1" />
+  1060→                  <p className="text-lg font-bold">{settings.thematicCooldownMinutes ?? 0}m</p>
+  1061→                  <p className="text-[10px] text-muted-foreground">Cooldown</p>
+  1062→                </div>
+  1063→                <div className="p-2.5 rounded-md bg-muted/30 text-center">
+  1064→                  <Users className="w-4 h-4 mx-auto text-purple-500 mb-1" />
+  1065→                  <p className="text-lg font-bold">{settings.groupChatEnabled ? 'Sí' : 'No'}</p>
+  1066→                  <p className="text-[10px] text-muted-foreground">Grupal</p>
+  1067→                </div>
+  1068→              </div>
+  1069→              {/* FASE 9 summary row */}
+  1070→              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+  1071→                <div className="p-2.5 rounded-md bg-muted/30 text-center">
+  1072→                  <Layers className="w-4 h-4 mx-auto text-teal-500 mb-1" />
+  1073→                  <p className="text-sm font-bold">{settings.contextInSystemPrompt !== false ? 'Sí' : 'No'}</p>
+  1074→                  <p className="text-[10px] text-muted-foreground">Ctx en Prompt</p>
+  1075→                </div>
+  1076→                <div className="p-2.5 rounded-md bg-muted/30 text-center">
+  1077→                  <Heart className="w-4 h-4 mx-auto text-red-500 mb-1" />
+  1078→                  <p className="text-sm font-bold">{settings.includeEmotionalContext !== false ? 'Sí' : 'No'}</p>
+  1079→                  <p className="text-[10px] text-muted-foreground">Emociones</p>
+  1080→                </div>
+  1081→                <div className="p-2.5 rounded-md bg-muted/30 text-center">
+  1082→                  <BookOpen className="w-4 h-4 mx-auto text-amber-500 mb-1" />
+  1083→                  <p className="text-sm font-bold">{settings.includeQuestContext !== false ? 'Sí' : 'No'}</p>
+  1084→                  <p className="text-[10px] text-muted-foreground">Misiones</p>
+  1085→                </div>
+  1086→                <div className="p-2.5 rounded-md bg-muted/30 text-center">
+  1087→                  <ArrowLeftRight className="w-4 h-4 mx-auto text-orange-500 mb-1" />
+  1088→                  <p className="text-sm font-bold">{settings.retomarAbandonedTopics ? 'Sí' : 'No'}</p>
+  1089→                  <p className="text-[10px] text-muted-foreground">Temas Aband.</p>
+  1090→                </div>
+  1091→              </div>
+  1092→            </div>
+  1093→
+  1094→            {/* ─── Important Notes ─── */}
+  1095→            <div className="p-3 bg-amber-500/10 rounded-lg border border-amber-500/20 text-xs space-y-1.5">
+  1096→              <p className="font-medium text-amber-300 flex items-center gap-1.5">
+  1097→                <Sparkles className="w-3 h-3" />
+  1098→                Notas importantes
+  1099→              </p>
+  1100→              <ul className="space-y-1 ml-4 list-disc text-amber-200/60">
+  1101→                <li>El temporizador se reinicia con <strong>cualquier mensaje nuevo</strong> (usuario o personaje)</li>
+  1102→                <li>Los mensajes proactivos <strong>no se envían</strong> durante la generación de una respuesta</li>
+  1103→                {settings.groupChatEnabled ? (
+  1104→                  <li>Funciona tanto en <strong>chat individual</strong> como en <strong>chat grupal</strong></li>
+  1105→                ) : (
+  1106→                  <li>Solo funciona en <strong>chat individual</strong> (activa la opción grupal para chats grupales)</li>
+  1107→                )}
+  1108→                <li>Los mensajes aparecen con un <strong>indicador visual ✨</strong> en el chat</li>
+  1109→                <li>Se requiere un <strong>proveedor LLM configurado</strong> para generar los mensajes</li>
+  1110→                <li>Las plantillas de nudge <strong>rotan automáticamente</strong> para evitar repetición</li>
+  1111→              </ul>
+  1112→            </div>
+  1113→          </>
+  1114→        ) : (
+  1115→          <div className="text-center py-10 text-muted-foreground bg-muted/30 rounded-lg border border-border/40">
+  1116→            <Sparkles className="w-12 h-12 mx-auto mb-3 opacity-30" />
+  1117→            <p className="text-sm font-medium">Mensajes proactivos desactivados</p>
+  1118→            <p className="text-xs mt-1 max-w-xs mx-auto">
+  1119→              Activa para que el personaje pueda iniciar conversaciones automáticamente tras un periodo de inactividad.
+  1120→            </p>
+  1121→          </div>
+  1122→        )}
+  1123→      </div>
+  1124→    </TooltipProvider>
+  1125→  );
+  1126→}
+  1127→

@@ -26,8 +26,9 @@ import type {
 // ============================================
 
 /**
- * Evaluate all conditions in a StatRequirement array (AND logic).
- * All conditions must match for the result to be true.
+ * Evaluate all conditions in a StatRequirement array.
+ * Supports AND and OR logic (controlled by operator parameter).
+ * Default is AND logic (all conditions must match).
  *
  * For each condition:
  * - If targetCharacterId is set, look up that character's attribute
@@ -37,12 +38,15 @@ import type {
 export function evaluateStatConditions(
   conditions: StatRequirement[],
   sessionStats: SessionStats | null | undefined,
-  characterId: string
+  characterId: string,
+  operator?: 'AND' | 'OR'
 ): boolean {
   if (!conditions || conditions.length === 0) return true;
   if (!sessionStats) return false;
 
-  return conditions.every((condition) => {
+  const logicFn = operator === 'OR' ? conditions.some.bind(conditions) : conditions.every.bind(conditions);
+
+  return logicFn((condition) => {
     // Determine which character's attribute to check
     const targetCharId = condition.targetCharacterId || characterId;
     const attrValue = getAttributeValueFromStats(
@@ -82,9 +86,14 @@ export function getAttributeValueFromStats(
   if (!charStats) return null;
 
   const value = charStats.attributeValues?.[attributeKey];
-  if (value === undefined || value === null) return null;
+  if (value !== undefined && value !== null) return value;
 
-  return value;
+  // FASE 5: Check emotional state for {{emocion}} key
+  if (attributeKey === 'emocion' && charStats.emotionalState) {
+    return charStats.emotionalState;
+  }
+
+  return null;
 }
 
 /**
@@ -203,9 +212,9 @@ export function evaluateConditionalVariants(
   // Sort by priority DESC (highest priority first)
   const sorted = [...enabledVariants].sort((a, b) => b.priority - a.priority);
 
-  // Return the first variant whose conditions all match
+  // Return the first variant whose conditions match (respecting operator)
   for (const variant of sorted) {
-    if (evaluateStatConditions(variant.conditions, sessionStats, characterId)) {
+    if (evaluateStatConditions(variant.conditions, sessionStats, characterId, variant.conditionOperator)) {
       return variant;
     }
   }
@@ -243,9 +252,9 @@ export function evaluateConditionalEntries(
   // Sort by priority DESC (highest priority first)
   const sorted = [...enabledEntries].sort((a, b) => b.priority - a.priority);
 
-  // Return the first entry whose conditions all match
+  // Return the first entry whose conditions match (respecting operator)
   for (const entry of sorted) {
-    if (evaluateStatConditions(entry.conditions, sessionStats, characterId)) {
+    if (evaluateStatConditions(entry.conditions, sessionStats, characterId, entry.conditionOperator)) {
       return entry;
     }
   }
@@ -290,9 +299,9 @@ export function evaluatePackConditionalSprites(
   // Sort by priority DESC (highest priority first)
   const sorted = [...conditionalSprites].sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
-  // Return the first sprite whose conditions all match
+  // Return the first sprite whose conditions match (respecting operator)
   for (const sprite of sorted) {
-    if (evaluateStatConditions(sprite.conditions!, sessionStats, characterId)) {
+    if (evaluateStatConditions(sprite.conditions!, sessionStats, characterId, sprite.conditionOperator)) {
       return sprite;
     }
   }
@@ -337,10 +346,10 @@ export function evaluateThresholdEffects(
   );
   if (activeEffects.length === 0) return [];
 
-  // Evaluate each effect's conditions
+  // Evaluate each effect's conditions (respecting operator)
   const matchingEffects: ThresholdEffect[] = [];
   for (const effect of activeEffects) {
-    if (evaluateStatConditions(effect.conditions, sessionStats, characterId)) {
+    if (evaluateStatConditions(effect.conditions, sessionStats, characterId, effect.conditionOperator)) {
       matchingEffects.push(effect);
     }
   }

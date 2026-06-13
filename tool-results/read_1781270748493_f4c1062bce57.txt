@@ -1,0 +1,702 @@
+  2522→export type QuestStatus = 
+  2523→  | 'locked'      // No disponible (prerrequisitos no cumplidos)
+  2524→  | 'available'   // Disponible para activar
+  2525→  | 'active'      // En progreso
+  2526→  | 'completed'   // Completado
+  2527→  | 'failed';     // Fallido
+  2528→
+  2529→export type QuestPriority = 'main' | 'side' | 'hidden';
+  2530→
+  2531→export type QuestObjectiveType = 'collect' | 'reach' | 'defeat' | 'talk' | 'discover' | 'custom';
+  2532→
+  2533→// ============================================
+  2534→// QUEST OBJECTIVE VISIBILITY SYSTEM
+  2535→// ============================================
+  2536→
+  2537→/**
+  2538→ * Tipo de visibilidad del objetivo:
+  2539→ * - normal: Siempre activo si la misión está disponible
+  2540→ * - by_attribute: Visible solo si se cumplen condiciones de atributos de personaje/persona
+  2541→ * - by_objective: Visible solo si otro objetivo (de esta u otra misión) está completado
+  2542→ */
+  2543→export type QuestObjectiveVisibilityType = 'normal' | 'by_attribute' | 'by_objective';
+  2544→
+  2545→/**
+  2546→ * Operadores para comparación de atributos en condiciones de visibilidad
+  2547→ */
+  2548→export type QuestAttributeOperator =
+  2549→  | 'eq' | 'neq'                    // Igual / Diferente (number + text)
+  2550→  | 'gt' | 'gte' | 'lt' | 'lte'    // Mayor/menor (number)
+  2551→  | 'contains' | 'not_contains'     // Contiene / No contiene (text)
+  2552→  | 'has_attribute' | 'missing_attribute'  // El atributo existe / no existe
+  2553→  | 'is_true' | 'is_false';        // Booleano (truthy/falsy)
+  2554→
+  2555→/**
+  2556→ * Condición de atributo para visibilidad de objetivo
+  2557→ * Compara un atributo de un personaje o persona contra un valor
+  2558→ */
+  2559→export interface QuestAttributeCondition {
+  2560→  /** ID del personaje, o '__user__' para la persona */
+  2561→  targetId: string;
+  2562→  /** Key del atributo (coincide con AttributeDefinition.key) */
+  2563→  attributeKey: string;
+  2564→  /** Operador de comparación */
+  2565→  operator: QuestAttributeOperator;
+  2566→  /** Valor a comparar (para eq, neq, gt, gte, lt, lte, contains, not_contains) */
+  2567→  value?: number | string;
+  2568→}
+  2569→
+  2570→/**
+  2571→ * Condición de objetivo para visibilidad
+  2572→ * Referencia un objetivo de esta misión o de otra plantilla
+  2573→ */
+  2574→export interface QuestObjectiveCondition {
+  2575→  /** ID de la plantilla que contiene el objetivo, o vacío para la misión actual */
+  2576→  templateId?: string;
+  2577→  /** ID del objetivo que debe estar completado */
+  2578→  objectiveId: string;
+  2579→}
+  2580→
+  2581→/**
+  2582→ * Grupo de condiciones de visibilidad con lógica AND/OR
+  2583→ */
+  2584→export interface QuestVisibilityConditionGroup {
+  2585→  /** Lista de condiciones de atributo */
+  2586→  attributeConditions?: QuestAttributeCondition[];
+  2587→  /** Lista de condiciones de objetivo */
+  2588→  objectiveConditions?: QuestObjectiveCondition[];
+  2589→  /** Lógica de combinación: AND = todas deben cumplirse, OR = al menos una */
+  2590→  logic: 'and' | 'or';
+  2591→}
+  2592→
+  2593→// ============================================
+  2594→// QUEST VALUE DETECTION SYSTEM
+  2595→// ============================================
+  2596→
+  2597→/**
+  2598→ * Tipos de valor a detectar después de una key
+  2599→ * - presence: Solo detecta si la key existe (comportamiento actual)
+  2600→ * - number: Lee un valor numérico después de la key y compara
+  2601→ * - text: Lee un valor de texto después de la key y compara
+  2602→ */
+  2603→export type QuestValueType = 'presence' | 'number' | 'text';
+  2604→
+  2605→/**
+  2606→ * Operadores para comparación de números
+  2607→ */
+  2608→export type QuestNumberOperator = '>' | '<' | '>=' | '<=' | '==' | '!=';
+  2609→
+  2610→/**
+  2611→ * Operadores para comparación de texto
+  2612→ */
+  2613→export type QuestTextOperator = 'equals' | 'contains' | 'startsWith' | 'endsWith' | 'notEquals';
+  2614→
+  2615→/**
+  2616→ * Condición de valor para objetivos y completado
+  2617→ * Permite detectar valores después de una key y compararlos
+  2618→ */
+  2619→export interface QuestValueCondition {
+  2620→  // Tipo de valor a detectar
+  2621→  valueType: QuestValueType;
+  2622→  
+  2623→  // Valor objetivo a comparar
+  2624→  // Para number: el número objetivo
+  2625→  // Para text: el texto objetivo
+  2626→  // Para presence: se ignora
+  2627→  targetValue?: number | string;
+  2628→  
+  2629→  // Operador de comparación
+  2630→  // Para number: operadores numéricos
+  2631→  // Para text: operadores de texto
+  2632→  // Para presence: se ignora
+  2633→  operator?: QuestNumberOperator | QuestTextOperator;
+  2634→}
+  2635→
+  2636→// ============================================
+  2637→// QUEST CHARACTER FILTER
+  2638→// ============================================
+  2639→
+  2640→/**
+  2641→ * Filtro de personajes para objetivos
+  2642→ * Permite restringir qué personajes pueden ver/completar un objetivo
+  2643→ */
+  2644→export interface QuestCharacterFilter {
+  2645→  enabled: boolean;
+  2646→  mode: 'include' | 'exclude';  // include = solo estos, exclude = todos menos estos
+  2647→  characterIds: string[];        // IDs de personajes
+  2648→}
+  2649→
+  2650→// ============================================
+  2651→// QUEST OBJECTIVE TEMPLATE
+  2652→// ============================================
+  2653→
+  2654→export interface QuestObjectiveTemplate {
+  2655→  id: string;
+  2656→  description: string;
+  2657→  type: QuestObjectiveType;
+  2658→
+  2659→  // ============================================
+  2660→  // VISIBILITY SYSTEM - Tipo de visibilidad
+  2661→  // ============================================
+  2662→  // - normal: Siempre activo si la misión está disponible
+  2663→  // - by_attribute: Visible solo si se cumplen condiciones de atributos
+  2664→  // - by_objective: Visible solo si otro objetivo está completado
+  2665→  visibilityType?: QuestObjectiveVisibilityType;  // Default: 'normal' if not set
+  2666→
+  2667→  // Condiciones de visibilidad (para by_attribute y by_objective)
+  2668→  // Si visibilityType es 'normal', se ignora
+  2669→  visibilityConditions?: QuestVisibilityConditionGroup;
+  2670→
+  2671→  // Keys para detectar completado (sistema unificado como HUD)
+  2672→  completion: {
+  2673→    key: string;              // Key principal: "resistencia", "HP", etc.
+  2674→    keys?: string[];          // Keys alternativas: ["Resistance", "hp"]
+  2675→    caseSensitive: boolean;
+  2676→
+  2677→    // Condición de valor (opcional)
+  2678→    // Si se especifica, detecta el valor DESPUÉS de la key
+  2679→    // Formatos detectados: "key: valor", "key=valor", "key valor"
+  2680→    valueCondition?: QuestValueCondition;
+  2681→  };
+  2682→
+  2683→  // Descripción de completado - instrucciones claras para el LLM
+  2684→  // sobre cuándo considerar este objetivo como completado
+  2685→  completionDescription?: string;
+  2686→
+  2687→  // Objetivo (legacy - para conteo simple)
+  2688→  target?: string;            // Qué buscar/contar
+  2689→  targetCount: number;        // Cuántos necesita (default: 1)
+  2690→  isOptional: boolean;        // Si es opcional, no impide completar la misión
+  2691→
+  2692→  // Recompensas al completar este objetivo (se ejecutan para el personaje que responde)
+  2693→  rewards?: QuestReward[];
+  2694→
+  2695→  // Filtro de personajes (opcional)
+  2696→  // Si se especifica, solo los personajes que coinciden ven este objetivo
+  2697→  characterFilter?: QuestCharacterFilter;
+  2698→
+  2699→  // Metadata opcional
+  2700→  metadata?: Record<string, unknown>;
+  2701→}
+  2702→
+  2703→// ============================================
+  2704→// QUEST REWARD - Sistema Simplificado (2 tipos)
+  2705→// ============================================
+  2706→//
+  2707→// El sistema de recompensas ahora usa solo 2 tipos:
+  2708→// - attribute: Modifica atributos del personaje en sessionStats
+  2709→// - trigger: Activa triggers existentes (sprite, sound, background)
+  2710→//
+  2711→// Los triggers se ejecutan a través del UnifiedTriggerExecutor,
+  2712→// que simula que el TokenDetector encontró la key.
+  2713→
+  2714→export type QuestRewardType = 'attribute' | 'trigger' | 'objective' | 'solicitud' | 'target_attribute' | 'currency' | 'conditional_sprite_collection' | 'activate_sprite_pack';
+  2715→
+  2716→// Target mode para grupos
+  2717→export type TriggerTargetMode = 'self' | 'all' | 'target';
+  2718→
+  2719→// Categorías de triggers disponibles
+  2720→export type TriggerCategory = 'sprite' | 'sound' | 'background' | 'soundSequence';
+  2721→
+  2722→// Acciones para atributos
+  2723→export type AttributeAction = 'set' | 'add' | 'subtract' | 'multiply' | 'divide' | 'percent';
+  2724→
+  2725→export interface QuestRewardCondition {
+  2726→  type: 'attribute';
+  2727→  key: string;                // "HP", "nivel", etc.
+  2728→  operator: '<' | '>' | '<=' | '>=' | '==' | '!=';
+  2729→  value: number | string;
+  2730→}
+  2731→
+  2732→// Configuración de atributo para recompensa
+  2733→export interface QuestRewardAttribute {
+  2734→  key: string;                // "resistencia", "HP", "oro", "experiencia"
+  2735→  value: number | string;     // Valor a aplicar
+  2736→  action: AttributeAction;    // Tipo de operación
+  2737→}
+  2738→
+  2739→// Configuración de trigger para recompensa
+  2740→export interface QuestRewardTrigger {
+  2741→  category: TriggerCategory;  // 'sprite' | 'sound' | 'background'
+  2742→  key: string;                // Keyword del trigger: "feliz", "victory", "forest"
+  2743→  targetMode: TriggerTargetMode; // 'self' | 'all' | 'target' - quién recibe el trigger
+  2744→  targetCharacterId?: string; // ID del personaje objetivo cuando targetMode es 'target'
+  2745→
+  2746→  // Para sprites: tiempo antes de volver a idle (ms, 0 = no volver)
+  2747→  returnToIdleMs?: number;
+  2748→
+  2749→  // Para sonidos: volumen (0-1)
+  2750→  volume?: number;
+  2751→
+  2752→  // Para backgrounds: transición
+  2753→  transitionDuration?: number;
+  2754→}
+  2755→
+  2756→// Configuración de objetivo para recompensa (completa un objetivo de misión)
+  2757→export interface QuestRewardObjective {
+  2758→  objectiveKey: string;       // Key del objetivo a completar: "troncos_abedul"
+  2759→  objectiveId?: string;       // ID del objetivo (para búsqueda directa)
+  2760→  questId?: string;          // ID de la misión (opcional, para validar)
+  2761→}
+  2762→
+  2763→// Configuración de solicitud para recompensa (completa una solicitud del personaje)
+  2764→export interface QuestRewardSolicitud {
+  2765→  solicitudKey: string;       // Key de la solicitud a completar: "proporcionar_madera"
+  2766→  solicitudId?: string;       // ID de la solicitud (opcional, para validar)
+  2767→  solicitudName?: string;     // Nombre de la solicitud para mostrar
+  2768→}
+  2769→
+  2770→// Configuración de atributo de target para recompensa (modifica atributo de OTRO personaje o persona)
+  2771→export interface QuestRewardTargetAttribute {
+  2772→  targetCharacterId: string;  // ID del personaje objetivo, o '__user__' para la persona
+  2773→  key: string;                // Key del atributo del target: "vida", "oro", etc.
+  2774→  value: number | string;     // Valor a aplicar
+  2775→  action: AttributeAction;    // Tipo de operación: set, add, subtract, etc.
+  2776→}
+  2777→
+  2778→// ============================================
+  2779→// CONDITIONAL SPRITE COLLECTION REWARD
+  2780→// ============================================
+  2781→
+  2782→/**
+  2783→ * Quest Reward: Conditional Sprite Collection
+  2784→ *
+  2785→ * Activates a Trigger Collection that is in conditional mode.
+  2786→ * Instead of a simple key-based trigger, this reward evaluates
+  2787→ * the collection's ConditionalSpriteEntries against current attribute values,
+  2788→ * selecting the sprite based on priority and conditions.
+  2789→ *
+  2790→ * Flow:
+  2791→ * 1. Find TriggerCollection by collectionId
+  2792→ * 2. If collection.conditionalMode = true:
+  2793→ *    a. Sort conditionalEntries by priority (DESC)
+  2794→ *    b. Evaluate each entry's conditions against sessionStats
+  2795→ *    c. First matching entry → use its spriteId
+  2796→ *    d. No match → use defaultSpriteId or principalSpriteId
+  2797→ * 3. Apply sprite as trigger + schedule fallback
+  2798→ */
+  2799→export interface QuestRewardConditionalSpriteCollection {
+  2800→  collectionId: string;              // TriggerCollection to activate (must have conditionalMode = true)
+  2801→  targetMode: TriggerTargetMode;     // Who receives the sprite
+  2802→  targetCharacterId?: string;        // For 'target' mode
+  2803→  returnToIdleMs?: number;           // Time before returning to idle (0 = persist)
+  2804→  fallbackMode?: TriggerFallbackMode; // What happens after trigger expires
+  2805→}
+  2806→
+  2807→// ============================================
+  2808→// ACTIVATE SPRITE PACK REWARD
+  2809→// ============================================
+  2810→
+  2811→/**
+  2812→ * Quest Reward: Activate Sprite Pack
+  2813→ *
+  2814→ * Activates a SpritePackV2 directly. If the pack has conditionalMode enabled,
+  2815→ * it evaluates each sprite's conditions (by priority) to pick the right sprite.
+  2816→ * If no conditions match, uses the defaultSpriteId or falls back to behavior.
+  2817→ *
+  2818→ * Flow:
+  2819→ * 1. Find SpritePackV2 by packId from character's spritePacksV2
+  2820→ * 2. If pack.conditionalMode = true:
+  2821→ *    a. Sort sprites with conditionalEnabled by priority (DESC)
+  2822→ *    b. Evaluate each sprite's conditions against sessionStats
+  2823→ *    c. First matching sprite → use it
+  2824→ *    d. No match → use defaultSpriteId or first sprite
+  2825→ * 3. If pack.conditionalMode = false:
+  2826→ *    a. Use behavior-based resolution (principal/random/list)
+  2827→ * 4. Apply sprite as trigger for the target character(s)
+  2828→ * 5. Schedule return to idle if returnToIdleMs > 0
+  2829→ */
+  2830→export interface QuestRewardActivateSpritePack {
+  2831→  packId: string;                      // SpritePackV2 ID to activate
+  2832→  behavior?: 'principal' | 'random' | 'list';  // Behavior override (defaults to principal)
+  2833→  principalSpriteId?: string;          // For 'principal' behavior
+  2834→  targetMode: TriggerTargetMode;       // Who receives the sprite
+  2835→  targetCharacterId?: string;          // For 'target' mode - which character to apply the pack to
+  2836→  returnToIdleMs?: number;             // Time before returning to idle (0 = persist)
+  2837→  fallbackMode?: TriggerFallbackMode;  // What happens after trigger expires
+  2838→  fallbackPackId?: string;             // Fallback sprite pack to activate when this one expires (for 'self' mode)
+  2839→  targetPackId?: string;               // Sprite pack to activate on target character (for 'target' mode)
+  2840→}
+  2841→
+  2842→// Opción para dropdown de selección de objetivos en UI
+  2843→export interface ObjectiveDropdownOption {
+  2844→  questId: string;
+  2845→  questName: string;
+  2846→  objectiveId: string;
+  2847→  objectiveKey: string;
+  2848→  objectiveName: string;
+  2849→  label: string;  // Display label: "Misión → Objetivo"
+  2850→}
+  2851→
+  2852→// Opción para dropdown de selección de solicitudes en UI
+  2853→export interface SolicitudDropdownOption {
+  2854→  solicitudId: string;
+  2855→  solicitudKey: string;
+  2856→  solicitudName: string;
+  2857→  label: string;  // Display label: "Solicitud"
+  2858→}
+  2859→
+  2860→export interface QuestReward {
+  2861→  id: string;
+  2862→
+  2863→  // Tipo de recompensa: attribute, trigger, objective o solicitud
+  2864→  type: QuestRewardType;
+  2865→
+  2866→  // Para type: 'attribute' - modificación de atributos
+  2867→  attribute?: QuestRewardAttribute;
+  2868→
+  2869→  // Para type: 'trigger' - activación de triggers
+  2870→  trigger?: QuestRewardTrigger;
+  2871→
+  2872→  // Para type: 'objective' - completa un objetivo de misión
+  2873→  objective?: QuestRewardObjective;
+  2874→
+  2875→  // Para type: 'solicitud' - completa una solicitud del personaje
+  2876→  solicitud?: QuestRewardSolicitud;
+  2877→
+  2878→  // Para type: 'target_attribute' - modifica atributo de otro personaje o persona
+  2879→  target_attribute?: QuestRewardTargetAttribute;
+  2880→
+  2881→  // Para type: 'currency' - recompensa de divisa del inventario
+  2882→  currency?: QuestRewardCurrency;
+  2883→
+  2884→  // Para type: 'conditional_sprite_collection' - activa colección con evaluación de condiciones
+  2885→  conditional_sprite_collection?: QuestRewardConditionalSpriteCollection;
+  2886→
+  2887→  // Para type: 'activate_sprite_pack' - activa un sprite pack con evaluación condicional
+  2888→  activate_sprite_pack?: QuestRewardActivateSpritePack;
+  2889→
+  2890→  // Condiciones opcionales para ejecutar el reward
+  2891→  condition?: QuestRewardCondition;
+  2892→  
+  2893→  // ===== LEGACY: Compatibilidad con formato anterior =====
+  2894→  // Estos campos se mantienen para migración gradual
+  2895→  // Serán eliminados en futuras versiones
+  2896→  /** @deprecated Usar attribute.key */
+  2897→  key?: string;
+  2898→  /** @deprecated Usar attribute.value */
+  2899→  value?: string | number;
+  2900→  /** @deprecated Usar attribute.action */
+  2901→  action?: AttributeAction;
+  2902→  /** @deprecated Usar trigger.returnToIdleMs */
+  2903→  returnToIdleMs?: number;
+  2904→}
+  2905→
+  2906→// ============================================
+  2907→// QUEST CHAIN CONFIGURATION
+  2908→// ============================================
+  2909→
+  2910→export type QuestChainType = 'none' | 'specific' | 'random';
+  2911→
+  2912→export interface QuestChainConfig {
+  2913→  type: QuestChainType;
+  2914→  
+  2915→  // Si es 'specific': ID del siguiente quest
+  2916→  nextQuestId?: string;
+  2917→  
+  2918→  // Si es 'random': pool de IDs a elegir aleatoriamente
+  2919→  randomPool?: string[];
+  2920→  
+  2921→  // Iniciar automáticamente al completar
+  2922→  autoStart: boolean;
+  2923→}
+  2924→
+  2925→// ============================================
+  2926→// QUEST ACTIVATION CONFIG
+  2927→// ============================================
+  2928→
+  2929→export type QuestActivationMethod = 'keyword' | 'turn' | 'manual' | 'chain' | 'automatic';
+  2930→
+  2931→/**
+  2932→ * Tipo de condición de activación:
+  2933→ * - normal: Siempre activo si la misión está disponible
+  2934→ * - by_attribute: Solo se activa si se cumplen condiciones de atributos de personaje/persona
+  2935→ * - by_objective: Solo se activa si otro objetivo (de esta u otra misión) está completado
+  2936→ */
+  2937→export type QuestActivationType = 'normal' | 'by_attribute' | 'by_objective';
+  2938→
+  2939→export interface QuestActivationConfig {
+  2940→  // Keys para detectar activación (sistema unificado como HUD)
+  2941→  key: string;                    // "mision:rescate"
+  2942→  keys?: string[];                // ["mission:rescue", "quest:rescate"]
+  2943→  caseSensitive: boolean;
+  2944→  
+  2945→  // Método de activación
+  2946→  method: QuestActivationMethod;
+  2947→  
+  2948→  // Para method: 'turn' - cada cuántos turnos
+  2949→  turnInterval?: number;
+  2950→
+  2951→  // Para method: 'chain' - qué prerrequisito activa esta misión
+  2952→  chainPrerequisiteId?: string;
+  2953→
+  2954→  // ============================================
+  2955→  // ACTIVATION CONDITIONS SYSTEM
+  2956→  // ============================================
+  2957→  // - normal: Siempre activo si la misión está disponible
+  2958→  // - by_attribute: Solo se activa si se cumplen condiciones de atributos
+  2959→  // - by_objective: Solo se activa si otro objetivo está completado
+  2960→  activationType?: QuestActivationType;  // Default: 'normal' if not set
+  2961→
+  2962→  // Condiciones de activación (para by_attribute y by_objective)
+  2963→  // Si activationType es 'normal', se ignora
+  2964→  activationConditions?: QuestVisibilityConditionGroup;
+  2965→}
+  2966→
+  2967→// ============================================
+  2968→// QUEST COMPLETION CONFIG
+  2969→// ============================================
+  2970→
+  2971→export interface QuestCompletionConfig {
+  2972→  key: string;                    // "resistencia", "nivel", etc.
+  2973→  keys?: string[];                // ["Resistance", "level"]
+  2974→  caseSensitive: boolean;
+  2975→  
+  2976→  // Condición de valor (opcional)
+  2977→  // Si se especifica, detecta el valor DESPUÉS de la key
+  2978→  // Formatos detectados: "key: valor", "key=valor", "key valor"
+  2979→  valueCondition?: QuestValueCondition;
+  2980→}
+  2981→
+  2982→// ============================================
+  2983→// QUEST TEMPLATE (Archivo JSON individual)
+  2984→// Guardado en: /data/quests/[quest-id].json
+  2985→// ============================================
+  2986→
+  2987→export interface QuestTemplate {
+  2988→  id: string;
+  2989→  name: string;
+  2990→  description: string;
+  2991→  
+  2992→  // Configuración de activación
+  2993→  activation: QuestActivationConfig;
+  2994→  
+  2995→  // Objetivos
+  2996→  objectives: QuestObjectiveTemplate[];
+  2997→  
+  2998→  // Configuración de completado
+  2999→  completion: QuestCompletionConfig;
+  3000→  
+  3001→  // Cadena de quests (qué sigue después)
+  3002→  chain?: QuestChainConfig;
+  3003→  
+  3004→  // Recompensas (triggers unificados)
+  3005→  rewards: QuestReward[];
+  3006→  
+  3007→  // Metadatos
+  3008→  priority: QuestPriority;
+  3009→  icon?: string;                  // Emoji o nombre de icono
+  3010→  color?: string;                 // Color Tailwind para prioridad
+  3011→  
+  3012→  // Comportamiento
+  3013→  isRepeatable: boolean;
+  3014→  isHidden: boolean;              // No mostrar hasta activarse
+  3015→  
+  3016→  // Auto Quest Settings
+  3017→  autoQuest?: {
+  3018→    enabled: boolean;             // Si esta misión puede ser activada automáticamente
+  3019→    weight: number;               // Peso para selección aleatoria (default: 1)
+  3020→    order: number;                // Orden para selección por lista (default: 0)
+  3021→  };
+  3022→  
+  3023→  // Prerrequisitos (IDs de otros templates)
+  3024→  prerequisites?: string[];
+  3025→  
+  3026→  // Timestamps
+  3027→  createdAt: string;
+  3028→  updatedAt: string;
+  3029→}
+  3030→
+  3031→// ============================================
+  3032→// SESSION QUEST INSTANCE (En sesión JSON)
+  3033→// ============================================
+  3034→
+  3035→export interface SessionQuestObjective {
+  3036→  templateId: string;             // Referencia al objetivo del template
+  3037→  currentCount: number;
+  3038→  isCompleted: boolean;
+  3039→  isVisible: boolean;             // Si las condiciones de visibilidad se cumplen (para by_attribute/by_objective)
+  3040→}
+  3041→
+  3042→export interface SessionQuestInstance {
+  3043→  // Referencia al template
+  3044→  templateId: string;
+  3045→  
+  3046→  // Estado actual
+  3047→  status: QuestStatus;
+  3048→  
+  3049→  // Objetivos con progreso
+  3050→  objectives: SessionQuestObjective[];
+  3051→  
+  3052→  // Timestamps
+  3053→  activatedAt?: string;           // Cuándo se activó
+  3054→  completedAt?: string;           // Cuándo se completó
+  3055→  
+  3056→  // Turno de activación (para quests por turnos)
+  3057→  activatedAtTurn?: number;
+  3058→  
+  3059→  // Progreso general (0-100)
+  3060→  progress: number;
+  3061→  
+  3062→  // Personaje que completó (para grupos)
+  3063→  completedBy?: string;
+  3064→}
+  3065→
+  3066→// ============================================
+  3067→// QUEST SETTINGS
+  3068→// ============================================
+  3069→
+  3070→export interface QuestSettings {
+  3071→  enabled: boolean;
+  3072→  autoDetect: boolean;            // Auto-detect quest triggers in messages
+  3073→  realtimeEnabled: boolean;       // Detect during streaming
+  3074→  showNotifications: boolean;     // Show quest update notifications
+  3075→  showCompletedInLog: boolean;    // Keep completed quests in log
+  3076→  maxActiveQuests: number;        // Maximum active quests at once
+  3077→  promptInclude: boolean;         // Include active quests in prompt
+  3078→  promptTemplate: string;         // Template for quest prompt section
+  3079→  // Auto Quest System
+  3080→  autoQuestEnabled: boolean;      // Enable auto quest activation
+  3081→  autoQuestInterval: number;      // Activate quest every X turns/messages
+  3082→  autoQuestMode: 'random' | 'list'; // Selection mode: random or by list order
+  3083→  
+  3084→  // Key Prefixes System
+  3085→  // Los prefijos se combinan con las keys para mayor flexibilidad
+  3086→  // Ejemplo: prefix "Misión" + key "rescate" = detecta "Misión:rescate", "Misión: rescate", etc.
+  3087→  // El sistema genera variantes automáticamente (con :, =, espacio, etc.)
+  3088→  questActivationPrefix?: string;      // Prefijo para activar misiones (ej: "Misión")
+  3089→  questCompletionPrefix?: string;      // Prefijo para completar misiones (ej: "Completado")
+  3090→  objectiveCompletionPrefix?: string;  // Prefijo para completar objetivos (ej: "Objetivo")
+  3091→}
+  3092→
+  3093→export const DEFAULT_QUEST_SETTINGS: QuestSettings = {
+  3094→  enabled: true,
+  3095→  autoDetect: true,
+  3096→  realtimeEnabled: true,
+  3097→  showNotifications: true,
+  3098→  showCompletedInLog: true,
+  3099→  maxActiveQuests: 10,
+  3100→  promptInclude: true,
+  3101→  promptTemplate: `**Misiones Activas:**
+  3102→{{activeQuests}}
+  3103→
+  3104→Instrucciones: Usa la información de las misiones activas para contextualizar tus respuestas. Progresa en las misiones a través de la narrativa cuando sea apropiado.`,
+  3105→  // Auto Quest defaults
+  3106→  autoQuestEnabled: false,
+  3107→  autoQuestInterval: 5,
+  3108→  autoQuestMode: 'random',
+  3109→  // Key Prefixes defaults (vacío = sin prefijo, comportamiento actual)
+  3110→  questActivationPrefix: '',
+  3111→  questCompletionPrefix: '',
+  3112→  objectiveCompletionPrefix: '',
+  3113→};
+  3114→
+  3115→// ============================================
+  3116→// QUEST TRIGGER HIT (Post-LLM Detection)
+  3117→// ============================================
+  3118→
+  3119→export interface QuestTriggerHit {
+  3120→  questId: string;                // Template ID
+  3121→  template?: QuestTemplate;
+  3122→  objectiveId?: string;
+  3123→  objective?: QuestObjectiveTemplate;
+  3124→  action: 'activate' | 'progress' | 'complete' | 'fail';
+  3125→  progress?: number;
+  3126→  message: string;
+  3127→  rewards?: QuestReward[];        // Quest completion rewards (when action='complete')
+  3128→  objectiveRewards?: QuestReward[]; // Objective completion rewards (when progress completes objective)
+  3129→  completesObjective?: boolean;   // True if this progress will complete the objective
+  3130→}
+  3131→
+  3132→// ============================================
+  3133→// QUEST NOTIFICATION
+  3134→// ============================================
+  3135→
+  3136→export type QuestNotificationType = 
+  3137→  | 'quest_activated' 
+  3138→  | 'objective_complete' 
+  3139→  | 'quest_complete' 
+  3140→  | 'quest_failed'
+  3141→  | 'reward_claimed';
+  3142→
+  3143→export interface QuestNotification {
+  3144→  id: string;
+  3145→  questId: string;
+  3146→  questName: string;
+  3147→  type: QuestNotificationType;
+  3148→  message: string;
+  3149→  rewards?: QuestReward[];
+  3150→  timestamp: string;
+  3151→  read: boolean;
+  3152→}
+  3153→
+  3154→// ============================================
+  3155→// LEGACY TYPES (Para compatibilidad)
+  3156→// ============================================
+  3157→
+  3158→// Mantener compatibilidad con código existente
+  3159→export type Quest = QuestTemplate;
+  3160→export type QuestObjective = QuestObjectiveTemplate;
+  3161→export type QuestTrigger = QuestActivationConfig;
+  3162→
+  3163→// ============ Dialogue System Types ============
+  3164→
+  3165→// Speech bubble style
+  3166→export type SpeechBubbleStyle = 
+  3167→  | 'modern'      // Rounded, clean
+  3168→  | 'classic'     // Comic book style
+  3169→  | 'minimal'     // Simple border
+  3170→  | 'neon'        // Glowing effect
+  3171→  | 'elegant'     // Fancy, decorative
+  3172→  | 'dark';       // Dark mode optimized
+  3173→
+  3174→// Text segment type in a message
+  3175→export type TextSegmentType = 
+  3176→  | 'dialogue'     // "quoted speech"
+  3177→  | 'action'       // *asterisk actions*
+  3178→  | 'narration'    // Regular narration
+  3179→  | 'thought'      // (parenthetical thoughts)
+  3180→  | 'system'       // System messages
+  3181→  | 'emphasis'     // **bold emphasis**
+  3182→  | 'whisper'      // ~whispered text~
+  3183→  | 'shout';       // ALL CAPS or !!!
+  3184→
+  3185→// Parsed text segment
+  3186→export interface TextSegment {
+  3187→  id: string;
+  3188→  type: TextSegmentType;
+  3189→  content: string;
+  3190→  startIndex: number;
+  3191→  endIndex: number;
+  3192→  metadata?: {
+  3193→    emotion?: string;
+  3194→    intensity?: number;
+  3195→    speaker?: string;
+  3196→  };
+  3197→}
+  3198→
+  3199→// Character dialogue style override
+  3200→export interface CharacterDialogueStyle {
+  3201→  characterId: string;
+  3202→  bubbleColor?: string;         // Tailwind color class
+  3203→  textColor?: string;           // Tailwind color class
+  3204→  borderColor?: string;         // Tailwind color class
+  3205→  fontStyle?: 'normal' | 'italic' | 'bold';
+  3206→  fontSize?: 'sm' | 'base' | 'lg';
+  3207→  customClass?: string;         // Custom CSS class
+  3208→}
+  3209→
+  3210→// Typography settings for dialogue display
+  3211→export interface TypographySettings {
+  3212→  // Font family
+  3213→  fontFamily: 'system' | 'serif' | 'sans' | 'mono' | 'custom';
+  3214→  customFontFamily?: string;   // Custom font family name
+  3215→
+  3216→  // Font size
+  3217→  fontSize: 'xs' | 'sm' | 'base' | 'lg' | 'xl';
+  3218→  customFontSize?: number;     // Custom size in pixels
+  3219→
+  3220→  // Font weight
+  3221→  fontWeight: 'normal' | 'medium' | 'semibold' | 'bold';
+
+[showing lines 2522-3221 of 4640; use offset=3222 with limit to continue reading]

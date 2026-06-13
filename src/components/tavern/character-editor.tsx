@@ -48,6 +48,7 @@ import { StatsEditor } from './stats-editor';
 import { CharacterVoicePanel } from './character-voice-panel';
 import { ProactiveMessagesPanel } from './proactive-messages-panel';
 import { QuickRepliesPanel } from './quick-replies-panel';
+import { LegacyMigrationPanel } from './legacy-migration-panel';
 import { getLogger } from '@/lib/logger';
 
 const editorLogger = getLogger('editor');
@@ -68,6 +69,7 @@ const characterEditorTabs = [
   { value: 'voice', label: 'Voz', icon: Mic },
   { value: 'proactive', label: 'Proactivo', icon: Sparkles },
   { value: 'quickreplies', label: 'Resp. Rápidas', icon: MessageSquare },
+  { value: 'migration', label: 'Migración', icon: Database },
 ];
 
 const defaultCharacter: Omit<CharacterCard, 'id' | 'createdAt' | 'updatedAt'> = {
@@ -81,6 +83,7 @@ const defaultCharacter: Omit<CharacterCard, 'id' | 'createdAt' | 'updatedAt'> = 
   characterNote: '',
   systemPrompt: '',
   postHistoryInstructions: '',
+  authorNote: '',
   alternateGreetings: [],
   tags: [],
   avatar: '',
@@ -683,27 +686,97 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
       </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Primer Mensaje */}
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <MessageSquare className="w-4 h-4 text-blue-500" />
-            <span className="text-xs font-medium">Primer Mensaje</span>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">
-                <p>El primer mensaje que el personaje enviará para iniciar la conversación.</p>
-              </TooltipContent>
-            </Tooltip>
+        {/* Primer Mensaje + Saludos Alternativos */}
+        <div className="space-y-3">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <MessageSquare className="w-4 h-4 text-blue-500" />
+              <span className="text-xs font-medium">Primer Mensaje</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>El primer mensaje que el personaje enviará para iniciar la conversación.</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <Textarea
+              id="firstMes"
+              value={character.firstMes}
+              onChange={(e) => setCharacter(prev => ({ ...prev, firstMes: e.target.value }))}
+              placeholder="Mensaje de apertura del personaje..."
+              className="min-h-[200px] text-sm"
+            />
           </div>
-          <Textarea
-            id="firstMes"
-            value={character.firstMes}
-            onChange={(e) => setCharacter(prev => ({ ...prev, firstMes: e.target.value }))}
-            placeholder="Mensaje de apertura del personaje..."
-            className="min-h-[380px] text-sm"
-          />
+
+          {/* Saludos Alternativos */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <MessageSquare className="w-4 h-4 text-indigo-500" />
+              <span className="text-xs font-medium">Saludos Alternativos</span>
+              {character.alternateGreetings.length > 0 && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                  {character.alternateGreetings.length} saludo{character.alternateGreetings.length !== 1 ? 's' : ''}
+                </Badge>
+              )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>Saludos adicionales que se seleccionarán aleatoriamente al iniciar un chat. El usuario puede deslizar entre ellos.</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+
+            <div className="space-y-2">
+              {character.alternateGreetings.map((greeting, index) => (
+                <div key={index} className="relative group">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-[10px] text-muted-foreground font-medium">#{index + 1}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => {
+                        const updated = [...character.alternateGreetings];
+                        updated.splice(index, 1);
+                        setCharacter(prev => ({ ...prev, alternateGreetings: updated }));
+                      }}
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                  <Textarea
+                    value={greeting}
+                    onChange={(e) => {
+                      const updated = [...character.alternateGreetings];
+                      updated[index] = e.target.value;
+                      setCharacter(prev => ({ ...prev, alternateGreetings: updated }));
+                    }}
+                    placeholder={`Saludo alternativo #${index + 1}...`}
+                    className="min-h-[100px] text-sm"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2 w-full"
+              onClick={() => {
+                setCharacter(prev => ({
+                  ...prev,
+                  alternateGreetings: [...(prev.alternateGreetings || []), '']
+                }));
+              }}
+            >
+              <Plus className="w-3 h-3 mr-1.5" />
+              Agregar saludo
+            </Button>
+          </div>
         </div>
 
         {/* Ejemplo de Diálogo */}
@@ -726,11 +799,12 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
             onChange={(e) => setCharacter(prev => ({ ...prev, mesExample: e.target.value }))}
             placeholder={`<START>
 {{user}}: ¡Hola!
-{{char}}: *sonríe* ¡Hola!`}
+{{char}}: *sonríe* ¡Hola!
+</START>`}
             className="min-h-[380px] font-mono text-xs"
           />
           <p className="text-[10px] text-muted-foreground mt-1.5">
-            Usa {'<START>'} para separar ejemplos y {'{{user}}'}/{'{{char}}'} para los hablantes.
+            Usa {'<START>'}{'<'}{'/START>'} para envolver cada ejemplo y {'{{user}}'}/{'{{char}}'} para los hablantes.
           </p>
         </div>
       </div>
@@ -843,6 +917,29 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
               className="min-h-[230px] text-sm"
             />
           </div>
+
+          {/* Nota del Autor (Author's Note) */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <MessageSquare className="w-4 h-4 text-emerald-500" />
+              <span className="text-xs font-medium">Nota del Autor</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>Texto que se inserta en el prompt después de los mensajes recientes. Útil para dar instrucciones contextuales que no pertenecen al system prompt.</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <Textarea
+              id="authorNote"
+              value={character.authorNote || ''}
+              onChange={(e) => setCharacter(prev => ({ ...prev, authorNote: e.target.value }))}
+              placeholder="Nota del autor que se inserta después del historial reciente..."
+              className="min-h-[150px] font-mono text-xs"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -864,6 +961,8 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
       questTemplateIds={character.questTemplateIds}
       availableTargets={availableTargets}
       spritePacksV2={character.spritePacksV2}
+      emotionalConfig={character.emotionalConfig}
+      onEmotionalConfigChange={(emotionalConfig) => setCharacter(prev => ({ ...prev, emotionalConfig }))}
     />
   );
 
@@ -879,6 +978,8 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
     <ProactiveMessagesPanel
       config={character.proactiveMessages}
       onChange={(proactiveMessages) => setCharacter(prev => ({ ...prev, proactiveMessages }))}
+      microReactionConfig={character.microReactionConfig}
+      onMicroReactionConfigChange={(microReactionConfig) => setCharacter(prev => ({ ...prev, microReactionConfig }))}
     />
   );
 
@@ -886,7 +987,16 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
     <QuickRepliesPanel
       quickReplies={character.quickReplies}
       statsConfig={character.statsConfig}
+      spritePacksV2={character.spritePacksV2}
+      triggerCollections={character.triggerCollections}
       onChange={(quickReplies) => setCharacter(prev => ({ ...prev, quickReplies }))}
+    />
+  );
+
+  const renderMigrationTab = () => (
+    <LegacyMigrationPanel
+      character={character}
+      onChange={(updates) => setCharacter(prev => ({ ...prev, ...updates }))}
     />
   );
 
@@ -901,6 +1011,7 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
       case 'voice': return renderVoiceTab();
       case 'proactive': return renderProactiveTab();
       case 'quickreplies': return renderQuickRepliesTab();
+      case 'migration': return renderMigrationTab();
       default: return renderInfoTab();
     }
   };

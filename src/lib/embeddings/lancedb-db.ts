@@ -102,6 +102,28 @@ let namespacesTable: any = null;
 let isInitialized = false;
 let currentUri: string | null = null;
 
+/**
+ * When true, LanceDB is permanently unavailable on this system
+ * (e.g., native binary not found for the platform).
+ * All operations will return safe defaults instead of throwing.
+ */
+let isPermanentlyUnavailable = false;
+
+/**
+ * Check if LanceDB is permanently unavailable (native module can't load).
+ * Once this is true, all DB operations will return safe defaults.
+ */
+export function isLanceDBPermanentlyUnavailable(): boolean {
+  return isPermanentlyUnavailable;
+}
+
+/**
+ * Get the error that caused LanceDB to be permanently unavailable.
+ */
+export function getLanceDBUnavailableError(): string | null {
+  return lancedbLoadError;
+}
+
 // ============ Error Types ============
 
 export class LanceDBError extends Error {
@@ -312,16 +334,22 @@ export async function initLanceDB(uri?: string, forceReinit: boolean = false): P
 
   if (isInitialized && db && currentUri === dbUri && !forceReinit) return;
 
+  // If permanently unavailable, skip silently (don't throw)
+  if (isPermanentlyUnavailable) {
+    return;
+  }
+
   if (db) await closeLanceDB();
 
   const { success, error } = await loadLanceDBModule();
   if (!success) {
-    throw new LanceDBError(
-      `LanceDB not available: ${error}`,
-      'MODULE_NOT_AVAILABLE',
-      getPlatform(),
-      { uri: dbUri, originalError: error }
+    isPermanentlyUnavailable = true;
+    lancedbLoadError = error || 'Unknown error';
+    console.warn(
+      `[LanceDB] ⚠️ LanceDB native module not available for platform "${getPlatform()}". ` +
+      `Embeddings/vector search features will be disabled. Error: ${error}`
     );
+    return;
   }
 
   isInitialized = true;
@@ -361,14 +389,26 @@ export async function initLanceDB(uri?: string, forceReinit: boolean = false): P
 // ============ Table Getters ============
 
 async function getEmbeddingsTable(): Promise<any> {
+  if (isPermanentlyUnavailable) {
+    return null;
+  }
   if (!db || !isInitialized) await initLanceDB();
-  if (!embeddingsTable) throw new LanceDBError('Embeddings table not initialized', 'TABLE_NOT_FOUND');
+  // After init, check again (init may have set permanently unavailable)
+  if (isPermanentlyUnavailable || !embeddingsTable) {
+    return null;
+  }
   return embeddingsTable;
 }
 
 async function getNamespacesTable(): Promise<any> {
+  if (isPermanentlyUnavailable) {
+    return null;
+  }
   if (!db || !isInitialized) await initLanceDB();
-  if (!namespacesTable) throw new LanceDBError('Namespaces table not initialized', 'TABLE_NOT_FOUND');
+  // After init, check again (init may have set permanently unavailable)
+  if (isPermanentlyUnavailable || !namespacesTable) {
+    return null;
+  }
   return namespacesTable;
 }
 
@@ -389,9 +429,10 @@ export function closeLanceDB(): Promise<void> {
 
 export class LanceDBWrapper {
   static async checkConnection(): Promise<boolean> {
+    if (isPermanentlyUnavailable) return false;
     try {
       if (!db) await initLanceDB();
-      return db !== null;
+      return db !== null && !isPermanentlyUnavailable;
     } catch {
       return false;
     }
@@ -405,6 +446,8 @@ export class LanceDBWrapper {
       isMacOS: isMacOS(),
       currentUri,
       isInitialized: isInitialized && db !== null,
+      isUnavailable: isPermanentlyUnavailable,
+      unavailableError: lancedbLoadError,
     };
   }
 
@@ -421,6 +464,10 @@ export class LanceDBWrapper {
     source_id?: string;
     model_name?: string;
   }): Promise<string> {
+    if (isPermanentlyUnavailable) {
+      console.warn('[LanceDB] insertEmbedding skipped: LanceDB is not available on this system.');
+      return '__unavailable__';
+    }
     const { v4: uuidv4 } = await import('uuid');
     const {
       content, vector, metadata = {},
@@ -436,6 +483,10 @@ export class LanceDBWrapper {
     }
 
     const table = await getEmbeddingsTable();
+    if (!table) {
+      console.warn('[LanceDB] insertEmbedding skipped: table not available.');
+      return '__unavailable__';
+    }
     const normalizedVector = normalizeVector(vector);
 
     const embedding = {
@@ -461,6 +512,7 @@ export class LanceDBWrapper {
     limit?: number;
     threshold?: number;
   }): Promise<SearchResult[]> {
+    if (isPermanentlyUnavailable) return [];
     const {
       queryVector,
       namespace,
@@ -469,6 +521,7 @@ export class LanceDBWrapper {
     } = params;
 
     const table = await getEmbeddingsTable();
+    if (!table) return [];
     const normalizedQueryVector = normalizeVector(queryVector);
 
     let results: any[];
@@ -503,7 +556,9 @@ export class LanceDBWrapper {
   }
 
   static async getEmbeddingById(id: string): Promise<Embedding | null> {
+    if (isPermanentlyUnavailable) return null;
     const table = await getEmbeddingsTable();
+    if (!table) return null;
     const results = await tableFilter(table, `id = '${escapeFilterValue(id)}'`);
     if (results.length === 0) return null;
 
@@ -522,13 +577,17 @@ export class LanceDBWrapper {
   }
 
   static async deleteEmbedding(id: string): Promise<boolean> {
+    if (isPermanentlyUnavailable) return false;
     const table = await getEmbeddingsTable();
+    if (!table) return false;
     await table.delete(`id = '${escapeFilterValue(id)}'`);
     return true;
   }
 
   static async deleteBySource(source_type: string, source_id: string): Promise<number> {
+    if (isPermanentlyUnavailable) return 0;
     const table = await getEmbeddingsTable();
+    if (!table) return 0;
     // Count matching records before deletion
     const matching = await tableFilter(table, `source_type = '${escapeFilterValue(source_type)}' AND source_id = '${escapeFilterValue(source_id)}'`);
     const count = matching.length;
@@ -543,9 +602,30 @@ export class LanceDBWrapper {
     description?: string;
     metadata?: Record<string, any>;
   }): Promise<RecordNamespace> {
+    if (isPermanentlyUnavailable) {
+      // Return a stub namespace so callers don't crash
+      return {
+        id: '__unavailable__',
+        namespace: params.namespace,
+        description: params.description,
+        metadata: params.metadata || {},
+        created_at: new Date(),
+        updated_at: new Date(),
+      };
+    }
     const { v4: uuidv4 } = await import('uuid');
     const { namespace, description, metadata = {} } = params;
     const table = await getNamespacesTable();
+    if (!table) {
+      return {
+        id: '__unavailable__',
+        namespace: params.namespace,
+        description: params.description,
+        metadata: params.metadata || {},
+        created_at: new Date(),
+        updated_at: new Date(),
+      };
+    }
     const existing = await tableFilter(table, `namespace = '${escapeFilterValue(namespace)}'`);
 
     const nsRecord = {
@@ -591,7 +671,9 @@ export class LanceDBWrapper {
   }
 
   static async getAllNamespaces(): Promise<RecordNamespace[]> {
+    if (isPermanentlyUnavailable) return [];
     const table = await getNamespacesTable();
+    if (!table) return [];
     const results = await tableToArray(table);
     const mapped = results.map((row: any) => ({
       id: row.id,
@@ -616,6 +698,7 @@ export class LanceDBWrapper {
   }
 
   static async deleteNamespace(namespace: string): Promise<boolean> {
+    if (isPermanentlyUnavailable) return true;
     try {
       const deletedEmbeddings = await LanceDBWrapper.deleteAllByNamespace(namespace);
       console.log(`[LanceDB] Deleted ${deletedEmbeddings} embeddings from namespace "${namespace}"`);
@@ -625,18 +708,22 @@ export class LanceDBWrapper {
     
     try {
       const table = await getNamespacesTable();
-      await table.delete(`namespace = '${escapeFilterValue(namespace)}'`);
-      console.log(`[LanceDB] Deleted namespace record: "${namespace}"`);
+      if (table) {
+        await table.delete(`namespace = '${escapeFilterValue(namespace)}'`);
+        console.log(`[LanceDB] Deleted namespace record: "${namespace}"`);
+      }
     } catch (err) {
       console.warn(`[LanceDB] Failed to delete namespace record "${namespace}":`, err);
     }
     
-    try { await db!.dropTable(namespace); } catch { /* table may not exist */ }
+    try { if (db) await db.dropTable(namespace); } catch { /* table may not exist */ }
     return true;
   }
 
   static async addEmbeddingToNamespace(namespace: string, embeddingId: string): Promise<void> {
+    if (isPermanentlyUnavailable) return;
     const table = await getEmbeddingsTable();
+    if (!table) return;
     const results = await tableFilter(table, `id = '${escapeFilterValue(embeddingId)}'`);
     if (results.length === 0) throw new Error(`Embedding ${embeddingId} not found`);
 
@@ -646,7 +733,9 @@ export class LanceDBWrapper {
   }
 
   static async getNamespaceEmbeddings(namespace: string, limit: number = 100): Promise<Embedding[]> {
+    if (isPermanentlyUnavailable) return [];
     const table = await getEmbeddingsTable();
+    if (!table) return [];
     const results = await tableFilter(table, `namespace = '${escapeFilterValue(namespace)}'`);
     return results.slice(0, limit).map((row: any) => ({
       id: row.id,
@@ -673,7 +762,9 @@ export class LanceDBWrapper {
       sourceType?: string;
     }
   ): Promise<Array<Omit<Embedding, 'vector'> & { vector?: never }>> {
+    if (isPermanentlyUnavailable) return [];
     const table = await getEmbeddingsTable();
+    if (!table) return [];
     const limit = options?.limit ?? 1000;
     const sourceType = options?.sourceType;
 
@@ -726,7 +817,9 @@ export class LanceDBWrapper {
    * Count embeddings in a namespace filtered by source_type, without loading full data.
    */
   static async countByNamespaceAndSourceType(namespace: string, sourceType?: string): Promise<number> {
+    if (isPermanentlyUnavailable) return 0;
     const table = await getEmbeddingsTable();
+    if (!table) return 0;
     let filter = `namespace = '${escapeFilterValue(namespace)}'`;
     if (sourceType) {
       filter += ` AND source_type = '${escapeFilterValue(sourceType)}'`;
@@ -747,8 +840,10 @@ export class LanceDBWrapper {
     limit?: number;
     threshold?: number;
   }): Promise<SearchResult[]> {
+    if (isPermanentlyUnavailable) return [];
     const { namespace, queryVector, limit = 10, threshold = 0.3 } = params;
     const table = await getEmbeddingsTable();
+    if (!table) return [];
     const normalizedQueryVector = normalizeVector(queryVector);
 
     const results = await table
@@ -772,7 +867,9 @@ export class LanceDBWrapper {
   }
 
   static async getAllEmbeddings(limit: number = 100): Promise<Embedding[]> {
+    if (isPermanentlyUnavailable) return [];
     const table = await getEmbeddingsTable();
+    if (!table) return [];
     const results = await tableToArray(table);
     return results.slice(0, limit).map((row: any) => ({
       id: row.id,
@@ -788,7 +885,23 @@ export class LanceDBWrapper {
   }
 
   static async getStats(): Promise<EmbeddingStats> {
+    if (isPermanentlyUnavailable) {
+      return {
+        totalEmbeddings: 0,
+        totalNamespaces: 0,
+        embeddingsByNamespace: {},
+        embeddingsBySourceType: {},
+      };
+    }
     const table = await getEmbeddingsTable();
+    if (!table) {
+      return {
+        totalEmbeddings: 0,
+        totalNamespaces: 0,
+        embeddingsByNamespace: {},
+        embeddingsBySourceType: {},
+      };
+    }
     const namespaces = await this.getAllNamespaces();
 
     const embeddingsByNamespace: Record<string, number> = {};
@@ -838,6 +951,7 @@ export class LanceDBWrapper {
   }
 
   static async resetAll(): Promise<{ deletedEmbeddings: number; deletedNamespaces: number }> {
+    if (isPermanentlyUnavailable) return { deletedEmbeddings: 0, deletedNamespaces: 0 };
     // Count before dropping to report accurate numbers
     let deletedEmbeddings = 0;
     let deletedNamespaces = 0;
@@ -878,8 +992,10 @@ export class LanceDBWrapper {
    * Delete multiple embeddings by their IDs in batch.
    */
   static async deleteByIds(ids: string[]): Promise<number> {
+    if (isPermanentlyUnavailable) return 0;
     if (ids.length === 0) return 0;
     const table = await getEmbeddingsTable();
+    if (!table) return 0;
     let deleted = 0;
     for (const id of ids) {
       try {
@@ -895,7 +1011,9 @@ export class LanceDBWrapper {
    * NOTE: This does NOT delete the namespace record itself.
    */
   static async deleteAllByNamespace(namespace: string): Promise<number> {
+    if (isPermanentlyUnavailable) return 0;
     const table = await getEmbeddingsTable();
+    if (!table) return 0;
     const embeddings = await tableFilter(table, `namespace = '${escapeFilterValue(namespace)}'`);
     for (const emb of embeddings) {
       try { await table.delete(`id = '${escapeFilterValue(emb.id)}'`); } catch { /* skip */ }
@@ -908,7 +1026,9 @@ export class LanceDBWrapper {
    * Returns the count and optionally basic metadata of each embedding.
    */
   static async countByNamespace(namespace: string): Promise<number> {
+    if (isPermanentlyUnavailable) return 0;
     const table = await getEmbeddingsTable();
+    if (!table) return 0;
     const results = await tableFilter(table, `namespace = '${escapeFilterValue(namespace)}'`);
     return results.length;
   }

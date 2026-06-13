@@ -1,0 +1,1585 @@
+     1→// ============================================
+     2→// Sprite Slice - Unified Sprite State Management
+     3→// Supports both single character and group chat
+     4→// ============================================
+     5→//
+     6→// ⚠️ SPRITE PRIORITY SYSTEM - CRITICAL - DO NOT MODIFY ⚠️
+     7→//
+     8→// This module implements the sprite priority system. The rules are:
+     9→//
+    10→// 1. TRIGGER SPRITE HAS ABSOLUTE PRIORITY
+    11→//    - Once set, triggerSpriteUrl MUST NOT be cleared by:
+    12→//      * startGenerationForCharacter()
+    13→//      * endGenerationForCharacter()
+    14→//      * State changes (talk/thinking/idle)
+    15→//    - Only cleared by:
+    16→//      * Timer expiration (returnToIdleMs > 0)
+    17→//      * New trigger replacing it
+    18→//      * User manual action
+    19→//
+    20→// 2. TIMER BEHAVIOR
+    21→//    - returnToIdleMs = 0: Trigger persists indefinitely
+    22→//    - returnToIdleMs > 0: Trigger clears after X ms
+    23→//
+    24→// 3. RETURN MODE
+    25→//    - 'clear': Clear trigger, show state-based sprite (talk/thinking/idle)
+    26→//    - 'idle': Clear trigger, show idle sprite
+    27→//    - 'talk': Clear trigger, show talk sprite
+    28→//    - 'thinking': Clear trigger, show thinking sprite
+    29→//
+    30→// See: /docs/SPRITE_PRIORITY_SYSTEM.md for full documentation
+    31→//
+    32→// ============================================
+    33→
+    34→import type { 
+    35→  SpriteState, 
+    36→  SpriteLockState, 
+    37→  SpriteTriggerHit, 
+    38→  SpriteIndex, 
+    39→  // NEW V2 Types
+    40→  SpritePackV2,
+    41→  TriggerCollection,
+    42→  TriggerQueueState,
+    43→  TriggerQueueEntry,
+    44→  ActiveTrigger,
+    45→  SpriteChain,
+    46→  SoundChain,
+    47→  // FASE 7: Transition types
+    48→  SpriteTransitionConfig,
+    49→} from '@/types';
+    50→import { 
+    51→  createDefaultSpritePackV2,
+    52→  createDefaultTriggerCollection,
+    53→  createDefaultTriggerQueueState,
+    54→  createDefaultSpriteTransitionConfig,
+    55→} from '@/types';
+    56→import type { SoundChainStep, SoundTrigger, SoundCollection } from '@/types';
+    57→
+    58→import { uuidv4 } from '@/lib/uuid';
+    59→import { emitComicSoundEvent } from '@/lib/comic-sound-bus';
+    60→
+    61→// ============================================
+    62→// Sound Chain Player
+    63→// ============================================
+    64→
+    65→// Active sound chain tracking
+    66→const activeSoundChains = new Map<string, { timeouts: NodeJS.Timeout[]; audios: HTMLAudioElement[] }>();
+    67→
+    68→/**
+    69→ * Play a sound chain for a character
+    70→ * This is called directly when startSoundChain is invoked
+    71→ */
+    72→function playSoundChainForCharacter(
+    73→  characterId: string,
+    74→  chain: SoundChain,
+    75→  soundTriggers: SoundTrigger[],
+    76→  soundCollections: SoundCollection[],
+    77→  globalVolume: number
+    78→): void {
+    79→  // Stop any existing chain for this character
+    80→  stopSoundChainForCharacter(characterId);
+    81→  
+    82→  const chainState = { timeouts: [] as NodeJS.Timeout[], audios: [] as HTMLAudioElement[] };
+    83→  activeSoundChains.set(characterId, chainState);
+    84→  
+    85→  const chainVolume = (chain.volume ?? 1) * globalVolume;
+    86→  
+    87→  console.log('[SpriteSlice] Playing sound chain:', {
+    88→    characterId,
+    89→    steps: chain.steps.length,
+    90→    volume: chainVolume,
+    91→  });
+    92→  
+    93→  chain.steps.forEach((step: SoundChainStep, index: number) => {
+    94→    const timeout = setTimeout(() => {
+    95→      playSoundChainStep(
+    96→        characterId,
+    97→        step,
+    98→        soundTriggers,
+    99→        soundCollections,
+   100→        chainVolume
+   101→      );
+   102→    }, step.delayMs);
+   103→    
+   104→    chainState.timeouts.push(timeout);
+   105→  });
+   106→}
+   107→
+   108→/**
+   109→ * Play a single sound chain step
+   110→ */
+   111→function playSoundChainStep(
+   112→  characterId: string,
+   113→  step: SoundChainStep,
+   114→  soundTriggers: SoundTrigger[],
+   115→  soundCollections: SoundCollection[],
+   116→  chainVolume: number
+   117→): void {
+   118→  let soundUrl: string | null = null;
+   119→  let volume = (step.volume ?? 1) * chainVolume;
+   120→  
+   121→  // Try sound trigger key first
+   122→  if (step.soundTriggerKey) {
+   123→    const trigger = soundTriggers.find(t => t.name === step.soundTriggerKey || t.id === step.soundTriggerKey);
+   124→    if (trigger) {
+   125→      const collection = soundCollections.find(c => c.name === trigger.collection);
+   126→      if (collection && collection.files.length > 0) {
+   127→        // Pick sound based on play mode
+   128→        let soundFile: string;
+   129→        if (trigger.playMode === 'random') {
+   130→          soundFile = collection.files[Math.floor(Math.random() * collection.files.length)];
+   131→        } else {
+   132→          const index = (trigger.currentIndex || 0) % collection.files.length;
+   133→          soundFile = collection.files[index];
+   134→        }
+   135→        soundUrl = soundFile;
+   136→        volume *= trigger.volume;
+   137→      }
+   138→    }
+   139→  }
+   140→  // Fall back to direct URL
+   141→  else if (step.soundUrl) {
+   142→    soundUrl = step.soundUrl;
+   143→  }
+   144→  
+   145→  if (!soundUrl) {
+   146→    console.warn('[SpriteSlice] No sound URL for step:', step);
+   147→    return;
+   148→  }
+   149→  
+   150→  try {
+   151→    const audio = new Audio(soundUrl);
+   152→    audio.volume = Math.min(1, Math.max(0, volume));
+   153→    
+   154→    // Emit comic sound visual event
+   155→    const stepName = step.soundTriggerKey || 'chain_sound';
+   156→    emitComicSoundEvent(stepName, stepName, characterId);
+   157→    
+   158→    audio.play().catch(e => {
+   159→      console.warn('[SpriteSlice] Audio play failed:', e);
+   160→    });
+   161→    
+   162→    // Track the audio
+   163→    const chainState = activeSoundChains.get(characterId);
+   164→    if (chainState) {
+   165→      chainState.audios.push(audio);
+   166→    }
+   167→    
+   168→    audio.onended = () => {
+   169→      const state = activeSoundChains.get(characterId);
+   170→      if (state) {
+   171→        const idx = state.audios.indexOf(audio);
+   172→        if (idx > -1) state.audios.splice(idx, 1);
+   173→      }
+   174→    };
+   175→  } catch (error) {
+   176→    console.error('[SpriteSlice] Failed to play sound:', error);
+   177→  }
+   178→}
+   179→
+   180→/**
+   181→ * Stop sound chain for a character
+   182→ */
+   183→function stopSoundChainForCharacter(characterId: string): void {
+   184→  const chainState = activeSoundChains.get(characterId);
+   185→  if (!chainState) return;
+   186→  
+   187→  // Clear all timeouts
+   188→  chainState.timeouts.forEach(t => clearTimeout(t));
+   189→  
+   190→  // Stop all audio
+   191→  chainState.audios.forEach(a => {
+   192→    a.pause();
+   193→    a.remove();
+   194→  });
+   195→  
+   196→  activeSoundChains.delete(characterId);
+   197→}
+   198→
+   199→// ============================================
+   200→// Per-Character Sprite State
+   201→// ============================================
+   202→
+   203→export interface CharacterSpriteState {
+   204→  // Current sprite from trigger (HIGHEST PRIORITY - DO NOT OVERRIDE)
+   205→  triggerSpriteUrl: string | null;
+   206→  triggerSpriteLabel: string | null;
+   207→  triggerCollectionId: string | null;  // ID of the trigger collection that activated this sprite
+   208→  triggerPackId: string | null;  // ID of the sprite pack
+   209→  useTimelineSounds: boolean;  // Whether to play timeline sounds for this sprite
+   210→
+   211→  // FASE 7: Transition config from the active trigger (for rendering transition)
+   212→  triggerTransition: SpriteTransitionConfig | null;
+   213→
+   214→  // FASE 7: Default transition for state-based changes (idle/talk/thinking)
+   215→  defaultTransition: SpriteTransitionConfig | null;
+   216→
+   217→  // Return to idle state for this character
+   218→  returnToIdle: {
+   219→    active: boolean;
+   220→    scheduledAt: number;
+   221→    returnAt: number;
+   222→    triggerSpriteUrl: string;  // URL of trigger sprite (to verify)
+   223→    returnToMode: 'idle' | 'talk' | 'thinking' | 'clear';  // What state to return to
+   224→    returnSpriteUrl: string;     // URL to return to (if mode is idle/talk/thinking)
+   225→    returnSpriteLabel: string | null;
+   226→  };
+   227→
+   228→  // Track if trigger was activated during current generation
+   229→  triggerActivatedDuringGeneration: boolean;
+   230→  
+   231→  // Current sprite state (thinking/talk/idle)
+   232→  spriteState: SpriteState;
+   233→  
+   234→  // NEW V2: Trigger queue for this character
+   235→  triggerQueue: TriggerQueueState;
+   236→  
+   237→  // NEW V2: Current chain progress (if any)
+   238→  chainProgress: {
+   239→    active: boolean;
+   240→    type: 'sprite' | 'sound';
+   241→    currentStep: number;
+   242→    totalSteps: number;
+   243→    startedAt: number;
+   244→    interruptible: boolean;
+   245→  } | null;
+   246→}
+   247→
+   248→// Default state for a character
+   249→export const createDefaultCharacterState = (): CharacterSpriteState => ({
+   250→  triggerSpriteUrl: null,
+   251→  triggerSpriteLabel: null,
+   252→  triggerCollectionId: null,
+   253→  triggerPackId: null,
+   254→  useTimelineSounds: true,  // Enable timeline sounds by default
+   255→  triggerTransition: null,
+   256→  defaultTransition: null,
+   257→  returnToIdle: {
+   258→    active: false,
+   259→    scheduledAt: 0,
+   260→    returnAt: 0,
+   261→    triggerSpriteUrl: '',
+   262→    returnToMode: 'clear',
+   263→    returnSpriteUrl: '',
+   264→    returnSpriteLabel: null,
+   265→  },
+   266→  triggerActivatedDuringGeneration: false,
+   267→  spriteState: 'idle',
+   268→  // NEW V2 fields
+   269→  triggerQueue: createDefaultTriggerQueueState(),
+   270→  chainProgress: null,
+   271→});
+   272→
+   273→// ============================================
+   274→// Sprite Slice Interface
+   275→// ============================================
+   276→
+   277→export interface SpriteSlice {
+   278→  // Per-character sprite states (UNIFIED SYSTEM)
+   279→  characterSpriteStates: Record<string, CharacterSpriteState>;
+   280→  
+   281→  // Current sprite state for backward compatibility (single chat)
+   282→  currentSpriteState: SpriteState;
+   283→  
+   284→  // Sprite lock state (global, applies to active character)
+   285→  spriteLock: SpriteLockState;
+   286→  lockIntervalMs: number;
+   287→  lockIntervalId: ReturnType<typeof setInterval> | null;
+   288→
+   289→  // Sprite packs and index (global resources)
+   290→  spriteIndex: SpriteIndex;
+   291→
+   292→  // Last trigger info (for cooldowns)
+   293→  lastSpriteTriggerAt: number;
+   294→  lastSpritePackId: string | null;
+   295→
+   296→  // ============================================
+   297→  // UNIFIED ACTIONS (work for both single and group)
+   298→  // ============================================
+   299→  
+   300→  // Get sprite state for a specific character
+   301→  getCharacterSpriteState: (characterId: string) => CharacterSpriteState;
+   302→  
+   303→  // Apply trigger for a specific character
+   304→  applyTriggerForCharacter: (characterId: string, hit: SpriteTriggerHit) => void;
+   305→  
+   306→  // Schedule return to idle for a specific character
+   307→  scheduleReturnToIdleForCharacter: (
+   308→    characterId: string,
+   309→    triggerUrl: string,
+   310→    returnToMode: 'idle' | 'talk' | 'thinking' | 'clear',
+   311→    returnSpriteUrl: string,
+   312→    returnSpriteLabel: string | null,
+   313→    delayMs: number
+   314→  ) => void;
+   315→  
+   316→  // Cancel return to idle for a specific character
+   317→  cancelReturnToIdleForCharacter: (characterId: string) => void;
+   318→  
+   319→  // Execute return to idle immediately for a specific character
+   320→  executeReturnToIdleForCharacter: (characterId: string) => void;
+   321→  
+   322→  // Get return to idle countdown for a character
+   323→  getReturnToIdleCountdownForCharacter: (characterId: string) => number;
+   324→  
+   325→  // Check if return to idle is scheduled for a character
+   326→  isReturnToIdleScheduledForCharacter: (characterId: string) => boolean;
+   327→  
+   328→  // Start generation for a character (resets trigger flag, sets thinking state)
+   329→  startGenerationForCharacter: (characterId: string) => void;
+   330→  
+   331→  // End generation for a character (clears if no trigger, keeps if trigger active)
+   332→  endGenerationForCharacter: (characterId: string) => void;
+   333→  
+   334→  // Clear sprite state for a character
+   335→  clearCharacterSpriteState: (characterId: string) => void;
+   336→  
+   337→  // Set sprite state for a character
+   338→  setSpriteStateForCharacter: (characterId: string, state: SpriteState) => void;
+   339→
+   340→  // FASE 7: Set a field on the character sprite state
+   341→  setCharacterSpriteStateField: (characterId: string, field: string, value: unknown) => void;
+   342→
+   343→  // ============================================
+   344→  // NEW V2 ACTIONS - Trigger Queue System
+   345→  // ============================================
+   346→  
+   347→  // Add trigger to queue
+   348→  addTriggerToQueue: (characterId: string, entry: Omit<TriggerQueueEntry, 'id' | 'triggeredAt'>) => void;
+   349→  
+   350→  // Process next trigger in queue
+   351→  processNextTriggerInQueue: (characterId: string) => void;
+   352→  
+   353→  // Clear trigger queue for character
+   354→  clearTriggerQueue: (characterId: string) => void;
+   355→  
+   356→  // Get queue length for character
+   357→  getTriggerQueueLength: (characterId: string) => number;
+   358→  
+   359→  // Check if trigger is currently active
+   360→  hasActiveTrigger: (characterId: string) => boolean;
+   361→  
+   362→  // Reset trigger time (for same trigger re-detection)
+   363→  resetTriggerTimer: (characterId: string) => void;
+   364→
+   365→  // ============================================
+   366→  // NEW V2 ACTIONS - Chain System
+   367→  // ============================================
+   368→  
+   369→  // Start sprite chain
+   370→  startSpriteChain: (characterId: string, chain: SpriteChain) => void;
+   371→  
+   372→  // Start sound chain
+   373→  startSoundChain: (characterId: string, chain: SoundChain) => void;
+   374→  
+   375→  // Advance chain step
+   376→  advanceChainStep: (characterId: string) => void;
+   377→  
+   378→  // Interrupt chain (if interruptible)
+   379→  interruptChain: (characterId: string) => void;
+   380→  
+   381→  // Get chain progress
+   382→  getChainProgress: (characterId: string) => CharacterSpriteState['chainProgress'];
+   383→
+   384→  // ============================================
+   385→  // NEW V2 ACTIONS - Sprite Packs V2
+   386→  // ============================================
+   387→  
+   388→  // Sprite Packs V2 state
+   389→  spritePacksV2: SpritePackV2[];
+   390→  
+   391→  // Create new sprite pack
+   392→  createSpritePackV2: (name: string, description?: string) => SpritePackV2;
+   393→  
+   394→  // Update sprite pack
+   395→  updateSpritePackV2: (id: string, updates: Partial<SpritePackV2>) => void;
+   396→  
+   397→  // Delete sprite pack
+   398→  deleteSpritePackV2: (id: string) => void;
+   399→  
+   400→  // Add sprite to pack
+   401→  addSpriteToPackV2: (packId: string, sprite: Omit<SpritePackV2['sprites'][0], 'id'>) => void;
+   402→  
+   403→  // Remove sprite from pack
+   404→  removeSpriteFromPackV2: (packId: string, spriteId: string) => void;
+   405→  
+   406→  // Get pack by ID
+   407→  getSpritePackV2ById: (id: string) => SpritePackV2 | undefined;
+   408→
+   409→  // ============================================
+   410→  // NEW V2 ACTIONS - Trigger Collections
+   411→  // ============================================
+   412→  
+   413→  // Trigger collections state (stored per character, but managed globally for editor)
+   414→  
+   415→  // Create trigger collection for character
+   416→  createTriggerCollection: (characterId: string, collection: Omit<TriggerCollection, 'id' | 'createdAt' | 'updatedAt'>) => TriggerCollection;
+   417→  
+   418→  // Update trigger collection
+   419→  updateTriggerCollection: (characterId: string, collectionId: string, updates: Partial<TriggerCollection>) => void;
+   420→  
+   421→  // Delete trigger collection
+   422→  deleteTriggerCollection: (characterId: string, collectionId: string) => void;
+   423→  
+   424→  // Get trigger collections for character
+   425→  getTriggerCollectionsForCharacter: (characterId: string) => TriggerCollection[];
+   426→
+   427→  // ============================================
+   428→  // LEGACY ACTIONS (for backward compatibility)
+   429→  // ============================================
+   430→  
+   431→  // These work on the "active" character (single chat)
+   432→  setSpriteState: (state: SpriteState) => void;
+   433→  setSpriteUrl: (url: string | null, label?: string | null) => void;
+   434→  currentSpriteUrl: string | null;
+   435→  currentSpriteLabel: string | null;
+   436→  triggerActivatedDuringGeneration: boolean;
+   437→  returnToIdle: CharacterSpriteState['returnToIdle'];
+   438→  
+   439→  // Lock management (still global)
+   440→  setSpriteLock: (lock: Partial<SpriteLockState>) => void;
+   441→  clearSpriteLock: () => void;
+   442→  applySpriteLock: (url: string, durationMs: number, intervalMs?: number) => void;
+   443→  reapplySpriteLock: () => void;
+   444→  setLockInterval: (intervalMs: number) => void;
+   445→  
+   446→  // Legacy return to idle (uses active character)
+   447→  scheduleReturnToIdle: (currentUrl: string, idleUrl: string, idleLabel: string | null, delayMs: number) => void;
+   448→  cancelReturnToIdle: () => void;
+   449→  executeReturnToIdle: () => void;
+   450→
+   451→  // Legacy trigger system
+   452→  applySpriteTrigger: (hit: SpriteTriggerHit) => void;
+   453→  isSpriteLocked: () => boolean;
+   454→  isReturnToIdleScheduled: () => boolean;
+   455→  getReturnToIdleCountdown: () => number;
+   456→
+   457→  // Legacy generation tracking
+   458→  startGeneration: () => void;
+   459→  endGeneration: () => void;
+   460→  wasTriggerActivated: () => boolean;
+   461→
+   462→  // Index management
+   463→  setSpriteIndex: (index: SpriteIndex) => void;
+   464→
+   465→  // Sprite URL lookup
+   466→  getSpriteUrlByLabel: (label: string) => string | null;
+   467→}
+   468→
+   469→// ============================================
+   470→// Timer Management (per character)
+   471→// ============================================
+   472→
+   473→// Map of characterId -> timeoutId for return to idle
+   474→const _returnToIdleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+   475→let _lockIntervalId: ReturnType<typeof setInterval> | null = null;
+   476→
+   477→// Helper to clear timer for a character
+   478→const clearReturnToIdleTimer = (characterId: string) => {
+   479→  const timer = _returnToIdleTimers.get(characterId);
+   480→  if (timer) {
+   481→    clearTimeout(timer);
+   482→    _returnToIdleTimers.delete(characterId);
+   483→  }
+   484→};
+   485→
+   486→// Callback for when return to idle executes
+   487→let _onReturnToIdle: ((characterId?: string) => void) | null = null;
+   488→
+   489→export const setReturnToIdleCallback = (callback: ((characterId?: string) => void) | null) => {
+   490→  _onReturnToIdle = callback;
+   491→};
+   492→
+   493→// ============================================
+   494→// Slice Creation
+   495→// ============================================
+   496→
+   497→export const createSpriteSlice = (set: any, get: any): SpriteSlice => ({
+   498→  // ============================================
+   499→  // Initial State
+   500→  // ============================================
+   501→  
+   502→  characterSpriteStates: {},
+   503→  currentSpriteState: 'idle',
+   504→  
+   505→  // Legacy state values (for backward compatibility)
+   506→  currentSpriteUrl: null,
+   507→  currentSpriteLabel: null,
+   508→  triggerActivatedDuringGeneration: false,
+   509→  returnToIdle: {
+   510→    active: false,
+   511→    scheduledAt: 0,
+   512→    returnAt: 0,
+   513→    triggerSpriteUrl: '',
+   514→    returnToMode: 'clear',
+   515→    returnSpriteUrl: '',
+   516→    returnSpriteLabel: null,
+   517→  },
+   518→
+   519→  spriteLock: {
+   520→    active: false,
+   521→    spriteUrl: '',
+   522→    until: 0,
+   523→    lastApplyAt: 0,
+   524→  },
+   525→
+   526→  lockIntervalMs: 0,
+   527→  lockIntervalId: null,
+   528→
+   529→  spriteIndex: {
+   530→    sprites: [],
+   531→    lastUpdated: 0,
+   532→    source: '',
+   533→  },
+   534→
+   535→  lastSpriteTriggerAt: 0,
+   536→  lastSpritePackId: null,
+   537→
+   538→  // ============================================
+   539→  // UNIFIED ACTIONS
+   540→  // ============================================
+   541→  
+   542→  getCharacterSpriteState: (characterId: string) => {
+   543→    const state = get();
+   544→    return state.characterSpriteStates[characterId] || createDefaultCharacterState();
+   545→  },
+   546→  
+   547→  applyTriggerForCharacter: (characterId: string, hit: SpriteTriggerHit) => {
+   548→    const now = Date.now();
+   549→    
+   550→    console.log('[SpriteSlice] applyTriggerForCharacter called:', {
+   551→      characterId,
+   552→      spriteUrl: hit.spriteUrl,
+   553→      spriteLabel: hit.spriteLabel,
+   554→      packId: hit.packId,
+   555→      collectionId: hit.collectionId,
+   556→    });
+   557→    
+   558→    // Clear any pending return to idle for this character
+   559→    clearReturnToIdleTimer(characterId);
+   560→    
+   561→    set((state: any) => {
+   562→      const currentCharState = state.characterSpriteStates[characterId] || createDefaultCharacterState();
+   563→      
+   564→      return {
+   565→        characterSpriteStates: {
+   566→          ...state.characterSpriteStates,
+   567→          [characterId]: {
+   568→            ...currentCharState,
+   569→            triggerSpriteUrl: hit.spriteUrl,
+   570→            triggerSpriteLabel: hit.spriteLabel,
+   571→            triggerCollectionId: hit.collectionId || null,
+   572→            triggerPackId: hit.packId || null,
+   573→            useTimelineSounds: hit.useTimelineSounds ?? true,  // Enable timeline sounds by default
+   574→            triggerTransition: hit.transition || null,  // FASE 7: Store transition from trigger
+   575→            triggerActivatedDuringGeneration: true,
+   576→            spriteState: 'idle', // Triggers set state to idle
+   577→            returnToIdle: {
+   578→              active: false,
+   579→              scheduledAt: 0,
+   580→              returnAt: 0,
+   581→              triggerSpriteUrl: '',
+   582→              returnToMode: 'clear',
+   583→              returnSpriteUrl: '',
+   584→              returnSpriteLabel: null,
+   585→            },
+   586→          },
+   587→        },
+   588→        lastSpriteTriggerAt: now,
+   589→        lastSpritePackId: hit.packId,
+   590→      };
+   591→    });
+   592→  },
+   593→  
+   594→  scheduleReturnToIdleForCharacter: (
+   595→    characterId: string,
+   596→    triggerUrl: string,
+   597→    returnToMode: 'idle' | 'talk' | 'thinking' | 'clear',
+   598→    returnSpriteUrl: string,
+   599→    returnSpriteLabel: string | null,
+   600→    delayMs: number
+   601→  ) => {
+   602→    // Clear any existing timer for this character
+   603→    clearReturnToIdleTimer(characterId);
+   604→    
+   605→    const now = Date.now();
+   606→    
+   607→    // Create new timer
+   608→    const timer = setTimeout(() => {
+   609→      const state = get();
+   610→      const charState = state.characterSpriteStates[characterId];
+   611→      
+   612→      console.log('[SpriteSlice] Return to idle timer fired:', {
+   613→        characterId,
+   614→        returnToIdleActive: charState?.returnToIdle.active,
+   615→        currentTriggerSpriteUrl: charState?.triggerSpriteUrl,
+   616→        expectedTriggerSpriteUrl: charState?.returnToIdle?.triggerSpriteUrl,
+   617→        returnToMode,
+   618→        returnSpriteUrl: charState?.returnToIdle?.returnSpriteUrl,
+   619→      });
+   620→      
+   621→      // Only execute if the trigger sprite is still the one we scheduled for
+   622→      if (charState?.returnToIdle.active && 
+   623→          charState.triggerSpriteUrl === charState.returnToIdle.triggerSpriteUrl) {
+   624→        
+   625→        // Execute return based on mode
+   626→        set((state: any) => {
+   627→          const currentCharState = state.characterSpriteStates[characterId];
+   628→          if (!currentCharState) return state;
+   629→          
+   630→          // If mode is 'clear', just clear the trigger sprite and let normal logic determine what to show
+   631→          // Otherwise, set the trigger sprite to the return sprite
+   632→          const shouldClearTrigger = returnToMode === 'clear';
+   633→          
+   634→          console.log('[SpriteSlice] Executing return to idle:', {
+   635→            shouldClearTrigger,
+   636→            returnToMode,
+   637→            newSpriteUrl: shouldClearTrigger ? null : currentCharState.returnToIdle.returnSpriteUrl,
+   638→          });
+   639→          
+   640→          return {
+   641→            characterSpriteStates: {
+   642→              ...state.characterSpriteStates,
+   643→              [characterId]: {
+   644→                ...currentCharState,
+   645→                triggerSpriteUrl: shouldClearTrigger ? null : currentCharState.returnToIdle.returnSpriteUrl,
+   646→                triggerSpriteLabel: shouldClearTrigger ? null : currentCharState.returnToIdle.returnSpriteLabel,
+   647→                returnToIdle: {
+   648→                  active: false,
+   649→                  scheduledAt: 0,
+   650→                  returnAt: 0,
+   651→                  triggerSpriteUrl: '',
+   652→                  returnToMode: 'clear',
+   653→                  returnSpriteUrl: '',
+   654→                  returnSpriteLabel: null,
+   655→                },
+   656→              },
+   657→            },
+   658→          };
+   659→        });
+   660→        
+   661→        // Call callback if set
+   662→        if (_onReturnToIdle) {
+   663→          _onReturnToIdle(characterId);
+   664→        }
+   665→      }
+   666→      
+   667→      _returnToIdleTimers.delete(characterId);
+   668→    }, delayMs);
+   669→    
+   670→    _returnToIdleTimers.set(characterId, timer);
+   671→    
+   672→    // Update state
+   673→    set((state: any) => {
+   674→      const currentCharState = state.characterSpriteStates[characterId] || createDefaultCharacterState();
+   675→      
+   676→      return {
+   677→        characterSpriteStates: {
+   678→          ...state.characterSpriteStates,
+   679→          [characterId]: {
+   680→            ...currentCharState,
+   681→            returnToIdle: {
+   682→              active: true,
+   683→              scheduledAt: now,
+   684→              returnAt: now + delayMs,
+   685→              triggerSpriteUrl: triggerUrl,
+   686→              returnToMode,
+   687→              returnSpriteUrl,
+   688→              returnSpriteLabel,
+   689→            },
+   690→          },
+   691→        },
+   692→      };
+   693→    });
+   694→  },
+   695→  
+   696→  cancelReturnToIdleForCharacter: (characterId: string) => {
+   697→    clearReturnToIdleTimer(characterId);
+   698→    
+   699→    set((state: any) => {
+   700→      const currentCharState = state.characterSpriteStates[characterId];
+   701→      if (!currentCharState) return state;
+   702→      
+   703→      return {
+   704→        characterSpriteStates: {
+   705→          ...state.characterSpriteStates,
+   706→          [characterId]: {
+   707→            ...currentCharState,
+   708→            returnToIdle: {
+   709→              active: false,
+   710→              scheduledAt: 0,
+   711→              returnAt: 0,
+   712→              triggerSpriteUrl: '',
+   713→              returnToMode: 'clear',
+   714→              returnSpriteUrl: '',
+   715→              returnSpriteLabel: null,
+   716→            },
+   717→          },
+   718→        },
+   719→      };
+   720→    });
+   721→  },
+   722→  
+   723→  executeReturnToIdleForCharacter: (characterId: string) => {
+   724→    clearReturnToIdleTimer(characterId);
+   725→    
+   726→    set((state: any) => {
+   727→      const currentCharState = state.characterSpriteStates[characterId];
+   728→      if (!currentCharState || !currentCharState.returnToIdle.active) return state;
+   729→      
+   730→      // If mode is 'clear', just clear the trigger sprite and let normal logic determine what to show
+   731→      const shouldClearTrigger = currentCharState.returnToIdle.returnToMode === 'clear';
+   732→      
+   733→      return {
+   734→        characterSpriteStates: {
+   735→          ...state.characterSpriteStates,
+   736→          [characterId]: {
+   737→            ...currentCharState,
+   738→            triggerSpriteUrl: shouldClearTrigger ? null : currentCharState.returnToIdle.returnSpriteUrl,
+   739→            triggerSpriteLabel: shouldClearTrigger ? null : currentCharState.returnToIdle.returnSpriteLabel,
+   740→            returnToIdle: {
+   741→              active: false,
+   742→              scheduledAt: 0,
+   743→              returnAt: 0,
+   744→              triggerSpriteUrl: '',
+   745→              returnToMode: 'clear',
+   746→              returnSpriteUrl: '',
+   747→              returnSpriteLabel: null,
+   748→            },
+   749→          },
+   750→        },
+   751→      };
+   752→    });
+   753→  },
+   754→  
+   755→  getReturnToIdleCountdownForCharacter: (characterId: string) => {
+   756→    const state = get();
+   757→    const charState = state.characterSpriteStates[characterId];
+   758→    if (!charState?.returnToIdle.active) return 0;
+   759→    const remaining = charState.returnToIdle.returnAt - Date.now();
+   760→    return Math.max(0, remaining);
+   761→  },
+   762→  
+   763→  isReturnToIdleScheduledForCharacter: (characterId: string) => {
+   764→    const state = get();
+   765→    const charState = state.characterSpriteStates[characterId];
+   766→    return charState?.returnToIdle.active || false;
+   767→  },
+   768→  
+   769→  startGenerationForCharacter: (characterId: string) => {
+   770→    // DEBUG: Log all current character states before change
+   771→    const allStates = get().characterSpriteStates;
+   772→    console.log('[SpriteSlice] 🔍 startGenerationForCharacter START:', {
+   773→      targetCharacterId: characterId,
+   774→      allCharacterStates: Object.entries(allStates).map(([id, state]) => ({
+   775→        id: id.substring(0, 8),
+   776→        hasTrigger: !!(state as any).triggerSpriteUrl,
+   777→        triggerUrl: (state as any).triggerSpriteUrl?.substring(0, 30),
+   778→        returnToIdleActive: (state as any).returnToIdle?.active,
+   779→      })),
+   780→    });
+   781→    
+   782→    set((state: any) => {
+   783→      const currentCharState = state.characterSpriteStates[characterId] || createDefaultCharacterState();
+   784→      
+   785→      // Check if there's an active trigger sprite
+   786→      // Trigger sprites have priority over thinking/talk states
+   787→      const hasActiveTrigger = currentCharState.triggerSpriteUrl !== null;
+   788→      
+   789→      console.log('[SpriteSlice] startGenerationForCharacter:', {
+   790→        characterId,
+   791→        hasActiveTrigger,
+   792→        currentTriggerUrl: currentCharState.triggerSpriteUrl,
+   793→      });
+   794→      
+   795→      if (hasActiveTrigger) {
+   796→        // Keep the trigger sprite - it has priority
+   797→        // The return to idle timer (if any) will handle transitioning back
+   798→        return {
+   799→          characterSpriteStates: {
+   800→            ...state.characterSpriteStates,
+   801→            [characterId]: {
+   802→              ...currentCharState,
+   803→              // Keep triggerSpriteUrl and returnToIdle as they are
+   804→              spriteState: 'thinking',
+   805→              // Reset the flag for new generation (will be set to true if new trigger activates)
+   806→              triggerActivatedDuringGeneration: false,
+   807→            },
+   808→          },
+   809→        };
+   810→      }
+   811→      
+   812→      // No active trigger - proceed with normal generation start
+   813→      return {
+   814→        characterSpriteStates: {
+   815→          ...state.characterSpriteStates,
+   816→          [characterId]: {
+   817→            ...currentCharState,
+   818→            triggerSpriteUrl: null,
+   819→            triggerSpriteLabel: null,
+   820→            triggerActivatedDuringGeneration: false,
+   821→            spriteState: 'thinking',
+   822→            returnToIdle: {
+   823→              active: false,
+   824→              scheduledAt: 0,
+   825→              returnAt: 0,
+   826→              triggerSpriteUrl: '',
+   827→              returnToMode: 'clear',
+   828→              returnSpriteUrl: '',
+   829→              returnSpriteLabel: null,
+   830→            },
+   831→          },
+   832→        },
+   833→      };
+   834→    });
+   835→    
+   836→    // DEBUG: Log all states after change
+   837→    const allStatesAfter = get().characterSpriteStates;
+   838→    console.log('[SpriteSlice] 🔍 startGenerationForCharacter END:', {
+   839→      targetCharacterId: characterId,
+   840→      allCharacterStates: Object.entries(allStatesAfter).map(([id, state]) => ({
+   841→        id: id.substring(0, 8),
+   842→        hasTrigger: !!(state as any).triggerSpriteUrl,
+   843→        triggerUrl: (state as any).triggerSpriteUrl?.substring(0, 30),
+   844→      })),
+   845→    });
+   846→  },
+   847→  
+   848→  endGenerationForCharacter: (characterId: string) => {
+   849→    // DEBUG: Log all current character states before change
+   850→    const allStates = get().characterSpriteStates;
+   851→    console.log('[SpriteSlice] 🔍 endGenerationForCharacter START:', {
+   852→      targetCharacterId: characterId,
+   853→      allCharacterStates: Object.entries(allStates).map(([id, state]) => ({
+   854→        id: id.substring(0, 8),
+   855→        hasTrigger: !!(state as any).triggerSpriteUrl,
+   856→        triggerUrl: (state as any).triggerSpriteUrl?.substring(0, 30),
+   857→        returnToIdleActive: (state as any).returnToIdle?.active,
+   858→      })),
+   859→    });
+   860→    
+   861→    set((state: any) => {
+   862→      const currentCharState = state.characterSpriteStates[characterId];
+   863→      if (!currentCharState) return state;
+   864→      
+   865→      // If there's an active trigger sprite (with or without return to idle),
+   866→      // keep it - the return to idle timer will handle transitioning back if scheduled
+   867→      const hasActiveTrigger = currentCharState.triggerSpriteUrl !== null;
+   868→      
+   869→      console.log('[SpriteSlice] endGenerationForCharacter:', {
+   870→        characterId,
+   871→        hasActiveTrigger,
+   872→        currentTriggerUrl: currentCharState.triggerSpriteUrl,
+   873→        returnToIdleActive: currentCharState.returnToIdle?.active,
+   874→      });
+   875→      
+   876→      if (hasActiveTrigger) {
+   877→        // Trigger sprite is active, keep it
+   878→        // The return to idle timer (if any) will handle the transition
+   879→        return {
+   880→          characterSpriteStates: {
+   881→            ...state.characterSpriteStates,
+   882→            [characterId]: {
+   883→              ...currentCharState,
+   884→              spriteState: 'idle',
+   885→            },
+   886→          },
+   887→        };
+   888→      }
+   889→      
+   890→      // No trigger active, clear everything
+   891→      console.log('[SpriteSlice] endGenerationForCharacter: Clearing trigger for', characterId);
+   892→      return {
+   893→        characterSpriteStates: {
+   894→          ...state.characterSpriteStates,
+   895→          [characterId]: {
+   896→            ...currentCharState,
+   897→            triggerSpriteUrl: null,
+   898→            triggerSpriteLabel: null,
+   899→            spriteState: 'idle',
+   900→          },
+   901→        },
+   902→      };
+   903→    });
+   904→  },
+   905→  
+   906→  clearCharacterSpriteState: (characterId: string) => {
+   907→    clearReturnToIdleTimer(characterId);
+   908→    
+   909→    set((state: any) => {
+   910→      const newStates = { ...state.characterSpriteStates };
+   911→      delete newStates[characterId];
+   912→      return { characterSpriteStates: newStates };
+   913→    });
+   914→  },
+   915→  
+   916→  setSpriteStateForCharacter: (characterId: string, spriteState: SpriteState) => {
+   917→    set((state: any) => {
+   918→      const currentCharState = state.characterSpriteStates[characterId] || createDefaultCharacterState();
+   919→      
+   920→      return {
+   921→        characterSpriteStates: {
+   922→          ...state.characterSpriteStates,
+   923→          [characterId]: {
+   924→            ...currentCharState,
+   925→            spriteState,
+   926→          },
+   927→        },
+   928→      };
+   929→    });
+   930→  },
+   931→
+   932→  // FASE 7: Set a field on the character sprite state
+   933→  setCharacterSpriteStateField: (characterId: string, field: string, value: unknown) => {
+   934→    set((state: any) => {
+   935→      const currentCharState = state.characterSpriteStates[characterId] || createDefaultCharacterState();
+   936→      
+   937→      return {
+   938→        characterSpriteStates: {
+   939→          ...state.characterSpriteStates,
+   940→          [characterId]: {
+   941→            ...currentCharState,
+   942→            [field]: value,
+   943→          },
+   944→        },
+   945→      };
+   946→    });
+   947→  },
+   948→
+   949→  // ============================================
+   950→  // END GENERATION WITH TTS SUPPORT
+   951→  // Like endGenerationForCharacter, but sets 'talk' instead of 'idle'
+   952→  // when TTS is expected to play (no trigger active).
+   953→  // ============================================
+   954→  endGenerationForCharacterWithTTS: (characterId: string, ttsExpected: boolean) => {
+   955→    set((state: any) => {
+   956→      const currentCharState = state.characterSpriteStates[characterId];
+   957→      if (!currentCharState) return state;
+   958→
+   959→      const hasActiveTrigger = currentCharState.triggerSpriteUrl !== null;
+   960→
+   961→      if (hasActiveTrigger) {
+   962→        // Trigger sprite is active, keep it — TTS state is irrelevant
+   963→        return {
+   964→          characterSpriteStates: {
+   965→            ...state.characterSpriteStates,
+   966→            [characterId]: {
+   967→              ...currentCharState,
+   968→              spriteState: 'idle',
+   969→            },
+   970→          },
+   971→        };
+   972→      }
+   973→
+   974→      // No trigger active
+   975→      // If TTS is expected to play → set 'talk' so CharacterSprite shows talk sprite
+   976→      // If TTS is NOT expected → set 'idle' as usual
+   977→      const targetState = ttsExpected ? 'talk' : 'idle';
+   978→
+   979→      return {
+   980→        characterSpriteStates: {
+   981→          ...state.characterSpriteStates,
+   982→          [characterId]: {
+   983→            ...currentCharState,
+   984→            triggerSpriteUrl: null,
+   985→            triggerSpriteLabel: null,
+   986→            spriteState: targetState,
+   987→          },
+   988→        },
+   989→      };
+   990→    });
+   991→  },
+   992→
+   993→  // ============================================
+   994→  // LEGACY ACTIONS (for backward compatibility with single chat)
+   995→  // ============================================
+   996→  
+   997→  setSpriteState: (state: SpriteState) => {
+   998→    set({ currentSpriteState: state });
+   999→  },
+  1000→
+  1001→  setSpriteUrl: (url: string | null, label: string | null = null) => {
+  1002→    // This is now a no-op for the unified system
+  1003→    // The trigger system handles sprite URLs per character
+  1004→  },
+  1005→
+  1006→  // Lock management
+  1007→  setSpriteLock: (lock: Partial<SpriteLockState>) => set((state: any) => ({
+  1008→    spriteLock: { ...state.spriteLock, ...lock },
+  1009→  })),
+  1010→
+  1011→  clearSpriteLock: () => {
+  1012→    if (_lockIntervalId) {
+  1013→      clearInterval(_lockIntervalId);
+  1014→      _lockIntervalId = null;
+  1015→    }
+  1016→    
+  1017→    set({
+  1018→      spriteLock: {
+  1019→        active: false,
+  1020→        spriteUrl: '',
+  1021→        until: 0,
+  1022→        lastApplyAt: 0,
+  1023→      },
+  1024→      lockIntervalMs: 0,
+  1025→      lockIntervalId: null,
+  1026→    });
+  1027→  },
+  1028→
+  1029→  applySpriteLock: (url: string, durationMs: number, intervalMs: number = 0) => {
+  1030→    const now = Date.now();
+  1031→    
+  1032→    if (_lockIntervalId) {
+  1033→      clearInterval(_lockIntervalId);
+  1034→      _lockIntervalId = null;
+  1035→    }
+  1036→    
+  1037→    if (intervalMs > 0) {
+  1038→      _lockIntervalId = setInterval(() => {
+  1039→        const state = get();
+  1040→        if (state.spriteLock.active && state.spriteLock.spriteUrl) {
+  1041→          set({
+  1042→            spriteLock: {
+  1043→              ...state.spriteLock,
+  1044→              lastApplyAt: Date.now(),
+  1045→            },
+  1046→          });
+  1047→        }
+  1048→      }, intervalMs);
+  1049→    }
+  1050→    
+  1051→    set({
+  1052→      spriteLock: {
+  1053→        active: true,
+  1054→        spriteUrl: url,
+  1055→        until: durationMs > 0 ? now + durationMs : 0,
+  1056→        lastApplyAt: now,
+  1057→      },
+  1058→      lockIntervalMs: intervalMs,
+  1059→      lockIntervalId: _lockIntervalId,
+  1060→    });
+  1061→  },
+  1062→
+  1063→  reapplySpriteLock: () => {
+  1064→    const state = get();
+  1065→    if (state.spriteLock.active && state.spriteLock.spriteUrl) {
+  1066→      set({
+  1067→        spriteLock: {
+  1068→          ...state.spriteLock,
+  1069→          lastApplyAt: Date.now(),
+  1070→        },
+  1071→      });
+  1072→    }
+  1073→  },
+  1074→
+  1075→  setLockInterval: (intervalMs: number) => {
+  1076→    if (_lockIntervalId) {
+  1077→      clearInterval(_lockIntervalId);
+  1078→      _lockIntervalId = null;
+  1079→    }
+  1080→    
+  1081→    if (intervalMs > 0) {
+  1082→      _lockIntervalId = setInterval(() => {
+  1083→        const state = get();
+  1084→        if (state.spriteLock.active && state.spriteLock.spriteUrl) {
+  1085→          set({
+  1086→            spriteLock: {
+  1087→              ...state.spriteLock,
+  1088→              lastApplyAt: Date.now(),
+  1089→            },
+  1090→          });
+  1091→        }
+  1092→      }, intervalMs);
+  1093→    }
+  1094→    
+  1095→    set({ lockIntervalMs: intervalMs, lockIntervalId: _lockIntervalId });
+  1096→  },
+  1097→
+  1098→  // Legacy return to idle - now uses active character concept
+  1099→  scheduleReturnToIdle: (currentUrl: string, idleUrl: string, idleLabel: string | null, delayMs: number) => {
+  1100→    // This is called by useSpriteTriggers hook
+  1101→    // We need to find the active character or use a default
+  1102→    const state = get();
+  1103→    const activeCharId = Object.keys(state.characterSpriteStates)[0];
+  1104→    if (activeCharId) {
+  1105→      get().scheduleReturnToIdleForCharacter(activeCharId, currentUrl, 'clear', idleUrl, idleLabel, delayMs);
+  1106→    }
+  1107→  },
+  1108→  
+  1109→  cancelReturnToIdle: () => {
+  1110→    const state = get();
+  1111→    const activeCharId = Object.keys(state.characterSpriteStates)[0];
+  1112→    if (activeCharId) {
+  1113→      get().cancelReturnToIdleForCharacter(activeCharId);
+  1114→    }
+  1115→  },
+  1116→  
+  1117→  executeReturnToIdle: () => {
+  1118→    const state = get();
+  1119→    const activeCharId = Object.keys(state.characterSpriteStates)[0];
+  1120→    if (activeCharId) {
+  1121→      get().executeReturnToIdleForCharacter(activeCharId);
+  1122→    }
+  1123→  },
+  1124→
+  1125→  // Legacy trigger - apply to active character
+  1126→  applySpriteTrigger: (hit: SpriteTriggerHit) => {
+  1127→    const state = get();
+  1128→    const activeCharId = Object.keys(state.characterSpriteStates)[0];
+  1129→    if (activeCharId) {
+  1130→      get().applyTriggerForCharacter(activeCharId, hit);
+  1131→    }
+  1132→  },
+  1133→
+  1134→  isSpriteLocked: () => {
+  1135→    const state = get();
+  1136→    if (!state.spriteLock.active) return false;
+  1137→    if (state.spriteLock.until === 0) return true;
+  1138→    return Date.now() < state.spriteLock.until;
+  1139→  },
+  1140→
+  1141→  isReturnToIdleScheduled: () => {
+  1142→    const state = get();
+  1143→    const activeCharId = Object.keys(state.characterSpriteStates)[0];
+  1144→    if (activeCharId) {
+  1145→      return state.characterSpriteStates[activeCharId]?.returnToIdle.active || false;
+  1146→    }
+  1147→    return false;
+  1148→  },
+  1149→
+  1150→  getReturnToIdleCountdown: () => {
+  1151→    const state = get();
+  1152→    const activeCharId = Object.keys(state.characterSpriteStates)[0];
+  1153→    if (activeCharId) {
+  1154→      return get().getReturnToIdleCountdownForCharacter(activeCharId);
+  1155→    }
+  1156→    return 0;
+  1157→  },
+  1158→
+  1159→  // Legacy generation tracking
+  1160→  startGeneration: () => {
+  1161→    // For backward compatibility, we set the global state
+  1162→    set({
+  1163→      currentSpriteState: 'thinking',
+  1164→    });
+  1165→  },
+  1166→  
+  1167→  endGeneration: () => {
+  1168→    set({
+  1169→      currentSpriteState: 'idle',
+  1170→    });
+  1171→  },
+  1172→  
+  1173→  wasTriggerActivated: () => {
+  1174→    const state = get();
+  1175→    const activeCharId = Object.keys(state.characterSpriteStates)[0];
+  1176→    if (activeCharId) {
+  1177→      return state.characterSpriteStates[activeCharId]?.triggerActivatedDuringGeneration || false;
+  1178→    }
+  1179→    return false;
+  1180→  },
+  1181→
+  1182→  // Index management
+  1183→  setSpriteIndex: (index: SpriteIndex) => set({ spriteIndex: index }),
+  1184→
+  1185→  getSpriteUrlByLabel: (label: string) => {
+  1186→    const state = get();
+  1187→    const entry = state.spriteIndex.sprites.find(s => s.label === label);
+  1188→    return entry?.url || null;
+  1189→  },
+  1190→
+  1191→  // ============================================
+  1192→  // NEW V2 IMPLEMENTATIONS
+  1193→  // ============================================
+  1194→  
+  1195→  // Initial V2 state
+  1196→  spritePacksV2: [],
+  1197→  
+  1198→  // Trigger Queue System
+  1199→  addTriggerToQueue: (characterId: string, entry) => {
+  1200→    set((state: any) => {
+  1201→      const charState = state.characterSpriteStates[characterId] || createDefaultCharacterState();
+  1202→      const queue = charState.triggerQueue.queue;
+  1203→      
+  1204→      // Check if queue is full
+  1205→      if (queue.length >= charState.triggerQueue.maxQueueSize) {
+  1206→        return state; // Don't add if queue is full
+  1207→      }
+  1208→      
+  1209→      const newEntry: TriggerQueueEntry = {
+  1210→        id: uuidv4(),
+  1211→        ...entry,
+  1212→        triggeredAt: Date.now(),
+  1213→      };
+  1214→      
+  1215→      return {
+  1216→        characterSpriteStates: {
+  1217→          ...state.characterSpriteStates,
+  1218→          [characterId]: {
+  1219→            ...charState,
+  1220→            triggerQueue: {
+  1221→              ...charState.triggerQueue,
+  1222→              queue: [...queue, newEntry],
+  1223→            },
+  1224→          },
+  1225→        },
+  1226→      };
+  1227→    });
+  1228→  },
+  1229→  
+  1230→  processNextTriggerInQueue: (characterId: string) => {
+  1231→    const state = get();
+  1232→    const charState = state.characterSpriteStates[characterId];
+  1233→    
+  1234→    if (!charState || charState.triggerQueue.queue.length === 0) {
+  1235→      return;
+  1236→    }
+  1237→    
+  1238→    // Check if there's an active trigger
+  1239→    if (charState.triggerQueue.active) {
+  1240→      return; // Wait for current trigger to finish
+  1241→    }
+  1242→    
+  1243→    // Get next trigger from queue
+  1244→    const [nextEntry, ...remaining] = charState.triggerQueue.queue;
+  1245→    
+  1246→    console.log('[SpriteSlice] Processing next trigger from queue:', {
+  1247→      characterId,
+  1248→      spriteUrl: nextEntry.spriteUrl,
+  1249→      spriteLabel: nextEntry.spriteLabel,
+  1250→      fallbackMode: nextEntry.fallbackMode,
+  1251→      fallbackDelayMs: nextEntry.fallbackDelayMs,
+  1252→    });
+  1253→    
+  1254→    // Apply the trigger sprite
+  1255→    get().applyTriggerForCharacter(characterId, {
+  1256→      spriteUrl: nextEntry.spriteUrl,
+  1257→      spriteLabel: nextEntry.spriteLabel,
+  1258→      returnToIdleMs: nextEntry.fallbackDelayMs ?? 0,
+  1259→    });
+  1260→    
+  1261→    // Schedule fallback if configured
+  1262→    if (nextEntry.fallbackDelayMs && nextEntry.fallbackDelayMs > 0) {
+  1263→      // Determine returnToMode based on fallbackMode
+  1264→      let returnToMode: 'idle' | 'talk' | 'thinking' | 'clear' = 'idle';
+  1265→      let returnSpriteUrl = nextEntry.fallbackSpriteUrl || '';
+  1266→
+  1267→      if (nextEntry.fallbackMode === 'idle_collection') {
+  1268→        // For 'idle_collection', use 'clear' mode to let normal state logic apply
+  1269→        returnToMode = 'clear';
+  1270→        returnSpriteUrl = ''; // Empty is fine for 'clear' mode
+  1271→      } else if (nextEntry.fallbackSpriteUrl) {
+  1272→        // For 'custom_sprite' and 'collection_default', apply the sprite
+  1273→        returnToMode = 'idle';
+  1274→      } else {
+  1275→        // Fallback if no sprite URL was resolved - use 'clear' mode
+  1276→        returnToMode = 'clear';
+  1277→        returnSpriteUrl = '';
+  1278→      }
+  1279→
+  1280→      // Schedule the fallback
+  1281→      get().scheduleReturnToIdleForCharacter(
+  1282→        characterId,
+  1283→        nextEntry.spriteUrl,
+  1284→        returnToMode,
+  1285→        returnSpriteUrl,
+  1286→        null,
+  1287→        nextEntry.fallbackDelayMs
+  1288→      );
+  1289→    }
+  1290→    
+  1291→    // Update the queue state
+  1292→    set((state: any) => ({
+  1293→      characterSpriteStates: {
+  1294→        ...state.characterSpriteStates,
+  1295→        [characterId]: {
+  1296→          ...state.characterSpriteStates[characterId],
+  1297→          triggerQueue: {
+  1298→            ...state.characterSpriteStates[characterId].triggerQueue,
+  1299→            queue: remaining,
+  1300→            active: {
+  1301→              triggerCollectionId: nextEntry.triggerCollectionId,
+  1302→              spriteId: nextEntry.spriteId || '',
+  1303→              startedAt: Date.now(),
+  1304→              fallbackScheduled: !!nextEntry.fallbackDelayMs && nextEntry.fallbackDelayMs > 0,
+  1305→            },
+  1306→          },
+  1307→        },
+  1308→      },
+  1309→    }));
+  1310→  },
+  1311→  
+  1312→  clearTriggerQueue: (characterId: string) => {
+  1313→    set((state: any) => {
+  1314→      const charState = state.characterSpriteStates[characterId];
+  1315→      if (!charState) return state;
+  1316→      
+  1317→      return {
+  1318→        characterSpriteStates: {
+  1319→          ...state.characterSpriteStates,
+  1320→          [characterId]: {
+  1321→            ...charState,
+  1322→            triggerQueue: createDefaultTriggerQueueState(),
+  1323→          },
+  1324→        },
+  1325→      };
+  1326→    });
+  1327→  },
+  1328→  
+  1329→  getTriggerQueueLength: (characterId: string) => {
+  1330→    const state = get();
+  1331→    const charState = state.characterSpriteStates[characterId];
+  1332→    return charState?.triggerQueue.queue.length || 0;
+  1333→  },
+  1334→  
+  1335→  hasActiveTrigger: (characterId: string) => {
+  1336→    const state = get();
+  1337→    const charState = state.characterSpriteStates[characterId];
+  1338→    return charState?.triggerQueue.active !== null;
+  1339→  },
+  1340→  
+  1341→  resetTriggerTimer: (characterId: string) => {
+  1342→    // Reset the return to idle timer (re-trigger same sprite)
+  1343→    set((state: any) => {
+  1344→      const charState = state.characterSpriteStates[characterId];
+  1345→      if (!charState || !charState.returnToIdle.active) return state;
+  1346→      
+  1347→      const now = Date.now();
+  1348→      return {
+  1349→        characterSpriteStates: {
+  1350→          ...state.characterSpriteStates,
+  1351→          [characterId]: {
+  1352→            ...charState,
+  1353→            returnToIdle: {
+  1354→              ...charState.returnToIdle,
+  1355→              scheduledAt: now,
+  1356→              returnAt: now + (charState.returnToIdle.returnAt - charState.returnToIdle.scheduledAt),
+  1357→            },
+  1358→          },
+  1359→        },
+  1360→      };
+  1361→    });
+  1362→  },
+  1363→  
+  1364→  // Chain System
+  1365→  startSpriteChain: (characterId: string, chain: SpriteChain) => {
+  1366→    if (!chain.enabled || chain.steps.length === 0) return;
+  1367→    
+  1368→    set((state: any) => {
+  1369→      const charState = state.characterSpriteStates[characterId] || createDefaultCharacterState();
+  1370→      
+  1371→      return {
+  1372→        characterSpriteStates: {
+  1373→          ...state.characterSpriteStates,
+  1374→          [characterId]: {
+  1375→            ...charState,
+  1376→            chainProgress: {
+  1377→              active: true,
+  1378→              type: 'sprite',
+  1379→              currentStep: 0,
+  1380→              totalSteps: chain.steps.length,
+  1381→              startedAt: Date.now(),
+  1382→              interruptible: chain.interruptible,
+  1383→            },
+  1384→          },
+  1385→        },
+  1386→      };
+  1387→    });
+  1388→  },
+  1389→  
+  1390→  startSoundChain: (characterId: string, chain: SoundChain) => {
+  1391→    if (!chain.enabled || chain.steps.length === 0) return;
+  1392→    
+  1393→    // Get sound data from state and play
+  1394→    const state = get();
+  1395→    const soundTriggers = (state as any).soundTriggers || [];
+  1396→    const soundCollections = (state as any).soundCollections || [];
+  1397→    const globalVolume = (state as any).settings?.sound?.globalVolume ?? 0.85;
+  1398→    
+  1399→    // Play the sound chain
+  1400→    playSoundChainForCharacter(characterId, chain, soundTriggers, soundCollections, globalVolume);
+  1401→    
+  1402→    set((state: any) => {
+  1403→      const charState = state.characterSpriteStates[characterId] || createDefaultCharacterState();
+  1404→      
+  1405→      return {
+  1406→        characterSpriteStates: {
+  1407→          ...state.characterSpriteStates,
+  1408→          [characterId]: {
+  1409→            ...charState,
+  1410→            chainProgress: {
+  1411→              active: true,
+  1412→              type: 'sound',
+  1413→              currentStep: 0,
+  1414→              totalSteps: chain.steps.length,
+  1415→              startedAt: Date.now(),
+  1416→              interruptible: chain.stopOnInterrupt,
+  1417→            },
+  1418→          },
+  1419→        },
+  1420→      };
+  1421→    });
+  1422→  },
+  1423→  
+  1424→  advanceChainStep: (characterId: string) => {
+  1425→    set((state: any) => {
+  1426→      const charState = state.characterSpriteStates[characterId];
+  1427→      if (!charState?.chainProgress?.active) return state;
+  1428→      
+  1429→      const nextStep = charState.chainProgress.currentStep + 1;
+  1430→      
+  1431→      if (nextStep >= charState.chainProgress.totalSteps) {
+  1432→        // Chain complete
+  1433→        return {
+  1434→          characterSpriteStates: {
+  1435→            ...state.characterSpriteStates,
+  1436→            [characterId]: {
+  1437→              ...charState,
+  1438→              chainProgress: null,
+  1439→            },
+  1440→          },
+  1441→        };
+  1442→      }
+  1443→      
+  1444→      return {
+  1445→        characterSpriteStates: {
+  1446→          ...state.characterSpriteStates,
+  1447→          [characterId]: {
+  1448→            ...charState,
+  1449→            chainProgress: {
+  1450→              ...charState.chainProgress,
+  1451→              currentStep: nextStep,
+  1452→            },
+  1453→          },
+  1454→        },
+  1455→      };
+  1456→    });
+  1457→  },
+  1458→  
+  1459→  interruptChain: (characterId: string) => {
+  1460→    // Stop any active sound chains
+  1461→    stopSoundChainForCharacter(characterId);
+  1462→    
+  1463→    set((state: any) => {
+  1464→      const charState = state.characterSpriteStates[characterId];
+  1465→      if (!charState?.chainProgress?.active || !charState.chainProgress.interruptible) {
+  1466→        return state;
+  1467→      }
+  1468→      
+  1469→      return {
+  1470→        characterSpriteStates: {
+  1471→          ...state.characterSpriteStates,
+  1472→          [characterId]: {
+  1473→            ...charState,
+  1474→            chainProgress: null,
+  1475→          },
+  1476→        },
+  1477→      };
+  1478→    });
+  1479→  },
+  1480→  
+  1481→  getChainProgress: (characterId: string) => {
+  1482→    const state = get();
+  1483→    const charState = state.characterSpriteStates[characterId];
+  1484→    return charState?.chainProgress || null;
+  1485→  },
+  1486→  
+  1487→  // Sprite Packs V2 Management
+  1488→  createSpritePackV2: (name: string, description?: string) => {
+  1489→    const now = new Date().toISOString();
+  1490→    const newPack: SpritePackV2 = {
+  1491→      id: uuidv4(),
+  1492→      name,
+  1493→      description,
+  1494→      sprites: [],
+  1495→      createdAt: now,
+  1496→      updatedAt: now,
+  1497→    };
+  1498→    
+  1499→    set((state: any) => ({
+  1500→      spritePacksV2: [...state.spritePacksV2, newPack],
+  1501→    }));
+  1502→    
+  1503→    return newPack;
+  1504→  },
+  1505→  
+  1506→  updateSpritePackV2: (id: string, updates: Partial<SpritePackV2>) => {
+  1507→    set((state: any) => ({
+  1508→      spritePacksV2: state.spritePacksV2.map((p: SpritePackV2) =>
+  1509→        p.id === id ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p
+  1510→      ),
+  1511→    }));
+  1512→  },
+  1513→  
+  1514→  deleteSpritePackV2: (id: string) => {
+  1515→    set((state: any) => ({
+  1516→      spritePacksV2: state.spritePacksV2.filter((p: SpritePackV2) => p.id !== id),
+  1517→    }));
+  1518→  },
+  1519→  
+  1520→  addSpriteToPackV2: (packId: string, sprite) => {
+  1521→    set((state: any) => ({
+  1522→      spritePacksV2: state.spritePacksV2.map((p: SpritePackV2) => {
+  1523→        if (p.id !== packId) return p;
+  1524→        
+  1525→        return {
+  1526→          ...p,
+  1527→          sprites: [...p.sprites, { ...sprite, id: uuidv4() }],
+  1528→          updatedAt: new Date().toISOString(),
+  1529→        };
+  1530→      }),
+  1531→    }));
+  1532→  },
+  1533→  
+  1534→  removeSpriteFromPackV2: (packId: string, spriteId: string) => {
+  1535→    set((state: any) => ({
+  1536→      spritePacksV2: state.spritePacksV2.map((p: SpritePackV2) => {
+  1537→        if (p.id !== packId) return p;
+  1538→        
+  1539→        return {
+  1540→          ...p,
+  1541→          sprites: p.sprites.filter(s => s.id !== spriteId),
+  1542→          updatedAt: new Date().toISOString(),
+  1543→        };
+  1544→      }),
+  1545→    }));
+  1546→  },
+  1547→  
+  1548→  getSpritePackV2ById: (id: string) => {
+  1549→    const state = get();
+  1550→    return state.spritePacksV2.find(p => p.id === id);
+  1551→  },
+  1552→  
+  1553→  // Trigger Collections Management (stored per character)
+  1554→  createTriggerCollection: (characterId: string, collection) => {
+  1555→    const now = new Date().toISOString();
+  1556→    const newCollection: TriggerCollection = {
+  1557→      ...collection,
+  1558→      id: uuidv4(),
+  1559→      createdAt: now,
+  1560→      updatedAt: now,
+  1561→    };
+  1562→    
+  1563→    // This would typically update the character card's triggerCollections
+  1564→    // For now, we return the new collection
+  1565→    return newCollection;
+  1566→  },
+  1567→  
+  1568→  updateTriggerCollection: (characterId: string, collectionId: string, updates: Partial<TriggerCollection>) => {
+  1569→    // This would update the character card's triggerCollections
+  1570→    // Implementation depends on how characters are stored
+  1571→  },
+  1572→  
+  1573→  deleteTriggerCollection: (characterId: string, collectionId: string) => {
+  1574→    // This would delete from character card's triggerCollections
+  1575→  },
+  1576→  
+  1577→  getTriggerCollectionsForCharacter: (characterId: string) => {
+  1578→    // This would get from character card
+  1579→    const state = get();
+  1580→    // For now, return empty array - this will be connected to character data
+  1581→    return [];
+  1582→  },
+  1583→});
+  1584→// Force recompile
+  1585→

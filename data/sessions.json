@@ -1386,21 +1386,36 @@
     "name": "Chat with Decemone",
     "messages": [
       {
-        "id": "af59f193-6418-4a32-a017-96ed63c4141d",
+        "id": "3960ddad-82ba-4fd2-b56e-c3604fd57d61",
         "characterId": "33bbd96a-3533-43b9-84b8-653f401db619",
         "role": "assistant",
-        "content": "(Decemone está tirada en el sillón jugando en su celular, sin ni siquiera voltearte a ver cuando entras.)\n\n\"¿Dónde estabas? hasta que aparece...\"\n\n*ni creas que te voy a voltear a ver... esta partida está muy interesante*\n\n\"Tráeme algo de tomar o de comer...\"\n\n*finalmente te miro de reojo con cara de aburrida*\n\n\"Y apúrate... se me antojó algo.\"",
-        "timestamp": "2026-06-06T20:21:01.349Z",
+        "content": "*Decemone está tirada en la cama* \"Baby... ¿me compras ese juego que te dije? Si me lo compras te dejo que me sientes en la cara un rato...\"",
+        "timestamp": "2026-06-13T15:35:36.877Z",
         "isDeleted": false,
-        "swipeId": "f56ed9de-9f3c-484e-83c3-be5ab193c2d5",
-        "swipeIndex": 0,
+        "swipeId": "e0098627-1277-4db5-b849-a9123e726788",
+        "swipeIndex": 1,
         "swipes": [
-          "(Decemone está tirada en el sillón jugando en su celular, sin ni siquiera voltearte a ver cuando entras.)\n\n\"¿Dónde estabas? hasta que aparece...\"\n\n*ni creas que te voy a voltear a ver... esta partida está muy interesante*\n\n\"Tráeme algo de tomar o de comer...\"\n\n*finalmente te miro de reojo con cara de aburrida*\n\n\"Y apúrate... se me antojó algo.\""
+          "(Decemone está tirada en el sillón jugando en su celular, sin ni siquiera voltearte a ver cuando entras.)\n\n\"¿Dónde estabas? hasta que aparece...\"\n\n*ni creas que te voy a voltear a ver... esta partida está muy interesante*\n\n\"Tráeme algo de tomar o de comer...\"\n\n*finalmente te miro de reojo con cara de aburrida*\n\n\"Y apúrate... se me antojó algo.\"",
+          "*Decemone está tirada en la cama* \"Baby... ¿me compras ese juego que te dije? Si me lo compras te dejo que me sientes en la cara un rato...\"",
+          "*Está comiendo en el sillón* \"Oye... ¿me das dinero para pedir comida? Si me das después te aplasto con el culo mientras juego.\""
+        ]
+      },
+      {
+        "characterId": "33bbd96a-3533-43b9-84b8-653f401db619",
+        "role": "user",
+        "content": "(drAke se pone detrás de Decemone y agarra sus tetas enormes con fuerza, apretándolas con las manos) \"Mira qué tetotas tan grandes tienes... No pude resistirme\"",
+        "isDeleted": false,
+        "swipeId": "c77fc36d-92e7-46b7-938f-541be67010dc",
+        "swipeIndex": 0,
+        "id": "ea3eac34-6198-4251-bcb0-31da8402c48b",
+        "timestamp": "2026-06-13T16:10:32.032Z",
+        "swipes": [
+          "(drAke se pone detrás de Decemone y agarra sus tetas enormes con fuerza, apretándolas con las manos) \"Mira qué tetotas tan grandes tienes... No pude resistirme\""
         ]
       }
     ],
     "createdAt": "2026-06-05T10:13:31.682Z",
-    "updatedAt": "2026-06-07T18:56:14.599Z",
+    "updatedAt": "2026-06-13T16:41:15.013Z",
     "sessionStats": {
       "characterStats": {
         "33bbd96a-3533-43b9-84b8-653f401db619": {
@@ -1412,30 +1427,30 @@
             "sensibilidad_pezones": 0
           },
           "lastUpdated": {
-            "lujuria": 1780858574524,
-            "exigencia": 1780858574539,
-            "adiccion_pezones": 1780858574555,
-            "hentaistyle": 1780858574571,
-            "sensibilidad_pezones": 1780858574584
+            "lujuria": 1781368874948,
+            "exigencia": 1781368874969,
+            "adiccion_pezones": 1781368874977,
+            "hentaistyle": 1781368874987,
+            "sensibilidad_pezones": 1781368874998
           },
           "changeLog": [
             {
               "attributeId": "attr-decemone-lujuria",
               "attributeKey": "lujuria",
               "attributeName": "Lujuria",
-              "oldValue": 0,
-              "newValue": 0,
+              "oldValue": 45,
+              "newValue": 40,
               "reason": "timer",
-              "timestamp": 1780852874524
+              "timestamp": 1781365271948
             },
             {
               "attributeId": "attr-decemone-exigencia",
               "attributeKey": "exigencia",
               "attributeName": "Exigencia",
-              "oldValue": 100,
-              "newValue": 100,
+              "oldValue": 75,
+              "newValue": 80,
               "reason": "timer",
-              "timestamp": 1780852874540
+              "timestamp": 1781365271958
             },
             {
               "attributeId": "attr-decemone-adiccion",
@@ -1444,7 +1459,97 @@
               "oldValue": 0,
               "newValue": 0,
               "reason": "timer",
-              "timestamp": 1780852874554
+              "timestamp": 1781365271968
+            },
+            {
+              "attributeId": "attr-1780195604316",
+              "attributeKey": "hentaistyle",
+              "attributeName": "Hentai Style",
+              "oldValue": 10,
+              "newValue": 5,
+              "reason": "timer",
+              "timestamp": 1781365271978
+            },
+            {
+              "attributeId": "attr-1780522037234",
+              "attributeKey": "sensibilidad_pezones",
+              "attributeName": "Sensibilidad de Pezones",
+              "oldValue": 15,
+              "newValue": 10,
+              "reason": "timer",
+              "timestamp": 1781365271987
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 40,
+              "newValue": 35,
+              "reason": "timer",
+              "timestamp": 1781365545956
+            },
+            {
+              "attributeId": "attr-decemone-exigencia",
+              "attributeKey": "exigencia",
+              "attributeName": "Exigencia",
+              "oldValue": 80,
+              "newValue": 85,
+              "reason": "timer",
+              "timestamp": 1781365545967
+            },
+            {
+              "attributeId": "attr-decemone-adiccion",
+              "attributeKey": "adiccion_pezones",
+              "attributeName": "Adicción a la penetración de pezones",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781365545978
+            },
+            {
+              "attributeId": "attr-1780195604316",
+              "attributeKey": "hentaistyle",
+              "attributeName": "Hentai Style",
+              "oldValue": 5,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781365545990
+            },
+            {
+              "attributeId": "attr-1780522037234",
+              "attributeKey": "sensibilidad_pezones",
+              "attributeName": "Sensibilidad de Pezones",
+              "oldValue": 10,
+              "newValue": 5,
+              "reason": "timer",
+              "timestamp": 1781365546004
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 35,
+              "newValue": 30,
+              "reason": "timer",
+              "timestamp": 1781365863945
+            },
+            {
+              "attributeId": "attr-decemone-exigencia",
+              "attributeKey": "exigencia",
+              "attributeName": "Exigencia",
+              "oldValue": 85,
+              "newValue": 90,
+              "reason": "timer",
+              "timestamp": 1781365863957
+            },
+            {
+              "attributeId": "attr-decemone-adiccion",
+              "attributeKey": "adiccion_pezones",
+              "attributeName": "Adicción a la penetración de pezones",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781365863966
             },
             {
               "attributeId": "attr-1780195604316",
@@ -1453,7 +1558,52 @@
               "oldValue": 0,
               "newValue": 0,
               "reason": "timer",
-              "timestamp": 1780852874568
+              "timestamp": 1781365863977
+            },
+            {
+              "attributeId": "attr-1780522037234",
+              "attributeKey": "sensibilidad_pezones",
+              "attributeName": "Sensibilidad de Pezones",
+              "oldValue": 5,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781365863989
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 30,
+              "newValue": 25,
+              "reason": "timer",
+              "timestamp": 1781366145944
+            },
+            {
+              "attributeId": "attr-decemone-exigencia",
+              "attributeKey": "exigencia",
+              "attributeName": "Exigencia",
+              "oldValue": 90,
+              "newValue": 95,
+              "reason": "timer",
+              "timestamp": 1781366145955
+            },
+            {
+              "attributeId": "attr-decemone-adiccion",
+              "attributeKey": "adiccion_pezones",
+              "attributeName": "Adicción a la penetración de pezones",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781366145974
+            },
+            {
+              "attributeId": "attr-1780195604316",
+              "attributeKey": "hentaistyle",
+              "attributeName": "Hentai Style",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781366145986
             },
             {
               "attributeId": "attr-1780522037234",
@@ -1462,7 +1612,304 @@
               "oldValue": 0,
               "newValue": 0,
               "reason": "timer",
-              "timestamp": 1780852874581
+              "timestamp": 1781366146000
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 25,
+              "newValue": 20,
+              "reason": "timer",
+              "timestamp": 1781366445944
+            },
+            {
+              "attributeId": "attr-decemone-exigencia",
+              "attributeKey": "exigencia",
+              "attributeName": "Exigencia",
+              "oldValue": 95,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1781366445951
+            },
+            {
+              "attributeId": "attr-decemone-adiccion",
+              "attributeKey": "adiccion_pezones",
+              "attributeName": "Adicción a la penetración de pezones",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781366445964
+            },
+            {
+              "attributeId": "attr-1780195604316",
+              "attributeKey": "hentaistyle",
+              "attributeName": "Hentai Style",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781366445977
+            },
+            {
+              "attributeId": "attr-1780522037234",
+              "attributeKey": "sensibilidad_pezones",
+              "attributeName": "Sensibilidad de Pezones",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781366445988
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 20,
+              "newValue": 15,
+              "reason": "timer",
+              "timestamp": 1781366745944
+            },
+            {
+              "attributeId": "attr-decemone-exigencia",
+              "attributeKey": "exigencia",
+              "attributeName": "Exigencia",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1781366745954
+            },
+            {
+              "attributeId": "attr-decemone-adiccion",
+              "attributeKey": "adiccion_pezones",
+              "attributeName": "Adicción a la penetración de pezones",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781366745965
+            },
+            {
+              "attributeId": "attr-1780195604316",
+              "attributeKey": "hentaistyle",
+              "attributeName": "Hentai Style",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781366745974
+            },
+            {
+              "attributeId": "attr-1780522037234",
+              "attributeKey": "sensibilidad_pezones",
+              "attributeName": "Sensibilidad de Pezones",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781366745986
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 15,
+              "newValue": 20,
+              "reason": "manual",
+              "timestamp": 1781367031999
+            },
+            {
+              "attributeId": "attr-1780195604316",
+              "attributeKey": "hentaistyle",
+              "attributeName": "Hentai Style",
+              "oldValue": 0,
+              "newValue": 8,
+              "reason": "manual",
+              "timestamp": 1781367031999
+            },
+            {
+              "attributeId": "attr-1780522037234",
+              "attributeKey": "sensibilidad_pezones",
+              "attributeName": "Sensibilidad de Pezones",
+              "oldValue": 0,
+              "newValue": 5,
+              "reason": "manual",
+              "timestamp": 1781367031999
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 20,
+              "newValue": 15,
+              "reason": "timer",
+              "timestamp": 1781367083313
+            },
+            {
+              "attributeId": "attr-decemone-exigencia",
+              "attributeKey": "exigencia",
+              "attributeName": "Exigencia",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1781367083324
+            },
+            {
+              "attributeId": "attr-decemone-adiccion",
+              "attributeKey": "adiccion_pezones",
+              "attributeName": "Adicción a la penetración de pezones",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781367083332
+            },
+            {
+              "attributeId": "attr-1780195604316",
+              "attributeKey": "hentaistyle",
+              "attributeName": "Hentai Style",
+              "oldValue": 8,
+              "newValue": 3,
+              "reason": "timer",
+              "timestamp": 1781367083342
+            },
+            {
+              "attributeId": "attr-1780522037234",
+              "attributeKey": "sensibilidad_pezones",
+              "attributeName": "Sensibilidad de Pezones",
+              "oldValue": 5,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781367083353
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 15,
+              "newValue": 10,
+              "reason": "timer",
+              "timestamp": 1781367405943
+            },
+            {
+              "attributeId": "attr-decemone-exigencia",
+              "attributeKey": "exigencia",
+              "attributeName": "Exigencia",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1781367405955
+            },
+            {
+              "attributeId": "attr-decemone-adiccion",
+              "attributeKey": "adiccion_pezones",
+              "attributeName": "Adicción a la penetración de pezones",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781367405972
+            },
+            {
+              "attributeId": "attr-1780195604316",
+              "attributeKey": "hentaistyle",
+              "attributeName": "Hentai Style",
+              "oldValue": 3,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781367405986
+            },
+            {
+              "attributeId": "attr-1780522037234",
+              "attributeKey": "sensibilidad_pezones",
+              "attributeName": "Sensibilidad de Pezones",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781367405997
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 10,
+              "newValue": 5,
+              "reason": "timer",
+              "timestamp": 1781367714952
+            },
+            {
+              "attributeId": "attr-decemone-exigencia",
+              "attributeKey": "exigencia",
+              "attributeName": "Exigencia",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1781367714963
+            },
+            {
+              "attributeId": "attr-decemone-adiccion",
+              "attributeKey": "adiccion_pezones",
+              "attributeName": "Adicción a la penetración de pezones",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781367714971
+            },
+            {
+              "attributeId": "attr-1780195604316",
+              "attributeKey": "hentaistyle",
+              "attributeName": "Hentai Style",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781367714982
+            },
+            {
+              "attributeId": "attr-1780522037234",
+              "attributeKey": "sensibilidad_pezones",
+              "attributeName": "Sensibilidad de Pezones",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781367714992
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 5,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781367954955
+            },
+            {
+              "attributeId": "attr-decemone-exigencia",
+              "attributeKey": "exigencia",
+              "attributeName": "Exigencia",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1781367954964
+            },
+            {
+              "attributeId": "attr-decemone-adiccion",
+              "attributeKey": "adiccion_pezones",
+              "attributeName": "Adicción a la penetración de pezones",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781367954972
+            },
+            {
+              "attributeId": "attr-1780195604316",
+              "attributeKey": "hentaistyle",
+              "attributeName": "Hentai Style",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781367954983
+            },
+            {
+              "attributeId": "attr-1780522037234",
+              "attributeKey": "sensibilidad_pezones",
+              "attributeName": "Sensibilidad de Pezones",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781367954995
             },
             {
               "attributeId": "attr-decemone-lujuria",
@@ -1471,7 +1918,7 @@
               "oldValue": 0,
               "newValue": 0,
               "reason": "timer",
-              "timestamp": 1780853174525
+              "timestamp": 1781368245951
             },
             {
               "attributeId": "attr-decemone-exigencia",
@@ -1480,7 +1927,7 @@
               "oldValue": 100,
               "newValue": 100,
               "reason": "timer",
-              "timestamp": 1780853174556
+              "timestamp": 1781368245965
             },
             {
               "attributeId": "attr-decemone-adiccion",
@@ -1489,7 +1936,7 @@
               "oldValue": 0,
               "newValue": 0,
               "reason": "timer",
-              "timestamp": 1780853174609
+              "timestamp": 1781368245978
             },
             {
               "attributeId": "attr-1780195604316",
@@ -1498,7 +1945,7 @@
               "oldValue": 0,
               "newValue": 0,
               "reason": "timer",
-              "timestamp": 1780853174649
+              "timestamp": 1781368245991
             },
             {
               "attributeId": "attr-1780522037234",
@@ -1507,7 +1954,7 @@
               "oldValue": 0,
               "newValue": 0,
               "reason": "timer",
-              "timestamp": 1780853174683
+              "timestamp": 1781368246001
             },
             {
               "attributeId": "attr-decemone-lujuria",
@@ -1516,7 +1963,7 @@
               "oldValue": 0,
               "newValue": 0,
               "reason": "timer",
-              "timestamp": 1780853474524
+              "timestamp": 1781368545958
             },
             {
               "attributeId": "attr-decemone-exigencia",
@@ -1525,7 +1972,7 @@
               "oldValue": 100,
               "newValue": 100,
               "reason": "timer",
-              "timestamp": 1780853474538
+              "timestamp": 1781368545971
             },
             {
               "attributeId": "attr-decemone-adiccion",
@@ -1534,7 +1981,7 @@
               "oldValue": 0,
               "newValue": 0,
               "reason": "timer",
-              "timestamp": 1780853474551
+              "timestamp": 1781368545983
             },
             {
               "attributeId": "attr-1780195604316",
@@ -1543,7 +1990,7 @@
               "oldValue": 0,
               "newValue": 0,
               "reason": "timer",
-              "timestamp": 1780853474564
+              "timestamp": 1781368545996
             },
             {
               "attributeId": "attr-1780522037234",
@@ -1552,7 +1999,7 @@
               "oldValue": 0,
               "newValue": 0,
               "reason": "timer",
-              "timestamp": 1780853474577
+              "timestamp": 1781368546012
             },
             {
               "attributeId": "attr-decemone-lujuria",
@@ -1561,7 +2008,7 @@
               "oldValue": 0,
               "newValue": 0,
               "reason": "timer",
-              "timestamp": 1780853774525
+              "timestamp": 1781368874948
             },
             {
               "attributeId": "attr-decemone-exigencia",
@@ -1570,7 +2017,7 @@
               "oldValue": 100,
               "newValue": 100,
               "reason": "timer",
-              "timestamp": 1780853774539
+              "timestamp": 1781368874969
             },
             {
               "attributeId": "attr-decemone-adiccion",
@@ -1579,7 +2026,7 @@
               "oldValue": 0,
               "newValue": 0,
               "reason": "timer",
-              "timestamp": 1780853774551
+              "timestamp": 1781368874977
             },
             {
               "attributeId": "attr-1780195604316",
@@ -1588,7 +2035,7 @@
               "oldValue": 0,
               "newValue": 0,
               "reason": "timer",
-              "timestamp": 1780853774566
+              "timestamp": 1781368874987
             },
             {
               "attributeId": "attr-1780522037234",
@@ -1597,727 +2044,7 @@
               "oldValue": 0,
               "newValue": 0,
               "reason": "timer",
-              "timestamp": 1780853774582
-            },
-            {
-              "attributeId": "attr-decemone-lujuria",
-              "attributeKey": "lujuria",
-              "attributeName": "Lujuria",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780854074525
-            },
-            {
-              "attributeId": "attr-decemone-exigencia",
-              "attributeKey": "exigencia",
-              "attributeName": "Exigencia",
-              "oldValue": 100,
-              "newValue": 100,
-              "reason": "timer",
-              "timestamp": 1780854074537
-            },
-            {
-              "attributeId": "attr-decemone-adiccion",
-              "attributeKey": "adiccion_pezones",
-              "attributeName": "Adicción a la penetración de pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780854074553
-            },
-            {
-              "attributeId": "attr-1780195604316",
-              "attributeKey": "hentaistyle",
-              "attributeName": "Hentai Style",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780854074569
-            },
-            {
-              "attributeId": "attr-1780522037234",
-              "attributeKey": "sensibilidad_pezones",
-              "attributeName": "Sensibilidad de Pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780854074584
-            },
-            {
-              "attributeId": "attr-decemone-lujuria",
-              "attributeKey": "lujuria",
-              "attributeName": "Lujuria",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780854374525
-            },
-            {
-              "attributeId": "attr-decemone-exigencia",
-              "attributeKey": "exigencia",
-              "attributeName": "Exigencia",
-              "oldValue": 100,
-              "newValue": 100,
-              "reason": "timer",
-              "timestamp": 1780854374542
-            },
-            {
-              "attributeId": "attr-decemone-adiccion",
-              "attributeKey": "adiccion_pezones",
-              "attributeName": "Adicción a la penetración de pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780854374557
-            },
-            {
-              "attributeId": "attr-1780195604316",
-              "attributeKey": "hentaistyle",
-              "attributeName": "Hentai Style",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780854374572
-            },
-            {
-              "attributeId": "attr-1780522037234",
-              "attributeKey": "sensibilidad_pezones",
-              "attributeName": "Sensibilidad de Pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780854374585
-            },
-            {
-              "attributeId": "attr-decemone-lujuria",
-              "attributeKey": "lujuria",
-              "attributeName": "Lujuria",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780854674526
-            },
-            {
-              "attributeId": "attr-decemone-exigencia",
-              "attributeKey": "exigencia",
-              "attributeName": "Exigencia",
-              "oldValue": 100,
-              "newValue": 100,
-              "reason": "timer",
-              "timestamp": 1780854674537
-            },
-            {
-              "attributeId": "attr-decemone-adiccion",
-              "attributeKey": "adiccion_pezones",
-              "attributeName": "Adicción a la penetración de pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780854674555
-            },
-            {
-              "attributeId": "attr-1780195604316",
-              "attributeKey": "hentaistyle",
-              "attributeName": "Hentai Style",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780854674571
-            },
-            {
-              "attributeId": "attr-1780522037234",
-              "attributeKey": "sensibilidad_pezones",
-              "attributeName": "Sensibilidad de Pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780854674586
-            },
-            {
-              "attributeId": "attr-decemone-lujuria",
-              "attributeKey": "lujuria",
-              "attributeName": "Lujuria",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780854974525
-            },
-            {
-              "attributeId": "attr-decemone-exigencia",
-              "attributeKey": "exigencia",
-              "attributeName": "Exigencia",
-              "oldValue": 100,
-              "newValue": 100,
-              "reason": "timer",
-              "timestamp": 1780854974542
-            },
-            {
-              "attributeId": "attr-decemone-adiccion",
-              "attributeKey": "adiccion_pezones",
-              "attributeName": "Adicción a la penetración de pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780854974555
-            },
-            {
-              "attributeId": "attr-1780195604316",
-              "attributeKey": "hentaistyle",
-              "attributeName": "Hentai Style",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780854974570
-            },
-            {
-              "attributeId": "attr-1780522037234",
-              "attributeKey": "sensibilidad_pezones",
-              "attributeName": "Sensibilidad de Pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780854974586
-            },
-            {
-              "attributeId": "attr-decemone-lujuria",
-              "attributeKey": "lujuria",
-              "attributeName": "Lujuria",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780855274525
-            },
-            {
-              "attributeId": "attr-decemone-exigencia",
-              "attributeKey": "exigencia",
-              "attributeName": "Exigencia",
-              "oldValue": 100,
-              "newValue": 100,
-              "reason": "timer",
-              "timestamp": 1780855274541
-            },
-            {
-              "attributeId": "attr-decemone-adiccion",
-              "attributeKey": "adiccion_pezones",
-              "attributeName": "Adicción a la penetración de pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780855274562
-            },
-            {
-              "attributeId": "attr-1780195604316",
-              "attributeKey": "hentaistyle",
-              "attributeName": "Hentai Style",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780855274579
-            },
-            {
-              "attributeId": "attr-1780522037234",
-              "attributeKey": "sensibilidad_pezones",
-              "attributeName": "Sensibilidad de Pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780855274595
-            },
-            {
-              "attributeId": "attr-decemone-lujuria",
-              "attributeKey": "lujuria",
-              "attributeName": "Lujuria",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780855574525
-            },
-            {
-              "attributeId": "attr-decemone-exigencia",
-              "attributeKey": "exigencia",
-              "attributeName": "Exigencia",
-              "oldValue": 100,
-              "newValue": 100,
-              "reason": "timer",
-              "timestamp": 1780855574542
-            },
-            {
-              "attributeId": "attr-decemone-adiccion",
-              "attributeKey": "adiccion_pezones",
-              "attributeName": "Adicción a la penetración de pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780855574563
-            },
-            {
-              "attributeId": "attr-1780195604316",
-              "attributeKey": "hentaistyle",
-              "attributeName": "Hentai Style",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780855574585
-            },
-            {
-              "attributeId": "attr-1780522037234",
-              "attributeKey": "sensibilidad_pezones",
-              "attributeName": "Sensibilidad de Pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780855574602
-            },
-            {
-              "attributeId": "attr-decemone-lujuria",
-              "attributeKey": "lujuria",
-              "attributeName": "Lujuria",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780855874524
-            },
-            {
-              "attributeId": "attr-decemone-exigencia",
-              "attributeKey": "exigencia",
-              "attributeName": "Exigencia",
-              "oldValue": 100,
-              "newValue": 100,
-              "reason": "timer",
-              "timestamp": 1780855874540
-            },
-            {
-              "attributeId": "attr-decemone-adiccion",
-              "attributeKey": "adiccion_pezones",
-              "attributeName": "Adicción a la penetración de pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780855874558
-            },
-            {
-              "attributeId": "attr-1780195604316",
-              "attributeKey": "hentaistyle",
-              "attributeName": "Hentai Style",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780855874575
-            },
-            {
-              "attributeId": "attr-1780522037234",
-              "attributeKey": "sensibilidad_pezones",
-              "attributeName": "Sensibilidad de Pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780855874590
-            },
-            {
-              "attributeId": "attr-decemone-lujuria",
-              "attributeKey": "lujuria",
-              "attributeName": "Lujuria",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780856174525
-            },
-            {
-              "attributeId": "attr-decemone-exigencia",
-              "attributeKey": "exigencia",
-              "attributeName": "Exigencia",
-              "oldValue": 100,
-              "newValue": 100,
-              "reason": "timer",
-              "timestamp": 1780856174538
-            },
-            {
-              "attributeId": "attr-decemone-adiccion",
-              "attributeKey": "adiccion_pezones",
-              "attributeName": "Adicción a la penetración de pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780856174556
-            },
-            {
-              "attributeId": "attr-1780195604316",
-              "attributeKey": "hentaistyle",
-              "attributeName": "Hentai Style",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780856174568
-            },
-            {
-              "attributeId": "attr-1780522037234",
-              "attributeKey": "sensibilidad_pezones",
-              "attributeName": "Sensibilidad de Pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780856174581
-            },
-            {
-              "attributeId": "attr-decemone-lujuria",
-              "attributeKey": "lujuria",
-              "attributeName": "Lujuria",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780856474525
-            },
-            {
-              "attributeId": "attr-decemone-exigencia",
-              "attributeKey": "exigencia",
-              "attributeName": "Exigencia",
-              "oldValue": 100,
-              "newValue": 100,
-              "reason": "timer",
-              "timestamp": 1780856474538
-            },
-            {
-              "attributeId": "attr-decemone-adiccion",
-              "attributeKey": "adiccion_pezones",
-              "attributeName": "Adicción a la penetración de pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780856474551
-            },
-            {
-              "attributeId": "attr-1780195604316",
-              "attributeKey": "hentaistyle",
-              "attributeName": "Hentai Style",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780856474562
-            },
-            {
-              "attributeId": "attr-1780522037234",
-              "attributeKey": "sensibilidad_pezones",
-              "attributeName": "Sensibilidad de Pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780856474574
-            },
-            {
-              "attributeId": "attr-decemone-lujuria",
-              "attributeKey": "lujuria",
-              "attributeName": "Lujuria",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780856763524
-            },
-            {
-              "attributeId": "attr-decemone-exigencia",
-              "attributeKey": "exigencia",
-              "attributeName": "Exigencia",
-              "oldValue": 100,
-              "newValue": 100,
-              "reason": "timer",
-              "timestamp": 1780856763537
-            },
-            {
-              "attributeId": "attr-decemone-adiccion",
-              "attributeKey": "adiccion_pezones",
-              "attributeName": "Adicción a la penetración de pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780856763551
-            },
-            {
-              "attributeId": "attr-1780195604316",
-              "attributeKey": "hentaistyle",
-              "attributeName": "Hentai Style",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780856763564
-            },
-            {
-              "attributeId": "attr-1780522037234",
-              "attributeKey": "sensibilidad_pezones",
-              "attributeName": "Sensibilidad de Pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780856763577
-            },
-            {
-              "attributeId": "attr-decemone-lujuria",
-              "attributeKey": "lujuria",
-              "attributeName": "Lujuria",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780857074524
-            },
-            {
-              "attributeId": "attr-decemone-exigencia",
-              "attributeKey": "exigencia",
-              "attributeName": "Exigencia",
-              "oldValue": 100,
-              "newValue": 100,
-              "reason": "timer",
-              "timestamp": 1780857074540
-            },
-            {
-              "attributeId": "attr-decemone-adiccion",
-              "attributeKey": "adiccion_pezones",
-              "attributeName": "Adicción a la penetración de pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780857074556
-            },
-            {
-              "attributeId": "attr-1780195604316",
-              "attributeKey": "hentaistyle",
-              "attributeName": "Hentai Style",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780857074573
-            },
-            {
-              "attributeId": "attr-1780522037234",
-              "attributeKey": "sensibilidad_pezones",
-              "attributeName": "Sensibilidad de Pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780857074589
-            },
-            {
-              "attributeId": "attr-decemone-lujuria",
-              "attributeKey": "lujuria",
-              "attributeName": "Lujuria",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780857436055
-            },
-            {
-              "attributeId": "attr-decemone-exigencia",
-              "attributeKey": "exigencia",
-              "attributeName": "Exigencia",
-              "oldValue": 100,
-              "newValue": 100,
-              "reason": "timer",
-              "timestamp": 1780857436066
-            },
-            {
-              "attributeId": "attr-decemone-adiccion",
-              "attributeKey": "adiccion_pezones",
-              "attributeName": "Adicción a la penetración de pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780857436077
-            },
-            {
-              "attributeId": "attr-1780195604316",
-              "attributeKey": "hentaistyle",
-              "attributeName": "Hentai Style",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780857436089
-            },
-            {
-              "attributeId": "attr-1780522037234",
-              "attributeKey": "sensibilidad_pezones",
-              "attributeName": "Sensibilidad de Pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780857436100
-            },
-            {
-              "attributeId": "attr-decemone-lujuria",
-              "attributeKey": "lujuria",
-              "attributeName": "Lujuria",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780857676525
-            },
-            {
-              "attributeId": "attr-decemone-exigencia",
-              "attributeKey": "exigencia",
-              "attributeName": "Exigencia",
-              "oldValue": 100,
-              "newValue": 100,
-              "reason": "timer",
-              "timestamp": 1780857676541
-            },
-            {
-              "attributeId": "attr-decemone-adiccion",
-              "attributeKey": "adiccion_pezones",
-              "attributeName": "Adicción a la penetración de pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780857676556
-            },
-            {
-              "attributeId": "attr-1780195604316",
-              "attributeKey": "hentaistyle",
-              "attributeName": "Hentai Style",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780857676570
-            },
-            {
-              "attributeId": "attr-1780522037234",
-              "attributeKey": "sensibilidad_pezones",
-              "attributeName": "Sensibilidad de Pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780857676586
-            },
-            {
-              "attributeId": "attr-decemone-lujuria",
-              "attributeKey": "lujuria",
-              "attributeName": "Lujuria",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780857974524
-            },
-            {
-              "attributeId": "attr-decemone-exigencia",
-              "attributeKey": "exigencia",
-              "attributeName": "Exigencia",
-              "oldValue": 100,
-              "newValue": 100,
-              "reason": "timer",
-              "timestamp": 1780857974540
-            },
-            {
-              "attributeId": "attr-decemone-adiccion",
-              "attributeKey": "adiccion_pezones",
-              "attributeName": "Adicción a la penetración de pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780857974561
-            },
-            {
-              "attributeId": "attr-1780195604316",
-              "attributeKey": "hentaistyle",
-              "attributeName": "Hentai Style",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780857974574
-            },
-            {
-              "attributeId": "attr-1780522037234",
-              "attributeKey": "sensibilidad_pezones",
-              "attributeName": "Sensibilidad de Pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780857974590
-            },
-            {
-              "attributeId": "attr-decemone-lujuria",
-              "attributeKey": "lujuria",
-              "attributeName": "Lujuria",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780858334525
-            },
-            {
-              "attributeId": "attr-decemone-exigencia",
-              "attributeKey": "exigencia",
-              "attributeName": "Exigencia",
-              "oldValue": 100,
-              "newValue": 100,
-              "reason": "timer",
-              "timestamp": 1780858334543
-            },
-            {
-              "attributeId": "attr-decemone-adiccion",
-              "attributeKey": "adiccion_pezones",
-              "attributeName": "Adicción a la penetración de pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780858334556
-            },
-            {
-              "attributeId": "attr-1780195604316",
-              "attributeKey": "hentaistyle",
-              "attributeName": "Hentai Style",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780858334574
-            },
-            {
-              "attributeId": "attr-1780522037234",
-              "attributeKey": "sensibilidad_pezones",
-              "attributeName": "Sensibilidad de Pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780858334590
-            },
-            {
-              "attributeId": "attr-decemone-lujuria",
-              "attributeKey": "lujuria",
-              "attributeName": "Lujuria",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780858574524
-            },
-            {
-              "attributeId": "attr-decemone-exigencia",
-              "attributeKey": "exigencia",
-              "attributeName": "Exigencia",
-              "oldValue": 100,
-              "newValue": 100,
-              "reason": "timer",
-              "timestamp": 1780858574539
-            },
-            {
-              "attributeId": "attr-decemone-adiccion",
-              "attributeKey": "adiccion_pezones",
-              "attributeName": "Adicción a la penetración de pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780858574555
-            },
-            {
-              "attributeId": "attr-1780195604316",
-              "attributeKey": "hentaistyle",
-              "attributeName": "Hentai Style",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780858574571
-            },
-            {
-              "attributeId": "attr-1780522037234",
-              "attributeKey": "sensibilidad_pezones",
-              "attributeName": "Sensibilidad de Pezones",
-              "oldValue": 0,
-              "newValue": 0,
-              "reason": "timer",
-              "timestamp": 1780858574584
+              "timestamp": 1781368874998
             }
           ]
         },
@@ -2335,27 +2062,27 @@
             "pezones": ""
           },
           "lastUpdated": {
-            "pene_visible": 1780777261348,
-            "pene_erecto": 1780777261348,
-            "orgasmo": 1780777261348,
-            "lugar": 1780777261348,
-            "ano": 1780777261348,
-            "vagina": 1780777261348,
-            "garganta": 1780777261348,
-            "boca": 1780777261348,
-            "cara": 1780777261348,
-            "pezones": 1780777261348
+            "pene_visible": 1781364936876,
+            "pene_erecto": 1781364936876,
+            "orgasmo": 1781364936876,
+            "lugar": 1781364936876,
+            "ano": 1781364936877,
+            "vagina": 1781364936877,
+            "garganta": 1781364936877,
+            "boca": 1781364936877,
+            "cara": 1781364936877,
+            "pezones": 1781364936877
           },
           "changeLog": []
         }
       },
       "solicitudes": {
         "characterSolicitudes": {},
-        "lastModified": 1780777261348
+        "lastModified": 1781364936876
       },
       "initialized": true,
-      "lastModified": 1780858574599,
-      "lastTimerUpdate": 1780858561348,
+      "lastModified": 1781368875013,
+      "lastTimerUpdate": 1781368836876,
       "keywordCycleIndex": {}
     },
     "sessionQuests": [],
@@ -2478,6 +2205,84 @@
       "initialized": true,
       "lastModified": 1780667515318,
       "lastTimerUpdate": 1780667515318,
+      "keywordCycleIndex": {}
+    },
+    "sessionQuests": [],
+    "turnCount": 0
+  },
+  {
+    "id": "22eca5dd-1202-4d7d-a3e5-ead59a249b7f",
+    "characterId": "37089df2-4fba-42a0-b478-8fad69cc4e9e",
+    "name": "Chat with Ana",
+    "messages": [
+      {
+        "id": "598ee0fd-82d4-42cd-8566-40b5761bd86a",
+        "characterId": "37089df2-4fba-42a0-b478-8fad69cc4e9e",
+        "role": "assistant",
+        "content": "",
+        "timestamp": "2026-06-12T17:54:20.647Z",
+        "isDeleted": false,
+        "swipeId": "a3a11b36-e523-4dae-adc6-6977c6131bae",
+        "swipeIndex": 0,
+        "swipes": [
+          ""
+        ]
+      }
+    ],
+    "createdAt": "2026-06-12T17:54:20.647Z",
+    "updatedAt": "2026-06-12T17:54:20.647Z",
+    "sessionStats": {
+      "characterStats": {
+        "37089df2-4fba-42a0-b478-8fad69cc4e9e": {
+          "attributeValues": {
+            "nivel_de_crack": 0,
+            "lujuria": 100,
+            "resistencia": 100,
+            "energia": 100
+          },
+          "lastUpdated": {
+            "nivel_de_crack": 1781286860647,
+            "lujuria": 1781286860647,
+            "resistencia": 1781286860647,
+            "energia": 1781286860647
+          },
+          "changeLog": []
+        },
+        "__user__": {
+          "attributeValues": {
+            "pene_visible": "NO",
+            "pene_erecto": "NO",
+            "orgasmo": 0,
+            "lugar": "ESCRITORIO",
+            "ano": "",
+            "vagina": "",
+            "garganta": "",
+            "boca": "",
+            "cara": "",
+            "pezones": ""
+          },
+          "lastUpdated": {
+            "pene_visible": 1781286860647,
+            "pene_erecto": 1781286860647,
+            "orgasmo": 1781286860647,
+            "lugar": 1781286860647,
+            "ano": 1781286860647,
+            "vagina": 1781286860647,
+            "garganta": 1781286860647,
+            "boca": 1781286860647,
+            "cara": 1781286860647,
+            "pezones": 1781286860647
+          },
+          "changeLog": []
+        }
+      },
+      "solicitudes": {
+        "characterSolicitudes": {},
+        "lastModified": 1781286860647
+      },
+      "initialized": true,
+      "lastModified": 1781286860647,
+      "lastTimerUpdate": 1781286860647,
       "keywordCycleIndex": {}
     },
     "sessionQuests": [],

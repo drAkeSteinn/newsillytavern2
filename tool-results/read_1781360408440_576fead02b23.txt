@@ -1,0 +1,1196 @@
+     1→// ============================================
+     2→// Quest Detector - Post-LLM detection of quest triggers
+     3→// ============================================
+     4→//
+     5→// This module detects quest activation, objective progress, and completion
+     6→// in LLM responses using detection keys similar to the stats system.
+     7→//
+     8→// Uses the same system as HUD fields and Stats:
+     9→// - key: Primary detection key (always checked first)
+    10→// - keys: Alternative detection keys (optional)
+    11→// - caseSensitive: Whether to distinguish case
+    12→//
+    13→// Detection Flow:
+    14→// 1. Check for quest ACTIVATION keys (in 'available' quests)
+    15→// 2. Check for OBJECTIVE progress keys (in 'active' quests)
+    16→// 3. Check for QUEST COMPLETION keys (in 'active' quests)
+    17→// 4. Check for TURN-BASED activation (if method is 'turn')
+    18→
+    19→import type {
+    20→  QuestTemplate,
+    21→  SessionQuestInstance,
+    22→  QuestObjectiveTemplate,
+    23→  QuestTriggerHit,
+    24→  QuestReward,
+    25→  QuestActivationConfig,
+    26→  QuestCompletionConfig,
+    27→  QuestValueCondition,
+    28→  QuestNumberOperator,
+    29→  QuestTextOperator,
+    30→  QuestSettings,
+    31→  SessionStats,
+    32→} from '@/types';
+    33→import { evaluateActivationConditions } from '@/lib/triggers/handlers/quest-handler';
+    34→
+    35→// ============================================
+    36→// Types
+    37→// ============================================
+    38→
+    39→export type QuestDetectionAction = 'activate' | 'progress' | 'complete' | 'fail';
+    40→
+    41→export interface QuestActivationDetection {
+    42→  templateId: string;
+    43→  template: QuestTemplate;
+    44→  matchedKey: string;
+    45→  matchedText: string;
+    46→  position: number;
+    47→}
+    48→
+    49→export interface QuestObjectiveDetection {
+    50→  templateId: string;
+    51→  objectiveId: string;
+    52→  template: QuestTemplate;
+    53→  objective: QuestObjectiveTemplate;
+    54→  matchedKey: string;
+    55→  matchedText: string;
+    56→  position: number;
+    57→  countProgress: number; // How much to increment
+    58→}
+    59→
+    60→export interface QuestCompletionDetection {
+    61→  templateId: string;
+    62→  template: QuestTemplate;
+    63→  matchedKey: string;
+    64→  matchedText: string;
+    65→  position: number;
+    66→}
+    67→
+    68→export interface QuestDetectionResult {
+    69→  activations: QuestActivationDetection[];
+    70→  objectiveProgress: QuestObjectiveDetection[];
+    71→  completions: QuestCompletionDetection[];
+    72→  hasDetections: boolean;
+    73→}
+    74→
+    75→// ============================================
+    76→// Key Extraction (Similar to Stats Detector)
+    77→// ============================================
+    78→
+    79→/**
+    80→ * Get all detection keys from an activation config
+    81→ * 
+    82→ * Priority:
+    83→ * 1. Use activation.key as primary key
+    84→ * 2. Add activation.keys[] as alternative keys
+    85→ */
+    86→export function getActivationKeys(activation: QuestActivationConfig): string[] {
+    87→  const allKeys: string[] = [];
+    88→  
+    89→  // Primary key is always included
+    90→  if (activation.key) {
+    91→    allKeys.push(activation.key);
+    92→  }
+    93→  
+    94→  // Add alternative keys
+    95→  if (activation.keys && activation.keys.length > 0) {
+    96→    for (const key of activation.keys) {
+    97→      if (key && !allKeys.includes(key)) {
+    98→        allKeys.push(key);
+    99→      }
+   100→    }
+   101→  }
+   102→  
+   103→  return allKeys;
+   104→}
+   105→
+   106→/**
+   107→ * Get all detection keys from a completion config
+   108→ */
+   109→export function getCompletionKeys(completion: QuestCompletionConfig): string[] {
+   110→  const allKeys: string[] = [];
+   111→  
+   112→  if (completion.key) {
+   113→    allKeys.push(completion.key);
+   114→  }
+   115→  
+   116→  if (completion.keys && completion.keys.length > 0) {
+   117→    for (const key of completion.keys) {
+   118→      if (key && !allKeys.includes(key)) {
+   119→        allKeys.push(key);
+   120→      }
+   121→    }
+   122→  }
+   123→  
+   124→  return allKeys;
+   125→}
+   126→
+   127→/**
+   128→ * Get all detection keys from an objective's completion config
+   129→ */
+   130→export function getObjectiveKeys(objective: QuestObjectiveTemplate): string[] {
+   131→  const allKeys: string[] = [];
+   132→  
+   133→  if (objective.completion?.key) {
+   134→    allKeys.push(objective.completion.key);
+   135→  }
+   136→  
+   137→  if (objective.completion?.keys && objective.completion.keys.length > 0) {
+   138→    for (const key of objective.completion.keys) {
+   139→      if (key && !allKeys.includes(key)) {
+   140→        allKeys.push(key);
+   141→      }
+   142→    }
+   143→  }
+   144→  
+   145→  return allKeys;
+   146→}
+   147→
+   148→// ============================================
+   149→// Prefix + Key Variant Generation
+   150→// ============================================
+   151→
+   152→/**
+   153→ * Genera todas las variantes de combinación prefijo + key
+   154→ * 
+   155→ * El sistema detecta múltiples formatos automáticamente:
+   156→ * - "Prefijo:key" (dos puntos sin espacio)
+   157→ * - "Prefijo: key" (dos puntos con espacio)
+   158→ * - "Prefijo=key" (igual sin espacio)
+   159→ * - "Prefijo = key" (igual con espacio)
+   160→ * - "Prefijo key" (solo espacio)
+   161→ * - "Prefijo_key" (guión bajo)
+   162→ * 
+   163→ * Ejemplo:
+   164→ * prefix: "Objetivo", key: "conseguir_madera"
+   165→ * Genera: ["Objetivo:conseguir_madera", "Objetivo: conseguir_madera", 
+   166→ *          "Objetivo=conseguir_madera", "Objetivo = conseguir_madera",
+   167→ *          "Objetivo conseguir_madera", "Objetivo_conseguir_madera"]
+   168→ */
+   169→export function generatePrefixKeyVariants(prefix: string, key: string): string[] {
+   170→  if (!prefix || prefix.trim() === '') {
+   171→    // Sin prefijo, retornar solo la key
+   172→    return [key];
+   173→  }
+   174→  
+   175→  const normalizedPrefix = prefix.trim();
+   176→  const normalizedKey = key.trim();
+   177→  
+   178→  const variants: string[] = [];
+   179→  
+   180→  // Separadores a probar (con y sin espacios)
+   181→  const separators = [
+   182→    ':',      // Dos puntos
+   183→    ': ',     // Dos puntos + espacio
+   184→    '=',      // Igual
+   185→    ' = ',    // Igual con espacios
+   186→    ' ',      // Solo espacio
+   187→    '_',      // Guión bajo
+   188→  ];
+   189→  
+   190→  for (const sep of separators) {
+   191→    variants.push(`${normalizedPrefix}${sep}${normalizedKey}`);
+   192→  }
+   193→  
+   194→  // También agregar variantes con key con espacios (guiones bajos -> espacios)
+   195→  if (normalizedKey.includes('_')) {
+   196→    const keyWithSpaces = normalizedKey.replace(/_/g, ' ');
+   197→    for (const sep of separators) {
+   198→      if (sep !== ' ' && sep !== '_') { // Evitar duplicados
+   199→        variants.push(`${normalizedPrefix}${sep}${keyWithSpaces}`);
+   200→      }
+   201→    }
+   202→    // Variante solo con espacio
+   203→    variants.push(`${normalizedPrefix} ${keyWithSpaces}`);
+   204→  }
+   205→  
+   206→  return variants;
+   207→}
+   208→
+   209→/**
+   210→ * Aplica prefijo a todas las keys de una lista
+   211→ * Retorna una lista expandida con todas las variantes
+   212→ */
+   213→export function applyPrefixToKeys(
+   214→  keys: string[],
+   215→  prefix?: string
+   216→): string[] {
+   217→  if (!prefix || prefix.trim() === '') {
+   218→    return keys;
+   219→  }
+   220→  
+   221→  const expandedKeys: string[] = [];
+   222→  
+   223→  for (const key of keys) {
+   224→    const variants = generatePrefixKeyVariants(prefix, key);
+   225→    expandedKeys.push(...variants);
+   226→  }
+   227→  
+   228→  return expandedKeys;
+   229→}
+   230→
+   231→/**
+   232→ * Obtiene las keys de activación con prefijo aplicado
+   233→ */
+   234→export function getActivationKeysWithPrefix(
+   235→  activation: QuestActivationConfig,
+   236→  questSettings?: QuestSettings
+   237→): string[] {
+   238→  // Obtener keys base
+   239→  const baseKeys = getActivationKeys(activation);
+   240→  
+   241→  // Aplicar prefijo si está configurado
+   242→  const prefix = questSettings?.questActivationPrefix;
+   243→  if (prefix && prefix.trim() !== '') {
+   244→    return applyPrefixToKeys(baseKeys, prefix);
+   245→  }
+   246→  
+   247→  return baseKeys;
+   248→}
+   249→
+   250→/**
+   251→ * Obtiene las keys de completado de quest con prefijo aplicado
+   252→ */
+   253→export function getCompletionKeysWithPrefix(
+   254→  completion: QuestCompletionConfig,
+   255→  questSettings?: QuestSettings
+   256→): string[] {
+   257→  const baseKeys = getCompletionKeys(completion);
+   258→  
+   259→  const prefix = questSettings?.questCompletionPrefix;
+   260→  if (prefix && prefix.trim() !== '') {
+   261→    return applyPrefixToKeys(baseKeys, prefix);
+   262→  }
+   263→  
+   264→  return baseKeys;
+   265→}
+   266→
+   267→/**
+   268→ * Obtiene las keys de completado de objetivo con prefijo aplicado
+   269→ */
+   270→export function getObjectiveKeysWithPrefix(
+   271→  objective: QuestObjectiveTemplate,
+   272→  questSettings?: QuestSettings
+   273→): string[] {
+   274→  const baseKeys = getObjectiveKeys(objective);
+   275→  
+   276→  const prefix = questSettings?.objectiveCompletionPrefix;
+   277→  if (prefix && prefix.trim() !== '') {
+   278→    return applyPrefixToKeys(baseKeys, prefix);
+   279→  }
+   280→  
+   281→  return baseKeys;
+   282→}
+   283→
+   284→/**
+   285→ * Genera una key de ejemplo para mostrar en UI
+   286→ * Retorna la primera variante (la más común: prefix:key)
+   287→ */
+   288→export function getExampleKey(prefix?: string, key?: string): string {
+   289→  if (!key) return '';
+   290→  if (!prefix || prefix.trim() === '') return key;
+   291→  return `${prefix.trim()}:${key.trim()}`;
+   292→}
+   293→
+   294→// ============================================
+   295→// Key Matching
+   296→// ============================================
+   297→
+   298→/**
+   299→ * Normalize a key for case-insensitive matching
+   300→ */
+   301→function normalizeKey(key: string): string {
+   302→  return key.trim().toLowerCase();
+   303→}
+   304→
+   305→/**
+   306→ * Check if text contains any of the detection keys
+   307→ * 
+   308→ * Uses word boundaries for single-word keys to prevent false positives:
+   309→ * - "risa" won't match "marisa" (word boundary required)
+   310→ * - Multi-word keys use phrase matching
+   311→ */
+   312→function findKeyMatch(
+   313→  text: string,
+   314→  keys: string[],
+   315→  caseSensitive: boolean
+   316→): { matchedKey: string; matchedText: string; position: number } | null {
+   317→  for (const key of keys) {
+   318→    // Create pattern to find the key
+   319→    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+   320→    
+   321→    // For single-word keys, use word boundaries to prevent partial matches
+   322→    // For multi-word keys, use phrase matching
+   323→    const keyWords = key.trim().split(/\s+/);
+   324→    const patternStr = keyWords.length === 1 
+   325→      ? `(^|[^\\w])${escapedKey}([^\\w]|$)`  // Word boundary for single words
+   326→      : escapedKey;  // Phrase matching for multi-word keys
+   327→    
+   328→    const pattern = new RegExp(patternStr, caseSensitive ? 'g' : 'gi');
+   329→    
+   330→    let match;
+   331→    while ((match = pattern.exec(text)) !== null) {
+   332→      // For word boundary matches, return the actual key, not the boundary chars
+   333→      const matchedText = match[0].replace(/^[^\w]+|[^\w]+$/g, '') || match[0];
+   334→      return {
+   335→        matchedKey: key,
+   336→        matchedText,
+   337→        position: match.index,
+   338→      };
+   339→    }
+   340→  }
+   341→  
+   342→  return null;
+   343→}
+   344→
+   345→// ============================================
+   346→// Value Extraction and Comparison
+   347→// ============================================
+   348→
+   349→/**
+   350→ * Extract the value after a key in text
+   351→ * 
+   352→ * Supports formats:
+   353→ * - "key: valor" (colon separator)
+   354→ * - "key=valor" (equals separator)
+   355→ * - "key valor" (space separator)
+   356→ * 
+   357→ * Returns the extracted value or null if not found
+   358→ */
+   359→export function extractValueAfterKey(
+   360→  text: string,
+   361→  key: string,
+   362→  caseSensitive: boolean
+   363→): { value: string; position: number } | null {
+   364→  // Create pattern to find key followed by separator and value
+   365→  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+   366→  
+   367→  // Pattern: key followed by (:|=|space) then capture the value
+   368→  // The value can be a number or text until end of line or next punctuation
+   369→  const pattern = new RegExp(
+   370→    `${escapedKey}\\s*[:=]?\\s*([\\w\\s.-]+?)(?=[,.!?;\\n]|$)`,
+   371→    caseSensitive ? 'g' : 'gi'
+   372→  );
+   373→  
+   374→  const match = pattern.exec(text);
+   375→  if (match && match[1]) {
+   376→    const value = match[1].trim();
+   377→    if (value) {
+   378→      return {
+   379→        value,
+   380→        position: match.index,
+   381→      };
+   382→    }
+   383→  }
+   384→  
+   385→  return null;
+   386→}
+   387→
+   388→/**
+   389→ * Compare a numeric value against a target using an operator
+   390→ */
+   391→export function compareNumberValue(
+   392→  actualValue: number,
+   393→  targetValue: number,
+   394→  operator: QuestNumberOperator
+   395→): boolean {
+   396→  switch (operator) {
+   397→    case '>': return actualValue > targetValue;
+   398→    case '<': return actualValue < targetValue;
+   399→    case '>=': return actualValue >= targetValue;
+   400→    case '<=': return actualValue <= targetValue;
+   401→    case '==': return actualValue === targetValue;
+   402→    case '!=': return actualValue !== targetValue;
+   403→    default: return false;
+   404→  }
+   405→}
+   406→
+   407→/**
+   408→ * Compare a text value against a target using an operator
+   409→ */
+   410→export function compareTextValue(
+   411→  actualValue: string,
+   412→  targetValue: string,
+   413→  operator: QuestTextOperator,
+   414→  caseSensitive: boolean
+   415→): boolean {
+   416→  const actual = caseSensitive ? actualValue : actualValue.toLowerCase();
+   417→  const target = caseSensitive ? targetValue : targetValue.toLowerCase();
+   418→  
+   419→  switch (operator) {
+   420→    case 'equals': return actual === target;
+   421→    case 'contains': return actual.includes(target);
+   422→    case 'startsWith': return actual.startsWith(target);
+   423→    case 'endsWith': return actual.endsWith(target);
+   424→    case 'notEquals': return actual !== target;
+   425→    default: return false;
+   426→  }
+   427→}
+   428→
+   429→/**
+   430→ * Check if a value condition is met in text
+   431→ * 
+   432→ * @param text - The text to search in
+   433→ * @param keys - All keys to try (primary + alternatives)
+   434→ * @param caseSensitive - Whether to be case sensitive
+   435→ * @param condition - The value condition to check
+   436→ * @returns result with matched key info if condition is met
+   437→ */
+   438→export function checkValueCondition(
+   439→  text: string,
+   440→  keys: string[],
+   441→  caseSensitive: boolean,
+   442→  condition: QuestValueCondition | undefined
+   443→): { matched: boolean; matchedKey?: string; extractedValue?: string | number; message?: string } {
+   444→  // If no condition or presence type, just check if any key exists
+   445→  if (!condition || condition.valueType === 'presence') {
+   446→    const keyMatch = findKeyMatch(text, keys, caseSensitive);
+   447→    return {
+   448→      matched: keyMatch !== null,
+   449→      matchedKey: keyMatch?.matchedKey,
+   450→      message: keyMatch ? 'Key found (presence detection)' : 'Key not found',
+   451→    };
+   452→  }
+   453→  
+   454→  // Try each key until one works
+   455→  for (const key of keys) {
+   456→    // Extract the value after the key
+   457→    const extracted = extractValueAfterKey(text, key, caseSensitive);
+   458→    
+   459→    if (!extracted) {
+   460→      continue; // Try next key
+   461→    }
+   462→    
+   463→    const { value: extractedStr } = extracted;
+   464→    
+   465→    // Handle number comparison
+   466→    if (condition.valueType === 'number') {
+   467→      const numValue = parseFloat(extractedStr);
+   468→      
+   469→      if (isNaN(numValue)) {
+   470→        continue; // Try next key - extracted value is not a number
+   471→      }
+   472→      
+   473→      const targetValue = typeof condition.targetValue === 'number' 
+   474→        ? condition.targetValue 
+   475→        : parseFloat(String(condition.targetValue));
+   476→      
+   477→      if (isNaN(targetValue)) {
+   478→        return {
+   479→          matched: false,
+   480→          extractedValue: numValue,
+   481→          message: `Target value "${condition.targetValue}" is not a valid number`,
+   482→        };
+   483→      }
+   484→      
+   485→      const operator = condition.operator as QuestNumberOperator || '==';
+   486→      const matched = compareNumberValue(numValue, targetValue, operator);
+   487→      
+   488→      if (matched) {
+   489→        return {
+   490→          matched: true,
+   491→          matchedKey: key,
+   492→          extractedValue: numValue,
+   493→          message: `${numValue} ${operator} ${targetValue} = ${matched}`,
+   494→        };
+   495→      }
+   496→    }
+   497→    
+   498→    // Handle text comparison
+   499→    if (condition.valueType === 'text') {
+   500→      const targetValue = String(condition.targetValue || '');
+   501→      const operator = condition.operator as QuestTextOperator || 'equals';
+   502→      const matched = compareTextValue(extractedStr, targetValue, operator, caseSensitive);
+   503→      
+   504→      if (matched) {
+   505→        return {
+   506→          matched: true,
+   507→          matchedKey: key,
+   508→          extractedValue: extractedStr,
+   509→          message: `"${extractedStr}" ${operator} "${targetValue}" = ${matched}`,
+   510→        };
+   511→      }
+   512→    }
+   513→  }
+   514→  
+   515→  // No key matched with the condition
+   516→  return {
+   517→    matched: false,
+   518→    message: 'No key matched the value condition',
+   519→  };
+   520→}
+   521→
+   522→// ============================================
+   523→// Detection Functions
+   524→// ============================================
+   525→
+   526→/**
+   527→ * Detect quest activations in text
+   528→ * 
+   529→ * Checks if any 'available' quest's activation keys are present
+   530→ * Supports prefix-based key detection
+   531→ */
+   532→export function detectQuestActivations(
+   533→  text: string,
+   534→  templates: QuestTemplate[],
+   535→  sessionQuests: SessionQuestInstance[],
+   536→  questSettings?: QuestSettings,
+   537→  sessionStats?: SessionStats
+   538→): QuestActivationDetection[] {
+   539→  const detections: QuestActivationDetection[] = [];
+   540→  
+   541→  // Get templates for quests that are 'available' (not yet activated)
+   542→  const availableQuestTemplateIds = sessionQuests
+   543→    .filter(q => q.status === 'available')
+   544→    .map(q => q.templateId);
+   545→  
+   546→  console.log('[QuestDetector] detectQuestActivations:', {
+   547→    textPreview: text.substring(0, 100) + '...',
+   548→    availableQuestTemplateIds,
+   549→    templatesCount: templates.length,
+   550→    hasPrefix: !!questSettings?.questActivationPrefix,
+   551→  });
+   552→  
+   553→  for (const template of templates) {
+   554→    // Skip if not available in this session
+   555→    if (!availableQuestTemplateIds.includes(template.id)) {
+   556→      console.log(`[QuestDetector] Template "${template.name}" (${template.id}) not in available quests, skipping`);
+   557→      continue;
+   558→    }
+   559→    
+   560→    // Skip if activation method is not 'keyword'
+   561→    if (template.activation.method !== 'keyword') {
+   562→      console.log(`[QuestDetector] Template "${template.name}" activation method is "${template.activation.method}", skipping`);
+   563→      continue;
+   564→    }
+   565→    
+   566→    // Check activation conditions (by_attribute / by_objective)
+   567→    const canActivate = evaluateActivationConditions(template, sessionStats, sessionQuests, templates);
+   568→    if (!canActivate) {
+   569→      console.log(`[QuestDetector] Template "${template.name}" activation conditions not met, skipping`);
+   570→      continue;
+   571→    }
+   572→    
+   573→    // Usar función con soporte de prefijo
+   574→    const keys = getActivationKeysWithPrefix(template.activation, questSettings);
+   575→    if (keys.length === 0) {
+   576→      console.log(`[QuestDetector] Template "${template.name}" has no activation keys, skipping`);
+   577→      continue;
+   578→    }
+   579→    
+   580→    console.log(`[QuestDetector] Checking template "${template.name}" with keys:`, keys);
+   581→    
+   582→    const match = findKeyMatch(
+   583→      text,
+   584→      keys,
+   585→      template.activation.caseSensitive
+   586→    );
+   587→    
+   588→    if (match) {
+   589→      console.log(`[QuestDetector] MATCH FOUND! Template "${template.name}" matched key "${match.matchedKey}" at position ${match.position}`);
+   590→      detections.push({
+   591→        templateId: template.id,
+   592→        template,
+   593→        matchedKey: match.matchedKey,
+   594→        matchedText: match.matchedText,
+   595→        position: match.position,
+   596→      });
+   597→    } else {
+   598→      console.log(`[QuestDetector] No match for template "${template.name}" in text`);
+   599→    }
+   600→  }
+   601→  
+   602→  console.log(`[QuestDetector] Total detections: ${detections.length}`);
+   603→  return detections;
+   604→}
+   605→
+   606→/**
+   607→ * Detect objective progress in text
+   608→ * 
+   609→ * Checks if any 'active' quest's objective keys are present
+   610→ * Now supports value condition checking (number/text comparison)
+   611→ * Supports prefix-based key detection
+   612→ */
+   613→export function detectObjectiveProgress(
+   614→  text: string,
+   615→  templates: QuestTemplate[],
+   616→  sessionQuests: SessionQuestInstance[],
+   617→  questSettings?: QuestSettings
+   618→): QuestObjectiveDetection[] {
+   619→  const detections: QuestObjectiveDetection[] = [];
+   620→  
+   621→  // Get active quests
+   622→  const activeQuests = sessionQuests.filter(q => q.status === 'active');
+   623→  
+   624→  console.log('[QuestDetector] detectObjectiveProgress:', {
+   625→    textPreview: text.substring(0, 100) + '...',
+   626→    activeQuestsCount: activeQuests.length,
+   627→    hasPrefix: !!questSettings?.objectiveCompletionPrefix,
+   628→  });
+   629→  
+   630→  for (const sessionQuest of activeQuests) {
+   631→    const template = templates.find(t => t.id === sessionQuest.templateId);
+   632→    if (!template) continue;
+   633→    
+   634→    // Check each objective
+   635→    for (const objective of template.objectives) {
+   636→      // Find session objective
+   637→      const sessionObj = sessionQuest.objectives.find(o => o.templateId === objective.id);
+   638→      
+   639→      // Skip if already completed
+   640→      if (sessionObj?.isCompleted) continue;
+   641→      
+   642→      // Usar función con soporte de prefijo
+   643→      const keys = getObjectiveKeysWithPrefix(objective, questSettings);
+   644→      if (keys.length === 0) continue;
+   645→      
+   646→      // Check value condition if specified
+   647→      const valueCondition = objective.completion.valueCondition;
+   648→      
+   649→      // Always use checkValueCondition (handles both presence and value comparison)
+   650→      // It now properly checks all keys (primary + alternatives)
+   651→      const result = checkValueCondition(
+   652→        text,
+   653→        keys,
+   654→        objective.completion.caseSensitive,
+   655→        valueCondition
+   656→      );
+   657→      
+   658→      console.log(`[QuestDetector] Objective "${objective.description}" check:`, {
+   659→        keys,
+   660→        valueCondition: valueCondition ? valueCondition.valueType : 'none',
+   661→        result
+   662→      });
+   663→      
+   664→      if (result.matched) {
+   665→        console.log(`[QuestDetector] Objective "${objective.description}" matched!`);
+   666→        detections.push({
+   667→          templateId: template.id,
+   668→          objectiveId: objective.id,
+   669→          template,
+   670→          objective,
+   671→          matchedKey: result.matchedKey || keys[0],
+   672→          matchedText: String(result.extractedValue || ''),
+   673→          position: 0,
+   674→          countProgress: 1,
+   675→        });
+   676→      }
+   677→    }
+   678→  }
+   679→  
+   680→  console.log(`[QuestDetector] Total objective detections: ${detections.length}`);
+   681→  return detections;
+   682→}
+   683→
+   684→/**
+   685→ * Detect quest completions in text
+   686→ * 
+   687→ * Checks if any 'active' quest's completion keys are present
+   688→ * Now supports value condition checking (number/text comparison)
+   689→ * Supports prefix-based key detection
+   690→ */
+   691→export function detectQuestCompletions(
+   692→  text: string,
+   693→  templates: QuestTemplate[],
+   694→  sessionQuests: SessionQuestInstance[],
+   695→  questSettings?: QuestSettings
+   696→): QuestCompletionDetection[] {
+   697→  const detections: QuestCompletionDetection[] = [];
+   698→  
+   699→  // Get active quests
+   700→  const activeQuests = sessionQuests.filter(q => q.status === 'active');
+   701→  
+   702→  console.log('[QuestDetector] detectQuestCompletions:', {
+   703→    textPreview: text.substring(0, 100) + '...',
+   704→    activeQuestsCount: activeQuests.length,
+   705→    hasPrefix: !!questSettings?.questCompletionPrefix,
+   706→  });
+   707→  
+   708→  for (const sessionQuest of activeQuests) {
+   709→    const template = templates.find(t => t.id === sessionQuest.templateId);
+   710→    if (!template) continue;
+   711→    
+   712→    // Usar función con soporte de prefijo
+   713→    const keys = getCompletionKeysWithPrefix(template.completion, questSettings);
+   714→    if (keys.length === 0) continue;
+   715→    
+   716→    // Check if valueCondition is specified
+   717→    const valueCondition = template.completion.valueCondition;
+   718→    
+   719→    // Always use checkValueCondition (handles both presence and value comparison)
+   720→    // It now properly checks all keys (primary + alternatives)
+   721→    const result = checkValueCondition(
+   722→      text,
+   723→      keys,
+   724→      template.completion.caseSensitive,
+   725→      valueCondition
+   726→    );
+   727→    
+   728→    console.log(`[QuestDetector] Quest "${template.name}" completion check:`, {
+   729→      keys,
+   730→      valueCondition: valueCondition ? valueCondition.valueType : 'none',
+   731→      result
+   732→    });
+   733→    
+   734→    if (result.matched) {
+   735→      console.log(`[QuestDetector] Quest "${template.name}" completion matched!`);
+   736→      detections.push({
+   737→        templateId: template.id,
+   738→        template,
+   739→        matchedKey: result.matchedKey || keys[0],
+   740→        matchedText: String(result.extractedValue || ''),
+   741→        position: 0,
+   742→      });
+   743→    }
+   744→  }
+   745→  
+   746→  return detections;
+   747→}
+   748→
+   749→/**
+   750→ * Main detection function - detects all quest events
+   751→ * Supports prefix-based key detection
+   752→ */
+   753→export function detectQuestEvents(
+   754→  text: string,
+   755→  templates: QuestTemplate[],
+   756→  sessionQuests: SessionQuestInstance[],
+   757→  questSettings?: QuestSettings,
+   758→  sessionStats?: SessionStats
+   759→): QuestDetectionResult {
+   760→  const activations = detectQuestActivations(text, templates, sessionQuests, questSettings, sessionStats);
+   761→  const objectiveProgress = detectObjectiveProgress(text, templates, sessionQuests, questSettings);
+   762→  const completions = detectQuestCompletions(text, templates, sessionQuests, questSettings);
+   763→  
+   764→  return {
+   765→    activations,
+   766→    objectiveProgress,
+   767→    completions,
+   768→    hasDetections: activations.length > 0 || objectiveProgress.length > 0 || completions.length > 0,
+   769→  };
+   770→}
+   771→
+   772→// ============================================
+   773→// Turn-Based Activation
+   774→// ============================================
+   775→
+   776→/**
+   777→ * Check if any quests should activate based on turn count
+   778→ */
+   779→export function checkTurnBasedActivation(
+   780→  currentTurn: number,
+   781→  templates: QuestTemplate[],
+   782→  sessionQuests: SessionQuestInstance[],
+   783→  sessionStats?: SessionStats
+   784→): QuestActivationDetection[] {
+   785→  const activations: QuestActivationDetection[] = [];
+   786→  
+   787→  // Get templates for quests that are 'available'
+   788→  const availableQuestTemplateIds = sessionQuests
+   789→    .filter(q => q.status === 'available')
+   790→    .map(q => q.templateId);
+   791→  
+   792→  for (const template of templates) {
+   793→    if (!availableQuestTemplateIds.includes(template.id)) continue;
+   794→    
+   795→    // Skip if activation method is not 'turn'
+   796→    if (template.activation.method !== 'turn') continue;
+   797→
+   798→    // Check activation conditions (by_attribute / by_objective)
+   799→    const canActivate = evaluateActivationConditions(template, sessionStats, sessionQuests, templates);
+   800→    if (!canActivate) continue;
+   801→    
+   802→    const turnInterval = template.activation.turnInterval || 1;
+   803→    
+   804→    // Check if current turn matches interval
+   805→    if (currentTurn > 0 && currentTurn % turnInterval === 0) {
+   806→      activations.push({
+   807→        templateId: template.id,
+   808→        template,
+   809→        matchedKey: `turn:${currentTurn}`,
+   810→        matchedText: `Turn ${currentTurn} activation`,
+   811→        position: 0,
+   812→      });
+   813→    }
+   814→  }
+   815→  
+   816→  return activations;
+   817→}
+   818→
+   819→// ============================================
+   820→// Convert to Trigger Hits
+   821→// ============================================
+   822→
+   823→/**
+   824→ * Convert activation detections to trigger hits
+   825→ */
+   826→export function activationsToTriggerHits(
+   827→  detections: QuestActivationDetection[]
+   828→): QuestTriggerHit[] {
+   829→  return detections.map(d => ({
+   830→    questId: d.templateId,
+   831→    template: d.template,
+   832→    action: 'activate' as const,
+   833→    message: `Quest "${d.template.name}" activated`,
+   834→  }));
+   835→}
+   836→
+   837→/**
+   838→ * Convert objective detections to trigger hits
+   839→ * 
+   840→ * Now includes objective rewards and completion flag when the objective
+   841→ * will be completed with this progress.
+   842→ */
+   843→export function objectivesToTriggerHits(
+   844→  detections: QuestObjectiveDetection[],
+   845→  sessionQuests: SessionQuestInstance[]
+   846→): QuestTriggerHit[] {
+   847→  return detections.map(d => {
+   848→    // Find the session quest to check current progress
+   849→    const sessionQuest = sessionQuests.find(q => q.templateId === d.templateId);
+   850→    const sessionObj = sessionQuest?.objectives.find(o => o.templateId === d.objectiveId);
+   851→    
+   852→    // Calculate if this progress completes the objective
+   853→    const currentCount = sessionObj?.currentCount || 0;
+   854→    const targetCount = d.objective.targetCount || 1;
+   855→    const newCount = Math.min(currentCount + d.countProgress, targetCount);
+   856→    const willComplete = !sessionObj?.isCompleted && newCount >= targetCount;
+   857→    
+   858→    return {
+   859→      questId: d.templateId,
+   860→      template: d.template,
+   861→      objectiveId: d.objectiveId,
+   862→      objective: d.objective,
+   863→      action: 'progress' as const,
+   864→      progress: d.countProgress,
+   865→      message: `Objective "${d.objective.description}" progressed`,
+   866→      // Include objective rewards if this progress will complete the objective
+   867→      objectiveRewards: willComplete && d.objective.rewards ? d.objective.rewards : undefined,
+   868→      completesObjective: willComplete,
+   869→    };
+   870→  });
+   871→}
+   872→
+   873→/**
+   874→ * Convert completion detections to trigger hits
+   875→ */
+   876→export function completionsToTriggerHits(
+   877→  detections: QuestCompletionDetection[]
+   878→): QuestTriggerHit[] {
+   879→  return detections.map(d => ({
+   880→    questId: d.templateId,
+   881→    template: d.template,
+   882→    action: 'complete' as const,
+   883→    message: `Quest "${d.template.name}" completed`,
+   884→    rewards: d.template.rewards,
+   885→  }));
+   886→}
+   887→
+   888→// ============================================
+   889→// Streaming Support
+   890→// ============================================
+   891→
+   892→/**
+   893→ * Quest detection state for streaming
+   894→ * 
+   895→ * Tracks which detections have already been processed to avoid
+   896→ * duplicates when streaming causes text windows to overlap.
+   897→ */
+   898→export class QuestDetectionState {
+   899→  private processedLength: number = 0;
+   900→  private processedActivations: Set<string> = new Set(); // templateIds already activated
+   901→  private processedObjectives: Set<string> = new Set(); // templateId:objectiveId already progressed
+   902→  private processedCompletions: Set<string> = new Set(); // templateIds already completed
+   903→  private processedPositions: Set<number> = new Set();
+   904→  
+   905→  /**
+   906→   * Process new text incrementally
+   907→   */
+   908→  processNewText(
+   909→    newText: string,
+   910→    fullText: string,
+   911→    templates: QuestTemplate[],
+   912→    sessionQuests: SessionQuestInstance[],
+   913→    sessionStats?: SessionStats
+   914→  ): QuestDetectionResult {
+   915→    // Only process NEW content
+   916→    const newContent = fullText.slice(this.processedLength);
+   917→    
+   918→    if (!newContent.trim()) {
+   919→      this.processedLength = fullText.length;
+   920→      return {
+   921→        activations: [],
+   922→        objectiveProgress: [],
+   923→        completions: [],
+   924→        hasDetections: false,
+   925→      };
+   926→    }
+   927→    
+   928→    // Detect in new content
+   929→    const rawResult = detectQuestEvents(newContent, templates, sessionQuests, undefined, sessionStats);
+   930→    
+   931→    // Adjust positions to be relative to full text
+   932→    for (const d of rawResult.activations) {
+   933→      d.position += this.processedLength;
+   934→    }
+   935→    for (const d of rawResult.objectiveProgress) {
+   936→      d.position += this.processedLength;
+   937→    }
+   938→    for (const d of rawResult.completions) {
+   939→      d.position += this.processedLength;
+   940→    }
+   941→    
+   942→    // Filter out already processed detections
+   943→    const filteredActivations = rawResult.activations.filter(d => {
+   944→      if (this.processedActivations.has(d.templateId)) return false;
+   945→      if (this.processedPositions.has(d.position)) return false;
+   946→      this.processedActivations.add(d.templateId);
+   947→      this.processedPositions.add(d.position);
+   948→      return true;
+   949→    });
+   950→    
+   951→    const filteredObjectives = rawResult.objectiveProgress.filter(d => {
+   952→      const key = `${d.templateId}:${d.objectiveId}`;
+   953→      // Check if this objective was already processed in this stream
+   954→      if (this.processedObjectives.has(key)) return false;
+   955→      if (this.processedPositions.has(d.position)) return false;
+   956→      // Mark this objective as processed
+   957→      this.processedObjectives.add(key);
+   958→      this.processedPositions.add(d.position);
+   959→      return true;
+   960→    });
+   961→    
+   962→    const filteredCompletions = rawResult.completions.filter(d => {
+   963→      if (this.processedCompletions.has(d.templateId)) return false;
+   964→      if (this.processedPositions.has(d.position)) return false;
+   965→      this.processedCompletions.add(d.templateId);
+   966→      this.processedPositions.add(d.position);
+   967→      return true;
+   968→    });
+   969→    
+   970→    this.processedLength = fullText.length;
+   971→    
+   972→    return {
+   973→      activations: filteredActivations,
+   974→      objectiveProgress: filteredObjectives,
+   975→      completions: filteredCompletions,
+   976→      hasDetections: filteredActivations.length > 0 || filteredObjectives.length > 0 || filteredCompletions.length > 0,
+   977→    };
+   978→  }
+   979→  
+   980→  /**
+   981→   * Reset state for new message
+   982→   */
+   983→  reset(): void {
+   984→    this.processedLength = 0;
+   985→    this.processedActivations.clear();
+   986→    this.processedObjectives.clear();
+   987→    this.processedCompletions.clear();
+   988→    this.processedPositions.clear();
+   989→  }
+   990→  
+   991→  /**
+   992→   * Mark a quest as activated (external trigger)
+   993→   */
+   994→  markActivated(templateId: string): void {
+   995→    this.processedActivations.add(templateId);
+   996→  }
+   997→  
+   998→  /**
+   999→   * Mark a quest as completed (external trigger)
+  1000→   */
+  1001→  markCompleted(templateId: string): void {
+  1002→    this.processedCompletions.add(templateId);
+  1003→  }
+  1004→}
+  1005→
+  1006→/**
+  1007→ * Create a new quest detection state
+  1008→ */
+  1009→export function createQuestDetectionState(): QuestDetectionState {
+  1010→  return new QuestDetectionState();
+  1011→}
+  1012→
+  1013→// ============================================
+  1014→// Trigger System Integration
+  1015→// ============================================
+  1016→
+  1017→/**
+  1018→ * Quest trigger context for the trigger handler
+  1019→ */
+  1020→export interface QuestTriggerContext {
+  1021→  sessionId: string;
+  1022→  fullText: string;
+  1023→  isStreaming: boolean;
+  1024→  messageKey: string;
+  1025→  timestamp: number;
+  1026→  templates: QuestTemplate[];
+  1027→  sessionQuests: SessionQuestInstance[];
+  1028→  turnCount: number;
+  1029→  sessionStats?: SessionStats;
+  1030→}
+  1031→
+  1032→/**
+  1033→ * Quest handler result for trigger system
+  1034→ */
+  1035→export interface QuestHandlerResult {
+  1036→  matched: boolean;
+  1037→  hits: QuestTriggerHit[];
+  1038→  detections: QuestDetectionResult;
+  1039→}
+  1040→
+  1041→/**
+  1042→ * Create quest handler state for trigger system
+  1043→ */
+  1044→export function createQuestHandlerState() {
+  1045→  return {
+  1046→    detectionStates: new Map<string, QuestDetectionState>(),
+  1047→  };
+  1048→}
+  1049→
+  1050→/**
+  1051→ * Check quest triggers during streaming
+  1052→ */
+  1053→export function checkQuestTriggersInText(
+  1054→  context: QuestTriggerContext,
+  1055→  handlerState: { detectionStates: Map<string, QuestDetectionState> }
+  1056→): QuestHandlerResult {
+  1057→  const { sessionId, fullText, templates, sessionQuests, turnCount } = context;
+  1058→  
+  1059→  if (!templates.length || !sessionQuests.length) {
+  1060→    return {
+  1061→      matched: false,
+  1062→      hits: [],
+  1063→      detections: {
+  1064→        activations: [],
+  1065→        objectiveProgress: [],
+  1066→        completions: [],
+  1067→        hasDetections: false,
+  1068→      },
+  1069→    };
+  1070→  }
+  1071→  
+  1072→  // Get or create detection state for this session
+  1073→  let state = handlerState.detectionStates.get(sessionId);
+  1074→  if (!state) {
+  1075→    state = createQuestDetectionState();
+  1076→    handlerState.detectionStates.set(sessionId, state);
+  1077→  }
+  1078→  
+  1079→  // Get sessionStats from context
+  1080→  const sessionStats = context.sessionStats;
+  1081→  
+  1082→  // Process new text
+  1083→  const detections = state.processNewText(fullText, fullText, templates, sessionQuests, sessionStats);
+  1084→  
+  1085→  // Also check turn-based activations
+  1086→  const turnActivations = checkTurnBasedActivation(turnCount, templates, sessionQuests, sessionStats);
+  1087→  
+  1088→  // Filter turn activations that haven't been processed
+  1089→  const newTurnActivations = turnActivations.filter(d => {
+  1090→    const key = `${d.templateId}:turn:${turnCount}`;
+  1091→    // We'll add these to detections
+  1092→    return true;
+  1093→  });
+  1094→  
+  1095→  // Combine all detections
+  1096→  detections.activations.push(...newTurnActivations);
+  1097→  detections.hasDetections = detections.activations.length > 0 || 
+  1098→                              detections.objectiveProgress.length > 0 || 
+  1099→                              detections.completions.length > 0;
+  1100→  
+  1101→  if (!detections.hasDetections) {
+  1102→    return {
+  1103→      matched: false,
+  1104→      hits: [],
+  1105→      detections,
+  1106→    };
+  1107→  }
+  1108→  
+  1109→  // Convert to trigger hits
+  1110→  const hits: QuestTriggerHit[] = [
+  1111→    ...activationsToTriggerHits(detections.activations),
+  1112→    ...objectivesToTriggerHits(detections.objectiveProgress, sessionQuests),
+  1113→    ...completionsToTriggerHits(detections.completions),
+  1114→  ];
+  1115→  
+  1116→  return {
+  1117→    matched: true,
+  1118→    hits,
+  1119→    detections,
+  1120→  };
+  1121→}
+  1122→
+  1123→/**
+  1124→ * Reset quest handler state for new message
+  1125→ */
+  1126→export function resetQuestDetectorState(
+  1127→  handlerState: { detectionStates: Map<string, QuestDetectionState> },
+  1128→  sessionId: string
+  1129→): void {
+  1130→  const state = handlerState.detectionStates.get(sessionId);
+  1131→  if (state) {
+  1132→    state.reset();
+  1133→  }
+  1134→}
+  1135→
+  1136→/**
+  1137→ * Clear all quest detection state
+  1138→ */
+  1139→export function clearQuestDetectorState(
+  1140→  handlerState: { detectionStates: Map<string, QuestDetectionState> }
+  1141→): void {
+  1142→  handlerState.detectionStates.clear();
+  1143→}
+  1144→
+  1145→// ============================================
+  1146→// Quest Chain Helpers
+  1147→// ============================================
+  1148→
+  1149→/**
+  1150→ * Get the next quest to activate after completing a quest
+  1151→ */
+  1152→export function getNextQuestInChain(
+  1153→  completedTemplate: QuestTemplate,
+  1154→  allTemplates: QuestTemplate[]
+  1155→): QuestTemplate | null {
+  1156→  const chain = completedTemplate.chain;
+  1157→  
+  1158→  if (!chain || chain.type === 'none') {
+  1159→    return null;
+  1160→  }
+  1161→  
+  1162→  if (chain.type === 'specific' && chain.nextQuestId) {
+  1163→    return allTemplates.find(t => t.id === chain.nextQuestId) || null;
+  1164→  }
+  1165→  
+  1166→  if (chain.type === 'random' && chain.randomPool && chain.randomPool.length > 0) {
+  1167→    // Pick a random quest from the pool
+  1168→    const randomIndex = Math.floor(Math.random() * chain.randomPool.length);
+  1169→    const randomId = chain.randomPool[randomIndex];
+  1170→    return allTemplates.find(t => t.id === randomId) || null;
+  1171→  }
+  1172→  
+  1173→  return null;
+  1174→}
+  1175→
+  1176→/**
+  1177→ * Check if a quest should auto-start when its chain predecessor completes
+  1178→ */
+  1179→export function shouldAutoStartChain(chain: QuestTemplate['chain']): boolean {
+  1180→  return chain?.autoStart === true;
+  1181→}
+  1182→
+  1183→// ============================================
+  1184→// Export Index
+  1185→// ============================================
+  1186→
+  1187→export type {
+  1188→  QuestDetectionAction,
+  1189→  QuestActivationDetection,
+  1190→  QuestObjectiveDetection,
+  1191→  QuestCompletionDetection,
+  1192→  QuestDetectionResult,
+  1193→  QuestTriggerContext,
+  1194→  QuestHandlerResult,
+  1195→};
+  1196→

@@ -6757,7 +6757,8 @@
             }
           ],
           "type": "ejecucion",
-          "completedDescription": "Decemone mostró sus tetas brevemente a cambio de un regalo o dinero"
+          "completedDescription": "Decemone mostró sus tetas brevemente a cambio de un regalo o dinero",
+          "requirementOperator": "AND"
         },
         {
           "id": "skill-apretarse-tetas-001",
@@ -7903,6 +7904,6 @@
     },
     "id": "33bbd96a-3533-43b9-84b8-653f401db619",
     "createdAt": "2026-06-05T10:13:30.473Z",
-    "updatedAt": "2026-06-07T09:51:49.324Z"
+    "updatedAt": "2026-06-12T14:44:55.499Z"
   }
 ]

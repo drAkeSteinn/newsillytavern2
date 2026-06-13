@@ -11,8 +11,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import type { CharacterCard, SpriteState, SpritePackV2, StateCollectionV2 } from '@/types';
+import type { CharacterCard, SpriteState, SpritePackV2, StateCollectionV2, SpriteTransitionConfig } from '@/types';
 import { SpritePreview } from './sprite-preview';
+import { SpriteTransitionWrapper } from './sprite-transition-wrapper';
 import { useTavernStore } from '@/store';
 
 // ============================================
@@ -501,6 +502,11 @@ export function GroupSprites({
           spriteLabel = spriteResult.label;
         }
 
+        // FASE 7: Determine active transition for this character
+        const activeTransition: SpriteTransitionConfig | undefined = hasTriggerSprite
+          ? (charSpriteState.triggerTransition ?? undefined)
+          : (charSpriteState.defaultTransition ?? character.defaultTransition ?? undefined);
+
         return (
           <div
             key={character.id}
@@ -525,9 +531,10 @@ export function GroupSprites({
           >
             {/* The actual sprite image/video */}
             {spriteUrl ? (
-              <SpritePreview
+              <SpriteTransitionWrapper
                 src={spriteUrl}
                 alt={character.name}
+                transition={activeTransition}
                 className="w-full h-full drop-shadow-2xl select-none pointer-events-none"
               />
             ) : (

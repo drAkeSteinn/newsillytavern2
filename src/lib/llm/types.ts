@@ -101,6 +101,7 @@ export interface CompletionPromptConfig {
   authorNote?: string;
   embeddingsContext?: string;
   exampleMessages?: ChatApiMessage[];  // SillyTavern-style example dialogue as chat messages
+  allCharacters?: CharacterCard[];  // All characters in group chat (for proper speaker attribution)
 }
 
 // Prompt build result for group chats

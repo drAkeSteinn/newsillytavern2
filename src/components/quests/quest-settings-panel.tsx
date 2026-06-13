@@ -44,6 +44,9 @@ import {
   FileText,
   HelpCircle,
   Key,
+  Layers,
+  Timer,
+  ShieldCheck,
 } from 'lucide-react';
 import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
@@ -482,6 +485,145 @@ export function QuestSettingsPanel() {
                   <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
                     <span>1 misión</span>
                     <span>20 misiones</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Separator className="bg-border/50" />
+
+            {/* Notification Deduplication */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <div className="p-1.5 rounded-md bg-orange-500/10">
+                  <Layers className="w-4 h-4 text-orange-500" />
+                </div>
+                Deduplicación de Notificaciones
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 ml-auto">
+                  FASE 8
+                </Badge>
+              </div>
+              
+              <div className="pl-8 space-y-3">
+                <label className={cn(
+                  "flex items-center justify-between p-4 rounded-lg border cursor-pointer transition-all",
+                  questSettings.enabled && questSettings.showNotifications
+                    ? "border-border/60 bg-gradient-to-r from-background to-muted/30 hover:border-orange-500/30 hover:bg-orange-500/5" 
+                    : "border-border/40 bg-muted/30 opacity-50 cursor-not-allowed"
+                )}>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-orange-500/10">
+                      <ShieldCheck className="w-4 h-4 text-orange-500" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <Label className="text-sm font-medium">Deduplicación automática</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Agrupa notificaciones duplicadas en lugar de mostrar múltiples toasts.
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={questSettings.notificationDedupEnabled ?? true}
+                    onCheckedChange={(notificationDedupEnabled) => setQuestSettings({ notificationDedupEnabled })}
+                    disabled={!questSettings.enabled || !questSettings.showNotifications}
+                  />
+                </label>
+
+                {/* Info banner about deduplication */}
+                <div className="p-3 rounded-lg border border-orange-500/20 bg-gradient-to-r from-orange-500/5 to-amber-500/5">
+                  <div className="flex items-start gap-2">
+                    <Info className="w-3.5 h-3.5 text-orange-500 mt-0.5 shrink-0" />
+                    <div className="text-[11px] text-muted-foreground space-y-1">
+                      <p>
+                        Cuando se detectan múltiples notificaciones del mismo evento (misma misión + mismo tipo)
+                        dentro de una ventana de tiempo, se agrupan en una sola notificación con un contador.
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-500 text-[10px] font-mono">
+                          <Layers className="w-3 h-3" />
+                          3x
+                        </span>
+                        <span>= 3 notificaciones similares agrupadas</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={cn(
+                  "p-4 rounded-lg border transition-all",
+                  questSettings.enabled && questSettings.showNotifications
+                    ? "border-border/60 bg-gradient-to-r from-background to-muted/30" 
+                    : "border-border/40 bg-muted/30 opacity-50"
+                )}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 rounded-lg bg-orange-500/10">
+                      <Timer className="w-4 h-4 text-orange-500" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium">Ventana de deduplicación</Label>
+                        <Badge variant="secondary" className="font-mono bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
+                          {((questSettings.notificationDedupWindowMs ?? 30000) / 1000).toFixed(0)}s
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Tiempo máximo para considerar notificaciones como duplicadas.
+                      </p>
+                    </div>
+                  </div>
+                  <Slider
+                    value={[(questSettings.notificationDedupWindowMs ?? 30000) / 1000]}
+                    min={5}
+                    max={120}
+                    step={5}
+                    disabled={!questSettings.enabled || !questSettings.showNotifications || !(questSettings.notificationDedupEnabled ?? true)}
+                    onValueChange={([seconds]) => 
+                      setQuestSettings({ notificationDedupWindowMs: seconds * 1000 })
+                    }
+                    className="py-2"
+                  />
+                  <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+                    <span>5 segundos</span>
+                    <span>2 minutos</span>
+                  </div>
+                </div>
+
+                <div className={cn(
+                  "p-4 rounded-lg border transition-all",
+                  questSettings.enabled && questSettings.showNotifications
+                    ? "border-border/60 bg-gradient-to-r from-background to-muted/30" 
+                    : "border-border/40 bg-muted/30 opacity-50"
+                )}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 rounded-lg bg-cyan-500/10">
+                      <Timer className="w-4 h-4 text-cyan-500" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium">Auto-ocultar notificaciones</Label>
+                        <Badge variant="secondary" className="font-mono bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20">
+                          {((questSettings.notificationAutoDismissMs ?? 5000) / 1000).toFixed(0)}s
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Tiempo antes de ocultar automáticamente una notificación.
+                      </p>
+                    </div>
+                  </div>
+                  <Slider
+                    value={[(questSettings.notificationAutoDismissMs ?? 5000) / 1000]}
+                    min={2}
+                    max={30}
+                    step={1}
+                    disabled={!questSettings.enabled || !questSettings.showNotifications}
+                    onValueChange={([seconds]) => 
+                      setQuestSettings({ notificationAutoDismissMs: seconds * 1000 })
+                    }
+                    className="py-2"
+                  />
+                  <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+                    <span>2 segundos</span>
+                    <span>30 segundos</span>
                   </div>
                 </div>
               </div>

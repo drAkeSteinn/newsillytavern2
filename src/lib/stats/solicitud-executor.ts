@@ -40,6 +40,7 @@ export interface SolicitudActivationContext {
   sessionStats: SessionStats | undefined;
   allCharacters: CharacterCard[]; // To look up target characters and their solicitudes
   activePersona?: Persona;        // For when target is the user
+  currentTurn?: number;           // Current turn number for turn-based expiration
 }
 
 export interface SolicitudCompletionContext {
@@ -79,6 +80,9 @@ export interface ResolvedPeticion {
   targetCharacterId: string;
   targetCharacterName: string;
   solicitudId: string;
+  // Expiration fields (from SolicitudDefinition)
+  expirationTurns?: number;             // Turns until this solicitud expires
+  expirationMinutes?: number;           // Minutes until this solicitud expires
 }
 
 export interface SolicitudActivationResult {
@@ -139,13 +143,15 @@ function resolveSolicitudKeys(
  */
 function evaluateRequirements(
   requirements: StatRequirement[],
-  attributeValues: Record<string, number | string>
+  attributeValues: Record<string, number | string>,
+  operator?: 'AND' | 'OR'
 ): boolean {
   if (!requirements || requirements.length === 0) {
     return true;
   }
   
-  return requirements.every(req => {
+  const logicFn = operator === 'OR' ? requirements.some : requirements.every;
+  return logicFn(req => {
     const currentValue = attributeValues[req.attributeKey];
     if (currentValue === undefined) return false;
     
@@ -224,7 +230,7 @@ export function getResolvedPeticiones(
     }
     
     // Check invitation requirements (the sender must meet these)
-    if (!evaluateRequirements(invitation.requirements, attributeValues)) {
+    if (!evaluateRequirements(invitation.requirements, attributeValues, invitation.requirementOperator)) {
       console.log(`[getResolvedPeticiones] Skipping - requirements not met`);
       continue;
     }
@@ -264,6 +270,8 @@ export function getResolvedPeticiones(
         targetCharacterId: USER_CHARACTER_ID,
         targetCharacterName: activePersona?.name || 'Usuario',
         solicitudId: solicitud.id,
+        expirationTurns: solicitud.expirationTurns,
+        expirationMinutes: solicitud.expirationMinutes,
       });
       continue;
     }
@@ -284,7 +292,7 @@ export function getResolvedPeticiones(
     
     // Check if target meets the solicitud's requirements
     const targetAttributeValues = sessionStats?.characterStats?.[targetCharacter.id]?.attributeValues || {};
-    if (!evaluateRequirements(solicitud.requirements, targetAttributeValues)) {
+    if (!evaluateRequirements(solicitud.requirements, targetAttributeValues, solicitud.requirementOperator)) {
       continue;
     }
     
@@ -302,6 +310,8 @@ export function getResolvedPeticiones(
       targetCharacterId: targetCharacter.id,
       targetCharacterName: targetCharacter.name,
       solicitudId: solicitud.id,
+      expirationTurns: solicitud.expirationTurns,
+      expirationMinutes: solicitud.expirationMinutes,
     });
   }
   
@@ -480,6 +490,16 @@ export function executePeticionActivation(
       context.characterName
     );
     
+    // Calculate expiration timestamps
+    const now = Date.now();
+    const expiresAt = resolved.expirationMinutes && resolved.expirationMinutes > 0
+      ? now + resolved.expirationMinutes * 60 * 1000
+      : undefined;
+    // Note: expiresAtTurn is calculated based on current turn count, which is passed from context
+    const expiresAtTurn = resolved.expirationTurns && resolved.expirationTurns > 0
+      ? (context.currentTurn || 0) + resolved.expirationTurns
+      : undefined;
+    
     const solicitud = storeActions.createSolicitud(
       context.sessionId,
       USER_CHARACTER_ID,
@@ -490,6 +510,8 @@ export function executePeticionActivation(
         fromCharacterName: context.characterName,
         description: resolvedDescription,
         completionDescription: resolvedCompletion,
+        expiresAt,
+        expiresAtTurn,
       }
     );
     
@@ -527,6 +549,15 @@ export function executePeticionActivation(
     context.characterName
   );
   
+  // Calculate expiration timestamps
+  const now = Date.now();
+  const expiresAt = resolved.expirationMinutes && resolved.expirationMinutes > 0
+    ? now + resolved.expirationMinutes * 60 * 1000
+    : undefined;
+  const expiresAtTurn = resolved.expirationTurns && resolved.expirationTurns > 0
+    ? (context.currentTurn || 0) + resolved.expirationTurns
+    : undefined;
+  
   // Create the solicitud for the target character
   // Use solicitudKey for completion detection
   const solicitud = storeActions.createSolicitud(
@@ -539,6 +570,8 @@ export function executePeticionActivation(
       fromCharacterName: context.characterName,
       description: resolvedDescription,
       completionDescription: resolvedCompletion,
+      expiresAt,
+      expiresAtTurn,
     }
   );
   

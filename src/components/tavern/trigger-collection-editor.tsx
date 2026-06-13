@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import { Slider } from '@/components/ui/slider';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -52,6 +53,7 @@ import {
   CheckCircle,
   GitBranch,
   SlidersHorizontal,
+  Sparkles,
 } from 'lucide-react';
 import type { 
   CharacterCard,
@@ -65,6 +67,10 @@ import type {
   StatRequirement,
   RequirementOperator,
   SessionStats,
+  SpriteTransitionConfig,
+  SpriteTransition,
+  SpriteTransitionEasing,
+  SpriteTransitionDirection,
 } from '@/types';
 import { SpritePreview } from './sprite-preview';
 import { useTavernStore } from '@/store';
@@ -138,6 +144,40 @@ const OPERATOR_OPTIONS: {
   { value: 'between', label: 'Entre (rango)' },
   { value: 'contains', label: 'Contiene' },
   { value: 'not_contains', label: 'No contiene' },
+];
+
+// FASE 7: Transition type options
+const TRANSITION_TYPE_OPTIONS: {
+  value: SpriteTransition;
+  label: string;
+  description: string;
+}[] = [
+  { value: 'none', label: 'Sin Transición', description: 'Cambio instantáneo sin efecto' },
+  { value: 'fade', label: 'Fade', description: 'Suave fundido de entrada/salida' },
+  { value: 'slide', label: 'Slide', description: 'Desliza el sprite en una dirección' },
+  { value: 'zoom', label: 'Zoom', description: 'Zoom in/out con fade' },
+  { value: 'bounce', label: 'Bounce', description: 'Aparición con efecto rebote' },
+];
+
+const TRANSITION_EASING_OPTIONS: {
+  value: SpriteTransitionEasing;
+  label: string;
+}[] = [
+  { value: 'ease', label: 'Ease' },
+  { value: 'ease-in', label: 'Ease In' },
+  { value: 'ease-out', label: 'Ease Out' },
+  { value: 'ease-in-out', label: 'Ease In-Out' },
+  { value: 'linear', label: 'Linear' },
+];
+
+const TRANSITION_DIRECTION_OPTIONS: {
+  value: SpriteTransitionDirection;
+  label: string;
+}[] = [
+  { value: 'left', label: '← Izquierda' },
+  { value: 'right', label: '→ Derecha' },
+  { value: 'up', label: '↑ Arriba' },
+  { value: 'down', label: '↓ Abajo' },
 ];
 
 interface TriggerCollectionEditorProps {
@@ -1508,6 +1548,137 @@ function TriggerCollectionEditorForm({
         )}
       </div>
 
+      {/* FASE 7: Sprite Transition */}
+      <div className="space-y-3 p-4 border rounded-lg bg-orange-500/5 border-orange-500/20">
+        <div className="flex items-center justify-between">
+          <div>
+            <h4 className="text-sm font-medium flex items-center gap-2 text-orange-600">
+              <Sparkles className="w-4 h-4" />
+              Transición de Sprite
+            </h4>
+            <p className="text-xs text-muted-foreground mt-1">
+              Efecto visual al cambiar a este sprite desde otro.
+            </p>
+          </div>
+          <Switch
+            checked={collection.transition?.type !== 'none' && !!collection.transition}
+            onCheckedChange={(enabled) => {
+              if (enabled) {
+                updateField('transition', {
+                  type: 'fade',
+                  duration: 300,
+                  easing: 'ease-in-out',
+                  direction: 'left',
+                });
+              } else {
+                updateField('transition', undefined);
+              }
+            }}
+          />
+        </div>
+
+        {collection.transition && collection.transition.type !== 'none' && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="text-xs">Tipo de Transición</Label>
+                <Select
+                  value={collection.transition.type}
+                  onValueChange={(v) => updateField('transition', {
+                    ...collection.transition!,
+                    type: v as SpriteTransition,
+                  })}
+                >
+                  <SelectTrigger className="h-8 mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TRANSITION_TYPE_OPTIONS.filter(o => o.value !== 'none').map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  {TRANSITION_TYPE_OPTIONS.find(o => o.value === collection.transition?.type)?.description}
+                </p>
+              </div>
+              <div>
+                <Label className="text-xs">Easing</Label>
+                <Select
+                  value={collection.transition.easing}
+                  onValueChange={(v) => updateField('transition', {
+                    ...collection.transition!,
+                    easing: v as SpriteTransitionEasing,
+                  })}
+                >
+                  <SelectTrigger className="h-8 mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TRANSITION_EASING_OPTIONS.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="text-xs">Duración: {collection.transition.duration}ms</Label>
+                <Slider
+                  value={[collection.transition.duration]}
+                  min={100}
+                  max={2000}
+                  step={50}
+                  onValueChange={([v]) => updateField('transition', {
+                    ...collection.transition!,
+                    duration: v,
+                  })}
+                  className="mt-2"
+                />
+              </div>
+              {collection.transition.type === 'slide' && (
+                <div>
+                  <Label className="text-xs">Dirección</Label>
+                  <Select
+                    value={collection.transition.direction || 'left'}
+                    onValueChange={(v) => updateField('transition', {
+                      ...collection.transition!,
+                      direction: v as SpriteTransitionDirection,
+                    })}
+                  >
+                    <SelectTrigger className="h-8 mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TRANSITION_DIRECTION_OPTIONS.map(opt => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+
+            {/* Preview */}
+            <div className="p-3 bg-background/50 rounded-lg border">
+              <Label className="text-xs font-medium flex items-center gap-1 mb-2">
+                <TestTube className="w-3 h-3" />
+                Vista Previa
+              </Label>
+              <SpriteTransitionPreview transition={collection.transition} />
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Conditional Mode */}
       <div className="space-y-3 p-4 border rounded-lg bg-teal-500/5 border-teal-500/20">
         <div className="flex items-center justify-between">
@@ -1905,6 +2076,53 @@ function TriggerCollectionEditorForm({
                                 </Button>
                               </div>
                             ))}
+
+                            {/* AND/OR toggle for conditions */}
+                            {entry.conditions.length >= 2 && (
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className={cn(
+                                    "h-5 px-1.5 text-[9px] transition-colors",
+                                    (!entry.conditionOperator || entry.conditionOperator === 'AND')
+                                      ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
+                                      : "bg-muted/30 text-muted-foreground border-transparent"
+                                  )}
+                                  onClick={() => {
+                                    const entries = collection.conditionalEntries || [];
+                                    updateField('conditionalEntries', entries.map(en =>
+                                      en.id === entry.id ? { ...en, conditionOperator: 'AND' as const } : en
+                                    ));
+                                  }}
+                                >
+                                  Y (AND)
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className={cn(
+                                    "h-5 px-1.5 text-[9px] transition-colors",
+                                    entry.conditionOperator === 'OR'
+                                      ? "bg-purple-500/20 text-purple-400 border-purple-500/30"
+                                      : "bg-muted/30 text-muted-foreground border-transparent"
+                                  )}
+                                  onClick={() => {
+                                    const entries = collection.conditionalEntries || [];
+                                    updateField('conditionalEntries', entries.map(en =>
+                                      en.id === entry.id ? { ...en, conditionOperator: 'OR' as const } : en
+                                    ));
+                                  }}
+                                >
+                                  O (OR)
+                                </Button>
+                                <span className="text-[9px] text-muted-foreground">
+                                  {(!entry.conditionOperator || entry.conditionOperator === 'AND')
+                                    ? 'Todas deben cumplirse'
+                                    : 'Al menos una debe cumplirse'}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2296,6 +2514,143 @@ function TriggerCollectionEditorForm({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ============================================
+// FASE 7: Sprite Transition Preview Component
+// Shows a demo of the selected transition
+// ============================================
+
+interface SpriteTransitionPreviewProps {
+  transition: SpriteTransitionConfig;
+}
+
+function SpriteTransitionPreview({ transition }: SpriteTransitionPreviewProps) {
+  const [showA, setShowA] = useState(true);
+  const [previewing, setPreviewing] = useState(false);
+
+  const handlePreview = () => {
+    if (previewing) return;
+    setPreviewing(true);
+    setShowA(false);
+    // Reset after transition + buffer
+    setTimeout(() => {
+      setShowA(true);
+      setPreviewing(false);
+    }, transition.duration + 300);
+  };
+
+  const type = transition.type;
+  const duration = transition.duration;
+  const easing = transition.easing;
+  const direction = transition.direction ?? 'left';
+
+  const transitionStyle = {
+    transitionProperty: 'opacity, transform',
+    transitionDuration: `${duration}ms`,
+    transitionTimingFunction: easing,
+  };
+
+  const getSlideTranslate = (dir: SpriteTransitionDirection, value: string = '100%'): string => {
+    switch (dir) {
+      case 'left': return `translateX(-${value})`;
+      case 'right': return `translateX(${value})`;
+      case 'up': return `translateY(-${value})`;
+      case 'down': return `translateY(${value})`;
+    }
+  };
+
+  const getSlideOppositeTranslate = (dir: SpriteTransitionDirection, value: string = '100%'): string => {
+    switch (dir) {
+      case 'left': return `translateX(${value})`;
+      case 'right': return `translateX(-${value})`;
+      case 'up': return `translateY(${value})`;
+      case 'down': return `translateY(-${value})`;
+    }
+  };
+
+  // Color blocks A and B for preview
+  const blockA = (
+    <div
+      className="absolute inset-0 rounded flex items-center justify-center text-white font-bold text-xs"
+      style={{
+        background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+        ...(showA ? {} : (() => {
+          switch (type) {
+            case 'fade':
+              return { ...transitionStyle, opacity: 0 };
+            case 'slide':
+              return { ...transitionStyle, transform: getSlideTranslate(direction) };
+            case 'zoom':
+              return { ...transitionStyle, opacity: 0, transform: 'scale(1.2)' };
+            case 'bounce':
+              return { ...transitionStyle, opacity: 0 };
+            default:
+              return {};
+          }
+        })()),
+      }}
+    >
+      A
+    </div>
+  );
+
+  const blockB = (
+    <div
+      className="absolute inset-0 rounded flex items-center justify-center text-white font-bold text-xs"
+      style={{
+        background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+        ...(!showA ? (() => {
+          switch (type) {
+            case 'fade':
+              return { ...transitionStyle, opacity: 1 };
+            case 'slide':
+              return { ...transitionStyle, transform: 'translate(0, 0)' };
+            case 'zoom':
+              return { ...transitionStyle, opacity: 1, transform: 'scale(1)' };
+            case 'bounce':
+              return { ...transitionStyle, opacity: 1, transform: 'scale(1)', animation: `sprite-bounce-in ${duration}ms ${easing}` };
+            default:
+              return {};
+          }
+        })() : (() => {
+          switch (type) {
+            case 'fade':
+              return { opacity: 0 };
+            case 'slide':
+              return { transform: getSlideOppositeTranslate(direction) };
+            case 'zoom':
+              return { opacity: 0, transform: 'scale(0.8)' };
+            case 'bounce':
+              return { opacity: 0, transform: 'scale(0.5)' };
+            default:
+              return {};
+          }
+        })()),
+      }}
+    >
+      B
+    </div>
+  );
+
+  return (
+    <div className="flex items-center gap-3">
+      <div className="relative w-16 h-16 rounded overflow-hidden border bg-muted/30">
+        {blockA}
+        {blockB}
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 text-xs"
+        onClick={handlePreview}
+        disabled={previewing}
+      >
+        <Play className="w-3 h-3 mr-1" />
+        {previewing ? 'Transicionando...' : 'Probar'}
+      </Button>
     </div>
   );
 }

@@ -95,6 +95,58 @@ export interface EmotionTrigger {
   soundPack: string;
 }
 
+// ============ Sprite Trigger Types (Legacy Trigger Store) ============
+
+/**
+ * @deprecated Use CharacterSpriteTrigger from @/types for per-character triggers,
+ * or TriggerCollection for V2 trigger collections. This trigger-store type
+ * is kept for backward compatibility with the global trigger store.
+ */
+export interface SpriteTrigger {
+  id: string;
+  title: string;
+  active: boolean;
+  keywords: string[];
+  requirePipes: boolean;
+  caseSensitive: boolean;
+  spriteUrl: string;
+  spriteState?: string;
+  returnToIdleMs?: number;
+  returnToMode?: 'idle_collection' | 'custom_sprite';
+  returnToSpriteUrl?: string;
+  cooldownMs?: number;
+  priority?: number;
+}
+
+/**
+ * @deprecated Use SpritePackV2 from @/types for V2 sprite packs.
+ * This trigger-store type is kept for backward compatibility with the global trigger store.
+ */
+export interface SpritePack {
+  id: string;
+  name: string;
+  active: boolean;
+  keywords: string[];
+  items: SpritePackItem[];
+  caseSensitive?: boolean;
+  requirePipes?: boolean;
+}
+
+/**
+ * @deprecated Use SpritePackEntryV2 from @/types.
+ * This trigger-store type is kept for backward compatibility.
+ */
+export interface SpritePackItem {
+  spriteUrl?: string;
+  spriteLabel?: string;
+  enabled: boolean;
+  keys?: string;
+  actionId?: string;
+  poseId?: string;
+  clothesId?: string;
+  returnToIdleMs?: number;
+}
+
 // ============ TTS Types ============
 
 export interface TTSJob {

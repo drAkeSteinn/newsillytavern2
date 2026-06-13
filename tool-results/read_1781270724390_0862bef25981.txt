@@ -1,0 +1,1871 @@
+     1→// ============================================
+     2→// Inventory Slice V2 - Redesigned for persona-based inventory
+     3→// ============================================
+     4→//
+     5→// Key concepts:
+     6→// - Items belong to the persona (user), not characters
+     7→// - Two item types: consumable (temporary, with duration) and equipment (permanent)
+     8→// - Currency ("divisa") is on the persona
+     9→// - Consumables modify attributes for N turns, then expire
+    10→// - Equipment modifies attributes permanently while equipped
+    11→// - Effects are applied BEFORE prompt is built
+    12→// - Shop allows buying items with currency
+    13→// - Items can be detected in AI messages via triggerKeywords
+    14→
+    15→import type { StateCreator } from 'zustand';
+    16→import {
+    17→  DEFAULT_INVENTORY_V2_SETTINGS,
+    18→  type Item,
+    19→  type ItemRarity,
+    20→  type ItemAttributeEffect,
+    21→  type ItemSlotEffect,
+    22→  type ActiveConsumableEffect,
+    23→  type PersonaInventoryEntry,
+    24→  type InventoryV2Settings,
+    25→  type EquipmentSlotDefinition,
+    26→  type InventoryNotification,
+    27→  type CostOperator,
+    28→  type SessionStats,
+    29→  type DynamicEquipmentState,
+    30→  type SessionEquipmentEntry,
+    31→} from '@/types';
+    32→
+    33→// Re-export for convenience
+    34→export { DEFAULT_INVENTORY_V2_SETTINGS };
+    35→
+    36→// ============================================
+    37→// Helper Functions
+    38→// ============================================
+    39→
+    40→function generateId(prefix: string): string {
+    41→  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    42→}
+    43→
+    44→/**
+    45→ * Apply a single item attribute effect to SessionStats via updateCharacterStat.
+    46→ * This directly modifies the session stats so the UI reflects the change.
+    47→ *
+    48→ * Supports both numeric and text/keyword attributes:
+    49→ * - Numeric: applies arithmetic operators (+, -, *, /, =, set_min, set_max)
+    50→ * - Text/Keyword: only '=' operator is valid, sets the attribute to the string value
+    51→ *
+    52→ * IMPORTANT: When the character stats for a target don't exist in the session
+    53→ * yet (e.g., persona stats were configured after session creation), we must
+    54→ * look up the default value from the statsConfig BEFORE computing the effect.
+    55→ */
+    56→function applyEffectToSessionStats(
+    57→  stateAny: any,
+    58→  effect: ItemAttributeEffect
+    59→): void {
+    60→  const sessionId = stateAny.activeSessionId as string | undefined;
+    61→  if (!sessionId) return;
+    62→
+    63→  const targetId = effect.targetId || '__user__';
+    64→
+    65→  // Detect if this is a text/keyword attribute by checking the statsConfig
+    66→  const attrType = getAttributeType(stateAny, targetId, effect.attributeKey);
+    67→  const isTextAttr = attrType === 'text' || attrType === 'keyword';
+    68→
+    69→  // For text/keyword attributes with '=' operator, set the string value directly
+    70→  if (isTextAttr && effect.operator === '=') {
+    71→    const newValue = typeof effect.value === 'string' ? effect.value : String(effect.value);
+    72→    stateAny.updateCharacterStat?.(sessionId, targetId, effect.attributeKey, newValue, 'trigger');
+    73→    return;
+    74→  }
+    75→
+    76→  // For numeric attributes, proceed with arithmetic operations
+    77→  let currentValue = stateAny.getAttributeValue?.(sessionId, targetId, effect.attributeKey);
+    78→
+    79→  // If the attribute doesn't exist yet in session stats, look up the default
+    80→  // value from the character's/persona's statsConfig.
+    81→  if (currentValue === null || currentValue === undefined) {
+    82→    const defaultValue = getDefaultAttributeValue(stateAny, targetId, effect.attributeKey);
+    83→    if (defaultValue !== null) {
+    84→      currentValue = defaultValue;
+    85→    }
+    86→  }
+    87→
+    88→  // If still null, default to 0 for numeric operations (truly new attribute)
+    89→  const currentNum = (currentValue !== null && currentValue !== undefined)
+    90→    ? (typeof currentValue === 'number' ? currentValue : parseFloat(String(currentValue)))
+    91→    : 0;
+    92→
+    93→  if (isNaN(currentNum) && currentValue !== null && currentValue !== undefined) {
+    94→    // If we can't parse as number but it's a text value with '=' operator, set directly
+    95→    if (effect.operator === '=' && typeof effect.value === 'string') {
+    96→      stateAny.updateCharacterStat?.(sessionId, targetId, effect.attributeKey, effect.value, 'trigger');
+    97→      return;
+    98→    }
+    99→    return;
+   100→  }
+   101→
+   102→  const effectNumValue = typeof effect.value === 'number' ? effect.value : parseFloat(String(effect.value));
+   103→
+   104→  let newValue: number | string = currentNum;
+   105→  switch (effect.operator) {
+   106→    case '+': newValue = currentNum + effectNumValue; break;
+   107→    case '-': newValue = currentNum - effectNumValue; break;
+   108→    case '*': newValue = currentNum * effectNumValue; break;
+   109→    case '/': newValue = effectNumValue !== 0 ? currentNum / effectNumValue : currentNum; break;
+   110→    case '=': newValue = effectNumValue; break;
+   111→    case 'set_min': newValue = Math.min(currentNum, effectNumValue); break;
+   112→    case 'set_max': newValue = Math.max(currentNum, effectNumValue); break;
+   113→  }
+   114→
+   115→  newValue = Math.round((newValue as number) * 100) / 100;
+   116→
+   117→  stateAny.updateCharacterStat?.(sessionId, targetId, effect.attributeKey, newValue, 'trigger');
+   118→}
+   119→
+   120→/**
+   121→ * Look up the default value for an attribute from the character's/persona's statsConfig.
+   122→ * Returns null if no default is found.
+   123→ */
+   124→function getDefaultAttributeValue(
+   125→  stateAny: any,
+   126→  targetId: string,
+   127→  attributeKey: string
+   128→): number | string | null {
+   129→  let statsConfig: any = undefined;
+   130→
+   131→  if (targetId === '__user__') {
+   132→    const activePersonaId = stateAny.activePersonaId;
+   133→    const personas: any[] = stateAny.personas || [];
+   134→    const activePersona = personas.find((p: any) => p.id === activePersonaId);
+   135→    statsConfig = activePersona?.statsConfig;
+   136→  } else {
+   137→    const characters: any[] = stateAny.characters || [];
+   138→    const character = characters.find((c: any) => c.id === targetId);
+   139→    statsConfig = character?.statsConfig;
+   140→  }
+   141→
+   142→  if (!statsConfig?.attributes) return null;
+   143→
+   144→  const attrDef = statsConfig.attributes.find((a: any) => a.key === attributeKey);
+   145→  if (attrDef && attrDef.defaultValue !== undefined) {
+   146→    return attrDef.defaultValue;
+   147→  }
+   148→
+   149→  return null;
+   150→}
+   151→
+   152→/**
+   153→ * Look up the type of an attribute from the character's/persona's statsConfig.
+   154→ * Returns 'number', 'text', 'keyword', or null if not found.
+   155→ */
+   156→function getAttributeType(
+   157→  stateAny: any,
+   158→  targetId: string,
+   159→  attributeKey: string
+   160→): 'number' | 'text' | 'keyword' | null {
+   161→  let statsConfig: any = undefined;
+   162→
+   163→  if (targetId === '__user__') {
+   164→    const activePersonaId = stateAny.activePersonaId;
+   165→    const personas: any[] = stateAny.personas || [];
+   166→    const activePersona = personas.find((p: any) => p.id === activePersonaId);
+   167→    statsConfig = activePersona?.statsConfig;
+   168→  } else {
+   169→    const characters: any[] = stateAny.characters || [];
+   170→    const character = characters.find((c: any) => c.id === targetId);
+   171→    statsConfig = character?.statsConfig;
+   172→  }
+   173→
+   174→  if (!statsConfig?.attributes) return null;
+   175→
+   176→  const attrDef = statsConfig.attributes.find((a: any) => a.key === attributeKey);
+   177→  return attrDef?.type || null;
+   178→}
+   179→
+   180→/**
+   181→ * Apply multiple item effects to SessionStats.
+   182→ */
+   183→function applyEffectsToSessionStats(
+   184→  stateAny: any,
+   185→  effects: ItemAttributeEffect[]
+   186→): void {
+   187→  for (const effect of effects) {
+   188→    applyEffectToSessionStats(stateAny, effect);
+   189→  }
+   190→}
+   191→
+   192→/**
+   193→ * Get the cycled text value for a dynamic text effect.
+   194→ * For values containing `|` separators, returns the value at (activeTurns % parts.length).
+   195→ * For single values, returns the value as-is.
+   196→ */
+   197→function getDynamicTextValue(value: string | number, activeTurns: number): string | number {
+   198→  if (typeof value !== 'string') return value;
+   199→  const parts = value.split('|').map(p => p.trim()).filter(Boolean);
+   200→  if (parts.length <= 1) return value;
+   201→  return parts[activeTurns % parts.length];
+   202→}
+   203→
+   204→/**
+   205→ * Resolve the {{slot}} template key in an item message.
+   206→ * Replaces {{slot}} with the display name of the equipment slot.
+   207→ * If the slot is not found or slotId is empty, removes the {{slot}} key.
+   208→ *
+   209→ * Example:
+   210→ *   "Equipaste espada en {{slot}}" → "Equipaste espada en mano derecha"
+   211→ */
+   212→function resolveSlotKeyInMessage(
+   213→  message: string,
+   214→  slotId: string | undefined,
+   215→  equipmentSlots: EquipmentSlotDefinition[]
+   216→): string {
+   217→  if (!message || !/\{\{slot\}\}/gi.test(message)) return message;
+   218→
+   219→  const slotDef = slotId ? equipmentSlots.find(s => s.id === slotId) : undefined;
+   220→  const slotName = slotDef?.name || '';
+   221→  return message.replace(/\{\{slot\}\}/gi, slotName);
+   222→}
+   223→
+   224→/**
+   225→ * Sync active consumable effects to the current session for per-session storage.
+   226→ * This ensures effects are persisted in the session JSON and available for prompt building.
+   227→ * Called after every mutation of activeConsumableEffects.
+   228→ */
+   229→function syncEffectsToSession(stateAny: any, effects: ActiveConsumableEffect[]): void {
+   230→  const sessionId = stateAny.activeSessionId as string | undefined;
+   231→  if (!sessionId) return;
+   232→  try {
+   233→    stateAny.updateSession?.(sessionId, { activeConsumableEffects: effects });
+   234→  } catch {
+   235→    // Non-critical — session might not exist yet
+   236→  }
+   237→}
+   238→
+   239→/**
+   240→ * Apply a single dynamic effect for a given turn.
+   241→ * - For text/keyword attributes: cycles through `|`-separated values or sets single value.
+   242→ * - For numeric attributes: applies the operator to the current value (cumulative).
+   243→ */
+   244→function applyDynamicEffectToSessionStats(
+   245→  stateAny: any,
+   246→  effect: ItemAttributeEffect,
+   247→  activeTurns: number
+   248→): void {
+   249→  const sessionId = stateAny.activeSessionId as string | undefined;
+   250→  if (!sessionId) return;
+   251→
+   252→  const targetId = effect.targetId || '__user__';
+   253→  const attrType = getAttributeType(stateAny, targetId, effect.attributeKey);
+   254→  const isTextAttr = attrType === 'text' || attrType === 'keyword';
+   255→
+   256→  if (isTextAttr) {
+   257→    // For text attributes, cycle through values or set single value
+   258→    const textValue = getDynamicTextValue(effect.value, activeTurns);
+   259→    const newValue = typeof textValue === 'string' ? textValue : String(textValue);
+   260→    stateAny.updateCharacterStat?.(sessionId, targetId, effect.attributeKey, newValue, 'trigger');
+   261→    return;
+   262→  }
+   263→
+   264→  // For numeric attributes, apply the operator (cumulative)
+   265→  applyEffectToSessionStats(stateAny, effect);
+   266→}
+   267→
+   268→/**
+   269→ * Apply a fallback value to SessionStats for a given target/attribute.
+   270→ * If no fallback value is provided, reverse the operator of the given effect.
+   271→ * Supports both numeric and text/keyword attributes.
+   272→ */
+   273→function applyFallbackToSessionStats(
+   274→  stateAny: any,
+   275→  targetId: string,
+   276→  attributeKey: string,
+   277→  fallbackValue: string | number | undefined,
+   278→  effect?: ItemAttributeEffect
+   279→): void {
+   280→  const sessionId = stateAny.activeSessionId as string | undefined;
+   281→  if (!sessionId) return;
+   282→
+   283→  const resolvedTargetId = targetId || '__user__';
+   284→
+   285→  // Detect attribute type for proper handling
+   286→  const attrType = getAttributeType(stateAny, resolvedTargetId, attributeKey);
+   287→  const isTextAttr = attrType === 'text' || attrType === 'keyword';
+   288→
+   289→  if (fallbackValue !== undefined) {
+   290→    // Use explicit fallback value - for text attrs keep as string, for numeric parse
+   291→    let valueToSet: string | number;
+   292→    if (isTextAttr) {
+   293→      valueToSet = typeof fallbackValue === 'string' ? fallbackValue : String(fallbackValue);
+   294→    } else {
+   295→      valueToSet = typeof fallbackValue === 'number'
+   296→        ? fallbackValue
+   297→        : (isNaN(Number(fallbackValue)) ? fallbackValue : Number(fallbackValue));
+   298→    }
+   299→    try {
+   300→      stateAny.updateCharacterStat?.(sessionId, resolvedTargetId, attributeKey, valueToSet, 'trigger');
+   301→    } catch {
+   302→      // Non-critical
+   303→    }
+   304→  } else if (effect) {
+   305→    // No fallback - for text/keyword attributes with '=', we can't reverse without fallback
+   306→    if (isTextAttr) {
+   307→      // Text attributes cannot be auto-reversed, skip silently
+   308→      return;
+   309→    }
+   310→
+   311→    // No fallback - reverse the operator for numeric attributes
+   312→    const currentValue = stateAny.getAttributeValue?.(sessionId, resolvedTargetId, attributeKey);
+   313→    if (currentValue === null || currentValue === undefined) return;
+   314→
+   315→    const currentNum = typeof currentValue === 'number' ? currentValue : parseFloat(String(currentValue));
+   316→    if (isNaN(currentNum)) return;
+   317→
+   318→    const effectNumValue = typeof effect.value === 'number' ? effect.value : parseFloat(String(effect.value));
+   319→
+   320→    let newValue = currentNum;
+   321→    switch (effect.operator) {
+   322→      case '+': newValue = currentNum - effectNumValue; break; // reverse add
+   323→      case '-': newValue = currentNum + effectNumValue; break; // reverse subtract
+   324→      case '*': newValue = effectNumValue !== 0 ? currentNum / effectNumValue : currentNum; break; // reverse multiply
+   325→      case '/': newValue = currentNum * effectNumValue; break; // reverse divide
+   326→      case '=': break; // can't reverse a set without fallback
+   327→      case 'set_min': break; // can't reverse without fallback
+   328→      case 'set_max': break; // can't reverse without fallback
+   329→      default: break;
+   330→    }
+   331→
+   332→    if (newValue !== currentNum) {
+   333→      newValue = Math.round(newValue * 100) / 100;
+   334→      try {
+   335→        stateAny.updateCharacterStat?.(sessionId, resolvedTargetId, attributeKey, newValue, 'trigger');
+   336→      } catch {
+   337→        // Non-critical
+   338→      }
+   339→    }
+   340→  }
+   341→}
+   342→
+   343→// Get rarity color for display
+   344→export function getRarityColor(rarity: ItemRarity): string {
+   345→  const colors: Record<ItemRarity, string> = {
+   346→    common: 'text-gray-400',
+   347→    uncommon: 'text-green-400',
+   348→    rare: 'text-blue-400',
+   349→    epic: 'text-purple-400',
+   350→    legendary: 'text-amber-400',
+   351→    unique: 'text-red-400',
+   352→    cursed: 'text-fuchsia-400',
+   353→  };
+   354→  return colors[rarity];
+   355→}
+   356→
+   357→// Get rarity background color
+   358→export function getRarityBgColor(rarity: ItemRarity): string {
+   359→  const colors: Record<ItemRarity, string> = {
+   360→    common: 'bg-gray-500/10 border-gray-500/20',
+   361→    uncommon: 'bg-green-500/10 border-green-500/20',
+   362→    rare: 'bg-blue-500/10 border-blue-500/20',
+   363→    epic: 'bg-purple-500/10 border-purple-500/20',
+   364→    legendary: 'bg-amber-500/10 border-amber-500/20',
+   365→    unique: 'bg-red-500/10 border-red-500/20',
+   366→    cursed: 'bg-fuchsia-500/10 border-fuchsia-500/20',
+   367→  };
+   368→  return colors[rarity];
+   369→}
+   370→
+   371→// Get type icon
+   372→export function getItemTypeIcon(type: 'consumable' | 'equipment'): string {
+   373→  return type === 'consumable' ? '🧪' : '⚔️';
+   374→}
+   375→
+   376→// Get type label
+   377→export function getItemTypeLabel(type: 'consumable' | 'equipment'): string {
+   378→  return type === 'consumable' ? 'Consumible' : 'Equipo';
+   379→}
+   380→
+   381→// ============================================
+   382→// Slice Type
+   383→// ============================================
+   384→
+   385→export interface InventorySlice {
+   386→  // Item Registry - all defined items available in the system
+   387→  items: Item[];
+   388→
+   389→  // Active consumable effects (with remaining duration)
+   390→  activeConsumableEffects: ActiveConsumableEffect[];
+   391→
+   392→  // Settings
+   393→  inventorySettings: InventoryV2Settings;
+   394→
+   395→  // Notifications
+   396→  inventoryNotifications: InventoryNotification[];
+   397→
+   398→  // Pending item message to be sent as user chat message
+   399→  pendingItemMessage: string | null;
+   400→
+   401→  // Pending equip/use action (waiting for target selection)
+   402→  pendingEquipAction: {
+   403→    type: 'equip' | 'use';
+   404→    personaId: string;
+   405→    itemId: string;
+   406→  } | null;
+   407→
+   408→  // ===== Item Registry Actions =====
+   409→  addItem: (item: Item) => void;
+   410→  updateItem: (id: string, updates: Partial<Item>) => void;
+   411→  deleteItem: (id: string) => void;
+   412→  getItemById: (id: string) => Item | undefined;
+   413→  searchItems: (query: string) => Item[];
+   414→  getItemsByType: (type: 'consumable' | 'equipment') => Item[];
+   415→
+   416→  // ===== Persona Inventory Actions =====
+   417→  // These read/write persona.inventoryItems via the store's updatePersona
+   418→  addToPersona: (personaId: string, itemId: string, quantity?: number) => void;
+   419→  removeFromPersona: (personaId: string, itemId: string, quantity?: number) => void;
+   420→  getPersonaItems: (personaId: string) => Array<{ entry: PersonaInventoryEntry; item: Item }>;
+   421→  getPersonaItemCount: (personaId: string, itemId: string) => number;
+   422→
+   423→  // ===== Equipment Actions =====
+   424→  equipItem: (personaId: string, itemId: string) => void;
+   425→  equipItemToSlot: (personaId: string, itemId: string, slotId: string) => void;
+   426→  unequipItem: (personaId: string, itemId: string) => void;
+   427→  getEquippedItems: (personaId: string) => Array<{ entry: PersonaInventoryEntry; item: Item }>;
+   428→  getSessionEquipment: (sessionId: string) => SessionEquipmentEntry[];
+   429→  isItemEquippedInSession: (sessionId: string, itemId: string) => boolean;
+   430→  getEquipmentEffects: (personaId: string) => ItemAttributeEffect[];
+   431→
+   432→  // ===== Consumable Actions =====
+   433→  useConsumable: (personaId: string, itemId: string) => { effect: ActiveConsumableEffect; message: string } | null;
+   434→
+   435→  // ===== Active Effects =====
+   436→  tickEffects: (personaId: string) => string[];  // Returns list of expired effect messages
+   437→  removeExpiredEffects: (personaId: string) => string[];  // Returns list of expired effect messages
+   438→  getAllActiveEffects: (personaId: string) => ItemAttributeEffect[]; // consumable + equipment combined
+   439→  removeEffect: (effectId: string) => void;
+   440→  clearAllEffects: (personaId: string) => void;
+   441→
+   442→  // ===== Currency Actions (delegates to persona) =====
+   443→  adjustCurrency: (personaId: string, amount: number) => void;
+   444→  canAfford: (personaId: string, price: number) => boolean;
+   445→  purchaseItem: (personaId: string, itemId: string) => boolean; // Returns true if purchase succeeded
+   446→
+   447→  // ===== Shop =====
+   448→  getShopItems: () => Item[]; // Items with price > 0
+   449→
+   450→  // ===== Settings Actions =====
+   451→  setInventorySettings: (settings: Partial<InventoryV2Settings>) => void;
+   452→
+   453→  // ===== Notification Actions =====
+   454→  addInventoryNotification: (notification: Omit<InventoryNotification, 'id' | 'timestamp' | 'read'>) => void;
+   455→  markNotificationRead: (id: string) => void;
+   456→  clearInventoryNotifications: () => void;
+   457→  getUnreadNotifications: () => InventoryNotification[];
+   458→
+   459→  // ===== Pending Item Message =====
+   460→  clearPendingItemMessage: () => void;
+   461→
+   462→  // ===== Target Selection Actions =====
+   463→  requestEquipItem: (personaId: string, itemId: string) => void;
+   464→  requestUseItem: (personaId: string, itemId: string) => void;
+   465→  clearPendingEquipAction: () => void;
+   466→  executeEquipWithTarget: (personaId: string, itemId: string, targetOverrideId: string) => void;
+   467→  executeUseWithTarget: (personaId: string, itemId: string, targetOverrideId: string) => void;
+   468→
+   469→  // ===== Pending Fallbacks =====
+   470→  pendingFallbacks: Array<{ targetId: string; attributeKey: string; fallbackValue: string | number }>;
+   471→
+   472→  // ===== Dynamic Equipment State =====
+   473→  dynamicEquipmentState: Record<string, DynamicEquipmentState>;  // key: `${personaId}:${itemId}`
+   474→
+   475→  // ===== Equipment Slots Actions =====
+   476→  addEquipmentSlot: (slot: Omit<EquipmentSlotDefinition, 'id'>) => EquipmentSlotDefinition;
+   477→  updateEquipmentSlot: (id: string, updates: Partial<EquipmentSlotDefinition>) => void;
+   478→  deleteEquipmentSlot: (id: string) => void;
+   479→  getEquipmentSlotById: (id: string) => EquipmentSlotDefinition | undefined;
+   480→  getEquipmentSlots: () => EquipmentSlotDefinition[];
+   481→
+   482→  // ===== Utility =====
+   483→  exportInventory: () => { items: Item[]; activeEffects: ActiveConsumableEffect[]; settings: InventoryV2Settings; dynamicEquipmentState: Record<string, DynamicEquipmentState> };
+   484→  importInventory: (data: { items?: Item[]; activeEffects?: ActiveConsumableEffect[]; settings?: InventoryV2Settings; dynamicEquipmentState?: Record<string, DynamicEquipmentState> }) => void;
+   485→}
+   486→
+   487→// ============================================
+   488→// Slice Creator
+   489→// ============================================
+   490→
+   491→export const createInventorySlice: StateCreator<InventorySlice, [], [], InventorySlice> = (set, get) => ({
+   492→  // Initial State
+   493→  items: [],
+   494→  activeConsumableEffects: [],
+   495→  inventorySettings: DEFAULT_INVENTORY_V2_SETTINGS,
+   496→  inventoryNotifications: [],
+   497→  pendingItemMessage: null,
+   498→  pendingEquipAction: null,
+   499→  pendingFallbacks: [],
+   500→  dynamicEquipmentState: {},
+   501→
+   502→  // ===== Item Registry Actions =====
+   503→  addItem: (item) => set((state) => ({
+   504→    items: [...state.items, item]
+   505→  })),
+   506→
+   507→  updateItem: (id, updates) => set((state) => ({
+   508→    items: state.items.map(item =>
+   509→      item.id === id ? { ...item, ...updates, updatedAt: new Date().toISOString() } : item
+   510→    )
+   511→  })),
+   512→
+   513→  deleteItem: (id) => {
+   514→    const stateAny = get() as any;
+   515→    const item = get().getItemById(id);
+   516→
+   517→    // Reverse effects and clean up personas that have this item
+   518→    if (item) {
+   519→      const personas = stateAny.personas as Array<{ id: string; inventoryItems?: PersonaInventoryEntry[] }> | undefined;
+   520→      if (personas) {
+   521→        for (const persona of personas) {
+   522→          const entry = persona.inventoryItems?.find(e => e.itemId === id);
+   523→          if (entry) {
+   524→            // If the item is equipped, reverse its effects first
+   525→            if (entry.equipped && item.type === 'equipment' && item.attributeEffects) {
+   526→              for (const ae of item.attributeEffects) {
+   527→                const effectTargetId = entry.targetOverrideId || ae.targetId;
+   528→                applyFallbackToSessionStats(stateAny, effectTargetId, ae.attributeKey, ae.fallbackValue, ae);
+   529→              }
+   530→            }
+   531→            // Remove the item from this persona's inventory
+   532→            const updatedItems = persona.inventoryItems?.filter(e => e.itemId !== id) || [];
+   533→            stateAny.updatePersona(persona.id, { inventoryItems: updatedItems });
+   534→          }
+   535→        }
+   536→      }
+   537→    }
+   538→
+   539→    // Also reverse active consumable effects for this item
+   540→    const activeEffects = get().activeConsumableEffects.filter(e => e.itemId === id);
+   541→    for (const effect of activeEffects) {
+   542→      if (item?.attributeEffects) {
+   543→        for (const ae of item.attributeEffects) {
+   544→          const activeEffect = effect.effects.find(e => e.attributeKey === ae.attributeKey);
+   545→          const effectTargetId = activeEffect?.targetId || ae.targetId;
+   546→          applyFallbackToSessionStats(stateAny, effectTargetId, ae.attributeKey, ae.fallbackValue, ae);
+   547→        }
+   548→      }
+   549→    }
+   550→
+   551→    set((state) => ({
+   552→      items: state.items.filter(item => item.id !== id),
+   553→      activeConsumableEffects: state.activeConsumableEffects.filter(e => e.itemId !== id),
+   554→    }));
+   555→
+   556→    // Sync to session for per-session storage
+   557→    syncEffectsToSession(stateAny, get().activeConsumableEffects);
+   558→  },
+   559→
+   560→  getItemById: (id) => {
+   561→    return get().items.find(item => item.id === id);
+   562→  },
+   563→
+   564→  searchItems: (query) => {
+   565→    const lowerQuery = query.toLowerCase();
+   566→    return get().items.filter(item =>
+   567→      item.name.toLowerCase().includes(lowerQuery) ||
+   568→      item.description.toLowerCase().includes(lowerQuery) ||
+   569→      item.tags?.some(tag => tag.toLowerCase().includes(lowerQuery))
+   570→    );
+   571→  },
+   572→
+   573→  getItemsByType: (type) => {
+   574→    return get().items.filter(item => item.type === type);
+   575→  },
+   576→
+   577→  // ===== Persona Inventory Actions =====
+   578→  addToPersona: (personaId, itemId, quantity = 1) => {
+   579→    const stateAny = get() as any;
+   580→    const personas = stateAny.personas as Array<{ id: string; inventoryItems?: PersonaInventoryEntry[] }>;
+   581→    const persona = personas.find(p => p.id === personaId);
+   582→    if (!persona) return;
+   583→
+   584→    const currentItems = persona.inventoryItems || [];
+   585→    const existing = currentItems.find(e => e.itemId === itemId);
+   586→    const item = get().getItemById(itemId);
+   587→    if (!item) return;
+   588→
+   589→    let updatedItems: PersonaInventoryEntry[];
+   590→    if (existing) {
+   591→      // Update quantity (respect maxStack)
+   592→      const maxStack = item.maxStack ?? (item.type === 'consumable' ? 99 : 1);
+   593→      updatedItems = currentItems.map(e =>
+   594→        e.itemId === itemId
+   595→          ? { ...e, quantity: Math.min(e.quantity + quantity, maxStack) }
+   596→          : e
+   597→      );
+   598→    } else {
+   599→      // Add new entry
+   600→      updatedItems = [...currentItems, { itemId, quantity, equipped: false }];
+   601→    }
+   602→
+   603→    stateAny.updatePersona(personaId, { inventoryItems: updatedItems });
+   604→
+   605→    get().addInventoryNotification({
+   606→      type: 'item_added',
+   607→      itemId,
+   608→      itemName: item.name,
+   609→      quantity,
+   610→      message: `Obtuviste ${quantity > 1 ? `${quantity}x ` : ''}${item.name}`,
+   611→    });
+   612→  },
+   613→
+   614→  removeFromPersona: (personaId, itemId, quantity) => {
+   615→    const stateAny = get() as any;
+   616→    const personas = stateAny.personas as Array<{ id: string; inventoryItems?: PersonaInventoryEntry[] }>;
+   617→    const persona = personas.find(p => p.id === personaId);
+   618→    if (!persona?.inventoryItems) return;
+   619→
+   620→    const existing = persona.inventoryItems.find(e => e.itemId === itemId);
+   621→    if (!existing) return;
+   622→
+   623→    const item = get().getItemById(itemId);
+   624→    const removeQty = quantity ?? existing.quantity;
+   625→
+   626→    let updatedItems: PersonaInventoryEntry[];
+   627→    if (quantity && existing.quantity > quantity) {
+   628→      // Reduce quantity
+   629→      updatedItems = persona.inventoryItems.map(e =>
+   630→        e.itemId === itemId
+   631→          ? { ...e, quantity: e.quantity - quantity }
+   632→          : e
+   633→      );
+   634→    } else {
+   635→      // Remove entirely (also unequip if equipped)
+   636→      if (existing.equipped && item?.type === 'equipment') {
+   637→        // Reverse equipment effects when removing equipped item
+   638→        if (item.attributeEffects) {
+   639→          for (const ae of item.attributeEffects) {
+   640→            const effectTargetId = existing.targetOverrideId || ae.targetId;
+   641→            applyFallbackToSessionStats(stateAny, effectTargetId, ae.attributeKey, ae.fallbackValue, ae);
+   642→          }
+   643→        }
+   644→      }
+   645→      updatedItems = persona.inventoryItems.filter(e => e.itemId !== itemId);
+   646→    }
+   647→
+   648→    stateAny.updatePersona(personaId, { inventoryItems: updatedItems });
+   649→
+   650→    if (item) {
+   651→      get().addInventoryNotification({
+   652→        type: 'item_removed',
+   653→        itemId: item.id,
+   654→        itemName: item.name,
+   655→        quantity: removeQty,
+   656→        message: `Perdiste ${removeQty > 1 ? `${removeQty}x ` : ''}${item.name}`,
+   657→      });
+   658→    }
+   659→  },
+   660→
+   661→  getPersonaItems: (personaId) => {
+   662→    const stateAny = get() as any;
+   663→    const personas = stateAny.personas as Array<{ id: string; inventoryItems?: PersonaInventoryEntry[] }>;
+   664→    const persona = personas.find(p => p.id === personaId);
+   665→    if (!persona?.inventoryItems) return [];
+   666→
+   667→    return persona.inventoryItems
+   668→      .map(entry => {
+   669→        const item = get().getItemById(entry.itemId);
+   670→        return item ? { entry, item } : null;
+   671→      })
+   672→      .filter((r): r is { entry: PersonaInventoryEntry; item: Item } => r !== null);
+   673→  },
+   674→
+   675→  getPersonaItemCount: (personaId, itemId) => {
+   676→    const stateAny = get() as any;
+   677→    const personas = stateAny.personas as Array<{ id: string; inventoryItems?: PersonaInventoryEntry[] }>;
+   678→    const persona = personas.find(p => p.id === personaId);
+   679→    if (!persona?.inventoryItems) return 0;
+   680→
+   681→    const entry = persona.inventoryItems.find(e => e.itemId === itemId);
+   682→    return entry?.quantity ?? 0;
+   683→  },
+   684→
+   685→  // ===== Equipment Actions =====
+   686→  equipItem: (personaId, itemId) => {
+   687→    const stateAny = get() as any;
+   688→    const personas = stateAny.personas as Array<{ id: string; inventoryItems?: PersonaInventoryEntry[] }>;
+   689→    const persona = personas.find(p => p.id === personaId);
+   690→    if (!persona?.inventoryItems) return;
+   691→
+   692→    const item = get().getItemById(itemId);
+   693→    if (!item || item.type !== 'equipment') return;
+   694→
+   695→    const entry = persona.inventoryItems.find(e => e.itemId === itemId);
+   696→    if (!entry) return;
+   697→
+   698→    // Determine which slot to equip in (from slotEffects or item.slot)
+   699→    const equipmentSlots = get().inventorySettings.equipmentSlots || [];
+   700→
+   701→    // If item has multiple slot effects, use the first one (UI should show slot picker for multiple)
+   702→    let targetSlotId = '';
+   703→    let targetSlotEffect = item.slotEffects?.[0];
+   704→
+   705→    if (item.slot) {
+   706→      const matchingSlot = equipmentSlots.find(s => s.id === item.slot || s.key === item.slot);
+   707→      if (matchingSlot) {
+   708→        targetSlotId = matchingSlot.id;
+   709→        const slotEffectForSlot = item.slotEffects?.find(se => se.slotId === matchingSlot.id);
+   710→        targetSlotEffect = slotEffectForSlot || targetSlotEffect;
+   711→      }
+   712→    }
+   713→
+   714→    if (!targetSlotId && targetSlotEffect) {
+   715→      targetSlotId = targetSlotEffect.slotId;
+   716→    }
+   717→
+   718→    if (!targetSlotId && item.slot) {
+   719→      targetSlotId = item.slot;
+   720→    }
+   721→
+   722→    // Delegate to equipItemToSlot
+   723→    if (targetSlotId) {
+   724→      get().equipItemToSlot(personaId, itemId, targetSlotId);
+   725→    }
+   726→  },
+   727→
+   728→  equipItemToSlot: (personaId, itemId, slotId) => {
+   729→    const stateAny = get() as any;
+   730→    const sessionId = stateAny.activeSessionId as string | undefined;
+   731→    if (!sessionId) return;
+   732→
+   733→    const personas = stateAny.personas as Array<{ id: string; inventoryItems?: PersonaInventoryEntry[] }>;
+   734→    const persona = personas.find(p => p.id === personaId);
+   735→    if (!persona?.inventoryItems) return;
+   736→
+   737→    const item = get().getItemById(itemId);
+   738→    if (!item || item.type !== 'equipment') return;
+   739→
+   740→    const entry = persona.inventoryItems.find(e => e.itemId === itemId);
+   741→    if (!entry) return;
+   742→
+   743→    const equipmentSlots = get().inventorySettings.equipmentSlots || [];
+   744→    const slotEffect = item.slotEffects?.find(se => se.slotId === slotId);
+   745→    const slotDef = equipmentSlots.find(s => s.id === slotId);
+   746→
+   747→    // Get current session equipment
+   748→    const sessions = stateAny.sessions as Array<{ id: string; sessionEquipment?: SessionEquipmentEntry[] }>;
+   749→    const session = sessions.find(s => s.id === sessionId);
+   750→    const currentEquipment = session?.sessionEquipment || [];
+   751→
+   752→    // Remove any existing item in this slot (unequip it)
+   753→    let updatedEquipment = currentEquipment.filter(e => e.equippedSlotId !== slotId);
+   754→
+   755→    // Also remove this item from any other slot it might be equipped in
+   756→    updatedEquipment = updatedEquipment.filter(e => e.itemId !== itemId);
+   757→
+   758→    // Add the new equipment entry
+   759→    const newEntry: SessionEquipmentEntry = {
+   760→      itemId,
+   761→      equippedSlotId: slotId,
+   762→      slotEffectText: slotEffect?.effectText || undefined,
+   763→    };
+   764→    updatedEquipment.push(newEntry);
+   765→
+   766→    // Save to session
+   767→    stateAny.updateSession(sessionId, { sessionEquipment: updatedEquipment });
+   768→
+   769→    // Also update persona.inventoryItems for backward compat (mark as equipped)
+   770→    const updatedItems = persona.inventoryItems.map(e =>
+   771→      e.itemId === itemId ? { ...e, equipped: true, equippedSlotId: slotId } : e
+   772→    );
+   773→    stateAny.updatePersona(personaId, { inventoryItems: updatedItems });
+   774→
+   775→    // Apply slot-based effects - set the slot attribute value on the persona
+   776→    if (slotDef) {
+   777→      const slotValue = slotEffect?.effectText
+   778→        ? `${item.name}: ${slotEffect.effectText}`
+   779→        : item.name;
+   780→      stateAny.updateCharacterStat?.(sessionId, '__user__', slotDef.key, slotValue, 'text');
+   781→    }
+   782→
+   783→    const message = resolveSlotKeyInMessage(item.useMessage || `Equipaste ${item.name}${slotDef ? ` en ${slotDef.name}` : ''}`, slotId, equipmentSlots);
+   784→    get().addInventoryNotification({
+   785→      type: 'item_equipped',
+   786→      itemId: item.id,
+   787→      itemName: item.name,
+   788→      quantity: 1,
+   789→      message,
+   790→    });
+   791→
+   792→    if (item.useMessage) {
+   793→      set({ pendingItemMessage: resolveSlotKeyInMessage(item.useMessage, slotId, equipmentSlots) });
+   794→    }
+   795→  },
+   796→
+   797→  unequipItem: (personaId, itemId) => {
+   798→    const stateAny = get() as any;
+   799→    const sessionId = stateAny.activeSessionId as string | undefined;
+   800→    const personas = stateAny.personas as Array<{ id: string; inventoryItems?: PersonaInventoryEntry[] }>;
+   801→    const persona = personas.find(p => p.id === personaId);
+   802→    if (!persona?.inventoryItems) return;
+   803→
+   804→    const item = get().getItemById(itemId);
+   805→    if (!item) return;
+   806→
+   807→    const entry = persona.inventoryItems.find(e => e.itemId === itemId);
+   808→    const equippedSlotId = entry?.equippedSlotId;
+   809→
+   810→    // Remove from persona inventory (mark as unequipped)
+   811→    const updatedItems = persona.inventoryItems.map(e =>
+   812→      e.itemId === itemId ? { ...e, equipped: false, equippedSlotId: undefined } : e
+   813→    );
+   814→    stateAny.updatePersona(personaId, { inventoryItems: updatedItems });
+   815→
+   816→    // Remove from session equipment
+   817→    if (sessionId) {
+   818→      const sessions = stateAny.sessions as Array<{ id: string; sessionEquipment?: SessionEquipmentEntry[] }>;
+   819→      const session = sessions.find(s => s.id === sessionId);
+   820→      const currentEquipment = session?.sessionEquipment || [];
+   821→      const updatedEquipment = currentEquipment.filter(e => e.itemId !== itemId);
+   822→      stateAny.updateSession(sessionId, { sessionEquipment: updatedEquipment });
+   823→    }
+   824→
+   825→    // Clear slot-based effects - reset the slot attribute to empty
+   826→    const equipmentSlots = get().inventorySettings.equipmentSlots || [];
+   827→    if (equippedSlotId && sessionId) {
+   828→      const slotDef = equipmentSlots.find(s => s.id === equippedSlotId);
+   829→      if (slotDef) {
+   830→        stateAny.updateCharacterStat?.(sessionId, '__user__', slotDef.key, '', 'text');
+   831→      }
+   832→    }
+   833→
+   834→    const message = resolveSlotKeyInMessage(item.unequipMessage || `Desequipaste ${item.name}`, equippedSlotId, equipmentSlots);
+   835→    get().addInventoryNotification({
+   836→      type: 'item_equipped',
+   837→      itemId: item.id,
+   838→      itemName: item.name,
+   839→      quantity: 1,
+   840→      message,
+   841→    });
+   842→
+   843→    // Queue message for chat injection AFTER attribute change
+   844→    if (item.unequipMessage) {
+   845→      set({ pendingItemMessage: resolveSlotKeyInMessage(item.unequipMessage, equippedSlotId, equipmentSlots) });
+   846→    }
+   847→  },
+   848→
+   849→  getEquippedItems: (personaId) => {
+   850→    return get().getPersonaItems(personaId).filter(({ entry }) => entry.equipped);
+   851→  },
+   852→
+   853→  getSessionEquipment: (sessionId) => {
+   854→    const stateAny = get() as any;
+   855→    const sessions = stateAny.sessions as Array<{ id: string; sessionEquipment?: SessionEquipmentEntry[] }>;
+   856→    const session = sessions.find(s => s.id === sessionId);
+   857→    return session?.sessionEquipment || [];
+   858→  },
+   859→
+   860→  isItemEquippedInSession: (sessionId, itemId) => {
+   861→    const equipment = get().getSessionEquipment(sessionId);
+   862→    return equipment.some(e => e.itemId === itemId);
+   863→  },
+   864→
+   865→  getEquipmentEffects: (personaId) => {
+   866→    const equipped = get().getEquippedItems(personaId);
+   867→    const effects: ItemAttributeEffect[] = [];
+   868→
+   869→    for (const { item } of equipped) {
+   870→      if (item.attributeEffects) {
+   871→        effects.push(...item.attributeEffects);
+   872→      }
+   873→    }
+   874→
+   875→    return effects;
+   876→  },
+   877→
+   878→  // ===== Consumable Actions =====
+   879→  useConsumable: (personaId, itemId) => {
+   880→    const stateAny = get() as any;
+   881→    const personas = stateAny.personas as Array<{ id: string; inventoryItems?: PersonaInventoryEntry[] }>;
+   882→    const persona = personas.find(p => p.id === personaId);
+   883→    if (!persona?.inventoryItems) return null;
+   884→
+   885→    const item = get().getItemById(itemId);
+   886→    if (!item || item.type !== 'consumable') return null;
+   887→
+   888→    const entry = persona.inventoryItems.find(e => e.itemId === itemId);
+   889→    if (!entry || entry.quantity <= 0) return null;
+   890→
+   891→    // Reduce quantity (consumable is consumed on use)
+   892→    const updatedItems = persona.inventoryItems.map(e =>
+   893→      e.itemId === itemId
+   894→        ? { ...e, quantity: e.quantity - 1 }
+   895→        : e
+   896→    ).filter(e => e.quantity > 0); // Remove entries with 0 quantity
+   897→
+   898→    stateAny.updatePersona(personaId, { inventoryItems: updatedItems });
+   899→
+   900→    // Create active effect
+   901→    const duration = item.duration ?? 1;
+   902→
+   903→    // Collect fallback values from item's attributeEffects
+   904→    const effectFallbacks: Record<string, string | number> = {};
+   905→    for (const ae of (item.attributeEffects || [])) {
+   906→      if (ae.fallbackValue !== undefined) {
+   907→        effectFallbacks[ae.attributeKey] = ae.fallbackValue;
+   908→      }
+   909→    }
+   910→
+   911→    const effect: ActiveConsumableEffect = {
+   912→      id: generateId('effect'),
+   913→      itemId: item.id,
+   914→      itemName: item.name,
+   915→      personaId,
+   916→      effects: item.attributeEffects || [],
+   917→      effectFallbacks,
+   918→      consumableEffect: item.consumableEffect,
+   919→      remainingTurns: duration,
+   920→      totalTurns: duration,
+   921→      useMessage: item.useMessage,
+   922→      expireMessage: item.expireMessage,
+   923→      appliedAt: new Date().toISOString(),
+   924→    };
+   925→
+   926→    set((state) => ({
+   927→      activeConsumableEffects: [...state.activeConsumableEffects, effect]
+   928→    }));
+   929→
+   930→    // Sync to session for per-session storage
+   931→    syncEffectsToSession(stateAny, get().activeConsumableEffects);
+   932→
+   933→    // Apply consumable effects FIRST (before message) so attributes are updated
+   934→    // before the LLM sees the message in the prompt
+   935→    if (item.attributeEffects && item.attributeEffects.length > 0) {
+   936→      applyEffectsToSessionStats(stateAny, item.attributeEffects);
+   937→    }
+   938→
+   939→    const message = item.useMessage || `Usaste ${item.name} (${duration} turnos)`;
+   940→
+   941→    get().addInventoryNotification({
+   942→      type: 'item_used',
+   943→      itemId: item.id,
+   944→      itemName: item.name,
+   945→      quantity: 1,
+   946→      message,
+   947→    });
+   948→
+   949→    // Queue message for chat injection AFTER attribute change
+   950→    if (item.useMessage) {
+   951→      set({ pendingItemMessage: item.useMessage });
+   952→    }
+   953→
+   954→    return { effect, message };
+   955→  },
+   956→
+   957→  // ===== Active Effects =====
+   958→  tickEffects: (personaId) => {
+   959→    const expiredMessages: string[] = [];
+   960→    const stateAny = get() as any;
+   961→
+   962→    // 1. Apply dynamic consumable effects before decrementing
+   963→    const consumableEffects = get().activeConsumableEffects.filter(e => e.personaId === personaId);
+   964→    for (const activeEffect of consumableEffects) {
+   965→      const dynamicEffects = activeEffect.effects.filter(e => e.mode === 'dynamic');
+   966→      const activeTurns = activeEffect.totalTurns - activeEffect.remainingTurns;
+   967→      for (const dynEffect of dynamicEffects) {
+   968→        applyDynamicEffectToSessionStats(stateAny, dynEffect, activeTurns);
+   969→      }
+   970→    }
+   971→
+   972→    // 2. Apply dynamic equipment effects and increment turn counters
+   973→    const dynamicEqState = { ...get().dynamicEquipmentState };
+   974→    const equippedItems = get().getEquippedItems(personaId);
+   975→    for (const { entry, item } of equippedItems) {
+   976→      const dynamicEffects = (item.attributeEffects || []).filter((e: ItemAttributeEffect) => e.mode === 'dynamic');
+   977→      if (dynamicEffects.length > 0) {
+   978→        const stateKey = `${personaId}:${item.id}`;
+   979→        const currentState = dynamicEqState[stateKey] || { activeTurns: 0, appliedAt: new Date().toISOString() };
+   980→        for (const dynEffect of dynamicEffects) {
+   981→          const resolvedEffect = entry.targetOverrideId ? { ...dynEffect, targetId: entry.targetOverrideId } : dynEffect;
+   982→          applyDynamicEffectToSessionStats(stateAny, resolvedEffect, currentState.activeTurns);
+   983→        }
+   984→        dynamicEqState[stateKey] = { ...currentState, activeTurns: currentState.activeTurns + 1 };
+   985→      }
+   986→    }
+   987→
+   988→    // 3. Decrement consumable turns
+   989→    set((state) => ({
+   990→      activeConsumableEffects: state.activeConsumableEffects.map(effect => {
+   991→        if (effect.personaId !== personaId) return effect;
+   992→        const newRemaining = effect.remainingTurns - 1;
+   993→        if (newRemaining <= 0) {
+   994→          const msg = effect.expireMessage || `El efecto de ${effect.itemName} ha expirado`;
+   995→          expiredMessages.push(msg);
+   996→        }
+   997→        return { ...effect, remainingTurns: Math.max(0, newRemaining) };
+   998→      }),
+   999→      dynamicEquipmentState: dynamicEqState,
+  1000→    }));
+  1001→
+  1002→    // Sync to session for per-session storage
+  1003→    syncEffectsToSession(stateAny, get().activeConsumableEffects);
+  1004→
+  1005→    return expiredMessages;
+  1006→  },
+  1007→
+  1008→  removeExpiredEffects: (personaId) => {
+  1009→    const expiredMessages: string[] = [];
+  1010→    const stateAny = get() as any;
+  1011→
+  1012→    set((state) => {
+  1013→      const expired = state.activeConsumableEffects.filter(
+  1014→        e => e.personaId === personaId && e.remainingTurns <= 0
+  1015→      );
+  1016→      for (const e of expired) {
+  1017→        const msg = e.expireMessage || `El efecto de ${e.itemName} ha expirado`;
+  1018→        expiredMessages.push(msg);
+  1019→
+  1020→        get().addInventoryNotification({
+  1021→          type: 'item_removed',
+  1022→          itemId: e.itemId,
+  1023→          itemName: e.itemName,
+  1024→          quantity: 1,
+  1025→          message: msg,
+  1026→        });
+  1027→      }
+  1028→
+  1029→      // Apply fallback values directly to SessionStats for expired effects
+  1030→      for (const effect of expired) {
+  1031→        const item = get().getItemById(effect.itemId);
+  1032→        if (!item?.attributeEffects) continue;
+  1033→        for (const ae of item.attributeEffects) {
+  1034→          // Use the effect's overridden targetId if it was set (from executeUseWithTarget)
+  1035→          const activeEffect = effect.effects.find(e => e.attributeKey === ae.attributeKey);
+  1036→          const effectTargetId = activeEffect?.targetId || ae.targetId;
+  1037→          applyFallbackToSessionStats(stateAny, effectTargetId, ae.attributeKey, ae.fallbackValue, ae);
+  1038→        }
+  1039→      }
+  1040→
+  1041→      return {
+  1042→        activeConsumableEffects: state.activeConsumableEffects.filter(
+  1043→          e => !(e.personaId === personaId && e.remainingTurns <= 0)
+  1044→        ),
+  1045→        pendingFallbacks: state.pendingFallbacks || [], // Keep for backward compat but no new additions
+  1046→      };
+  1047→    });
+  1048→
+  1049→    // Sync to session for per-session storage
+  1050→    syncEffectsToSession(stateAny, get().activeConsumableEffects);
+  1051→
+  1052→    return expiredMessages;
+  1053→  },
+  1054→
+  1055→  getAllActiveEffects: (personaId) => {
+  1056→    // Combine equipment effects + active consumable effects
+  1057→    const equipmentEffects = get().getEquipmentEffects(personaId);
+  1058→    const consumableEffects = get().activeConsumableEffects
+  1059→      .filter(e => e.personaId === personaId)
+  1060→      .flatMap(e => e.effects);
+  1061→
+  1062→    return [...equipmentEffects, ...consumableEffects];
+  1063→  },
+  1064→
+  1065→  removeEffect: (effectId) => {
+  1066→    const stateAny = get() as any;
+  1067→    // Find the effect before removing so we can reverse its attribute changes
+  1068→    const effectToRemove = get().activeConsumableEffects.find(e => e.id === effectId);
+  1069→    if (effectToRemove) {
+  1070→      const item = get().getItemById(effectToRemove.itemId);
+  1071→      if (item?.attributeEffects) {
+  1072→        for (const ae of item.attributeEffects) {
+  1073→          const activeEffect = effectToRemove.effects.find(e => e.attributeKey === ae.attributeKey);
+  1074→          const effectTargetId = activeEffect?.targetId || ae.targetId;
+  1075→          applyFallbackToSessionStats(stateAny, effectTargetId, ae.attributeKey, ae.fallbackValue, ae);
+  1076→        }
+  1077→      }
+  1078→    }
+  1079→    set((state) => ({
+  1080→      activeConsumableEffects: state.activeConsumableEffects.filter(e => e.id !== effectId)
+  1081→    }));
+  1082→
+  1083→    // Sync to session for per-session storage
+  1084→    syncEffectsToSession(stateAny, get().activeConsumableEffects);
+  1085→  },
+  1086→
+  1087→  clearAllEffects: (personaId) => {
+  1088→    const stateAny = get() as any;
+  1089→    // Reverse all active consumable effects for this persona before clearing
+  1090→    const effectsToClear = get().activeConsumableEffects.filter(e => e.personaId === personaId);
+  1091→    for (const effect of effectsToClear) {
+  1092→      const item = get().getItemById(effect.itemId);
+  1093→      if (item?.attributeEffects) {
+  1094→        for (const ae of item.attributeEffects) {
+  1095→          const activeEffect = effect.effects.find(e => e.attributeKey === ae.attributeKey);
+  1096→          const effectTargetId = activeEffect?.targetId || ae.targetId;
+  1097→          applyFallbackToSessionStats(stateAny, effectTargetId, ae.attributeKey, ae.fallbackValue, ae);
+  1098→        }
+  1099→      }
+  1100→    }
+  1101→    // Also apply fallbacks for dynamic equipment effects for this persona
+  1102→    const equippedItems = get().getEquippedItems(personaId);
+  1103→    for (const { entry, item } of equippedItems) {
+  1104→      const dynamicEffects = (item.attributeEffects || []).filter((e: ItemAttributeEffect) => e.mode === 'dynamic');
+  1105→      if (dynamicEffects.length > 0) {
+  1106→        for (const ae of dynamicEffects) {
+  1107→          const effectTargetId = entry.targetOverrideId || ae.targetId;
+  1108→          applyFallbackToSessionStats(stateAny, effectTargetId, ae.attributeKey, ae.fallbackValue, ae);
+  1109→        }
+  1110→      }
+  1111→    }
+  1112→    // Clean up dynamic equipment state for this persona
+  1113→    const dynamicEqState = { ...get().dynamicEquipmentState };
+  1114→    let changed = false;
+  1115→    for (const key of Object.keys(dynamicEqState)) {
+  1116→      if (key.startsWith(`${personaId}:`)) {
+  1117→        delete dynamicEqState[key];
+  1118→        changed = true;
+  1119→      }
+  1120→    }
+  1121→    set((state) => ({
+  1122→      activeConsumableEffects: state.activeConsumableEffects.filter(e => e.personaId !== personaId),
+  1123→      ...(changed ? { dynamicEquipmentState: dynamicEqState } : {}),
+  1124→    }));
+  1125→
+  1126→    // Sync to session for per-session storage
+  1127→    syncEffectsToSession(stateAny, get().activeConsumableEffects);
+  1128→  },
+  1129→
+  1130→  // ===== Currency Actions =====
+  1131→  adjustCurrency: (personaId, amount) => {
+  1132→    const stateAny = get() as any;
+  1133→    const personas = stateAny.personas as Array<{ id: string; currency?: number; currencyName?: string }>;
+  1134→    const persona = personas.find(p => p.id === personaId);
+  1135→    if (!persona) return;
+  1136→
+  1137→    const currentAmount = persona.currency ?? 0;
+  1138→    const newAmount = Math.max(0, currentAmount + amount);
+  1139→    stateAny.updatePersona(personaId, { currency: newAmount });
+  1140→
+  1141→    const change = amount >= 0 ? `+${amount}` : `${amount}`;
+  1142→    const currencyName = persona.currencyName || 'Divisa';
+  1143→    get().addInventoryNotification({
+  1144→      type: 'currency_changed',
+  1145→      itemName: currencyName,
+  1146→      quantity: amount,
+  1147→      message: `${currencyName}: ${change} (Total: ${newAmount})`,
+  1148→    });
+  1149→  },
+  1150→
+  1151→  canAfford: (personaId, price) => {
+  1152→    const stateAny = get() as any;
+  1153→    const personas = stateAny.personas as Array<{ id: string; currency?: number }>;
+  1154→    const persona = personas.find(p => p.id === personaId);
+  1155→    if (!persona) return false;
+  1156→    return (persona.currency ?? 0) >= price;
+  1157→  },
+  1158→
+  1159→  purchaseItem: (personaId, itemId) => {
+  1160→    const item = get().getItemById(itemId);
+  1161→    if (!item || !item.price || item.price <= 0) return false;
+  1162→
+  1163→    if (!get().canAfford(personaId, item.price)) return false;
+  1164→
+  1165→    // Deduct currency and add item
+  1166→    get().adjustCurrency(personaId, -item.price);
+  1167→    get().addToPersona(personaId, itemId, 1);
+  1168→
+  1169→    get().addInventoryNotification({
+  1170→      type: 'item_added',
+  1171→      itemId: item.id,
+  1172→      itemName: item.name,
+  1173→      quantity: 1,
+  1174→      message: `Compraste ${item.name} por ${item.price} divisa${item.price !== 1 ? 's' : ''}`,
+  1175→    });
+  1176→
+  1177→    return true;
+  1178→  },
+  1179→
+  1180→  // ===== Shop =====
+  1181→  getShopItems: () => {
+  1182→    return get().items.filter(item => item.price && item.price > 0);
+  1183→  },
+  1184→
+  1185→  // ===== Settings Actions =====
+  1186→  setInventorySettings: (settings) => set((state) => ({
+  1187→    inventorySettings: { ...state.inventorySettings, ...settings }
+  1188→  })),
+  1189→
+  1190→  // ===== Notification Actions =====
+  1191→  addInventoryNotification: (notification) => set((state) => ({
+  1192→    inventoryNotifications: [
+  1193→      {
+  1194→        ...notification,
+  1195→        id: generateId('notif'),
+  1196→        timestamp: new Date().toISOString(),
+  1197→        read: false,
+  1198→      },
+  1199→      ...state.inventoryNotifications
+  1200→    ].slice(0, 50) // Keep last 50 notifications
+  1201→  })),
+  1202→
+  1203→  markNotificationRead: (id) => set((state) => ({
+  1204→    inventoryNotifications: state.inventoryNotifications.map(n =>
+  1205→      n.id === id ? { ...n, read: true } : n
+  1206→    )
+  1207→  })),
+  1208→
+  1209→  clearInventoryNotifications: () => set({ inventoryNotifications: [] }),
+  1210→
+  1211→  getUnreadNotifications: () => {
+  1212→    return get().inventoryNotifications.filter(n => !n.read);
+  1213→  },
+  1214→
+  1215→  // ===== Pending Item Message =====
+  1216→  clearPendingItemMessage: () => set({ pendingItemMessage: null }),
+  1217→
+  1218→  // ===== Target Selection Actions =====
+  1219→  requestEquipItem: (personaId, itemId) => set({
+  1220→    pendingEquipAction: { type: 'equip', personaId, itemId }
+  1221→  }),
+  1222→
+  1223→  requestUseItem: (personaId, itemId) => set({
+  1224→    pendingEquipAction: { type: 'use', personaId, itemId }
+  1225→  }),
+  1226→
+  1227→  clearPendingEquipAction: () => set({ pendingEquipAction: null }),
+  1228→
+  1229→  executeEquipWithTarget: (personaId, itemId, targetOverrideId) => {
+  1230→    const stateAny = get() as any;
+  1231→    const personas = stateAny.personas as Array<{ id: string; inventoryItems?: PersonaInventoryEntry[] }>;
+  1232→    const persona = personas.find(p => p.id === personaId);
+  1233→    if (!persona?.inventoryItems) return;
+  1234→
+  1235→    const item = get().getItemById(itemId);
+  1236→    if (!item || item.type !== 'equipment') return;
+  1237→
+  1238→    const entry = persona.inventoryItems.find(e => e.itemId === itemId);
+  1239→    if (!entry) return;
+  1240→
+  1241→    // Determine slot for the item
+  1242→    const equipmentSlots = get().inventorySettings.equipmentSlots || [];
+  1243→    let targetSlotId = '';
+  1244→    let targetSlotEffect = item.slotEffects?.[0];
+  1245→
+  1246→    if (item.slot) {
+  1247→      const matchingSlot = equipmentSlots.find(s => s.id === item.slot || s.key === item.slot);
+  1248→      if (matchingSlot) {
+  1249→        targetSlotId = matchingSlot.id;
+  1250→        const slotEffectForSlot = item.slotEffects?.find(se => se.slotId === matchingSlot.id);
+  1251→        targetSlotEffect = slotEffectForSlot || targetSlotEffect;
+  1252→      }
+  1253→    }
+  1254→    if (!targetSlotId && targetSlotEffect) {
+  1255→      targetSlotId = targetSlotEffect.slotId;
+  1256→    }
+  1257→    if (!targetSlotId && item.slot) {
+  1258→      targetSlotId = item.slot;
+  1259→    }
+  1260→
+  1261→    // If this item uses a slot, unequip any existing item in that slot first
+  1262→    let updatedItems = [...persona.inventoryItems];
+  1263→    const dynamicEqStateUpdates: Record<string, DynamicEquipmentState | undefined> = {};
+  1264→    if (targetSlotId) {
+  1265→      updatedItems = updatedItems.map(e => {
+  1266→        if (e.equipped && e.equippedSlotId === targetSlotId && e.itemId !== itemId) {
+  1267→          const eItem = get().getItemById(e.itemId);
+  1268→          if (eItem?.attributeEffects) {
+  1269→            for (const ae of eItem.attributeEffects) {
+  1270→              const oldTargetId = e.targetOverrideId || ae.targetId;
+  1271→              applyFallbackToSessionStats(stateAny, oldTargetId, ae.attributeKey, ae.fallbackValue, ae);
+  1272→            }
+  1273→          }
+  1274→          if (eItem?.slotEffects && e.equippedSlotId) {
+  1275→            const oldSlot = equipmentSlots.find(s => s.id === e.equippedSlotId);
+  1276→            if (oldSlot) {
+  1277→              stateAny.updateCharacterStat(targetOverrideId || '__user__', oldSlot.key, '', 'text');
+  1278→            }
+  1279→          }
+  1280→          const oldStateKey = `${personaId}:${e.itemId}`;
+  1281→          if (get().dynamicEquipmentState[oldStateKey]) {
+  1282→            dynamicEqStateUpdates[oldStateKey] = undefined;
+  1283→          }
+  1284→          return { ...e, equipped: false, equippedSlotId: undefined };
+  1285→        }
+  1286→        return e;
+  1287→      });
+  1288→    }
+  1289→
+  1290→    // Equip the item with target override
+  1291→    updatedItems = updatedItems.map(e =>
+  1292→      e.itemId === itemId ? { ...e, equipped: true, targetOverrideId, equippedSlotId: targetSlotId || undefined } : e
+  1293→    );
+  1294→
+  1295→    stateAny.updatePersona(personaId, { inventoryItems: updatedItems });
+  1296→
+  1297→    // Clear pending action
+  1298→    set({ pendingEquipAction: null });
+  1299→
+  1300→    // Apply legacy equipment effects directly to SessionStats (with targetOverrideId)
+  1301→    if (item.attributeEffects && item.attributeEffects.length > 0) {
+  1302→      const effectsWithTarget = item.attributeEffects.map(ae => ({
+  1303→        ...ae,
+  1304→        targetId: targetOverrideId || ae.targetId,
+  1305→        targetName: targetOverrideId === '__user__' ? 'Persona'
+  1306→          : (targetOverrideId ? (stateAny.getCharacterById?.(targetOverrideId)?.name || targetOverrideId) : ae.targetName),
+  1307→      }));
+  1308→      const staticEffects = effectsWithTarget.filter(e => e.mode !== 'dynamic');
+  1309→      const dynamicEffects = effectsWithTarget.filter(e => e.mode === 'dynamic');
+  1310→
+  1311→      if (staticEffects.length > 0) {
+  1312→        applyEffectsToSessionStats(stateAny, staticEffects);
+  1313→      }
+  1314→
+  1315→      for (const dynEffect of dynamicEffects) {
+  1316→        applyDynamicEffectToSessionStats(stateAny, dynEffect, 0);
+  1317→      }
+  1318→
+  1319→      if (dynamicEffects.length > 0) {
+  1320→        dynamicEqStateUpdates[`${personaId}:${itemId}`] = { activeTurns: 0, appliedAt: new Date().toISOString() };
+  1321→      }
+  1322→    }
+  1323→
+  1324→    // Apply slot-based effects
+  1325→    if (targetSlotId && targetSlotEffect) {
+  1326→      const slotDef = equipmentSlots.find(s => s.id === targetSlotId);
+  1327→      if (slotDef) {
+  1328→        const slotValue = targetSlotEffect.effectText
+  1329→          ? `${item.name}: ${targetSlotEffect.effectText}`
+  1330→          : item.name;
+  1331→        stateAny.updateCharacterStat(targetOverrideId || '__user__', slotDef.key, slotValue, 'text');
+  1332→      }
+  1333→    } else if (targetSlotId) {
+  1334→      const slotDef = equipmentSlots.find(s => s.id === targetSlotId);
+  1335→      if (slotDef) {
+  1336→        stateAny.updateCharacterStat(targetOverrideId || '__user__', slotDef.key, item.name, 'text');
+  1337→      }
+  1338→    }
+  1339→
+  1340→    // Apply dynamic equipment state updates (additions and deletions)
+  1341→    if (Object.keys(dynamicEqStateUpdates).length > 0) {
+  1342→      set((state) => {
+  1343→        const newState = { ...state.dynamicEquipmentState };
+  1344→        for (const [key, value] of Object.entries(dynamicEqStateUpdates)) {
+  1345→          if (value === undefined) {
+  1346→            delete newState[key];
+  1347→          } else {
+  1348→            newState[key] = value;
+  1349→          }
+  1350→        }
+  1351→        return { dynamicEquipmentState: newState };
+  1352→      });
+  1353→    }
+  1354→
+  1355→    const message = resolveSlotKeyInMessage(item.useMessage || `Equipaste ${item.name}`, targetSlotId || undefined, equipmentSlots);
+  1356→    get().addInventoryNotification({
+  1357→      type: 'item_equipped',
+  1358→      itemId: item.id,
+  1359→      itemName: item.name,
+  1360→      quantity: 1,
+  1361→      message,
+  1362→    });
+  1363→
+  1364→    // Queue message for chat injection
+  1365→    if (item.useMessage) {
+  1366→      set({ pendingItemMessage: resolveSlotKeyInMessage(item.useMessage, targetSlotId || undefined, equipmentSlots) });
+  1367→    }
+  1368→  },
+  1369→
+  1370→  executeUseWithTarget: (personaId, itemId, targetOverrideId) => {
+  1371→    const stateAny = get() as any;
+  1372→    const personas = stateAny.personas as Array<{ id: string; inventoryItems?: PersonaInventoryEntry[] }>;
+  1373→    const persona = personas.find(p => p.id === personaId);
+  1374→    if (!persona?.inventoryItems) return;
+  1375→
+  1376→    const item = get().getItemById(itemId);
+  1377→    if (!item || item.type !== 'consumable') return;
+  1378→
+  1379→    const entry = persona.inventoryItems.find(e => e.itemId === itemId);
+  1380→    if (!entry || entry.quantity <= 0) return;
+  1381→
+  1382→    // Reduce quantity (consumable is consumed on use)
+  1383→    const updatedItems = persona.inventoryItems.map(e =>
+  1384→      e.itemId === itemId
+  1385→        ? { ...e, quantity: e.quantity - 1 }
+  1386→        : e
+  1387→    ).filter(e => e.quantity > 0); // Remove entries with 0 quantity
+  1388→
+  1389→    stateAny.updatePersona(personaId, { inventoryItems: updatedItems });
+  1390→
+  1391→    // Create active effect - override targetId in effects with the selected target
+  1392→    const duration = item.duration ?? 1;
+  1393→    const overriddenEffects = (item.attributeEffects || []).map(ef => ({
+  1394→      ...ef,
+  1395→      targetId: targetOverrideId || ef.targetId,
+  1396→      targetName: targetOverrideId === '__user__' ? 'Persona'
+  1397→        : (targetOverrideId ? (stateAny.getCharacterById?.(targetOverrideId)?.name || targetOverrideId) : ef.targetName),
+  1398→    }));
+  1399→
+  1400→    const effect: ActiveConsumableEffect = {
+  1401→      id: generateId('effect'),
+  1402→      itemId: item.id,
+  1403→      itemName: item.name,
+  1404→      personaId,
+  1405→      effects: overriddenEffects,
+  1406→      consumableEffect: item.consumableEffect,
+  1407→      remainingTurns: duration,
+  1408→      totalTurns: duration,
+  1409→      useMessage: item.useMessage,
+  1410→      expireMessage: item.expireMessage,
+  1411→      appliedAt: new Date().toISOString(),
+  1412→    };
+  1413→
+  1414→    set((state) => ({
+  1415→      activeConsumableEffects: [...state.activeConsumableEffects, effect],
+  1416→      pendingEquipAction: null,
+  1417→    }));
+  1418→
+  1419→    // Sync to session for per-session storage
+  1420→    syncEffectsToSession(stateAny, get().activeConsumableEffects);
+  1421→
+  1422→    // Apply consumable effects directly to SessionStats (with overridden target)
+  1423→    if (overriddenEffects.length > 0) {
+  1424→      const staticEffects = overriddenEffects.filter(e => e.mode !== 'dynamic');
+  1425→      const dynamicEffects = overriddenEffects.filter(e => e.mode === 'dynamic');
+  1426→
+  1427→      // Apply static effects once
+  1428→      if (staticEffects.length > 0) {
+  1429→        applyEffectsToSessionStats(stateAny, staticEffects);
+  1430→      }
+  1431→
+  1432→      // Apply dynamic effects for turn 0
+  1433→      for (const dynEffect of dynamicEffects) {
+  1434→        applyDynamicEffectToSessionStats(stateAny, dynEffect, 0);
+  1435→      }
+  1436→    }
+  1437→
+  1438→    const message = item.useMessage || `Usaste ${item.name} (${duration} turnos)`;
+  1439→
+  1440→    get().addInventoryNotification({
+  1441→      type: 'item_used',
+  1442→      itemId: item.id,
+  1443→      itemName: item.name,
+  1444→      quantity: 1,
+  1445→      message,
+  1446→    });
+  1447→
+  1448→    // Queue message for chat injection AFTER attribute change
+  1449→    if (item.useMessage) {
+  1450→      set({ pendingItemMessage: item.useMessage });
+  1451→    }
+  1452→  },
+  1453→
+  1454→  // ===== Utility =====
+  1455→  // ===== Equipment Slots Actions =====
+  1456→  addEquipmentSlot: (slotData) => {
+  1457→    const newSlot: EquipmentSlotDefinition = {
+  1458→      id: generateId('slot'),
+  1459→      ...slotData,
+  1460→    };
+  1461→    set((state) => ({
+  1462→      inventorySettings: {
+  1463→        ...state.inventorySettings,
+  1464→        equipmentSlots: [...(state.inventorySettings.equipmentSlots || []), newSlot],
+  1465→      },
+  1466→    }));
+  1467→    // Initialize the slot value as empty text attribute on the persona's session stats
+  1468→    const stateAny = get() as any;
+  1469→    const sessionId = stateAny.activeSessionId as string | undefined;
+  1470→    if (sessionId) {
+  1471→      stateAny.updateCharacterStat?.(sessionId, '__user__', newSlot.key, '', 'text');
+  1472→    }
+  1473→    return newSlot;
+  1474→  },
+  1475→
+  1476→  updateEquipmentSlot: (id, updates) => set((state) => ({
+  1477→    inventorySettings: {
+  1478→      ...state.inventorySettings,
+  1479→      equipmentSlots: (state.inventorySettings.equipmentSlots || []).map(s =>
+  1480→        s.id === id ? { ...s, ...updates } : s
+  1481→      ),
+  1482→    },
+  1483→  })),
+  1484→
+  1485→  deleteEquipmentSlot: (id) => {
+  1486→    // Find the slot before deleting so we can clean up its value
+  1487→    const slotToDelete = get().inventorySettings.equipmentSlots?.find(s => s.id === id);
+  1488→    set((state) => ({
+  1489→      inventorySettings: {
+  1490→        ...state.inventorySettings,
+  1491→        equipmentSlots: (state.inventorySettings.equipmentSlots || []).filter(s => s.id !== id),
+  1492→      },
+  1493→    }));
+  1494→    // Also clean up any slotEffects on items that reference this slot
+  1495→    const items = get().items;
+  1496→    for (const item of items) {
+  1497→      if (item.slotEffects?.some(se => se.slotId === id)) {
+  1498→        get().updateItem(item.id, {
+  1499→          slotEffects: item.slotEffects.filter(se => se.slotId !== id),
+  1500→        });
+  1501→      }
+  1502→    }
+  1503→    // Remove the slot value from persona's session stats
+  1504→    if (slotToDelete?.key) {
+  1505→      const stateAny = get() as any;
+  1506→      const sessionId = stateAny.activeSessionId as string | undefined;
+  1507→      if (sessionId) {
+  1508→        const sessionStats = stateAny.sessionStats as any;
+  1509→        if (sessionStats?.characterStats?.['__user__']?.attributeValues) {
+  1510→          delete sessionStats.characterStats['__user__'].attributeValues[slotToDelete.key];
+  1511→          // Trigger re-render
+  1512→          stateAny.setSessionStats?.(sessionId, { ...sessionStats });
+  1513→        }
+  1514→      }
+  1515→    }
+  1516→  },
+  1517→
+  1518→  getEquipmentSlotById: (id) => {
+  1519→    return get().inventorySettings.equipmentSlots?.find(s => s.id === id);
+  1520→  },
+  1521→
+  1522→  getEquipmentSlots: () => {
+  1523→    return get().inventorySettings.equipmentSlots || [];
+  1524→  },
+  1525→
+  1526→  exportInventory: () => {
+  1527→    return {
+  1528→      items: get().items,
+  1529→      activeEffects: get().activeConsumableEffects,
+  1530→      settings: get().inventorySettings,
+  1531→      dynamicEquipmentState: get().dynamicEquipmentState,
+  1532→    };
+  1533→  },
+  1534→
+  1535→  importInventory: (data) => {
+  1536→    set((state) => {
+  1537→      const importedSettings = data.settings;
+  1538→      return {
+  1539→        items: data.items ?? state.items,
+  1540→        activeConsumableEffects: data.activeEffects ?? state.activeConsumableEffects,
+  1541→        inventorySettings: importedSettings
+  1542→          ? {
+  1543→              ...state.inventorySettings,
+  1544→              ...importedSettings,
+  1545→              // Deep-merge equipmentSlots to avoid losing slots
+  1546→              equipmentSlots: Array.isArray(importedSettings.equipmentSlots)
+  1547→                ? importedSettings.equipmentSlots
+  1548→                : state.inventorySettings.equipmentSlots || [],
+  1549→            }
+  1550→          : state.inventorySettings,
+  1551→        dynamicEquipmentState: data.dynamicEquipmentState ?? state.dynamicEquipmentState,
+  1552→      };
+  1553→    });
+  1554→
+  1555→    // Sync imported effects to session for per-session storage
+  1556→    const stateAny = get() as any;
+  1557→    syncEffectsToSession(stateAny, get().activeConsumableEffects);
+  1558→  },
+  1559→});
+  1560→
+  1561→// ============================================
+  1562→// Item Factory Functions
+  1563→// ============================================
+  1564→
+  1565→/**
+  1566→ * Create a new consumable item
+  1567→ */
+  1568→export function createConsumableItem(
+  1569→  name: string,
+  1570→  options: {
+  1571→    description?: string;
+  1572→    rarity?: ItemRarity;
+  1573→    icon?: string;
+  1574→    duration?: number;
+  1575→    attributeEffects?: ItemAttributeEffect[];
+  1576→    slotEffects?: ItemSlotEffect[];
+  1577→    consumableEffect?: string;
+  1578→    useMessage?: string;
+  1579→    expireMessage?: string;
+  1580→    price?: number;
+  1581→    triggerKeywords?: string[];
+  1582→    contextKeys?: string[];
+  1583→    tags?: string[];
+  1584→    stackable?: boolean;
+  1585→    maxStack?: number;
+  1586→  } = {}
+  1587→): Item {
+  1588→  return {
+  1589→    id: generateId('item'),
+  1590→    name,
+  1591→    description: options.description || '',
+  1592→    category: 'consumable' as const,
+  1593→    type: 'consumable',
+  1594→    rarity: options.rarity || 'common',
+  1595→    icon: options.icon || '🧪',
+  1596→    attributeEffects: options.attributeEffects || [],
+  1597→    slotEffects: options.slotEffects || [],
+  1598→    consumableEffect: options.consumableEffect,
+  1599→    duration: options.duration ?? 1,
+  1600→    stackable: options.stackable ?? true,
+  1601→    maxStack: options.maxStack ?? 99,
+  1602→    useMessage: options.useMessage,
+  1603→    expireMessage: options.expireMessage,
+  1604→    price: options.price,
+  1605→    triggerKeywords: options.triggerKeywords,
+  1606→    contextKeys: options.contextKeys,
+  1607→    tags: options.tags,
+  1608→    createdAt: new Date().toISOString(),
+  1609→    updatedAt: new Date().toISOString(),
+  1610→  };
+  1611→}
+  1612→
+  1613→/**
+  1614→ * Create a new equipment item
+  1615→ */
+  1616→export function createEquipmentItem(
+  1617→  name: string,
+  1618→  options: {
+  1619→    description?: string;
+  1620→    rarity?: ItemRarity;
+  1621→    icon?: string;
+  1622→    slot?: string;
+  1623→    attributeEffects?: ItemAttributeEffect[];
+  1624→    slotEffects?: ItemSlotEffect[];
+  1625→    useMessage?: string;
+  1626→    unequipMessage?: string;
+  1627→    price?: number;
+  1628→    triggerKeywords?: string[];
+  1629→    contextKeys?: string[];
+  1630→    tags?: string[];
+  1631→  } = {}
+  1632→): Item {
+  1633→  return {
+  1634→    id: generateId('item'),
+  1635→    name,
+  1636→    description: options.description || '',
+  1637→    category: 'weapon' as const,
+  1638→    type: 'equipment',
+  1639→    rarity: options.rarity || 'common',
+  1640→    icon: options.icon || '⚔️',
+  1641→    attributeEffects: options.attributeEffects || [],
+  1642→    slotEffects: options.slotEffects || [],
+  1643→    slot: options.slot,
+  1644→    useMessage: options.useMessage,
+  1645→    unequipMessage: options.unequipMessage,
+  1646→    price: options.price,
+  1647→    triggerKeywords: options.triggerKeywords,
+  1648→    contextKeys: options.contextKeys,
+  1649→    tags: options.tags,
+  1650→    stackable: false,
+  1651→    maxStack: 1,
+  1652→    createdAt: new Date().toISOString(),
+  1653→    updatedAt: new Date().toISOString(),
+  1654→  };
+  1655→}
+  1656→
+  1657→/**
+  1658→ * Apply item effects to session stats
+  1659→ * This modifies session stats based on active item effects (equipment + consumables)
+  1660→ * Returns the modified stats
+  1661→ */
+  1662→export function applyItemEffectsToStats(
+  1663→  baseStats: Record<string, { value: number | string }>,
+  1664→  effects: ItemAttributeEffect[],
+  1665→  targetId: string
+  1666→): Record<string, { value: number | string; modified: boolean; modifier?: string }> {
+  1667→  const result: Record<string, { value: number | string; modified: boolean; modifier?: string }> = {};
+  1668→
+  1669→  // Copy base stats
+  1670→  for (const [key, stat] of Object.entries(baseStats)) {
+  1671→    result[key] = { ...stat, modified: false };
+  1672→  }
+  1673→
+  1674→  // Apply effects
+  1675→  for (const effect of effects) {
+  1676→    if (effect.targetId !== targetId) continue;
+  1677→
+  1678→    const stat = result[effect.attributeKey];
+  1679→    if (!stat || typeof stat.value !== 'number') continue;
+  1680→
+  1681→    const originalValue = stat.value;
+  1682→    let newValue = originalValue;
+  1683→
+  1684→    switch (effect.operator) {
+  1685→      case '+':
+  1686→        newValue = originalValue + effect.value;
+  1687→        break;
+  1688→      case '-':
+  1689→        newValue = originalValue - effect.value;
+  1690→        break;
+  1691→      case '*':
+  1692→        newValue = originalValue * effect.value;
+  1693→        break;
+  1694→      case '/':
+  1695→        newValue = effect.value !== 0 ? originalValue / effect.value : originalValue;
+  1696→        break;
+  1697→      case '=':
+  1698→        newValue = effect.value;
+  1699→        break;
+  1700→      case 'set_min':
+  1701→        newValue = Math.min(originalValue, effect.value);
+  1702→        break;
+  1703→      case 'set_max':
+  1704→        newValue = Math.max(originalValue, effect.value);
+  1705→        break;
+  1706→    }
+  1707→
+  1708→    stat.value = newValue;
+  1709→    stat.modified = true;
+  1710→    stat.modifier = `${effect.operator}${effect.value}`;
+  1711→  }
+  1712→
+  1713→  return result;
+  1714→}
+  1715→
+  1716→/**
+  1717→ * Build inventory prompt section
+  1718→ * Creates a text block showing current inventory, active effects, and currency
+  1719→ */
+  1720→export function buildInventoryPromptSectionV2(
+  1721→  personaId: string,
+  1722→  getPersonaItems: () => Array<{ entry: PersonaInventoryEntry; item: Item }>,
+  1723→  getEquippedItems: () => Array<{ entry: PersonaInventoryEntry; item: Item }>,
+  1724→  activeConsumableEffects: ActiveConsumableEffect[],
+  1725→  currency: number,
+  1726→  currencyName: string,
+  1727→  template: string
+  1728→): string {
+  1729→  // Build items list
+  1730→  const personaItems = getPersonaItems();
+  1731→  const equippedItems = getEquippedItems();
+  1732→  const personaEffects = activeConsumableEffects.filter(e => e.personaId === personaId);
+  1733→
+  1734→  const itemLines = personaItems.map(({ entry, item }) => {
+  1735→    const qty = entry.quantity > 1 ? ` x${entry.quantity}` : '';
+  1736→    const eq = entry.equipped ? ' [Equipado]' : '';
+  1737→    const effects = (item.attributeEffects?.length ?? 0) > 0
+  1738→      ? ` (${item.attributeEffects!.map(e => `${e.operator}${e.value} ${e.attributeKey}`).join(', ')})`
+  1739→      : '';
+  1740→    return `- ${item.icon || ''} ${item.name}${qty}${eq}${effects}`;
+  1741→  }).join('\n');
+  1742→
+  1743→  // Build active effects list
+  1744→  const effectLines = personaEffects.map(e => {
+  1745→    const turnsLeft = e.remainingTurns > 0 ? ` (${e.remainingTurns}/${e.totalTurns} turnos)` : '';
+  1746→    const effectDesc = e.effects.map(ef =>
+  1747→      `${ef.operator}${ef.value} ${ef.attributeKey}${ef.targetId !== '__user__' ? ` → ${ef.targetName || ef.targetId}` : ''}`
+  1748→    ).join(', ');
+  1749→    return `- ${e.itemName}: ${effectDesc}${turnsLeft}`;
+  1750→  }).join('\n');
+  1751→
+  1752→  // Build equipped items list
+  1753→  const equipLines = equippedItems.map(({ item }) => {
+  1754→    const effects = (item.attributeEffects ?? []).map(e => `${e.operator}${e.value} ${e.attributeKey}`).join(', ');
+  1755→    return `- ${item.icon || ''} ${item.name}${item.slot ? ` [${item.slot}]` : ''}${effects ? ` → ${effects}` : ''}`;
+  1756→  }).join('\n');
+  1757→
+  1758→  // Build currency
+  1759→  const currencyLine = `${currencyName}: ${currency}`;
+  1760→
+  1761→  return template
+  1762→    .replace('{{activeItems}}', itemLines || 'Vacío')
+  1763→    .replace('{{activeEffects}}', effectLines || 'Ninguno')
+  1764→    .replace('{{equippedItems}}', equipLines || 'Ninguno')
+  1765→    .replace('{{currency}}', currencyLine);
+  1766→}
+  1767→
+  1768→// ============================================
+  1769→// Session Stats Integration
+  1770→// ============================================
+  1771→
+  1772→/**
+  1773→ * Apply inventory item effects (equipment + consumables) to session stats.
+  1774→ * Returns a DEEP COPY of sessionStats with attribute values modified by item effects.
+  1775→ * This is called BEFORE resolveStats() so that item effects are reflected in {{key}} templates.
+  1776→ *
+  1777→ * Item effects can target:
+  1778→ * - '__user__' (persona) — applies to persona's attribute values
+  1779→ * - characterId — applies to that character's attribute values
+  1780→ */
+  1781→export function applyInventoryEffectsToSessionStats(
+  1782→  sessionStats: SessionStats | undefined,
+  1783→  equippedItems: Array<{ entry: PersonaInventoryEntry; item: Item }>,
+  1784→  activeEffects: ActiveConsumableEffect[],
+  1785→  pendingFallbacks?: Array<{ targetId: string; attributeKey: string; fallbackValue: string | number }>,
+  1786→): SessionStats | undefined {
+  1787→  if (!sessionStats?.characterStats) return sessionStats;
+  1788→
+  1789→  // Deep copy sessionStats to avoid mutation
+  1790→  const modified: SessionStats = JSON.parse(JSON.stringify(sessionStats));
+  1791→
+  1792→  // Apply pending fallbacks first (set attribute directly to fallback value)
+  1793→  if (pendingFallbacks && pendingFallbacks.length > 0) {
+  1794→    for (const fb of pendingFallbacks) {
+  1795→      const targetId = fb.targetId || '__user__';
+  1796→      const charStats = modified.characterStats[targetId];
+  1797→      if (!charStats?.attributeValues) continue;
+  1798→
+  1799→      const currentValue = charStats.attributeValues[fb.attributeKey];
+  1800→      if (currentValue === undefined) continue;
+  1801→
+  1802→      charStats.attributeValues[fb.attributeKey] = typeof fb.fallbackValue === 'number'
+  1803→        ? fb.fallbackValue
+  1804→        : (isNaN(Number(fb.fallbackValue)) ? fb.fallbackValue : Number(fb.fallbackValue));
+  1805→    }
+  1806→  }
+  1807→
+  1808→  // Collect ALL effects: equipment (permanent while equipped) + consumable (temporary)
+  1809→  const allEffects: ItemAttributeEffect[] = [];
+  1810→
+  1811→  // Equipment effects (from equipped items) — respect targetOverrideId from entry
+  1812→  for (const { entry, item } of equippedItems) {
+  1813→    if (item.attributeEffects) {
+  1814→      for (const effect of item.attributeEffects) {
+  1815→        // If the entry has a targetOverrideId, override the effect's targetId
+  1816→        const effectiveTargetId = entry.targetOverrideId || effect.targetId;
+  1817→        const effectiveTargetName = entry.targetOverrideId
+  1818→          ? (entry.targetOverrideId === '__user__' ? 'Persona' : effect.targetName)
+  1819→          : effect.targetName;
+  1820→        allEffects.push({ ...effect, targetId: effectiveTargetId, targetName: effectiveTargetName });
+  1821→      }
+  1822→    }
+  1823→  }
+  1824→
+  1825→  // Consumable effects (from active effects)
+  1826→  for (const effect of activeEffects) {
+  1827→    allEffects.push(...effect.effects);
+  1828→  }
+  1829→
+  1830→  if (allEffects.length === 0 && (!pendingFallbacks || pendingFallbacks.length === 0)) return sessionStats;
+  1831→
+  1832→  // Group effects by targetId
+  1833→  const effectsByTarget = new Map<string, ItemAttributeEffect[]>();
+  1834→  for (const effect of allEffects) {
+  1835→    const targetId = effect.targetId || '__user__';
+  1836→    if (!effectsByTarget.has(targetId)) {
+  1837→      effectsByTarget.set(targetId, []);
+  1838→    }
+  1839→    effectsByTarget.get(targetId)!.push(effect);
+  1840→  }
+  1841→
+  1842→  // Apply effects for each target
+  1843→  for (const [targetId, targetEffects] of effectsByTarget) {
+  1844→    const charStats = modified.characterStats[targetId];
+  1845→    if (!charStats?.attributeValues) continue;
+  1846→
+  1847→    for (const effect of targetEffects) {
+  1848→      const currentValue = charStats.attributeValues[effect.attributeKey];
+  1849→      if (currentValue === undefined) continue;
+  1850→
+  1851→      const currentNum = typeof currentValue === 'number' ? currentValue : parseFloat(String(currentValue));
+  1852→      if (isNaN(currentNum)) continue;
+  1853→
+  1854→      let newValue = currentNum;
+  1855→      switch (effect.operator) {
+  1856→        case '+': newValue = currentNum + effect.value; break;
+  1857→        case '-': newValue = currentNum - effect.value; break;
+  1858→        case '*': newValue = currentNum * effect.value; break;
+  1859→        case '/': newValue = effect.value !== 0 ? currentNum / effect.value : currentNum; break;
+  1860→        case '=': newValue = effect.value; break;
+  1861→        case 'set_min': newValue = Math.min(currentNum, effect.value); break;
+  1862→        case 'set_max': newValue = Math.max(currentNum, effect.value); break;
+  1863→      }
+  1864→
+  1865→      charStats.attributeValues[effect.attributeKey] = Math.round(newValue * 100) / 100;
+  1866→    }
+  1867→  }
+  1868→
+  1869→  return modified;
+  1870→}
+  1871→

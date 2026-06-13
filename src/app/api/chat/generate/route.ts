@@ -350,7 +350,8 @@ Y cambiar mi expresión:
           userName: effectiveUserName,
           postHistoryInstructions: processedCharacter.postHistoryInstructions,
           embeddingsContext: embeddingsContext,  // Memory embeddings before chat history
-          exampleMessages: exampleMessages
+          exampleMessages: exampleMessages,
+          allCharacters: allCharacters  // Pass all characters for proper speaker attribution
         });
         response = await callOllama(prompt, llmConfig);
         break;
@@ -386,7 +387,8 @@ Y cambiar mi expresión:
           userName: effectiveUserName,
           postHistoryInstructions: processedCharacter.postHistoryInstructions,
           embeddingsContext: embeddingsContext,  // Memory embeddings before chat history
-          exampleMessages: exampleMessages
+          exampleMessages: exampleMessages,
+          allCharacters: allCharacters  // Pass all characters for proper speaker attribution
         });
         response = await callTextGenerationWebUI(prompt, llmConfig);
         break;

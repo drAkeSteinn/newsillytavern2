@@ -1,0 +1,1028 @@
+     1→// ============================================
+     2→// Quest Handler - Handles Quest Triggers
+     3→// ============================================
+     4→//
+     5→// @deprecated Use QuestKeyHandler instead. This legacy handler is kept for
+     6→// backward compatibility but will be removed in a future version.
+     7→// The new QuestKeyHandler provides:
+     8→// - Unified KeyHandler interface
+     9→// - Per-character position tracking for group chat
+    10→// - Better streaming support
+    11→// - Keyword-based activation detection
+    12→//
+    13→// Migration: Use createQuestKeyHandler() from './quest-key-handler'
+    14→//
+    15→// Updated to work with the new Quest Template/Instance system
+    16→// Uses quest-detector.ts for key-based detection
+    17→
+    18→import type { DetectedToken } from '../token-detector';
+    19→import type { TriggerContext } from '../trigger-bus';
+    20→import type {
+    21→  QuestTemplate,
+    22→  SessionQuestInstance,
+    23→  SessionQuestObjective,
+    24→  QuestSettings,
+    25→  QuestTriggerHit,
+    26→  QuestObjectiveTemplate,
+    27→  QuestReward,
+    28→  QuestAttributeCondition,
+    29→  QuestObjectiveCondition,
+    30→  QuestVisibilityConditionGroup,
+    31→  QuestAttributeOperator,
+    32→  SessionStats,
+    33→  CharacterSessionStats,
+    34→} from '@/types';
+    35→import {
+    36→  checkQuestTriggersInText,
+    37→  createQuestDetectionState,
+    38→  resetQuestDetectorState,
+    39→  getExampleKey,
+    40→  type QuestDetectionResult,
+    41→  type QuestDetectionState,
+    42→} from '@/lib/quest/quest-detector';
+    43→import { getCooldownManager } from '../cooldown-manager';
+    44→
+    45→// ============================================
+    46→// Quest Handler State
+    47→// ============================================
+    48→
+    49→export interface QuestHandlerState {
+    50→  processedQuests: Map<string, Set<string>>; // messageKey -> questIds processed
+    51→  questProgressTracked: Map<string, Set<string>>; // questId -> objectiveIds tracked
+    52→  triggeredPositions: Map<string, Set<number>>; // messageKey -> wordPositions already triggered
+    53→  detectionStates: Map<string, QuestDetectionState>; // sessionId -> detection state
+    54→}
+    55→
+    56→export function createQuestHandlerState(): QuestHandlerState {
+    57→  return {
+    58→    processedQuests: new Map(),
+    59→    questProgressTracked: new Map(),
+    60→    triggeredPositions: new Map(),
+    61→    detectionStates: new Map(),
+    62→  };
+    63→}
+    64→
+    65→// ============================================
+    66→// Quest Trigger Context
+    67→// ============================================
+    68→
+    69→export interface QuestTriggerContext extends TriggerContext {
+    70→  templates: QuestTemplate[];
+    71→  sessionQuests: SessionQuestInstance[];
+    72→  questSettings: QuestSettings;
+    73→  sessionId: string;
+    74→  turnCount: number;
+    75→  sessionStats?: SessionStats;
+    76→}
+    77→
+    78→export interface QuestHandlerResult {
+    79→  matched: boolean;
+    80→  hits: QuestTriggerHit[];
+    81→  detections: QuestDetectionResult | null;
+    82→}
+    83→
+    84→// ============================================
+    85→// Quest Tag Parser (Legacy Support)
+    86→// ============================================
+    87→
+    88→interface ParsedQuestTag {
+    89→  action: 'activate' | 'progress' | 'complete' | 'fail';
+    90→  questId?: string;
+    91→  questTitle?: string;
+    92→  objectiveId?: string;
+    93→  progress?: number;
+    94→  description?: string;
+    95→}
+    96→
+    97→const QUEST_TAG_PATTERN = /<quest(?::(activate|progress|complete|fail))?(?:\s+([^>]*))?\/?>/gi;
+    98→const QUEST_ATTR_PATTERN = /(\w+)="([^"]*)"/g;
+    99→
+   100→/**
+   101→ * Parse quest tags from message content (legacy format)
+   102→ * Format: <quest:activate title="Mission Name" description="..."/>
+   103→ *         <quest:progress id="quest-123" objective="obj-1" amount="1"/>
+   104→ *         <quest:complete id="quest-123"/>
+   105→ */
+   106→export function parseQuestTags(content: string): ParsedQuestTag[] {
+   107→  const tags: ParsedQuestTag[] = [];
+   108→  
+   109→  let match;
+   110→  while ((match = QUEST_TAG_PATTERN.exec(content)) !== null) {
+   111→    const action = (match[1] as ParsedQuestTag['action']) || 'activate';
+   112→    const attrs = match[2] || '';
+   113→    
+   114→    const tag: ParsedQuestTag = { action };
+   115→    
+   116→    // Parse attributes
+   117→    let attrMatch;
+   118→    while ((attrMatch = QUEST_ATTR_PATTERN.exec(attrs)) !== null) {
+   119→      const [, key, value] = attrMatch;
+   120→      
+   121→      switch (key) {
+   122→        case 'id':
+   123→          tag.questId = value;
+   124→          break;
+   125→        case 'title':
+   126→          tag.questTitle = value;
+   127→          break;
+   128→        case 'objective':
+   129→          tag.objectiveId = value;
+   130→          break;
+   131→        case 'amount':
+   132→        case 'progress':
+   133→          tag.progress = parseInt(value) || 1;
+   134→          break;
+   135→        case 'description':
+   136→          tag.description = value;
+   137→          break;
+   138→      }
+   139→    }
+   140→    
+   141→    tags.push(tag);
+   142→  }
+   143→  
+   144→  return tags;
+   145→}
+   146→
+   147→// ============================================
+   148→// Quest Handler Functions
+   149→// ============================================
+   150→
+   151→/**
+   152→ * Check quest triggers - Main entry point
+   153→ * 
+   154→ * Uses both:
+   155→ * 1. Key-based detection (new system via quest-detector)
+   156→ * 2. Tag parsing (legacy support)
+   157→ */
+   158→export function checkQuestTriggers(
+   159→  tokens: DetectedToken[],
+   160→  content: string,
+   161→  context: QuestTriggerContext,
+   162→  state: QuestHandlerState
+   163→): QuestHandlerResult {
+   164→  const { templates, sessionQuests, questSettings, sessionId, turnCount } = context;
+   165→  
+   166→  if (!questSettings.enabled) {
+   167→    return {
+   168→      matched: false,
+   169→      hits: [],
+   170→      detections: null,
+   171→    };
+   172→  }
+   173→  
+   174→  const hits: QuestTriggerHit[] = [];
+   175→  let detections: QuestDetectionResult | null = null;
+   176→  
+   177→  // 1. Parse explicit quest tags from content (legacy format)
+   178→  const parsedTags = parseQuestTags(content);
+   179→  
+   180→  for (const tag of parsedTags) {
+   181→    const hit = processParsedTag(tag, templates, sessionQuests);
+   182→    if (hit) {
+   183→      hits.push(hit);
+   184→    }
+   185→  }
+   186→  
+   187→  // 2. Use key-based detection (new system)
+   188→  // Debug logging
+   189→  console.log('[QuestHandler] Checking quest triggers:', {
+   190→    autoDetect: questSettings.autoDetect,
+   191→    templatesCount: templates.length,
+   192→    sessionQuestsCount: sessionQuests.length,
+   193→    sessionId,
+   194→    contentPreview: content.substring(0, 100) + '...',
+   195→  });
+   196→  
+   197→  if (questSettings.autoDetect && templates.length > 0 && sessionQuests.length > 0) {
+   198→    // Log available quests
+   199→    const availableQuests = sessionQuests.filter(q => q.status === 'available');
+   200→    console.log('[QuestHandler] Available quests (status=available):', availableQuests.map(q => ({
+   201→      templateId: q.templateId,
+   202→      status: q.status,
+   203→    })));
+   204→    
+   205→    // Log templates with keyword activation
+   206→    const keywordTemplates = templates.filter(t => t.activation.method === 'keyword');
+   207→    console.log('[QuestHandler] Templates with keyword activation:', keywordTemplates.map(t => ({
+   208→      id: t.id,
+   209→      name: t.name,
+   210→      activationKey: t.activation.key,
+   211→      activationKeys: t.activation.keys,
+   212→      caseSensitive: t.activation.caseSensitive,
+   213→    })));
+   214→    
+   215→    // Get or create detection state for this session
+   216→    let detectionState = state.detectionStates.get(sessionId);
+   217→    if (!detectionState) {
+   218→      detectionState = createQuestDetectionState();
+   219→      state.detectionStates.set(sessionId, detectionState);
+   220→    }
+   221→    
+   222→    // Create handler state for detection
+   223→    const detectorHandlerState = { detectionStates: state.detectionStates };
+   224→    
+   225→    // Run detection
+   226→    const detectContext = {
+   227→      sessionId,
+   228→      fullText: content,
+   229→      isStreaming: context.isStreaming,
+   230→      messageKey: context.messageKey,
+   231→      timestamp: context.timestamp,
+   232→      templates,
+   233→      sessionQuests,
+   234→      turnCount,
+   235→      sessionStats: context.sessionStats,
+   236→    };
+   237→    
+   238→    const detectResult = checkQuestTriggersInText(detectContext, detectorHandlerState);
+   239→    
+   240→    console.log('[QuestHandler] Detection result:', {
+   241→      matched: detectResult.matched,
+   242→      hitsCount: detectResult.hits.length,
+   243→      activations: detectResult.detections?.activations?.length || 0,
+   244→    });
+   245→    
+   246→    if (detectResult.matched) {
+   247→      detections = detectResult.detections;
+   248→      hits.push(...detectResult.hits);
+   249→    }
+   250→  } else {
+   251→    // Log why we're not checking
+   252→    if (!questSettings.autoDetect) {
+   253→      console.log('[QuestHandler] Auto-detect disabled in quest settings');
+   254→    }
+   255→    if (templates.length === 0) {
+   256→      console.log('[QuestHandler] No templates loaded in store');
+   257→    }
+   258→    if (sessionQuests.length === 0) {
+   259→      console.log('[QuestHandler] No session quests in active session');
+   260→    }
+   261→  }
+   262→  
+   263→  // Update state
+   264→  const processedForMessage = state.processedQuests.get(context.messageKey) ?? new Set<string>();
+   265→  for (const hit of hits) {
+   266→    processedForMessage.add(hit.questId);
+   267→  }
+   268→  state.processedQuests.set(context.messageKey, processedForMessage);
+   269→  
+   270→  return {
+   271→    matched: hits.length > 0,
+   272→    hits,
+   273→    detections,
+   274→  };
+   275→}
+   276→
+   277→/**
+   278→ * Process a parsed quest tag (legacy format)
+   279→ */
+   280→function processParsedTag(
+   281→  tag: ParsedQuestTag,
+   282→  templates: QuestTemplate[],
+   283→  sessionQuests: SessionQuestInstance[]
+   284→): QuestTriggerHit | null {
+   285→  switch (tag.action) {
+   286→    case 'activate':
+   287→      // For activation, try to find template by ID or create from title
+   288→      let template = templates.find(t => t.id === tag.questId);
+   289→      
+   290→      if (!template && tag.questTitle) {
+   291→        // Try to find by name
+   292→        template = templates.find(t => t.name.toLowerCase() === tag.questTitle?.toLowerCase());
+   293→      }
+   294→      
+   295→      return {
+   296→        questId: tag.questId || `quest-${Date.now()}`,
+   297→        template,
+   298→        action: 'activate',
+   299→        message: `Quest activated: ${tag.questTitle || tag.description || 'New Quest'}`,
+   300→      };
+   301→      
+   302→    case 'progress':
+   303→      const progressTemplate = templates.find(t => t.id === tag.questId);
+   304→      if (!progressTemplate) return null;
+   305→      
+   306→      const objective = progressTemplate.objectives.find(o => o.id === tag.objectiveId);
+   307→      if (!objective) return null;
+   308→      
+   309→      // Find session quest to check if this progress completes the objective
+   310→      const sessionQuest = sessionQuests.find(q => q.templateId === progressTemplate.id);
+   311→      const sessionObj = sessionQuest?.objectives.find(o => o.templateId === objective.id);
+   312→      const currentCount = sessionObj?.currentCount || 0;
+   313→      const targetCount = objective.targetCount || 1;
+   314→      const progressAmount = tag.progress || 1;
+   315→      const newCount = Math.min(currentCount + progressAmount, targetCount);
+   316→      const willComplete = !sessionObj?.isCompleted && newCount >= targetCount;
+   317→      
+   318→      return {
+   319→        questId: progressTemplate.id,
+   320→        template: progressTemplate,
+   321→        objectiveId: objective.id,
+   322→        objective,
+   323→        action: 'progress',
+   324→        progress: progressAmount,
+   325→        message: `Objective "${objective.description}" progressed`,
+   326→        // Include objective rewards if this progress will complete the objective
+   327→        objectiveRewards: willComplete && objective.rewards ? objective.rewards : undefined,
+   328→        completesObjective: willComplete,
+   329→      };
+   330→      
+   331→    case 'complete':
+   332→      const completeTemplate = templates.find(t => t.id === tag.questId);
+   333→      return {
+   334→        questId: tag.questId || '',
+   335→        template: completeTemplate,
+   336→        action: 'complete',
+   337→        message: `Quest completed: ${completeTemplate?.name || tag.questId}`,
+   338→        rewards: completeTemplate?.rewards,
+   339→      };
+   340→      
+   341→    case 'fail':
+   342→      const failTemplate = templates.find(t => t.id === tag.questId);
+   343→      return {
+   344→        questId: tag.questId || '',
+   345→        template: failTemplate,
+   346→        action: 'fail',
+   347→        message: `Quest failed: ${failTemplate?.name || tag.questId}`,
+   348→      };
+   349→      
+   350→    default:
+   351→      return null;
+   352→  }
+   353→}
+   354→
+   355→// ============================================
+   356→// Quest Prompt Builder
+   357→// ============================================
+   358→
+   359→// ============================================
+   360→// Objective Visibility Evaluation
+   361→// ============================================
+   362→
+   363→/**
+   364→ * Evaluate a single attribute condition against session stats
+   365→ */
+   366→function evaluateAttributeCondition(
+   367→  condition: QuestAttributeCondition,
+   368→  sessionStats: SessionStats | undefined
+   369→): boolean {
+   370→  if (!sessionStats || !condition.targetId || !condition.attributeKey) {
+   371→    console.log(`[QuestHandler] evaluateAttributeCondition: missing params - targetId=${condition.targetId}, attributeKey=${condition.attributeKey}, hasStats=${!!sessionStats}`);
+   372→    return false;
+   373→  }
+   374→
+   375→  const charStats = sessionStats.characterStats?.[condition.targetId];
+   376→  const attrValue = charStats?.attributeValues?.[condition.attributeKey];
+   377→  const hasAttribute = charStats?.attributeValues?.hasOwnProperty(condition.attributeKey) ?? false;
+   378→
+   379→  if (!charStats) {
+   380→    console.log(`[QuestHandler] evaluateAttributeCondition: no stats found for targetId="${condition.targetId}". Available targets: [${Object.keys(sessionStats.characterStats || {}).join(', ')}]`);
+   381→  }
+   382→
+   383→  const result = applyOperator(condition.operator, attrValue, hasAttribute, condition.value);
+   384→  console.log(`[QuestHandler] evaluateAttributeCondition: target="${condition.targetId}", attr="${condition.attributeKey}", value=${JSON.stringify(attrValue)}, hasAttr=${hasAttribute}, operator="${condition.operator}", targetValue=${JSON.stringify(condition.value)} → ${result}`);
+   385→  return result;
+   386→}
+   387→
+   388→/**
+   389→ * Apply an attribute operator to determine if a condition is met
+   390→ */
+   391→function applyOperator(
+   392→  operator: QuestAttributeOperator,
+   393→  attrValue: number | string | undefined,
+   394→  hasAttribute: boolean,
+   395→  targetValue?: number | string
+   396→): boolean {
+   397→  switch (operator) {
+   398→    case 'has_attribute':
+   399→      return hasAttribute;
+   400→    case 'missing_attribute':
+   401→      return !hasAttribute;
+   402→    case 'is_true':
+   403→      if (!hasAttribute) return false;
+   404→      if (typeof attrValue === 'number') return attrValue !== 0;
+   405→      if (typeof attrValue === 'string') return attrValue !== '' && attrValue.toLowerCase() !== 'false';
+   406→      return !!attrValue;
+   407→    case 'is_false':
+   408→      if (!hasAttribute) return false; // Missing attribute is NOT falsy - it's unknown
+   409→      if (typeof attrValue === 'number') return attrValue === 0;
+   410→      if (typeof attrValue === 'string') return attrValue === '' || attrValue.toLowerCase() === 'false';
+   411→      return !attrValue;
+   412→    case 'eq':
+   413→      if (!hasAttribute) return false;
+   414→      if (typeof attrValue === 'number' && typeof targetValue === 'number') return attrValue === targetValue;
+   415→      return String(attrValue) === String(targetValue);
+   416→    case 'neq':
+   417→      if (!hasAttribute) return true;
+   418→      if (typeof attrValue === 'number' && typeof targetValue === 'number') return attrValue !== targetValue;
+   419→      return String(attrValue) !== String(targetValue);
+   420→    case 'gt': {
+   421→      if (!hasAttribute) return false;
+   422→      const numAttr = typeof attrValue === 'number' ? attrValue : parseFloat(String(attrValue));
+   423→      const numTarget = typeof targetValue === 'number' ? targetValue : parseFloat(String(targetValue));
+   424→      return !isNaN(numAttr) && !isNaN(numTarget) && numAttr > numTarget;
+   425→    }
+   426→    case 'gte': {
+   427→      if (!hasAttribute) return false;
+   428→      const numAttrGte = typeof attrValue === 'number' ? attrValue : parseFloat(String(attrValue));
+   429→      const numTargetGte = typeof targetValue === 'number' ? targetValue : parseFloat(String(targetValue));
+   430→      return !isNaN(numAttrGte) && !isNaN(numTargetGte) && numAttrGte >= numTargetGte;
+   431→    }
+   432→    case 'lt': {
+   433→      if (!hasAttribute) return false;
+   434→      const numAttrLt = typeof attrValue === 'number' ? attrValue : parseFloat(String(attrValue));
+   435→      const numTargetLt = typeof targetValue === 'number' ? targetValue : parseFloat(String(targetValue));
+   436→      return !isNaN(numAttrLt) && !isNaN(numTargetLt) && numAttrLt < numTargetLt;
+   437→    }
+   438→    case 'lte': {
+   439→      if (!hasAttribute) return false;
+   440→      const numAttrLte = typeof attrValue === 'number' ? attrValue : parseFloat(String(attrValue));
+   441→      const numTargetLte = typeof targetValue === 'number' ? targetValue : parseFloat(String(targetValue));
+   442→      return !isNaN(numAttrLte) && !isNaN(numTargetLte) && numAttrLte <= numTargetLte;
+   443→    }
+   444→    case 'contains':
+   445→      return hasAttribute && typeof attrValue === 'string' && attrValue.includes(String(targetValue));
+   446→    case 'not_contains':
+   447→      return !hasAttribute || typeof attrValue !== 'string' || !attrValue.includes(String(targetValue));
+   448→    default:
+   449→      return false;
+   450→  }
+   451→}
+   452→
+   453→/**
+   454→ * Evaluate a single objective condition against all session quest instances
+   455→ */
+   456→function evaluateObjectiveCondition(
+   457→  condition: QuestObjectiveCondition,
+   458→  sessionQuests: SessionQuestInstance[],
+   459→  templates: QuestTemplate[]
+   460→): boolean {
+   461→  if (!condition.objectiveId) return false;
+   462→
+   463→  const targetTemplateId = condition.templateId;
+   464→
+   465→  for (const q of sessionQuests) {
+   466→    // If templateId specified, only check that template
+   467→    if (targetTemplateId && q.templateId !== targetTemplateId) continue;
+   468→
+   469→    // Find the objective in the session instance
+   470→    const sessionObj = q.objectives.find(o => o.templateId === condition.objectiveId);
+   471→    if (sessionObj && sessionObj.isCompleted) {
+   472→      return true;
+   473→    }
+   474→  }
+   475→
+   476→  // Also check if the objective belongs to a quest that isn't active yet.
+   477→  // If a quest template has this objective but the quest is not in sessionQuests,
+   478→  // the objective cannot be completed (quest isn't active), so return false.
+   479→  // But if the quest IS in session but the objective wasn't instantiated (e.g. by_objective visibility),
+   480→  // we need to check the template definition for objective existence.
+   481→  if (targetTemplateId) {
+   482→    const template = templates.find(t => t.id === targetTemplateId);
+   483→    const questInstance = sessionQuests.find(q => q.templateId === targetTemplateId);
+   484→    if (template && questInstance) {
+   485→      // Quest is active but objective might not be instantiated (hidden objectives)
+   486→      const templateHasObj = template.objectives.some(o => o.id === condition.objectiveId);
+   487→      if (templateHasObj) {
+   488→        // Objective exists in template but wasn't instantiated = not completed yet
+   489→        const sessionObj = questInstance.objectives.find(o => o.templateId === condition.objectiveId);
+   490→        return sessionObj?.isCompleted ?? false;
+   491→      }
+   492→    }
+   493→  } else {
+   494→    // No specific template - check all templates for this objective
+   495→    for (const template of templates) {
+   496→      const hasObj = template.objectives.some(o => o.id === condition.objectiveId);
+   497→      if (hasObj) {
+   498→        const questInstance = sessionQuests.find(q => q.templateId === template.id);
+   499→        if (questInstance) {
+   500→          const sessionObj = questInstance.objectives.find(o => o.templateId === condition.objectiveId);
+   501→          return sessionObj?.isCompleted ?? false;
+   502→        }
+   503→      }
+   504→    }
+   505→  }
+   506→
+   507→  return false;
+   508→}
+   509→
+   510→/**
+   511→ * Evaluate visibility conditions for an objective
+   512→ * Returns true if the objective should be visible, false if hidden
+   513→ */
+   514→export function evaluateObjectiveVisibility(
+   515→  objective: QuestObjectiveTemplate,
+   516→  sessionStats: SessionStats | undefined,
+   517→  sessionQuests: SessionQuestInstance[],
+   518→  templates: QuestTemplate[]
+   519→): boolean {
+   520→  // Normal visibility = always visible
+   521→  const visibilityType = objective.visibilityType || 'normal';
+   522→  if (visibilityType === 'normal') return true;
+   523→
+   524→  // If no conditions defined, default to visible
+   525→  if (!objective.visibilityConditions) return true;
+   526→
+   527→  const conditions = objective.visibilityConditions;
+   528→  const logic = conditions.logic || 'and';
+   529→
+   530→  // Collect results for all conditions
+   531→  const results: boolean[] = [];
+   532→
+   533→  // Evaluate attribute conditions
+   534→  if (conditions.attributeConditions && conditions.attributeConditions.length > 0) {
+   535→    for (const cond of conditions.attributeConditions) {
+   536→      results.push(evaluateAttributeCondition(cond, sessionStats));
+   537→    }
+   538→  }
+   539→
+   540→  // Evaluate objective conditions
+   541→  if (conditions.objectiveConditions && conditions.objectiveConditions.length > 0) {
+   542→    for (const cond of conditions.objectiveConditions) {
+   543→      results.push(evaluateObjectiveCondition(cond, sessionQuests, templates));
+   544→    }
+   545→  }
+   546→
+   547→  // No conditions = visible
+   548→  if (results.length === 0) return true;
+   549→
+   550→  // Apply logic
+   551→  if (logic === 'and') {
+   552→    return results.every(r => r);
+   553→  } else {
+   554→    return results.some(r => r);
+   555→  }
+   556→}
+   557→
+   558→/**
+   559→ * Check if an objective should be visible to a specific character
+   560→ * based on the characterFilter configuration AND visibility conditions
+   561→ */
+   562→export function isObjectiveVisibleForCharacter(
+   563→  objective: QuestObjectiveTemplate,
+   564→  characterId: string,
+   565→  sessionStats?: SessionStats,
+   566→  sessionQuests?: SessionQuestInstance[],
+   567→  templates?: QuestTemplate[]
+   568→): boolean {
+   569→  // First check visibility conditions (by_attribute / by_objective)
+   570→  if (sessionStats !== undefined && sessionQuests !== undefined && templates !== undefined) {
+   571→    const visibilityMet = evaluateObjectiveVisibility(objective, sessionStats, sessionQuests, templates);
+   572→    if (!visibilityMet) {
+   573→      return false;
+   574→    }
+   575→  }
+   576→
+   577→  // Then check character filter
+   578→  if (!objective.characterFilter?.enabled) {
+   579→    return true;
+   580→  }
+   581→  
+   582→  const { mode, characterIds } = objective.characterFilter;
+   583→  
+   584→  if (!characterIds || characterIds.length === 0) {
+   585→    return true;
+   586→  }
+   587→  
+   588→  const isInList = characterIds.includes(characterId);
+   589→  return mode === 'include' ? isInList : !isInList;
+   590→}
+   591→
+   592→/**
+   593→ * Filter objectives for a specific character, considering both
+   594→ * character filter and visibility conditions
+   595→ */
+   596→export function filterObjectivesForCharacter(
+   597→  objectives: QuestObjectiveTemplate[],
+   598→  characterId: string | undefined,
+   599→  sessionStats?: SessionStats,
+   600→  sessionQuests?: SessionQuestInstance[],
+   601→  templates?: QuestTemplate[]
+   602→): QuestObjectiveTemplate[] {
+   603→  if (!characterId) {
+   604→    // Still need to filter by visibility even without character ID
+   605→    if (sessionStats && sessionQuests && templates) {
+   606→      return objectives.filter(obj => evaluateObjectiveVisibility(obj, sessionStats, sessionQuests, templates));
+   607→    }
+   608→    return objectives;
+   609→  }
+   610→  
+   611→  return objectives.filter(obj => isObjectiveVisibleForCharacter(obj, characterId, sessionStats, sessionQuests, templates));
+   612→}
+   613→
+   614→/**
+   615→ * Build quest section for NARRATOR
+   616→ *
+   617→ * Narrator sees both active and available quests in a simplified format:
+   618→ *
+   619→ * [MISIONES ACTIVAS]
+   620→ *   1) Nombre de la misión
+   621→ *      - descripción: descripción
+   622→ *
+   623→ * [MISIONES DISPONIBLES]
+   624→ *   1) Nombre de la misión
+   625→ *      - descripción: descripción
+   626→ *      - key de activación: activation_key
+   627→ */
+   628→function buildNarratorQuestSection(
+   629→  templates: QuestTemplate[],
+   630→  sessionQuests: SessionQuestInstance[],
+   631→  templateStr: string,
+   632→  questSettings?: QuestSettings,
+   633→  sessionStats?: SessionStats
+   634→): string {
+   635→  // Get active and available quests
+   636→  const activeQuests = sessionQuests.filter(q => q.status === 'active');
+   637→  // Filter available quests by activation conditions
+   638→  const availableQuests = sessionQuests.filter(q => q.status === 'available').filter(q => {
+   639→    const questTemplate = templates.find(t => t.id === q.templateId);
+   640→    if (!questTemplate) return false;
+   641→    return evaluateActivationConditions(questTemplate, sessionStats, sessionQuests, templates);
+   642→  });
+   643→
+   644→  const sections: string[] = [];
+   645→
+   646→  // Build ACTIVE quests section
+   647→  if (activeQuests.length > 0) {
+   648→    const activeLines: string[] = [];
+   649→    activeQuests.forEach((q, index) => {
+   650→      const questTemplate = templates.find(t => t.id === q.templateId);
+   651→      if (!questTemplate) return;
+   652→
+   653→      activeLines.push(`  ${index + 1}) ${questTemplate.name}`);
+   654→      activeLines.push(`     - descripción: ${questTemplate.description}`);
+   655→    });
+   656→
+   657→    if (activeLines.length > 0) {
+   658→      sections.push(`[MISIONES ACTIVAS]\n${activeLines.join('\n')}`);
+   659→    }
+   660→  }
+   661→
+   662→  // Build AVAILABLE quests section
+   663→  if (availableQuests.length > 0) {
+   664→    const availableLines: string[] = [];
+   665→    availableQuests.forEach((q, index) => {
+   666→      const questTemplate = templates.find(t => t.id === q.templateId);
+   667→      if (!questTemplate) return;
+   668→
+   669→      availableLines.push(`  ${index + 1}) ${questTemplate.name}`);
+   670→      availableLines.push(`     - descripción: ${questTemplate.description}`);
+   671→
+   672→      // Add activation key for available quests with prefix
+   673→      const activation = questTemplate.activation || {};
+   674→      const baseKey = activation.key || (activation.keys && activation.keys[0]);
+   675→      if (baseKey) {
+   676→        const activationKey = getExampleKey(questSettings?.questActivationPrefix, baseKey);
+   677→        availableLines.push(`     - key de activación: ${activationKey}`);
+   678→      }
+   679→    });
+   680→
+   681→    if (availableLines.length > 0) {
+   682→      sections.push(`[MISIONES DISPONIBLES]\n${availableLines.join('\n')}`);
+   683→    }
+   684→  }
+   685→
+   686→  // If no quests at all, return empty
+   687→  if (sections.length === 0) {
+   688→    return '';
+   689→  }
+   690→
+   691→  // Join sections with double newline
+   692→  const fullQuestSection = sections.join('\n\n');
+   693→
+   694→  // Replace placeholder in template
+   695→  return templateStr.replace('{{activeQuests}}', fullQuestSection);
+   696→}
+   697→
+   698→/**
+   699→ * Build quest section for prompt
+   700→ *
+   701→ * NEW YAML-LIKE FORMAT:
+   702→ * [MISIONES ACTIVAS]
+   703→ * - key: madera_de_calidad
+   704→ *   descripcion: Se requiere conseguir madera de abedul para reconstruir la aldea.
+   705→ *   objetivos_principales_pendientes:
+   706→ *     - key: troncos_abedul
+   707→ *       descripcion: Conseguir, cortar o entregar troncos de abedul utilizables.
+   708→ *       se_completa_cuando: Leny confirma claramente que ya obtuvo, cortó o entregó troncos de abedul.
+   709→ *
+   710→ * NARRATOR FORMAT:
+   711→ * [MISIONES ACTIVAS]
+   712→ *   1) Nombre de la misión
+   713→ *      - descripción: descripción de la misión
+   714→ *
+   715→ * [MISIONES DISPONIBLES]
+   716→ *   1) Nombre de la misión
+   717→ *      - descripción: descripción de la misión
+   718→ *      - key de activación: activation_key
+   719→ *
+   720→ * - Only shows incomplete objectives
+   721→ * - Objectives are numbered dynamically
+   722→ * - Optional objectives section only appears if there are pending optional objectives
+   723→ * - Filters objectives by character if characterId is provided
+   724→ * - For narrator: shows both active and available quests
+   725→ */
+   726→export function buildQuestPromptSection(
+   727→  templates: QuestTemplate[],
+   728→  sessionQuests: SessionQuestInstance[],
+   729→  templateStr: string,
+   730→  characterId?: string,
+   731→  isForNarrator: boolean = false,
+   732→  questSettings?: QuestSettings,
+   733→  sessionStats?: SessionStats
+   734→): string {
+   735→  console.log(`[QuestHandler] buildQuestPromptSection called with characterId: ${characterId}, isForNarrator: ${isForNarrator}, hasPrefix: ${!!questSettings?.objectiveCompletionPrefix}, templates: ${templates.length}, sessionQuests: ${sessionQuests.length}`);
+   736→
+   737→  // For narrator, show different format with both active and available quests
+   738→  if (isForNarrator) {
+   739→    return buildNarratorQuestSection(templates, sessionQuests, templateStr, questSettings, sessionStats);
+   740→  }
+   741→
+   742→  // Regular character format - shows ONLY active quests
+   743→  // Available quests are handled separately via {{availableQuests}} key
+   744→  const activeQuests = sessionQuests.filter(q => q.status === 'active');
+   745→
+   746→  if (activeQuests.length === 0) {
+   747→    return '';
+   748→  }
+   749→
+   750→  const questList = activeQuests.map(q => {
+   751→    const questTemplate = templates.find(t => t.id === q.templateId);
+   752→    if (!questTemplate) return '';
+   753→
+   754→    const objectives = questTemplate.objectives || [];
+   755→    console.log(`[QuestHandler] Processing quest "${questTemplate.name}" with ${objectives.length} objectives`);
+   756→
+   757→    // Filter objectives for this character AND by visibility conditions
+   758→    const visibleObjectives = filterObjectivesForCharacter(
+   759→      objectives,
+   760→      characterId,
+   761→      sessionStats,
+   762→      sessionQuests,
+   763→      templates
+   764→    );
+   765→
+   766→    console.log(`[QuestHandler] Quest "${questTemplate.name}" - visible objectives: ${visibleObjectives.length} of ${objectives.length}`);
+   767→
+   768→    // If no objectives are visible for this character, don't show the quest
+   769→    if (visibleObjectives.length === 0) return '';
+   770→
+   771→    // Separate objectives: pending (not completed) vs optional
+   772→    // Store as objects with all needed info
+   773→    const pendingObjectives: {
+   774→      key: string;
+   775→      description: string;
+   776→      completionDescription?: string;
+   777→      progress?: string;
+   778→    }[] = [];
+   779→    const optionalObjectives: {
+   780→      key: string;
+   781→      description: string;
+   782→      completionDescription?: string;
+   783→      progress?: string;
+   784→    }[] = [];
+   785→
+   786→    for (const obj of visibleObjectives) {
+   787→      const sessionObj = q.objectives?.find(o => o.templateId === obj.id);
+   788→      const isCompleted = sessionObj?.isCompleted || false;
+   789→
+   790→      // Skip completed objectives - they should not appear
+   791→      if (isCompleted) continue;
+   792→
+   793→      // Note: Visibility is already handled by filterObjectivesForCharacter() above,
+   794→      // which evaluates conditions at runtime. The sessionObj.isVisible flag is a
+   795→      // pre-computed cache but filterObjectivesForCharacter is the source of truth
+   796→      // for the prompt. We still check isVisible as a safety net for edge cases.
+   797→      if (sessionObj && sessionObj.isVisible === false) {
+   798→        // Double-check: if runtime evaluation says visible but cache says hidden,
+   799→        // trust the runtime evaluation (the cache may not have been refreshed yet)
+   800→        const runtimeVisible = evaluateObjectiveVisibility(obj, sessionStats, sessionQuests, templates);
+   801→        if (!runtimeVisible) continue;
+   802→      }
+   803→
+   804→      const currentCount = sessionObj?.currentCount || 0;
+   805→      const progress = obj.targetCount > 1
+   806→        ? ` (${currentCount}/${obj.targetCount})`
+   807→        : undefined;
+   808→
+   809→      // Get the completion key for this objective
+   810→      // Apply prefix if configured
+   811→      const baseKey = obj.completion?.key || '';
+   812→      const objectiveKey = getExampleKey(questSettings?.objectiveCompletionPrefix, baseKey);
+   813→
+   814→      const objectiveData = {
+   815→        key: objectiveKey,
+   816→        description: obj.description,
+   817→        completionDescription: obj.completionDescription,
+   818→        progress,
+   819→      };
+   820→
+   821→      if (obj.isOptional) {
+   822→        optionalObjectives.push(objectiveData);
+   823→      } else {
+   824→        pendingObjectives.push(objectiveData);
+   825→      }
+   826→    }
+   827→
+   828→    // If all visible objectives are completed, don't show the quest for this character
+   829→    if (pendingObjectives.length === 0 && optionalObjectives.length === 0) return '';
+   830→
+   831→    // Build the quest block in new readable format
+   832→    // Format:
+   833→    // - Nombre: Mission Name
+   834→    //   Descripción: Quest description
+   835→    //   Objetivos pendientes:
+   836→    //     1- Objective description
+   837→    //       Se completa cuando: completionDescription
+   838→    let questBlock = `- Nombre: ${questTemplate.name}
+   839→  Descripción: ${questTemplate.description}`;
+   840→
+   841→    // Add pending objectives section
+   842→    if (pendingObjectives.length > 0) {
+   843→      const objectiveLines = pendingObjectives.map((obj, idx) => {
+   844→        let line = `    ${idx + 1}- ${obj.description}${obj.progress || ''}`;
+   845→        if (obj.completionDescription) {
+   846→          line += `\n      Se completa cuando: ${obj.completionDescription}`;
+   847→        }
+   848→        return line;
+   849→      }).join('\n');
+   850→      questBlock += `
+   851→  Objetivos pendientes:
+   852→${objectiveLines}`;
+   853→    }
+   854→
+   855→    // Add optional objectives section
+   856→    if (optionalObjectives.length > 0) {
+   857→      const objectiveLines = optionalObjectives.map((obj, idx) => {
+   858→        let line = `    ${idx + 1}- ${obj.description}${obj.progress || ''}`;
+   859→        if (obj.completionDescription) {
+   860→          line += `\n      Se completa cuando: ${obj.completionDescription}`;
+   861→        }
+   862→        return line;
+   863→      }).join('\n');
+   864→      questBlock += `
+   865→  Objetivos opcionales:
+   866→${objectiveLines}`;
+   867→    }
+   868→
+   869→    return questBlock;
+   870→  }).filter(q => q).join('\n\n');
+   871→
+   872→  if (!questList) return '';
+   873→
+   874→  // Only active quests — available quests are handled by {{availableQuests}} key
+   875→  const fullContent = `[MISIONES ACTIVAS]\n${questList}`;
+   876→  return templateStr.replace('{{activeQuests}}', fullContent);
+   877→}
+   878→
+   879→/**
+   880→ * Build quest progress block for AI to use
+   881→ * This tells the AI what keys it can use to progress quests
+   882→ */
+   883→export function buildQuestKeysPrompt(
+   884→  templates: QuestTemplate[],
+   885→  sessionQuests: SessionQuestInstance[]
+   886→): string {
+   887→  const activeQuests = sessionQuests.filter(q => q.status === 'active');
+   888→  
+   889→  if (activeQuests.length === 0) {
+   890→    return '';
+   891→  }
+   892→  
+   893→  const lines: string[] = ['You can progress quests by including these keys in your response:'];
+   894→  
+   895→  for (const q of activeQuests) {
+   896→    const template = templates.find(t => t.id === q.templateId);
+   897→    if (!template) continue;
+   898→    
+   899→    // Incomplete objectives
+   900→    for (const obj of template.objectives) {
+   901→      const sessionObj = q.objectives.find(o => o.templateId === obj.id);
+   902→      if (sessionObj?.isCompleted) continue;
+   903→      
+   904→      const keys = [obj.completion.key, ...(obj.completion.keys || [])];
+   905→      if (keys.length > 0) {
+   906→        lines.push(`- ${keys[0]}: ${obj.description} (${template.name})`);
+   907→      }
+   908→    }
+   909→    
+   910→    // Quest completion key
+   911→    const completionKeys = [template.completion.key, ...(template.completion.keys || [])];
+   912→    if (completionKeys.length > 0) {
+   913→      lines.push(`- ${completionKeys[0]}: Complete quest "${template.name}"`);
+   914→    }
+   915→  }
+   916→  
+   917→  return lines.join('\n');
+   918→}
+   919→
+   920→// ============================================
+   921→// Utility Functions
+   922→// ============================================
+   923→
+   924→/**
+   925→ * Reset state for new message
+   926→ * IMPORTANT: Must also reset the QuestDetectionState for the session so that
+   927→ * each message can detect quest keys independently
+   928→ */
+   929→export function resetQuestHandlerState(state: QuestHandlerState, messageKey: string, sessionId?: string): void {
+   930→  state.processedQuests.delete(messageKey);
+   931→  state.triggeredPositions.delete(messageKey);
+   932→  
+   933→  // Reset the QuestDetectionState for the session so processedLength = 0
+   934→  // This allows each new message to be processed from the beginning
+   935→  if (sessionId) {
+   936→    const detectionState = state.detectionStates.get(sessionId);
+   937→    if (detectionState) {
+   938→      detectionState.reset();
+   939→      console.log(`[QuestHandler] Reset detection state for session ${sessionId}`);
+   940→    }
+   941→  }
+   942→}
+   943→
+   944→/**
+   945→ * Reset detection state for a session
+   946→ */
+   947→export function resetQuestDetectionForSession(
+   948→  state: QuestHandlerState,
+   949→  sessionId: string
+   950→): void {
+   951→  const detectionState = state.detectionStates.get(sessionId);
+   952→  if (detectionState) {
+   953→    detectionState.reset();
+   954→  }
+   955→}
+   956→
+   957→/**
+   958→ * Clear all quest state
+   959→ */
+   960→export function clearQuestHandlerState(state: QuestHandlerState): void {
+   961→  state.processedQuests.clear();
+   962→  state.questProgressTracked.clear();
+   963→  state.triggeredPositions.clear();
+   964→  state.detectionStates.clear();
+   965→}
+   966→
+   967→// ============================================
+   968→// Quest Activation Conditions Evaluation
+   969→// ============================================
+   970→
+   971→/**
+   972→ * Evaluate activation conditions for a quest template.
+   973→ * Similar to evaluateObjectiveVisibility but for quest activation.
+   974→ * Returns true if the quest can be activated, false if conditions are not met.
+   975→ *
+   976→ * - normal: Always returns true (quest is always activatable if available)
+   977→ * - by_attribute: Returns true only if attribute conditions are met
+   978→ * - by_objective: Returns true only if objective conditions are met
+   979→ */
+   980→export function evaluateActivationConditions(
+   981→  template: QuestTemplate,
+   982→  sessionStats: SessionStats | undefined,
+   983→  sessionQuests: SessionQuestInstance[],
+   984→  templates: QuestTemplate[]
+   985→): boolean {
+   986→  const activationType = template.activation?.activationType || 'normal';
+   987→  if (activationType === 'normal') return true;
+   988→
+   989→  // If no conditions defined, default to activatable
+   990→  if (!template.activation?.activationConditions) return true;
+   991→
+   992→  const conditions = template.activation.activationConditions;
+   993→  const logic = conditions.logic || 'and';
+   994→
+   995→  // Collect results for all conditions
+   996→  const results: boolean[] = [];
+   997→
+   998→  // Evaluate attribute conditions
+   999→  if (conditions.attributeConditions && conditions.attributeConditions.length > 0) {
+  1000→    for (const cond of conditions.attributeConditions) {
+  1001→      results.push(evaluateAttributeCondition(cond, sessionStats));
+  1002→    }
+  1003→  }
+  1004→
+  1005→  // Evaluate objective conditions
+  1006→  if (conditions.objectiveConditions && conditions.objectiveConditions.length > 0) {
+  1007→    for (const cond of conditions.objectiveConditions) {
+  1008→      results.push(evaluateObjectiveCondition(cond, sessionQuests, templates));
+  1009→    }
+  1010→  }
+  1011→
+  1012→  // No conditions = activatable
+  1013→  if (results.length === 0) return true;
+  1014→
+  1015→  // Apply logic
+  1016→  if (logic === 'and') {
+  1017→    return results.every(r => r);
+  1018→  } else {
+  1019→    return results.some(r => r);
+  1020→  }
+  1021→}
+  1022→
+  1023→// ============================================
+  1024→// Export Index
+  1025→// ============================================
+  1026→
+  1027→// Types are already exported at their declaration sites above
+  1028→

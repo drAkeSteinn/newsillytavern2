@@ -90,7 +90,8 @@ import { pauseAllTimelines, resumeAllTimelines } from '@/hooks/use-timeline-spri
 import { stopAllSoundTriggers } from '@/hooks/use-sound-triggers';
 import { ttsService } from '@/lib/tts';
 import { resolveTemplateVariables } from '@/lib/key-resolver';
-import type { CharacterQuickReply, QuickReplyAttributeModifier } from '@/types';
+import type { CharacterQuickReply, QuickReplyAttributeModifier, QuickReplySpriteActivation, SpritePackV2, TriggerCollection } from '@/types';
+import { evaluatePackConditionalSprites, evaluateConditionalEntries } from '@/lib/sprites/condition-evaluator';
 
 // Tab type for the chatbox
 type ChatboxTab = 'chat' | 'solicitudes' | 'misiones' | 'memorias' | 'tienda';
@@ -794,6 +795,207 @@ export function NovelChatBox({
     }
   };
 
+  // Activate sprite from a quick reply
+  const activateQuickReplySprite = (activation: QuickReplySpriteActivation) => {
+    if (!activeCharacter?.id || !activeSessionId) return;
+
+    const characterId = activeCharacter.id;
+
+    // Get current session stats (AFTER modifiers have been applied)
+    const session = getActiveSession(activeSessionId);
+    const sessionStats = session?.sessionStats || null;
+
+    if (activation.mode === 'trigger_collection') {
+      // Find the trigger collection
+      const collections = activeCharacter.triggerCollections || [];
+      const collection = collections.find((c: TriggerCollection) => c.id === activation.targetId);
+      if (!collection) {
+        console.warn('[QuickReply] TriggerCollection not found:', activation.targetId);
+        return;
+      }
+
+      // Find the pack referenced by the collection
+      const packs = activeCharacter.spritePacksV2 || [];
+      const pack = packs.find((p: SpritePackV2) => p.id === collection.packId);
+      if (!pack) {
+        console.warn('[QuickReply] SpritePackV2 not found for collection:', collection.packId);
+        return;
+      }
+
+      // Determine which sprite to show
+      let spriteUrl: string | null = null;
+      let spriteLabel: string | null = null;
+
+      // If collection has conditional mode, evaluate conditions
+      if (collection.conditionalMode && collection.conditionalEntries && collection.conditionalEntries.length > 0) {
+        const winner = evaluateConditionalEntries(collection.conditionalEntries, sessionStats, characterId);
+        if (winner) {
+          const sprite = pack.sprites.find((s: any) => s.id === winner.spriteId);
+          if (sprite) {
+            spriteUrl = sprite.url;
+            spriteLabel = sprite.label;
+          }
+        }
+      }
+
+      // If pack has conditional mode and no sprite from collection conditions
+      if (!spriteUrl && pack.conditionalMode) {
+        const winner = evaluatePackConditionalSprites(pack.sprites, sessionStats, characterId);
+        if (winner) {
+          spriteUrl = winner.url;
+          spriteLabel = winner.label;
+        }
+      }
+
+      // Fallback: use principal sprite or first sprite
+      if (!spriteUrl) {
+        const principalId = collection.principalSpriteId;
+        if (principalId) {
+          const sprite = pack.sprites.find((s: any) => s.id === principalId);
+          if (sprite) {
+            spriteUrl = sprite.url;
+            spriteLabel = sprite.label;
+          }
+        }
+        if (!spriteUrl && pack.sprites.length > 0) {
+          spriteUrl = pack.sprites[0].url;
+          spriteLabel = pack.sprites[0].label;
+        }
+      }
+
+      if (!spriteUrl) return;
+
+      // Apply the trigger sprite
+      const store = useTavernStore.getState();
+      store.applyTriggerForCharacter(characterId, {
+        packId: pack.id,
+        collectionId: collection.id,
+        spriteUrl,
+        spriteLabel,
+        returnToIdleMs: activation.fallbackDelayMs,
+        useTimelineSounds: collection.useTimelineSounds,
+      });
+
+      // Schedule fallback
+      if (activation.fallbackDelayMs > 0) {
+        // Resolve fallback sprite URL
+        let returnSpriteUrl = '';
+        let returnSpriteLabel: string | null = null;
+
+        if (activation.fallbackMode === 'idle_collection') {
+          // Return to idle state (clear trigger, let state logic take over)
+          returnSpriteUrl = '';
+        } else if (activation.fallbackMode === 'custom_sprite' && activation.fallbackSpriteId) {
+          const sprite = pack.sprites.find((s: any) => s.id === activation.fallbackSpriteId);
+          if (sprite) {
+            returnSpriteUrl = sprite.url;
+            returnSpriteLabel = sprite.label;
+          }
+        } else if (activation.fallbackMode === 'collection_default') {
+          const principalId = collection.principalSpriteId;
+          if (principalId) {
+            const sprite = pack.sprites.find((s: any) => s.id === principalId);
+            if (sprite) {
+              returnSpriteUrl = sprite.url;
+              returnSpriteLabel = sprite.label;
+            }
+          }
+        }
+
+        const returnToMode = activation.fallbackMode === 'idle_collection' ? 'clear' : 'idle';
+        store.scheduleReturnToIdleForCharacter(
+          characterId,
+          spriteUrl,
+          returnToMode,
+          returnSpriteUrl,
+          returnSpriteLabel,
+          activation.fallbackDelayMs
+        );
+      }
+
+    } else if (activation.mode === 'sprite_pack') {
+      // Find the sprite pack directly
+      const packs = activeCharacter.spritePacksV2 || [];
+      const pack = packs.find((p: SpritePackV2) => p.id === activation.targetId);
+      if (!pack) {
+        console.warn('[QuickReply] SpritePackV2 not found:', activation.targetId);
+        return;
+      }
+
+      // Evaluate conditional sprites in the pack
+      let spriteUrl: string | null = null;
+      let spriteLabel: string | null = null;
+
+      if (pack.conditionalMode) {
+        const winner = evaluatePackConditionalSprites(pack.sprites, sessionStats, characterId);
+        if (winner) {
+          spriteUrl = winner.url;
+          spriteLabel = winner.label;
+        }
+      }
+
+      // Fallback to default sprite
+      if (!spriteUrl && pack.defaultSpriteId) {
+        const sprite = pack.sprites.find((s: any) => s.id === pack.defaultSpriteId);
+        if (sprite) {
+          spriteUrl = sprite.url;
+          spriteLabel = sprite.label;
+        }
+      }
+
+      // Fallback to isDefault sprite
+      if (!spriteUrl) {
+        const defaultSprite = pack.sprites.find((s: any) => s.isDefault);
+        if (defaultSprite) {
+          spriteUrl = defaultSprite.url;
+          spriteLabel = defaultSprite.label;
+        }
+      }
+
+      // Fallback to first sprite
+      if (!spriteUrl && pack.sprites.length > 0) {
+        spriteUrl = pack.sprites[0].url;
+        spriteLabel = pack.sprites[0].label;
+      }
+
+      if (!spriteUrl) return;
+
+      // Apply the trigger sprite
+      const store = useTavernStore.getState();
+      store.applyTriggerForCharacter(characterId, {
+        packId: pack.id,
+        spriteUrl,
+        spriteLabel,
+        returnToIdleMs: activation.fallbackDelayMs,
+      });
+
+      // Schedule fallback
+      if (activation.fallbackDelayMs > 0) {
+        let returnSpriteUrl = '';
+        let returnSpriteLabel: string | null = null;
+
+        if (activation.fallbackMode === 'custom_sprite' && activation.fallbackSpriteId) {
+          const sprite = pack.sprites.find((s: any) => s.id === activation.fallbackSpriteId);
+          if (sprite) {
+            returnSpriteUrl = sprite.url;
+            returnSpriteLabel = sprite.label;
+          }
+        }
+        // For idle_collection and collection_default, clear the trigger
+
+        const returnToMode = activation.fallbackMode === 'custom_sprite' ? 'idle' : 'clear';
+        store.scheduleReturnToIdleForCharacter(
+          characterId,
+          spriteUrl,
+          returnToMode,
+          returnSpriteUrl,
+          returnSpriteLabel,
+          activation.fallbackDelayMs
+        );
+      }
+    }
+  };
+
   const handleQuickReply = (item: CharacterQuickReply) => {
     if (isAnyGenerating || !item.response.trim()) return;
     // Resolve template variables like {{char}} and {{user}} in quick replies
@@ -802,9 +1004,13 @@ export function NovelChatBox({
       char: activeCharacter?.name || 'Character',
     };
     const resolvedResponse = resolveTemplateVariables(item.response.trim(), resolutionContext);
-    // Apply attribute modifiers if any
+    // Apply attribute modifiers if any (BEFORE sprite activation so conditions evaluate with new stats)
     if (item.modifiers && item.modifiers.length > 0) {
       applyQuickReplyModifiers(item.modifiers);
+    }
+    // Activate sprite if configured
+    if (item.spriteActivation) {
+      activateQuickReplySprite(item.spriteActivation);
     }
     onSendMessage(resolvedResponse);
     setInput('');
@@ -1652,6 +1858,7 @@ export function NovelChatBox({
                         onReplay={onReplay}
                         onSpeak={() => onSpeak?.(message.id, message.content, message.characterId)}
                         isNarrator={isNarratorMessage}
+                        emotionalState={messageCharacter?.emotionalConfig?.enabled ? (sessionStats?.characterStats?.[messageCharacter.id]?.emotionalState || messageCharacter.emotionalConfig.initialState) : undefined}
                       />
                     );
                   })}

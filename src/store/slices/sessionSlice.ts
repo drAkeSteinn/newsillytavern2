@@ -262,11 +262,11 @@ function executeCompletionRewards(
           if (rewardMessages.length > 0) {
             get().addQuestNotification?.({
               questId: questTemplateId,
-              questTitle: template.name,
+              questName: template.name,
               type: 'objective_complete',
               message: `Objetivo completado: ${targetObjective.description}. Recompensas: ${rewardMessages.join(', ')}`,
               rewards: targetObjective.rewards,
-            } as any);
+            });
           }
         }
       }
@@ -292,11 +292,11 @@ function executeCompletionRewards(
         if (rewardMessages.length > 0) {
           get().addQuestNotification?.({
             questId: questTemplateId,
-            questTitle: template.name,
+            questName: template.name,
             type: 'quest_complete',
             message: `¡Misión completada: ${template.name}! Recompensas: ${rewardMessages.join(', ')}`,
             rewards: template.rewards,
-          } as any);
+          });
         }
       }
     }
@@ -363,13 +363,22 @@ function addEquipmentSlotsToPersonaStats(
  * Resets all stats, solicitudes, and session events to default values
  */
 function initializeSessionStatsForCharacters(
-  characters: Array<{ id: string; statsConfig?: { enabled?: boolean; attributes?: Array<{ key: string; defaultValue: number | string }> } }>
+  characters: Array<{ id: string; statsConfig?: { enabled?: boolean; attributes?: Array<{ key: string; defaultValue: number | string }> }; emotionalConfig?: { enabled?: boolean; initialState?: string } }>
 ): SessionStats {
   const now = Date.now();
   const characterStats: Record<string, CharacterSessionStats> = {};
   
   for (const char of characters) {
-    characterStats[char.id] = createDefaultCharacterStats(char.statsConfig);
+    const stats = createDefaultCharacterStats(char.statsConfig);
+    // FASE 5: Initialize emotional state if emotional config is present
+    if (char.emotionalConfig?.enabled && char.emotionalConfig.initialState) {
+      stats.emotionalState = char.emotionalConfig.initialState;
+      stats.emotionalStateLastEval = now;
+      stats.emotionalStateTurnCount = 0;
+      // Also set as attribute value for {{emocion}} key resolution
+      stats.attributeValues['emocion'] = char.emotionalConfig.initialState;
+    }
+    characterStats[char.id] = stats;
   }
   
   return {
@@ -585,12 +594,17 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     const activePersona = get().getActivePersona?.();
     const userName = activePersona?.name || 'User';
 
-    // Process the first message with template variables
+    // Process all greetings (firstMes + alternateGreetings) with template variables
     const processedFirstMes = character
       ? processMessageTemplate(character.firstMes, character.name, userName)
       : '';
-
-    const initialContent = processedFirstMes || '';
+    const processedAlternateGreetings = character
+      ? (character.alternateGreetings || []).map((g: string) => processMessageTemplate(g, character.name, userName))
+      : [];
+    let allGreetings = [processedFirstMes, ...processedAlternateGreetings].filter((g: string) => g.trim());
+    let greetingList = allGreetings.length > 0 ? allGreetings : [''];
+    let selectedGreeting = greetingList[Math.floor(Math.random() * greetingList.length)];
+    let groupFirstMessageCharacterId = characterId; // characterId used for the first message in group chat
     
     // Initialize session stats
     let sessionStats: SessionStats | undefined;
@@ -619,6 +633,21 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
           if (templates.length > 0) {
             sessionQuests = createQuestInstancesFromTemplates(templates);
           }
+        }
+
+        // Group first message: override greetings with group-specific ones if configured
+        if (group.firstMes || (group.alternateGreetings && group.alternateGreetings.length > 0)) {
+          const groupName = group.name || 'Group';
+          const processedGroupFirstMes = group.firstMes
+            ? processMessageTemplate(group.firstMes, groupName, userName)
+            : '';
+          const processedGroupAlternateGreetings = (group.alternateGreetings || [])
+            .map((g: string) => processMessageTemplate(g, groupName, userName));
+          allGreetings = [processedGroupFirstMes, ...processedGroupAlternateGreetings].filter((g: string) => g.trim());
+          greetingList = allGreetings.length > 0 ? allGreetings : [''];
+          selectedGreeting = greetingList[Math.floor(Math.random() * greetingList.length)];
+          // Use first group member's characterId for the group first message
+          groupFirstMessageCharacterId = group.members[0]?.characterId || '__group__';
         }
       }
     } else if (character) {
@@ -690,17 +719,17 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
         id,
         characterId,
         groupId,
-        name: character ? `Chat with ${character.name}` : 'New Chat',
-        messages: character ? [{
+        name: character ? `Chat with ${character.name}` : (groupId ? `Group Chat` : 'New Chat'),
+        messages: (character || groupId) ? [{
           id: uuidv4(),
-          characterId,
+          characterId: groupId ? groupFirstMessageCharacterId : characterId,
           role: 'assistant' as const,
-          content: initialContent,
+          content: selectedGreeting,
           timestamp: new Date().toISOString(),
           isDeleted: false,
           swipeId: uuidv4(),
-          swipeIndex: 0,
-          swipes: [initialContent]  // Initialize with first swipe
+          swipeIndex: greetingList.indexOf(selectedGreeting),
+          swipes: greetingList
         }] : [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -968,10 +997,17 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     const activePersona = get().getActivePersona?.();
     const userName = activePersona?.name || 'User';
     
-    // Process the first message with template variables
+    // Process all greetings (firstMes + alternateGreetings) with template variables
     const processedFirstMes = character
       ? processMessageTemplate(character.firstMes, character.name, userName)
       : '';
+    const processedAlternateGreetings = character
+      ? (character.alternateGreetings || []).map((g: string) => processMessageTemplate(g, character.name, userName))
+      : [];
+    let allGreetings = [processedFirstMes, ...processedAlternateGreetings].filter((g: string) => g.trim());
+    let greetingList = allGreetings.length > 0 ? allGreetings : [''];
+    let selectedGreeting = greetingList[Math.floor(Math.random() * greetingList.length)];
+    let clearChatFirstMessageCharacterId = session.characterId;
     
     // Get characters for stats reset
     let characters: Array<{ id: string; statsConfig?: any }> = [];
@@ -982,6 +1018,20 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
         characters = group.members
           .map((m: any) => get().getCharacterById(m.characterId))
           .filter((c: any) => c !== undefined);
+        
+        // Group first message: override greetings with group-specific ones if configured
+        if (group.firstMes || (group.alternateGreetings && group.alternateGreetings.length > 0)) {
+          const groupName = group.name || 'Group';
+          const processedGroupFirstMes = group.firstMes
+            ? processMessageTemplate(group.firstMes, groupName, userName)
+            : '';
+          const processedGroupAlternateGreetings = (group.alternateGreetings || [])
+            .map((g: string) => processMessageTemplate(g, groupName, userName));
+          allGreetings = [processedGroupFirstMes, ...processedGroupAlternateGreetings].filter((g: string) => g.trim());
+          greetingList = allGreetings.length > 0 ? allGreetings : [''];
+          selectedGreeting = greetingList[Math.floor(Math.random() * greetingList.length)];
+          clearChatFirstMessageCharacterId = group.members[0]?.characterId || '__group__';
+        }
       }
     } else {
       if (character) {
@@ -1039,23 +1089,22 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
       }
     }
     
-    // Reset messages to only the first message
-    const initialContent = processedFirstMes || '';
+    // Reset messages to only the first message (with all greetings as swipes)
     
     set((state: any) => ({
       sessions: state.sessions.map((s: ChatSession) =>
         s.id === sessionId ? {
           ...s,
-          messages: character ? [{
+          messages: (character || session.groupId) ? [{
             id: uuidv4(),
-            characterId: session.characterId,
+            characterId: session.groupId ? clearChatFirstMessageCharacterId : session.characterId,
             role: 'assistant' as const,
-            content: initialContent,
+            content: selectedGreeting,
             timestamp: new Date().toISOString(),
             isDeleted: false,
             swipeId: uuidv4(),
-            swipeIndex: 0,
-            swipes: [initialContent]
+            swipeIndex: greetingList.indexOf(selectedGreeting),
+            swipes: greetingList
           }] : [],
           sessionStats: newSessionStats,
           sessionQuests: newSessionQuests,  // Reset quests to template defaults
@@ -1444,7 +1493,7 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     if (template) {
       get().addQuestNotification?.({
         questId: questTemplateId,
-        questTitle: template.name,
+        questName: template.name,
         type: 'quest_activated',
         message: `¡Nueva misión activada: ${template.name}!`,
       });
@@ -1492,7 +1541,7 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     if (template) {
       get().addQuestNotification?.({
         questId: questTemplateId,
-        questTitle: template.name,
+        questName: template.name,
         type: 'quest_updated',
         message: `Misión desactivada: ${template.name}`,
       });
@@ -1564,7 +1613,7 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     if (template && (!template.rewards || template.rewards.length === 0)) {
       get().addQuestNotification?.({
         questId: questTemplateId,
-        questTitle: template.name,
+        questName: template.name,
         type: 'quest_complete',
         message: `¡Misión completada: ${template.name}!`,
         rewards: template.rewards,
@@ -1657,7 +1706,7 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
       if (template && (!targetObjective?.rewards || targetObjective.rewards.length === 0)) {
         get().addQuestNotification?.({
           questId: questTemplateId,
-          questTitle: template.name,
+          questName: template.name,
           type: 'objective_complete',
           message: `Objetivo completado: ${targetObjective?.description}`,
         });
@@ -1794,7 +1843,7 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     if (template && targetObjective && (!targetObjective.rewards || targetObjective.rewards.length === 0)) {
       get().addQuestNotification?.({
         questId: questTemplateId,
-        questTitle: template.name,
+        questName: template.name,
         type: 'objective_complete',
         message: `Objetivo completado: ${targetObjective.description}`,
       });
@@ -2299,8 +2348,8 @@ export const createSessionSlice = (set: any, get: any): SessionSlice => ({
     // Add notification using quest slice
     get().addQuestNotification?.({
       questId: template.id,
-      questTitle: template.name,
-      type: 'started',
+      questName: template.name,
+      type: 'quest_activated',
       message: `Nueva misión iniciada: ${template.name}`,
     });
 

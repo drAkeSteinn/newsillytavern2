@@ -277,6 +277,22 @@ export class EmbeddingClient {
   async close(): Promise<void> {
     await LanceDBWrapper.close();
   }
+
+  /**
+   * Check if LanceDB is permanently unavailable on this system.
+   * When true, all embedding operations will return safe defaults or throw.
+   */
+  isUnavailable(): boolean {
+    // Use synchronous check — the module is already loaded by this point
+    // since LanceDBWrapper is imported at the top of this file
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { isLanceDBPermanentlyUnavailable } = require('./lancedb-db');
+      return isLanceDBPermanentlyUnavailable();
+    } catch {
+      return false;
+    }
+  }
 }
 
 // Singleton

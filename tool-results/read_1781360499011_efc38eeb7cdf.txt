@@ -1,0 +1,772 @@
+     1→'use client';
+     2→
+     3→/**
+     4→ * QuestHUD Component
+     5→ * 
+     6→ * Displays active and available quests in the chat interface as a floating HUD.
+     7→ * Shows quest progress, objectives, and status indicators.
+     8→ * 
+     9→ * Features:
+    10→ * - Quest cards with progress bars
+    11→ * - Objective tracking with checkmarks
+    12→ * - Priority-based coloring (main/side/hidden)
+    13→ * - Compact mode for minimal UI
+    14→ * - Collapsible to save space
+    15→ * - Click to expand/collapse
+    16→ * - Available quests section with activation toggle
+    17→ * - Auto Quest system configuration
+    18→ */
+    19→
+    20→import { useState, useMemo } from 'react';
+    21→import { useTavernStore } from '@/store';
+    22→import type { 
+    23→  QuestTemplate, 
+    24→  SessionQuestInstance, 
+    25→  SessionQuestObjective,
+    26→  QuestPriority,
+    27→  QuestStatus,
+    28→} from '@/types';
+    29→import { cn } from '@/lib/utils';
+    30→import { evaluateActivationConditions } from '@/lib/triggers/handlers/quest-handler';
+    31→import { 
+    32→  ScrollText, 
+    33→  ChevronDown, 
+    34→  ChevronUp, 
+    35→  Check, 
+    36→  Circle, 
+    37→  Target,
+    38→  Gift,
+    39→  Clock,
+    40→  Star,
+    41→  Lock,
+    42→  Sparkles,
+    43→  Play,
+    44→  Pause,
+    45→  Settings2,
+    46→  Zap,
+    47→  List,
+    48→  Shuffle,
+    49→} from 'lucide-react';
+    50→
+    51→// ============================================
+    52→// Types
+    53→// ============================================
+    54→
+    55→interface QuestHUDProps {
+    56→  position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+    57→  className?: string;
+    58→  compact?: boolean;
+    59→}
+    60→
+    61→interface QuestWithTemplate {
+    62→  instance: SessionQuestInstance;
+    63→  template: QuestTemplate;
+    64→}
+    65→
+    66→// ============================================
+    67→// Position Classes
+    68→// ============================================
+    69→
+    70→const positionClasses = {
+    71→  'top-left': 'top-4 left-4',
+    72→  'top-right': 'top-4 right-4',
+    73→  'bottom-left': 'bottom-4 left-4',
+    74→  'bottom-right': 'bottom-4 right-4',
+    75→};
+    76→
+    77→// ============================================
+    78→// Priority Colors
+    79→// ============================================
+    80→
+    81→const priorityColors: Record<QuestPriority, { bg: string; text: string; border: string; progress: string }> = {
+    82→  main: {
+    83→    bg: 'bg-amber-500/20',
+    84→    text: 'text-amber-400',
+    85→    border: 'border-amber-500/40',
+    86→    progress: 'bg-amber-500',
+    87→  },
+    88→  side: {
+    89→    bg: 'bg-blue-500/20',
+    90→    text: 'text-blue-400',
+    91→    border: 'border-blue-500/40',
+    92→    progress: 'bg-blue-500',
+    93→  },
+    94→  hidden: {
+    95→    bg: 'bg-slate-500/20',
+    96→    text: 'text-slate-400',
+    97→    border: 'border-slate-500/40',
+    98→    progress: 'bg-slate-500',
+    99→  },
+   100→};
+   101→
+   102→// ============================================
+   103→// Status Icons
+   104→// ============================================
+   105→
+   106→const statusIcons: Record<QuestStatus, React.ReactNode> = {
+   107→  available: <Circle className="w-3 h-3" />,
+   108→  active: <Sparkles className="w-3 h-3" />,
+   109→  completed: <Check className="w-3 h-3" />,
+   110→  failed: <span className="text-xs">✗</span>,
+   111→  paused: <Clock className="w-3 h-3" />,
+   112→};
+   113→
+   114→// ============================================
+   115→// Main Component
+   116→// ============================================
+   117→
+   118→export function QuestHUD({ 
+   119→  position = 'top-right', 
+   120→  className,
+   121→  compact: forceCompact,
+   122→}: QuestHUDProps) {
+   123→  const [isCollapsed, setIsCollapsed] = useState(false);
+   124→  const [isExpanded, setIsExpanded] = useState(false);
+   125→  const [showAvailable, setShowAvailable] = useState(false);
+   126→  const [showAutoQuest, setShowAutoQuest] = useState(false);
+   127→  
+   128→  // Store state
+   129→  const activeSessionId = useTavernStore((state) => state.activeSessionId);
+   130→  const sessions = useTavernStore((state) => state.sessions);
+   131→  const questTemplates = useTavernStore((state) => state.questTemplates);
+   132→  const questSettings = useTavernStore((state) => state.questSettings);
+   133→  const setQuestSettings = useTavernStore((state) => state.setQuestSettings);
+   134→  const activateQuest = useTavernStore((state) => state.activateQuest);
+   135→  const deactivateQuest = useTavernStore((state) => state.deactivateQuest);
+   136→  
+   137→  // Get active session
+   138→  const activeSession = sessions.find(s => s.id === activeSessionId);
+   139→  const sessionQuests = activeSession?.sessionQuests ?? [];
+   140→  
+   141→  // Get active quests with templates
+   142→  const activeQuests = useMemo(() => {
+   143→    if (sessionQuests.length === 0) return [];
+   144→    
+   145→    return sessionQuests
+   146→      .filter(q => q.status === 'active')
+   147→      .map(instance => {
+   148→        const template = questTemplates.find(t => t.id === instance.templateId);
+   149→        return template ? { instance, template } : null;
+   150→      })
+   151→      .filter((q): q is QuestWithTemplate => q !== null)
+   152→      .sort((a, b) => {
+   153→        // Sort by priority: main > side > hidden
+   154→        const priorityOrder: Record<QuestPriority, number> = { main: 0, side: 1, hidden: 2 };
+   155→        return priorityOrder[a.template.priority] - priorityOrder[b.template.priority];
+   156→      });
+   157→  }, [sessionQuests, questTemplates]);
+   158→  
+   159→  // Get available quests with templates
+   160→  const availableQuests = useMemo(() => {
+   161→    if (sessionQuests.length === 0) return [];
+   162→    
+   163→    const session = activeSessionId ? sessions.find(s => s.id === activeSessionId) : null;
+   164→    
+   165→    return sessionQuests
+   166→      .filter(q => q.status === 'available')
+   167→      .map(instance => {
+   168→        const template = questTemplates.find(t => t.id === instance.templateId);
+   169→        return template ? { instance, template } : null;
+   170→      })
+   171→      .filter((q): q is QuestWithTemplate => q !== null)
+   172→      .filter(({ template }) => {
+   173→        // Filter out quests whose activation conditions are not met
+   174→        return evaluateActivationConditions(
+   175→          template,
+   176→          session?.sessionStats,
+   177→          sessionQuests,
+   178→          questTemplates
+   179→        );
+   180→      })
+   181→      .sort((a, b) => {
+   182→        // Sort by autoQuest order if available, then by priority
+   183→        const aOrder = a.template.autoQuest?.order ?? 999;
+   184→        const bOrder = b.template.autoQuest?.order ?? 999;
+   185→        if (aOrder !== bOrder) return aOrder - bOrder;
+   186→        
+   187→        const priorityOrder: Record<QuestPriority, number> = { main: 0, side: 1, hidden: 2 };
+   188→        return priorityOrder[a.template.priority] - priorityOrder[b.template.priority];
+   189→      });
+   190→  }, [sessionQuests, questTemplates, activeSessionId, sessions]);
+   191→  
+   192→  // Handle quest activation/deactivation
+   193→  const handleQuestToggle = (templateId: string, currentStatus: QuestStatus) => {
+   194→    if (!activeSessionId) return;
+   195→    
+   196→    if (currentStatus === 'available') {
+   197→      activateQuest(activeSessionId, templateId);
+   198→    } else if (currentStatus === 'active') {
+   199→      deactivateQuest(activeSessionId, templateId);
+   200→    }
+   201→  };
+   202→  
+   203→  // Handle auto quest settings change
+   204→  const handleAutoQuestChange = (updates: Partial<typeof questSettings>) => {
+   205→    setQuestSettings(updates);
+   206→  };
+   207→  
+   208→  // Check if quest HUD is enabled
+   209→  if (!questSettings.enabled) {
+   210→    return null;
+   211→  }
+   212→  
+   213→  // Don't show if no quests at all
+   214→  if (activeQuests.length === 0 && availableQuests.length === 0) {
+   215→    return null;
+   216→  }
+   217→  
+   218→  const compact = forceCompact ?? activeQuests.length > 2;
+   219→  const showObjectives = isExpanded || activeQuests.length === 1;
+   220→  
+   221→  return (
+   222→    <div
+   223→      className={cn(
+   224→        'absolute z-30 pointer-events-auto',
+   225→        positionClasses[position],
+   226→        className
+   227→      )}
+   228→    >
+   229→      <div 
+   230→        className={cn(
+   231→          'backdrop-blur-md rounded-xl border transition-all duration-300',
+   232→          'bg-gradient-to-br from-slate-900/90 to-slate-800/80',
+   233→          'border-white/10 shadow-xl shadow-black/20',
+   234→          compact ? 'max-w-[280px]' : 'max-w-[320px]',
+   235→          isCollapsed && 'max-w-[200px]'
+   236→        )}
+   237→      >
+   238→        {/* Header */}
+   239→        <button
+   240→          onClick={() => setIsCollapsed(!isCollapsed)}
+   241→          className={cn(
+   242→            'w-full flex items-center gap-2 px-3 py-2',
+   243→            'border-b border-white/10',
+   244→            'hover:bg-white/5 transition-colors'
+   245→          )}
+   246→        >
+   247→          <ScrollText className="w-4 h-4 text-amber-400" />
+   248→          <span className="text-sm font-medium text-white/80 flex-1 text-left">
+   249→            Misiones
+   250→          </span>
+   251→          <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
+   252→            {activeQuests.length}
+   253→          </Badge>
+   254→          {availableQuests.length > 0 && (
+   255→            <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 ml-1">
+   256→              +{availableQuests.length}
+   257→            </Badge>
+   258→          )}
+   259→          {isCollapsed ? (
+   260→            <ChevronDown className="w-4 h-4 text-white/40" />
+   261→          ) : (
+   262→            <ChevronUp className="w-4 h-4 text-white/40" />
+   263→          )}
+   264→        </button>
+   265→        
+   266→        {/* Quest List */}
+   267→        {!isCollapsed && (
+   268→          <div className={cn(
+   269→            'p-2 space-y-2 max-h-[400px] overflow-y-auto',
+   270→            'scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent'
+   271→          )}>
+   272→            {/* Active Quests */}
+   273→            {activeQuests.map(({ instance, template }) => (
+   274→              <QuestCard
+   275→                key={instance.templateId}
+   276→                instance={instance}
+   277→                template={template}
+   278→                compact={compact}
+   279→                showObjectives={showObjectives}
+   280→                onToggleObjectives={() => setIsExpanded(!isExpanded)}
+   281→                onToggleActivation={() => handleQuestToggle(template.id, 'active')}
+   282→              />
+   283→            ))}
+   284→            
+   285→            {/* Available Quests Section */}
+   286→            {availableQuests.length > 0 && (
+   287→              <div className="pt-2 border-t border-white/10">
+   288→                <button
+   289→                  onClick={() => setShowAvailable(!showAvailable)}
+   290→                  className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-blue-400 hover:bg-white/5 rounded transition-colors"
+   291→                >
+   292→                  <Circle className="w-3 h-3" />
+   293→                  <span className="flex-1 text-left">Disponibles ({availableQuests.length})</span>
+   294→                  {showAvailable ? (
+   295→                    <ChevronUp className="w-3 h-3" />
+   296→                  ) : (
+   297→                    <ChevronDown className="w-3 h-3" />
+   298→                  )}
+   299→                </button>
+   300→                
+   301→                {showAvailable && (
+   302→                  <div className="mt-1 space-y-1">
+   303→                    {availableQuests.map(({ instance, template }) => (
+   304→                      <AvailableQuestItem
+   305→                        key={instance.templateId}
+   306→                        template={template}
+   307→                        onActivate={() => handleQuestToggle(template.id, 'available')}
+   308→                      />
+   309→                    ))}
+   310→                  </div>
+   311→                )}
+   312→              </div>
+   313→            )}
+   314→            
+   315→            {/* Auto Quest Section */}
+   316→            <div className="pt-2 border-t border-white/10">
+   317→              <button
+   318→                onClick={() => setShowAutoQuest(!showAutoQuest)}
+   319→                className={cn(
+   320→                  'w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded transition-colors',
+   321→                  questSettings.autoQuestEnabled
+   322→                    ? 'text-violet-400 hover:bg-violet-500/10'
+   323→                    : 'text-white/50 hover:bg-white/5'
+   324→                )}
+   325→              >
+   326→                <Zap className={cn(
+   327→                  'w-3 h-3',
+   328→                  questSettings.autoQuestEnabled && 'animate-pulse'
+   329→                )} />
+   330→                <span className="flex-1 text-left">Auto Quest</span>
+   331→                {questSettings.autoQuestEnabled && (
+   332→                  <Badge className="bg-violet-500/20 text-violet-400 border-violet-500/30">
+   333→                    ON
+   334→                  </Badge>
+   335→                )}
+   336→                {showAutoQuest ? (
+   337→                  <ChevronUp className="w-3 h-3" />
+   338→                ) : (
+   339→                  <ChevronDown className="w-3 h-3" />
+   340→                )}
+   341→              </button>
+   342→              
+   343→              {showAutoQuest && (
+   344→                <div className="mt-2 p-2 rounded-lg bg-violet-500/10 border border-violet-500/20 space-y-3">
+   345→                  {/* Enable Switch */}
+   346→                  <div className="flex items-center justify-between">
+   347→                    <span className="text-xs text-white/70">Activar automáticamente</span>
+   348→                    <button
+   349→                      onClick={() => handleAutoQuestChange({ autoQuestEnabled: !questSettings.autoQuestEnabled })}
+   350→                      className={cn(
+   351→                        'relative w-10 h-5 rounded-full transition-colors',
+   352→                        questSettings.autoQuestEnabled ? 'bg-violet-500' : 'bg-white/20'
+   353→                      )}
+   354→                    >
+   355→                      <div className={cn(
+   356→                        'absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform',
+   357→                        questSettings.autoQuestEnabled ? 'translate-x-5' : 'translate-x-0.5'
+   358→                      )} />
+   359→                    </button>
+   360→                  </div>
+   361→                  
+   362→                  {/* Interval Setting */}
+   363→                  <div className="space-y-1">
+   364→                    <label className="text-xs text-white/50">
+   365→                      Cada X turnos/mensajes:
+   366→                    </label>
+   367→                    <input
+   368→                      type="number"
+   369→                      min={1}
+   370→                      max={100}
+   371→                      value={questSettings.autoQuestInterval}
+   372→                      onChange={(e) => handleAutoQuestChange({ 
+   373→                        autoQuestInterval: Math.max(1, parseInt(e.target.value) || 5) 
+   374→                      })}
+   375→                      className="w-full px-2 py-1 text-xs bg-black/30 border border-white/10 rounded text-white/80 focus:outline-none focus:border-violet-500/50"
+   376→                      disabled={!questSettings.autoQuestEnabled}
+   377→                    />
+   378→                  </div>
+   379→                  
+   380→                  {/* Mode Selection */}
+   381→                  <div className="space-y-1">
+   382→                    <label className="text-xs text-white/50">Modo de selección:</label>
+   383→                    <div className="flex gap-1">
+   384→                      <button
+   385→                        onClick={() => handleAutoQuestChange({ autoQuestMode: 'random' })}
+   386→                        disabled={!questSettings.autoQuestEnabled}
+   387→                        className={cn(
+   388→                          'flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded transition-colors',
+   389→                          questSettings.autoQuestMode === 'random'
+   390→                            ? 'bg-violet-500/30 text-violet-300 border border-violet-500/50'
+   391→                            : 'bg-white/5 text-white/50 border border-white/10',
+   392→                          !questSettings.autoQuestEnabled && 'opacity-50 cursor-not-allowed'
+   393→                        )}
+   394→                      >
+   395→                        <Shuffle className="w-3 h-3" />
+   396→                        Random
+   397→                      </button>
+   398→                      <button
+   399→                        onClick={() => handleAutoQuestChange({ autoQuestMode: 'list' })}
+   400→                        disabled={!questSettings.autoQuestEnabled}
+   401→                        className={cn(
+   402→                          'flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded transition-colors',
+   403→                          questSettings.autoQuestMode === 'list'
+   404→                            ? 'bg-violet-500/30 text-violet-300 border border-violet-500/50'
+   405→                            : 'bg-white/5 text-white/50 border border-white/10',
+   406→                          !questSettings.autoQuestEnabled && 'opacity-50 cursor-not-allowed'
+   407→                        )}
+   408→                      >
+   409→                        <List className="w-3 h-3" />
+   410→                        Lista
+   411→                      </button>
+   412→                    </div>
+   413→                  </div>
+   414→                </div>
+   415→              )}
+   416→            </div>
+   417→          </div>
+   418→        )}
+   419→        
+   420→        {/* Collapsed Preview */}
+   421→        {isCollapsed && (
+   422→          <div className="p-2 flex flex-wrap gap-1">
+   423→            {activeQuests.slice(0, 3).map(({ instance, template }) => (
+   424→              <div
+   425→                key={instance.templateId}
+   426→                className={cn(
+   427→                  'flex items-center gap-1 px-2 py-1 rounded-full text-xs',
+   428→                  priorityColors[template.priority].bg,
+   429→                  priorityColors[template.priority].text,
+   430→                  priorityColors[template.priority].border,
+   431→                  'border'
+   432→                )}
+   433→                title={template.name}
+   434→              >
+   435→                <span>{template.icon || '📜'}</span>
+   436→                <span className="font-medium">{Math.round(instance.progress)}%</span>
+   437→              </div>
+   438→            ))}
+   439→            {activeQuests.length > 3 && (
+   440→              <div className="text-xs text-white/40 px-1">
+   441→                +{activeQuests.length - 3}
+   442→              </div>
+   443→            )}
+   444→            {availableQuests.length > 0 && (
+   445→              <div className="text-xs text-blue-400/60 px-1">
+   446→                +{availableQuests.length} disp.
+   447→              </div>
+   448→            )}
+   449→          </div>
+   450→        )}
+   451→      </div>
+   452→    </div>
+   453→  );
+   454→}
+   455→
+   456→// ============================================
+   457→// Quest Card Component
+   458→// ============================================
+   459→
+   460→interface QuestCardProps {
+   461→  instance: SessionQuestInstance;
+   462→  template: QuestTemplate;
+   463→  compact?: boolean;
+   464→  showObjectives?: boolean;
+   465→  onToggleObjectives?: () => void;
+   466→  onToggleActivation?: () => void;
+   467→}
+   468→
+   469→function QuestCard({ 
+   470→  instance, 
+   471→  template, 
+   472→  compact, 
+   473→  showObjectives,
+   474→  onToggleObjectives,
+   475→  onToggleActivation,
+   476→}: QuestCardProps) {
+   477→  const colors = priorityColors[template.priority];
+   478→  
+   479→  // Calculate progress
+   480→  const progress = instance.progress;
+   481→  
+   482→  // Get objectives with template data
+   483→  const objectives = template.objectives.map(obj => {
+   484→    const instanceObj = instance.objectives.find(o => o.templateId === obj.id);
+   485→    return {
+   486→      ...obj,
+   487→      currentCount: instanceObj?.currentCount ?? 0,
+   488→      isCompleted: instanceObj?.isCompleted ?? false,
+   489→    };
+   490→  });
+   491→  
+   492→  const completedObjectives = objectives.filter(o => o.isCompleted).length;
+   493→  const totalObjectives = objectives.length;
+   494→  
+   495→  return (
+   496→    <div
+   497→      className={cn(
+   498→        'rounded-lg border transition-all',
+   499→        colors.bg,
+   500→        colors.border,
+   501→        'hover:bg-white/5'
+   502→      )}
+   503→    >
+   504→      {/* Quest Header */}
+   505→      <div 
+   506→        className={cn('flex items-start gap-2', compact ? 'p-1.5' : 'p-2')}
+   507→      >
+   508→        {/* Icon */}
+   509→        <div className={cn(
+   510→          'flex items-center justify-center rounded-lg shrink-0',
+   511→          compact ? 'w-8 h-8' : 'w-10 h-10',
+   512→          colors.bg,
+   513→          'border',
+   514→          colors.border
+   515→        )}>
+   516→          <span className={compact ? 'text-lg' : 'text-xl'}>
+   517→            {template.icon || '📜'}
+   518→          </span>
+   519→        </div>
+   520→        
+   521→        {/* Quest Info */}
+   522→        <div className="flex-1 min-w-0">
+   523→          <div className="flex items-center gap-1.5">
+   524→            <span 
+   525→              className={cn(
+   526→                'font-medium truncate cursor-pointer hover:underline',
+   527→                colors.text,
+   528→                compact ? 'text-xs' : 'text-sm'
+   529→              )}
+   530→              onClick={onToggleObjectives}
+   531→            >
+   532→              {template.name}
+   533→            </span>
+   534→            {template.priority === 'main' && (
+   535→              <Star className="w-3 h-3 text-amber-400 shrink-0" />
+   536→            )}
+   537→          </div>
+   538→          
+   539→          {/* Progress Bar */}
+   540→          <div className="mt-1.5 flex items-center gap-2">
+   541→            <div className="flex-1 h-1.5 bg-black/30 rounded-full overflow-hidden">
+   542→              <div
+   543→                className={cn('h-full rounded-full transition-all', colors.progress)}
+   544→                style={{ width: `${progress}%` }}
+   545→              />
+   546→            </div>
+   547→            <span className={cn('text-[10px] font-medium', colors.text)}>
+   548→              {Math.round(progress)}%
+   549→            </span>
+   550→          </div>
+   551→          
+   552→          {/* Objective Count */}
+   553→          {!compact && (
+   554→            <div className="mt-1 flex items-center gap-1 text-[10px] text-white/50">
+   555→              <Target className="w-3 h-3" />
+   556→              <span>{completedObjectives}/{totalObjectives} objetivos</span>
+   557→              {template.rewards.length > 0 && (
+   558→                <>
+   559→                  <span className="mx-1">•</span>
+   560→                  <Gift className="w-3 h-3" />
+   561→                  <span>{template.rewards.length} recompensas</span>
+   562→                </>
+   563→              )}
+   564→            </div>
+   565→          )}
+   566→        </div>
+   567→        
+   568→        {/* Deactivate Button */}
+   569→        <button
+   570→          onClick={onToggleActivation}
+   571→          className={cn(
+   572→            'p-1.5 rounded-lg transition-colors shrink-0',
+   573→            'hover:bg-red-500/20 text-red-400/60 hover:text-red-400'
+   574→          )}
+   575→          title="Desactivar misión"
+   576→        >
+   577→          <Pause className="w-3.5 h-3.5" />
+   578→        </button>
+   579→      </div>
+   580→      
+   581→      {/* Objectives (Expanded) */}
+   582→      {showObjectives && objectives.length > 0 && (
+   583→        <div className={cn(
+   584→          'border-t border-white/10',
+   585→          compact ? 'p-1.5 pt-2' : 'p-2 pt-2'
+   586→        )}>
+   587→          <div className="space-y-1">
+   588→            {objectives.map((obj) => (
+   589→              <ObjectiveItem
+   590→                key={obj.id}
+   591→                objective={obj}
+   592→                compact={compact}
+   593→              />
+   594→            ))}
+   595→          </div>
+   596→        </div>
+   597→      )}
+   598→      
+   599→      {/* Description (if expanded and not compact) */}
+   600→      {showObjectives && template.description && !compact && (
+   601→        <div className="px-2 pb-2">
+   602→          <p className="text-[10px] text-white/40 line-clamp-2">
+   603→            {template.description}
+   604→          </p>
+   605→        </div>
+   606→      )}
+   607→    </div>
+   608→  );
+   609→}
+   610→
+   611→// ============================================
+   612→// Available Quest Item Component
+   613→// ============================================
+   614→
+   615→interface AvailableQuestItemProps {
+   616→  template: QuestTemplate;
+   617→  onActivate: () => void;
+   618→}
+   619→
+   620→function AvailableQuestItem({ template, onActivate }: AvailableQuestItemProps) {
+   621→  const colors = priorityColors[template.priority];
+   622→  
+   623→  return (
+   624→    <button
+   625→      onClick={onActivate}
+   626→      className={cn(
+   627→        'w-full flex items-center gap-2 p-2 rounded-lg border transition-all',
+   628→        'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20',
+   629→        'group'
+   630→      )}
+   631→    >
+   632→      {/* Icon */}
+   633→      <div className={cn(
+   634→        'flex items-center justify-center rounded-lg w-8 h-8 shrink-0',
+   635→        colors.bg,
+   636→        'border',
+   637→        colors.border,
+   638→        'group-hover:border-white/30'
+   639→      )}>
+   640→        <span className="text-lg">
+   641→          {template.icon || '📜'}
+   642→        </span>
+   643→      </div>
+   644→      
+   645→      {/* Info */}
+   646→      <div className="flex-1 min-w-0 text-left">
+   647→        <div className="flex items-center gap-1">
+   648→          <span className={cn(
+   649→            'font-medium truncate text-xs',
+   650→            colors.text
+   651→          )}>
+   652→            {template.name}
+   653→          </span>
+   654→          {template.priority === 'main' && (
+   655→            <Star className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+   656→          )}
+   657→        </div>
+   658→        {template.description && (
+   659→          <p className="text-[10px] text-white/40 truncate mt-0.5">
+   660→            {template.description}
+   661→          </p>
+   662→        )}
+   663→      </div>
+   664→      
+   665→      {/* Activate Button */}
+   666→      <div className={cn(
+   667→        'p-1.5 rounded-lg transition-all',
+   668→        'bg-green-500/10 text-green-400 group-hover:bg-green-500/20'
+   669→      )}>
+   670→        <Play className="w-3.5 h-3.5" />
+   671→      </div>
+   672→    </button>
+   673→  );
+   674→}
+   675→
+   676→// ============================================
+   677→// Objective Item Component
+   678→// ============================================
+   679→
+   680→interface ObjectiveItemProps {
+   681→  objective: {
+   682→    id: string;
+   683→    description: string;
+   684→    type: string;
+   685→    targetCount: number;
+   686→    currentCount: number;
+   687→    isCompleted: boolean;
+   688→    isOptional: boolean;
+   689→  };
+   690→  compact?: boolean;
+   691→}
+   692→
+   693→function ObjectiveItem({ objective, compact }: ObjectiveItemProps) {
+   694→  const progress = objective.targetCount > 0 
+   695→    ? Math.min(100, (objective.currentCount / objective.targetCount) * 100)
+   696→    : (objective.isCompleted ? 100 : 0);
+   697→  
+   698→  return (
+   699→    <div 
+   700→      className={cn(
+   701→        'flex items-center gap-2 rounded px-1.5 py-1',
+   702→        objective.isCompleted 
+   703→          ? 'bg-green-500/10 text-green-400' 
+   704→          : 'bg-white/5 text-white/70',
+   705→        'transition-colors'
+   706→      )}
+   707→    >
+   708→      {/* Checkbox */}
+   709→      <div className={cn(
+   710→        'flex items-center justify-center rounded-full shrink-0 transition-all',
+   711→        compact ? 'w-4 h-4' : 'w-5 h-5',
+   712→        objective.isCompleted 
+   713→          ? 'bg-green-500 text-white' 
+   714→          : 'border border-white/30'
+   715→      )}>
+   716→        {objective.isCompleted && <Check className="w-3 h-3" />}
+   717→      </div>
+   718→      
+   719→      {/* Description */}
+   720→      <span className={cn(
+   721→        'flex-1 truncate',
+   722→        compact ? 'text-[10px]' : 'text-xs',
+   723→        objective.isCompleted && 'line-through opacity-70'
+   724→      )}>
+   725→        {objective.description}
+   726→      </span>
+   727→      
+   728→      {/* Counter (if multi-target) */}
+   729→      {objective.targetCount > 1 && (
+   730→        <span className={cn(
+   731→          'text-[10px] font-medium px-1.5 py-0.5 rounded',
+   732→          objective.isCompleted 
+   733→            ? 'bg-green-500/20 text-green-400'
+   734→            : 'bg-white/10 text-white/50'
+   735→        )}>
+   736→          {objective.currentCount}/{objective.targetCount}
+   737→        </span>
+   738→      )}
+   739→      
+   740→      {/* Optional badge */}
+   741→      {objective.isOptional && !objective.isCompleted && (
+   742→        <span className="text-[8px] text-white/30 uppercase tracking-wider">
+   743→          opt
+   744→        </span>
+   745→      )}
+   746→    </div>
+   747→  );
+   748→}
+   749→
+   750→// ============================================
+   751→// Badge Component (inline)
+   752→// ============================================
+   753→
+   754→function Badge({ 
+   755→  children, 
+   756→  className 
+   757→}: { 
+   758→  children: React.ReactNode; 
+   759→  className?: string;
+   760→}) {
+   761→  return (
+   762→    <span className={cn(
+   763→      'inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium border',
+   764→      className
+   765→    )}>
+   766→      {children}
+   767→    </span>
+   768→  );
+   769→}
+   770→
+   771→export default QuestHUD;
+   772→

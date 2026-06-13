@@ -1,0 +1,2002 @@
+     1→// ============================================
+     2→// TAVERNFLOW - Type Definitions
+     3→// ============================================
+     4→
+     5→// ============ Atmosphere Types ============
+     6→
+     7→// Atmosphere layer type (how it's rendered)
+     8→export type AtmosphereRenderType = 'css' | 'canvas' | 'overlay' | 'shader';
+     9→
+    10→// Atmosphere category for grouping
+    11→export type AtmosphereCategory = 
+    12→  | 'precipitation'  // rain, snow, hail
+    13→  | 'particles'      // fireflies, leaves, dust, embers
+    14→  | 'fog'            // fog, mist, haze
+    15→  | 'light'          // sun rays, lightning, aurora
+    16→  | 'overlay'        // color filters, vignette, lens effects
+    17→  | 'ambient';       // background ambient effects
+    18→
+    19→// Single atmosphere layer definition
+    20→export interface AtmosphereLayer {
+    21→  id: string;
+    22→  name: string;
+    23→  category: AtmosphereCategory;
+    24→  renderType: AtmosphereRenderType;
+    25→  
+    26→  // Visual settings
+    27→  intensity: number;         // 0-1, controls particle count/speed
+    28→  speed: number;             // Animation speed multiplier
+    29→  opacity: number;           // Layer opacity 0-1
+    30→  color?: string;            // Primary color (hex or rgba)
+    31→  colorSecondary?: string;   // Secondary color for gradients
+    32→  
+    33→  // Size/density settings
+    34→  density?: number;          // Particle density
+    35→  sizeMin?: number;          // Min particle size
+    36→  sizeMax?: number;          // Max particle size
+    37→  
+    38→  // Direction/movement
+    39→  direction?: number;        // Direction in degrees (0 = down, 90 = right)
+    40→  windSpeed?: number;        // Wind effect on particles
+    41→  
+    42→  // CSS/Canvas specific settings
+    43→  cssClass?: string;         // CSS class for CSS-based effects
+    44→  spriteUrl?: string;        // Sprite URL for overlay/particle effects
+    45→  
+    46→  // Animation settings
+    47→  loop?: boolean;            // Loop animation
+    48→  duration?: number;         // Duration in ms for non-looping effects
+    49→  
+    50→  // Trigger keywords
+    51→  triggerKeys: string[];     // Keywords that activate this layer
+    52→  contextKeys?: string[];    // Additional context keys required
+    53→  
+    54→  // Audio
+    55→  audioLoopUrl?: string;     // Ambient audio loop
+    56→  audioVolume?: number;      // Volume 0-1
+    57→  
+    58→  // State
+    59→  active: boolean;
+    60→  priority: number;          // Rendering priority (higher = on top)
+    61→}
+    62→
+    63→// Preset atmosphere configuration
+    64→export interface AtmospherePreset {
+    65→  id: string;
+    66→  name: string;
+    67→  description?: string;
+    68→  icon?: string;             // Emoji or icon name
+    69→  thumbnail?: string;        // Preview image
+    70→  layers: AtmosphereLayer[]; // Layers in this preset
+    71→  transitionDuration?: number; // Time to transition to this preset
+    72→}
+    73→
+    74→// Active atmosphere state
+    75→export interface AtmosphereState {
+    76→  activeLayers: AtmosphereLayer[];
+    77→  activePresetId: string | null;
+    78→  transitionProgress: number; // 0-1 for smooth transitions
+    79→  audioEnabled: boolean;
+    80→  globalIntensity: number;    // Multiplier for all layers
+    81→}
+    82→
+    83→// Atmosphere settings
+    84→export interface AtmosphereSettings {
+    85→  enabled: boolean;
+    86→  autoDetect: boolean;        // Auto-detect from messages
+    87→  realtimeEnabled: boolean;   // Detect during streaming
+    88→  globalIntensity: number;    // Global intensity multiplier
+    89→  globalVolume: number;       // Global audio volume
+    90→  transitionDuration: number; // Default transition time
+    91→  showPreview: boolean;       // Show preview in settings
+    92→  performanceMode: 'quality' | 'balanced' | 'performance';
+    93→}
+    94→
+    95→// Atmosphere trigger result
+    96→export interface AtmosphereTriggerHit {
+    97→  layerId: string;
+    98→  layer?: AtmosphereLayer;
+    99→  presetId?: string;
+   100→  preset?: AtmospherePreset;
+   101→  intensity?: number;         // Detected intensity from context
+   102→}
+   103→
+   104→// ============ Character Card Types ============
+   105→
+   106→// ============ Sprite System Types (V2) ============
+   107→
+   108→// Sprite Index Entry - available sprites from filesystem
+   109→export interface SpriteIndexEntry {
+   110→  label: string;             // Unique label for this sprite
+   111→  filename: string;          // Original filename
+   112→  url: string;               // Full URL to the sprite
+   113→  thumb?: string;            // Thumbnail URL
+   114→  pack?: string;             // Pack name this belongs to
+   115→  expressions?: string[];    // Available expressions
+   116→}
+   117→
+   118→// Sprite Index - cached index of available sprites
+   119→export interface SpriteIndex {
+   120→  sprites: SpriteIndexEntry[];
+   121→  lastUpdated: number;
+   122→  source: string;            // Where sprites were scanned from
+   123→}
+   124→
+   125→// Sprite Lock State - keeps sprite fixed for duration
+   126→export interface SpriteLockState {
+   127→  active: boolean;
+   128→  spriteUrl: string;
+   129→  until: number;             // Timestamp ms; 0 = infinite
+   130→  lastApplyAt: number;
+   131→}
+   132→
+   133→// Sprite Trigger Hit - result of matching sprite triggers (V2)
+   134→export interface SpriteTriggerHit {
+   135→  packId: string;
+   136→  collectionId?: string;        // V2: Trigger collection ID
+   137→  spriteLabel: string | null;
+   138→  spriteUrl: string;
+   139→  returnToIdleMs?: number;
+   140→  cooldownMs?: number;
+   141→  score?: number;
+   142→  useTimelineSounds?: boolean;  // Whether to play timeline sounds for this sprite
+   143→  transition?: SpriteTransitionConfig;  // FASE 7: Transition config from the trigger collection
+   144→}
+   145→
+   146→// ============================================
+   147→// NEW SPRITE PACK SYSTEM (V2)
+   148→// ============================================
+   149→
+   150→/**
+   151→ * Sprite Pack Entry - Individual sprite within a pack
+   152→ * Simple container with no trigger logic
+   153→ */
+   154→export interface SpritePackEntryV2 {
+   155→  id: string;
+   156→  label: string;             // Display name
+   157→  url: string;               // URL to the sprite
+   158→  thumbnail?: string;        // Preview thumbnail
+   159→  tags?: string[];           // For filtering/searching
+   160→  isAnimated?: boolean;      // Is GIF/WebM
+   161→
+   162→  // Conditional mode fields (when pack.conditionalMode is true)
+   163→  conditionalEnabled?: boolean;      // Whether this sprite has conditions
+   164→  priority?: number;                 // Priority for condition evaluation (higher = wins)
+   165→  conditions?: StatRequirement[];    // Conditions for when this sprite should show
+   166→  conditionOperator?: 'AND' | 'OR'; // Logic operator for conditions (default: 'AND')
+   167→  isDefault?: boolean;              // This sprite is the fallback when no conditions match
+   168→
+   169→  // Timeline data for sounds (optional)
+   170→  // When configured, sounds will play when this sprite is activated
+   171→  timeline?: SpriteTimelineData;
+   172→}
+   173→
+   174→/**
+   175→ * Sprite Pack V2 - Simple container for sprites (no trigger logic)
+   176→ * Used as base for State Collections and Trigger Collections
+   177→ */
+   178→export interface SpritePackV2 {
+   179→  id: string;
+   180→  name: string;
+   181→  description?: string;
+   182→  sprites: SpritePackEntryV2[];
+   183→  // Conditional mode: pack uses attribute-driven sprite selection
+   184→  conditionalMode?: boolean;         // When true, sprites are selected by conditions+priority
+   185→  defaultSpriteId?: string;          // Fallback sprite ID when no conditions match
+   186→
+   187→  createdAt: string;
+   188→  updatedAt: string;
+   189→}
+   190→
+   191→// ============================================
+   192→// STATE COLLECTION V2 (Reference to Pack)
+   193→// ============================================
+   194→
+   195→/**
+   196→ * State Collection V2 - References a SpritePack with behavior config
+   197→ * Used for idle, talk, thinking states
+   198→ */
+   199→export interface StateCollectionV2 {
+   200→  state: SpriteState;              // 'idle' | 'talk' | 'thinking'
+   201→  
+   202→  // Reference to sprite pack
+   203→  packId: string;
+   204→  
+   205→  // Behavior when selecting sprite from pack
+   206→  behavior: 'principal' | 'random' | 'list';
+   207→  
+   208→  // For 'principal' mode - which sprite to use
+   209→  principalSpriteId?: string;
+   210→  
+   211→  // For 'list' mode - custom ordering
+   212→  spriteOrder?: string[];          // Array of sprite IDs
+   213→  
+   214→  // Sprites to exclude from this state
+   215→  excludedSpriteIds?: string[];
+   216→  
+   217→  // Current index for 'list' mode rotation
+   218→  currentIndex?: number;
+   219→
+   220→  // REMOVED: conditionalVariants - conditions are now defined at the SpritePack level
+   221→}
+   222→
+   223→// ============================================
+   224→// CONDITIONAL STATE VARIANT
+   225→// ============================================
+   226→
+   227→/**
+   228→ * @deprecated Conditions are now defined at the SpritePack level instead of State Collections.
+   229→ * This interface is kept for backward compatibility but should not be used in new code.
+   230→ * Use SpritePackV2.conditionalMode + SpritePackEntryV2.conditions instead.
+   231→ *
+   232→ * Conditional State Variant - Attribute-driven sprite variant for a state collection.
+   233→ *
+   234→ * When a character has attributes (e.g., "exhaustion", "vida"), these variants
+   235→ * allow the idle/talk/thinking sprite to change dynamically based on attribute values.
+   236→ *
+   237→ * Priority system (like lorebook dynamic conditions):
+   238→ * - Higher priority wins when multiple variants match
+   239→ * - If no variant matches, the default state collection pack is used
+   240→ *
+   241→ * Example:
+   242→ *   Variant "Exhausted" → Priority 2, Condition: exhaustion >= 80 → pack_exhausted
+   243→ *   Variant "Tired"     → Priority 1, Condition: exhaustion >= 50 → pack_tired
+   244→ *   Variant "Normal"    → (no conditions, default pack)
+   245→ *
+   246→ * When exhaustion = 90: Both match, but "Exhausted" (P2) wins
+   247→ * When exhaustion = 60: "Tired" (P1) wins
+   248→ * When exhaustion = 30: Default pack is used
+   249→ */
+   250→export interface ConditionalStateVariant {
+   251→  id: string;
+   252→  name: string;                        // Display name: "Exhausted Idle", "Injured Idle"
+   253→  enabled: boolean;                    // Enable/disable this variant
+   254→
+   255→  // Priority - Higher number = higher priority (wins when multiple match)
+   256→  priority: number;                    // Default: 0
+   257→
+   258→  // Conditions - evaluated with AND or OR logic (controlled by conditionOperator)
+   259→  // Reuses StatRequirement which supports:
+   260→  //   - Operators: <, <=, >, >=, ==, !=, between, contains, not_contains
+   261→  //   - Cross-character: targetCharacterId for other characters' or persona's attributes
+   262→  conditions: StatRequirement[];
+   263→  conditionOperator?: 'AND' | 'OR'; // Logic operator for conditions (default: 'AND')
+   264→
+   265→  // Which pack to use when this variant is active
+   266→  packId: string;                      // References SpritePackV2.id
+   267→
+   268→  // Behavior when selecting sprite from the pack
+   269→  behavior: 'principal' | 'random' | 'list';
+   270→  principalSpriteId?: string;          // For 'principal' mode
+   271→  spriteOrder?: string[];              // For 'list' mode custom ordering
+   272→  excludedSpriteIds?: string[];        // Sprites to exclude
+   273→}
+   274→
+   275→// ============================================
+   276→// TRIGGER COLLECTION SYSTEM
+   277→// ============================================
+   278→
+   279→/**
+   280→ * Sprite Chain Step - Single step in a sprite animation chain
+   281→ */
+   282→export interface SpriteChainStep {
+   283→  spriteId: string;                // ID of sprite to show
+   284→  durationMs: number;              // How long to show (0 = wait forever)
+   285→  transition?: 'none' | 'fade' | 'slide';
+   286→}
+   287→
+   288→// ============================================
+   289→// SPRITE TRANSITION SYSTEM (FASE 7)
+   290→// ============================================
+   291→
+   292→/** Sprite transition effect types */
+   293→export type SpriteTransition = 'fade' | 'slide' | 'zoom' | 'bounce' | 'none';
+   294→
+   295→/** Direction for directional transitions (slide) */
+   296→export type SpriteTransitionDirection = 'left' | 'right' | 'up' | 'down';
+   297→
+   298→/** Easing function for transitions */
+   299→export type SpriteTransitionEasing = 'ease' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'linear';
+   300→
+   301→/** Configuration for sprite transitions */
+   302→export interface SpriteTransitionConfig {
+   303→  /** Type of transition effect */
+   304→  type: SpriteTransition;
+   305→  /** Duration in milliseconds (default: 300) */
+   306→  duration: number;
+   307→  /** Easing function (default: 'ease-in-out') */
+   308→  easing: SpriteTransitionEasing;
+   309→  /** Direction for slide transition (default: 'left') */
+   310→  direction?: SpriteTransitionDirection;
+   311→}
+   312→
+   313→/** Default transition config */
+   314→export const createDefaultSpriteTransitionConfig = (): SpriteTransitionConfig => ({
+   315→  type: 'fade',
+   316→  duration: 300,
+   317→  easing: 'ease-in-out',
+   318→  direction: 'left',
+   319→});
+   320→
+   321→/**
+   322→ * Sprite Chain - Sequence of sprites to play
+   323→ * Replaces displayTime with animated sequence
+   324→ */
+   325→export interface SpriteChain {
+   326→  enabled: boolean;
+   327→  steps: SpriteChainStep[];
+   328→  loop: boolean;                   // Repeat infinitely
+   329→  interruptible: boolean;          // Can be interrupted by new trigger
+   330→}
+   331→
+   332→/**
+   333→ * Sound Chain Step - Single step in a sound sequence
+   334→ */
+   335→export interface SoundChainStep {
+   336→  soundTriggerKey: string;         // Key of existing sound trigger
+   337→  soundUrl?: string;               // Or direct URL to sound file
+   338→  delayMs: number;                 // Delay before playing
+   339→  volume?: number;                 // Override volume (0-1)
+   340→}
+   341→
+   342→/**
+   343→ * Sound Chain - Sequence of sounds to play
+   344→ */
+   345→export interface SoundChain {
+   346→  enabled: boolean;
+   347→  steps: SoundChainStep[];
+   348→  stopOnInterrupt: boolean;        // Stop sounds if trigger interrupted
+   349→  overlap?: boolean;               // Allow overlapping sounds
+   350→  volume?: number;                 // Global volume for chain (0-1)
+   351→}
+   352→
+   353→/**
+   354→ * Fallback mode for trigger sprites
+   355→ */
+   356→export type TriggerFallbackMode = 'idle_collection' | 'custom_sprite' | 'collection_default';
+   357→
+   358→/**
+   359→ * Sprite Trigger Config - Individual sprite configuration within a trigger collection
+   360→ */
+   361→export interface SpriteTriggerConfig {
+   362→  spriteId: string;
+   363→
+   364→  // Keys for activation
+   365→  key: string;                     // Primary key
+   366→  keys?: string[];                 // Alternative keys
+   367→  requirePipes: boolean;
+   368→  caseSensitive: boolean;
+   369→
+   370→  // Fallback configuration
+   371→  fallbackMode: TriggerFallbackMode;
+   372→  fallbackSpriteId?: string;       // For 'custom_sprite' mode
+   373→  fallbackDelayMs?: number;        // Override collection default
+   374→
+   375→  // Sprite chain for animation sequences
+   376→  spriteChain?: SpriteChain;
+   377→
+   378→  // Timeline sounds - When enabled, plays sounds configured in sprite's timeline
+   379→  useTimelineSounds: boolean;      // Default: false
+   380→
+   381→  // Enable/disable this sprite config
+   382→  enabled: boolean;
+   383→}
+   384→
+   385→// ============================================
+   386→// CONDITIONAL SPRITE ENTRY (for Trigger Collections)
+   387→// ============================================
+   388→
+   389→/**
+   390→ * Conditional Sprite Entry - Attribute-driven sprite within a trigger collection.
+   391→ *
+   392→ * Used when a Trigger Collection is in conditional mode. Instead of matching keys
+   393→ * to select a sprite, it evaluates attribute conditions with priority.
+   394→ *
+   395→ * When a Skill/Action reward activates a conditional sprite collection,
+   396→ * the entries are evaluated by priority (highest first). The first entry
+   397→ * whose conditions all match determines the sprite to display.
+   398→ * If no entry matches, the default sprite (principalSpriteId) is used.
+   399→ *
+   400→ * Example (Trigger Collection "Attack Faces"):
+   401→ *   Entry "Desperate"  → Priority 2, Condition: vida <= 20  → attack_desperate.webp
+   402→ *   Entry "Empowered"  → Priority 1, Condition: mana >= 50  → attack_empowered.webp
+   403→ *   Default             → attack_normal.webp
+   404→ */
+   405→export interface ConditionalSpriteEntry {
+   406→  id: string;
+   407→  name: string;                        // Display name: "Desperate Attack", "Low HP Face"
+   408→  enabled: boolean;                    // Enable/disable this entry
+   409→
+   410→  // Priority - Higher number = higher priority (wins when multiple match)
+   411→  priority: number;                    // Default: 0
+   412→
+   413→  // Conditions - evaluated with AND or OR logic (controlled by conditionOperator)
+   414→  // Reuses StatRequirement for cross-character and all operator support
+   415→  conditions: StatRequirement[];
+   416→  conditionOperator?: 'AND' | 'OR'; // Logic operator for conditions (default: 'AND')
+   417→
+   418→  // Which sprite from the pack to show when this entry matches
+   419→  spriteId: string;                    // References SpritePackEntryV2.id
+   420→}
+   421→
+   422→/**
+   423→ * Trigger Collection - Collection of triggers using a sprite pack
+   424→ */
+   425→export interface TriggerCollection {
+   426→  id: string;
+   427→  name: string;
+   428→  active: boolean;
+   429→  priority: number;                // Higher = more important (default: 1)
+   430→
+   431→  // Reference to sprite pack
+   432→  packId: string;
+   433→
+   434→  // Collection-level key activation
+   435→  collectionKey: string;           // Main key that activates collection
+   436→  collectionKeys?: string[];       // Alternative keys
+   437→  collectionKeyRequirePipes?: boolean;
+   438→  collectionKeyCaseSensitive?: boolean;
+   439→
+   440→  // Behavior when activated by collection key
+   441→  collectionBehavior: 'principal' | 'random' | 'list';
+   442→  principalSpriteId?: string;      // For 'principal' mode
+   443→
+   444→  // Default fallback (used if sprite config doesn't override)
+   445→  fallbackMode: TriggerFallbackMode;
+   446→  fallbackSpriteId?: string;
+   447→  fallbackDelayMs: number;         // 0 = persist forever
+   448→
+   449→  // Sprite chain for animation sequences
+   450→  spriteChain?: SpriteChain;
+   451→
+   452→  // FASE 7: Transition config for this trigger's sprite changes
+   453→  transition?: SpriteTransitionConfig;
+   454→
+   455→  // Timeline sounds - When enabled, plays sounds configured in sprite's timeline
+   456→  // This is the default for the collection, individual sprite configs can override
+   457→  useTimelineSounds: boolean;      // Default: false
+   458→
+   459→  // Cooldown
+   460→  cooldownMs: number;
+   461→
+   462→  // Individual sprite configurations
+   463→  spriteConfigs: Record<string, SpriteTriggerConfig>;
+   464→
+   465→  // ============================================
+   466→  // CONDITIONAL MODE - Attribute-driven sprite selection
+   467→  // ============================================
+   468→  // When enabled, this collection can be activated by a
+   469→  // conditional_sprite_collection reward (from Skills/Actions).
+   470→  // Instead of key-based selection, it evaluates conditions + priority.
+   471→  conditionalMode?: boolean;                         // Enable conditional mode
+   472→  conditionalEntries?: ConditionalSpriteEntry[];      // Attribute-conditioned sprites
+   473→  defaultSpriteId?: string;                          // Fallback when no condition matches
+   474→
+   475→  // Metadata
+   476→  createdAt: string;
+   477→  updatedAt: string;
+   478→}
+   479→
+   480→// ============================================
+   481→// TRIGGER QUEUE SYSTEM
+   482→// ============================================
+   483→
+   484→/**
+   485→ * Trigger Queue Entry - Pending trigger in queue
+   486→ */
+   487→export interface TriggerQueueEntry {
+   488→  id: string;
+   489→  triggerCollectionId: string;
+   490→  spriteId?: string;               // If triggered by individual sprite key
+   491→  spriteUrl: string;               // URL of the sprite to show
+   492→  spriteLabel?: string;            // Label for display
+   493→  triggeredAt: number;
+   494→  source: 'collection_key' | 'sprite_key';
+   495→  
+   496→  // Fallback configuration
+   497→  fallbackMode?: TriggerFallbackMode;
+   498→  fallbackDelayMs?: number;
+   499→  fallbackSpriteId?: string;
+   500→  fallbackSpriteUrl?: string;      // URL of fallback sprite (resolved when queued)
+   501→}
+   502→
+   503→/**
+   504→ * Active Trigger - Currently executing trigger
+   505→ */
+   506→export interface ActiveTrigger {
+   507→  triggerCollectionId: string;
+   508→  spriteId: string;
+   509→  startedAt: number;
+   510→  
+   511→  // Chain progress
+   512→  chainProgress?: {
+   513→    currentStep: number;
+   514→    chainType: 'sprite' | 'sound';
+   515→    totalSteps: number;
+   516→  };
+   517→  
+   518→  // Fallback scheduled
+   519→  fallbackScheduled: boolean;
+   520→  fallbackAt?: number;             // When fallback should execute
+   521→}
+   522→
+   523→/**
+   524→ * Trigger Queue State - Per-character queue management
+   525→ */
+   526→export interface TriggerQueueState {
+   527→  // Queued triggers waiting to execute
+   528→  queue: TriggerQueueEntry[];
+   529→  
+   530→  // Currently active trigger
+   531→  active: ActiveTrigger | null;
+   532→  
+   533→  // Configuration
+   534→  maxQueueSize: number;            // Default: 5
+   535→}
+   536→
+   537→export interface CharacterCard {
+   538→  id: string;
+   539→  name: string;
+   540→  description: string;
+   541→  personality: string;
+   542→  scenario: string;
+   543→  firstMes: string;
+   544→  mesExample: string;
+   545→  creatorNotes: string;
+   546→  characterNote: string;  // Character's Note - sent to AI to influence behavior
+   547→  systemPrompt: string;
+   548→  postHistoryInstructions: string;
+   549→  authorNote: string;     // Author's Note - injected after chat history, before post-history instructions
+   550→  alternateGreetings: string[];
+   551→  tags: string[];
+   552→  avatar: string;
+   553→  /** @deprecated Use spritePacksV2 + stateCollectionsV2 instead. Legacy sprite list. */
+   554→  sprites: CharacterSprite[];
+   555→  /** @deprecated Use spritePacksV2 + stateCollectionsV2 instead. Legacy sprite configuration. */
+   556→  spriteConfig?: SpriteConfig;  // Sprite configuration for this character
+   557→  
+   558→  // SPRITE SYSTEM V2
+   559→  spritePacksV2?: SpritePackV2[];           // Packs of sprites (containers)
+   560→  stateCollectionsV2?: StateCollectionV2[];  // State collections (idle/talk/thinking)
+   561→  triggerCollections?: TriggerCollection[];  // Trigger collections
+   562→  spriteIndex?: SpriteIndex;                 // Cached sprite file index
+   563→
+   564→  /** @deprecated Use triggerCollections instead. Legacy sprite triggers. */
+   565→  spriteTriggers?: CharacterSpriteTrigger[];
+   566→  /** @deprecated Use spritePacksV2 instead. Legacy sprite packs. */
+   567→  spritePacks?: SpritePack[];
+   568→  
+   569→  voice: CharacterVoiceSettings | null;
+   570→  hudTemplateId?: string | null;  // HUD template to use for this character
+   571→  lorebookIds?: string[];         // Lorebooks to use for this character
+   572→  questTemplateIds?: string[];       // Quest templates to use for this character
+   573→  embeddingNamespaces?: string[];   // Embedding namespaces to search during chat (overrides strategy)
+   574→  statsConfig?: CharacterStatsConfig;  // Stats system configuration (attributes, skills, etc.)
+   575→  proactiveMessages?: ProactiveMessagesConfig;  // Proactive message configuration
+   576→  microReactionConfig?: MicroReactionConfig;     // FASE 4: Micro-reaction configuration for group chats
+   577→  emotionalConfig?: EmotionalStateConfig;        // FASE 5: Autonomous emotional state system
+   578→  quickReplies?: CharacterQuickReply[];          // Character-specific quick replies with optional attribute modifiers
+   579→  defaultTransition?: SpriteTransitionConfig;    // FASE 7: Default transition for state-based sprite changes
+   580→  // Import/Export extended fields (preserved through character-card.ts parse/serialize)
+   581→  spriteLibraries?: unknown;       // Sprite library collections (legacy import support)
+   582→  chatStats?: unknown;             // Character-level chat stats (legacy import support)
+   583→  memory?: unknown;                // Character-level memory data (legacy import support)
+   584→  creator?: string;                // Creator name from TavernCard spec
+   585→  characterVersion?: string;       // Character version from TavernCard spec
+   586→  extensions?: Record<string, unknown>;  // Raw extensions blob from V2 spec
+   587→  createdAt: string;
+   588→  updatedAt: string;
+   589→}
+   590→
+   591→// Sprite state type (only standard states)
+   592→export type SpriteState = 'idle' | 'talk' | 'thinking';
+   593→
+   594→// Sprite role in a collection
+   595→export type SpriteRole = 'principal' | 'alternate';
+   596→
+   597→// Collection behavior mode
+   598→export type CollectionBehavior = 'principal' | 'random' | 'list';
+   599→
+   600→/**
+   601→ * @deprecated Use StateCollectionV2 instead. This legacy state collection entry
+   602→ * is kept for backward compatibility but will be removed in a future version.
+   603→ */
+   604→export interface StateCollectionEntry {
+   605→  id: string;
+   606→  spriteLabel: string;       // Label from custom sprites
+   607→  spriteUrl: string;         // Direct URL to the sprite
+   608→  role: SpriteRole;          // Principal or alternate
+   609→  order: number;             // For list mode ordering
+   610→}
+   611→
+   612→/**
+   613→ * @deprecated Use StateCollectionV2 instead. This legacy state sprite collection
+   614→ * is kept for backward compatibility but will be removed in a future version.
+   615→ * Migration: StateSpriteCollection → StateCollectionV2 (via migrateLegacyStateCollections)
+   616→ */
+   617→export interface StateSpriteCollection {
+   618→  entries: StateCollectionEntry[];  // Sprites in this collection
+   619→  behavior: CollectionBehavior;     // How to select sprite
+   620→  currentIndex: number;             // Current index for list mode rotation
+   621→}
+   622→
+   623→/**
+   624→ * @deprecated Use SpritePackEntryV2 instead. This legacy sprite type is kept
+   625→ * for backward compatibility but will be removed in a future version.
+   626→ * Migration: CharacterSprite → SpritePackEntryV2 (within a SpritePackV2)
+   627→ */
+   628→export interface CharacterSprite {
+   629→  id: string;
+   630→  name: string;
+   631→  expression: string;  // Legacy: kept for backward compatibility
+   632→  imageUrl: string;
+   633→  state?: SpriteState;  // Which state this sprite is for
+   634→  animations?: SpriteAnimation[];
+   635→}
+   636→
+   637→/**
+   638→ * @deprecated Use spritePacksV2 + stateCollectionsV2 instead. This legacy
+   639→ * sprite configuration type is kept for backward compatibility but will be
+   640→ * removed in a future version.
+   641→ * Migration: SpriteConfig.sprites → StateCollectionV2[], SpriteConfig.stateCollections → StateCollectionV2[]
+   642→ */
+   643→export interface SpriteConfig {
+   644→  enabled: boolean;
+   645→  collection?: string;  // Selected collection name
+   646→  sprites: {
+   647→    [key in SpriteState]?: string;  // Legacy: URL to sprite for each state (backward compatibility)
+   648→  };
+   649→  // New: Collection-based system for idle, talk, thinking
+   650→  stateCollections?: {
+   651→    [key in SpriteState]?: StateSpriteCollection;
+   652→  };
+   653→}
+   654→
+   655→/**
+   656→ * Return-to-idle mode for legacy sprite triggers.
+   657→ * @deprecated Use TriggerFallbackMode instead. Migrated as:
+   658→ *   'idle_collection' → 'idle_collection' (unchanged)
+   659→ *   'custom_sprite' → 'custom_sprite' (unchanged)
+   660→ */
+   661→export type ReturnToMode = 'idle_collection' | 'custom_sprite';
+   662→
+   663→/**
+   664→ * @deprecated Use TriggerCollection instead. This legacy trigger type is kept
+   665→ * for backward compatibility but will be removed in a future version.
+   666→ * Migration: CharacterSpriteTrigger → TriggerCollection (via migrateLegacySpriteTrigger)
+   667→ */
+   668→export interface CharacterSpriteTrigger {
+   669→  id: string;
+   670→  title: string;
+   671→  active: boolean;
+   672→  key: string;
+   673→  keys?: string[];
+   674→  requirePipes: boolean;
+   675→  caseSensitive: boolean;
+   676→  spriteUrl: string;
+   677→  spriteState?: string;
+   678→  returnToIdleMs?: number;
+   679→  returnToMode?: ReturnToMode;
+   680→  returnToSpriteUrl?: string;
+   681→  cooldownMs?: number;
+   682→  priority?: number;
+   683→  keywords?: string[];  // Legacy: pre-key-system keywords
+   684→}
+   685→
+   686→/**
+   687→ * @deprecated Legacy SpritePack system. Use SpritePackV2 instead.
+   688→ * This type is kept for backward compatibility during the deprecation period.
+   689→ * Migration: SpritePack → SpritePackV2 (via migrateLegacySprites)
+   690→ */
+   691→export interface SpritePack {
+   692→  id: string;
+   693→  name: string;
+   694→  active: boolean;
+   695→  keywords: string[];
+   696→  items: SpritePackItem[];
+   697→  caseSensitive?: boolean;
+   698→  requirePipes?: boolean;
+   699→}
+   700→
+   701→/**
+   702→ * @deprecated Legacy SpritePackItem. Use SpritePackEntryV2 instead.
+   703→ * This type is kept for backward compatibility during the deprecation period.
+   704→ */
+   705→export interface SpritePackItem {
+   706→  spriteUrl?: string;
+   707→  spriteLabel?: string;
+   708→  enabled: boolean;
+   709→  keys?: string;
+   710→  actionId?: string;
+   711→  poseId?: string;
+   712→  clothesId?: string;
+   713→  returnToIdleMs?: number;
+   714→}
+   715→
+   716→/**
+   717→ * @deprecated Legacy SpriteLibraryEntry. Use V2 sprite system instead.
+   718→ * This type is kept for backward compatibility during the deprecation period.
+   719→ */
+   720→export interface SpriteLibraryEntry {
+   721→  id: string;
+   722→  name: string;
+   723→  prefix: string;
+   724→}
+   725→
+   726→export interface SpriteAnimation {
+   727→  type: 'idle' | 'talking' | 'excited' | 'sad' | 'angry' | 'thinking';
+   728→  frames: string[];
+   729→  frameDuration: number;
+   730→  loop: boolean;
+   731→}
+   732→
+   733→// Sprite collection from the filesystem
+   734→export interface SpriteCollection {
+   735→  id: string;
+   736→  name: string;
+   737→  path: string;
+   738→  files: SpriteFile[];
+   739→}
+   740→
+   741→export interface SpriteFile {
+   742→  name: string;
+   743→  url: string;
+   744→  type: 'image' | 'animation';
+   745→  label?: string;
+   746→  duration?: number;
+   747→  timeline?: {
+   748→    duration: number;
+   749→    loop: boolean;
+   750→    tracks: Array<{
+   751→      id: string;
+   752→      type: string;
+   753→      name: string;
+   754→      keyframes: Array<{
+   755→        id: string;
+   756→        time: number;
+   757→        value: Record<string, unknown>;
+   758→        interpolation: string;
+   759→      }>;
+   760→      enabled: boolean;
+   761→      locked: boolean;
+   762→      muted: boolean;
+   763→      volume: number;
+   764→    }>;
+   765→  };
+   766→}
+   767→
+   768→// ============ Chat Types ============
+   769→
+   770→export interface ChatMessage {
+   771→  id: string;
+   772→  characterId: string;
+   773→  role: 'user' | 'assistant' | 'system';
+   774→  content: string;
+   775→  timestamp: string;
+   776→  isDeleted: boolean;
+   777→  swipeId: string;
+   778→  swipeIndex: number;
+   779→  swipes: string[];           // Array of all swipe alternatives (content is swipes[swipeIndex])
+   780→  isNarratorMessage?: boolean; // Message from narrator (hidden from prompt building but triggers still work)
+   781→  metadata?: MessageMetadata;
+   782→}
+   783→
+   784→export interface MessageMetadata {
+   785→  tokens?: number;
+   786→  model?: string;
+   787→  finishReason?: string;
+   788→  promptData?: PromptSection[];  // Store the prompt sent to LLM
+   789→  toolsUsed?: ToolUsedInfo[];    // Tools used to generate this message
+   790→  proactiveInfo?: ProactiveMessageInfo;  // Proactive message metadata
+   791→  interruptInfo?: InterruptInfo;  // FASE 4: Interruption metadata
+   792→  microReactions?: MicroReaction[];  // FASE 4: Micro-reactions from other characters
+   793→  isPartial?: boolean;  // FASE 4: Message was interrupted (partial content)
+   794→}
+   795→
+   796→export interface ToolUsedInfo {
+   797→  name: string;
+   798→  label: string;
+   799→  icon?: string;
+   800→  success?: boolean;
+   801→}
+   802→
+   803→// ============================================
+   804→// FASE 4: INTERRUPTIONS & MICRO-REACTIONS
+   805→// ============================================
+   806→
+   807→/** Metadata for an interrupted message */
+   808→export interface InterruptInfo {
+   809→  interruptedAt: string;          // ISO timestamp of the interruption
+   810→  partialContentLength: number;   // How many characters were generated before interruption
+   811→  reactionGenerated: boolean;    // Whether a character reaction was generated
+   812→}
+   813→
+   814→/** A micro-reaction from a character (short, non-verbal reaction) */
+   815→export interface MicroReaction {
+   816→  characterId: string;
+   817→  characterName: string;
+   818→  reaction: string;              // Short reaction text (*suspira*, *sonríe*, etc.)
+   819→  trigger: 'mention' | 'emotional' | 'interruption' | 'topic';
+   820→  timestamp: string;
+   821→}
+   822→
+   823→/** Configuration for micro-reactions in group chats */
+   824→export interface MicroReactionConfig {
+   825→  enabled: boolean;
+   826→  maxReactionsPerMessage: number;  // Limit reactions per message (default: 2)
+   827→  reactionChance: number;         // 0-1 probability of reacting (default: 0.3)
+   828→  triggers: ('mention' | 'emotional' | 'topic')[];  // What triggers reactions
+   829→}
+   830→
+   831→export const DEFAULT_MICRO_REACTION_CONFIG: MicroReactionConfig = {
+   832→  enabled: false,
+   833→  maxReactionsPerMessage: 2,
+   834→  reactionChance: 0.3,
+   835→  triggers: ['mention', 'emotional'],
+   836→};
+   837→
+   838→// ============================================
+   839→// FASE 5: EMOTIONAL STATES SYSTEM
+   840→// ============================================
+   841→
+   842→/** Configuration for the autonomous emotional state system */
+   843→export interface EmotionalStateConfig {
+   844→  enabled: boolean;                          // Master switch for emotional evaluation
+   845→  states: string[];                          // List of possible emotional states (e.g., ['feliz', 'triste', 'enojado', 'asustado', 'neutral'])
+   846→  initialState: string;                      // Default emotional state when session starts
+   847→  evaluationInterval: number;                // Evaluate every N turns (1 = every turn, 2 = every other turn, etc.)
+   848→  contextMessagesCount: number;              // How many recent messages to include as context for evaluation (default: 6)
+   849→  includeInPrompt: boolean;                  // Whether to include {{emocion}} in the prompt automatically (default: true)
+   850→  promptInjectionFormat?: string;            // Custom format for prompt injection. Use {estado} as placeholder. Default: "Estado emocional actual: {estado}"
+   851→}
+   852→
+   853→/** Result of an emotional state evaluation */
+   854→export interface EmotionalEvaluation {
+   855→  previousState: string;                     // The emotional state before evaluation
+   856→  newState: string;                          // The evaluated emotional state
+   857→  confidence: number;                        // 0-1 confidence score
+   858→  reasoning?: string;                        // Brief explanation of why the state changed
+   859→  timestamp: number;                         // When the evaluation happened
+   860→}
+   861→
+   862→export const DEFAULT_EMOTIONAL_CONFIG: EmotionalStateConfig = {
+   863→  enabled: false,
+   864→  states: ['feliz', 'triste', 'enojado', 'asustado', 'sorprendido', 'neutral'],
+   865→  initialState: 'neutral',
+   866→  evaluationInterval: 1,
+   867→  contextMessagesCount: 6,
+   868→  includeInPrompt: true,
+   869→  promptInjectionFormat: 'Estado emocional actual: {estado}',
+   870→};
+   871→
+   872→// Prompt section for displaying in prompt viewer
+   873→export interface PromptSection {
+   874→  type: 'system' | 'persona' | 'character_description' | 'personality' | 'scenario' | 'example_dialogue' | 'character_note' | 'lorebook' | 'author_note' | 'post_history' | 'chat_history' | 'instructions' | 'quest' | 'memory' | 'context' | 'inventory' | 'hud_context' | 'summary' | 'relationship';
+   875→  label: string;
+   876→  content: string;
+   877→  color: string;  // Tailwind color class for the section header
+   878→}
+   879→
+   880→// Session equipment entry - tracks equipped items per session
+   881→export interface SessionEquipmentEntry {
+   882→  itemId: string;           // Reference to Item.id
+   883→  equippedSlotId: string;   // Which EquipmentSlotDefinition.id the item is equipped in
+   884→  slotEffectText?: string;  // The effect text for the equipped slot (cached from ItemSlotEffect)
+   885→}
+   886→
+   887→export interface ChatSession {
+   888→  id: string;
+   889→  characterId: string;
+   890→  groupId?: string;
+   891→  name: string;
+   892→  messages: ChatMessage[];
+   893→  createdAt: string;
+   894→  updatedAt: string;
+   895→  background?: string;
+   896→  scenario?: string;
+   897→  sessionStats?: SessionStats;  // Stats values for this session (per character)
+   898→  sessionQuests?: SessionQuestInstance[];  // Active quests in this session
+   899→  sessionEquipment?: SessionEquipmentEntry[];  // Equipped items in this session (per-session, independent)
+   900→  activeConsumableEffects?: ActiveConsumableEffect[];  // Active consumable effects in this session
+   901→  turnCount?: number;             // Turn counter
+   902→  summary?: SessionSummary;       // Last conversation summary (overwritten on each new summary)
+   903→}
+   904→
+   905→// Session summary - stored directly in the session JSON
+   906→export interface SessionSummary {
+   907→  content: string;           // The summary text
+   908→  messageRange: {
+   909→    start: number;           // Index of first message summarized
+   910→    end: number;             // Index of last message summarized
+   911→  };
+   912→  tokens: number;            // Approximate token count
+   913→  createdAt: string;
+   914→  model?: string;            // Model used for generation
+   915→}
+   916→
+   917→// ============ Group Types ============
+   918→
+   919→export interface GroupMember {
+   920→  characterId: string;
+   921→  isActive: boolean;      // Can respond
+   922→  isPresent: boolean;     // Is in the scene
+   923→  isNarrator: boolean;    // Is a narrator (ghost character, messages hidden from others)
+   924→  joinOrder: number;      // Order they joined the group
+   925→}
+   926→
+   927→export type GroupActivationStrategy =
+   928→  | 'all'           // All active members respond
+   929→  | 'round_robin'   // Take turns in order
+   930→  | 'random'        // Random selection
+   931→  | 'reactive'      // Only mentioned characters respond
+   932→  | 'smart';        // AI decides who should respond
+   933→
+   934→// Narrator response timing modes
+   935→export type NarratorResponseMode =
+   936→  | 'turn_start'      // Narrator speaks at the beginning of each turn
+   937→  | 'turn_end'        // Narrator speaks at the end of each turn
+   938→  | 'before_each'     // Narrator speaks before each character
+   939→  | 'after_each';     // Narrator speaks after each character
+   940→
+   941→// Narrator conditional intervention settings
+   942→export interface NarratorConditionalSettings {
+   943→  minTurnInterval: number;        // Minimum turns between narrator interventions (0 = always)
+   944→  onlyWhenNoActiveQuests: boolean; // Only intervene when no active quests
+   945→}
+   946→
+   947→// Complete narrator settings for a group
+   948→export interface NarratorSettings {
+   949→  responseMode: NarratorResponseMode;
+   950→  customPrompt?: string;          // Custom prompt for the narrator (separate from group prompt)
+   951→  conditional: NarratorConditionalSettings;
+   952→  hiddenFromChat: boolean;        // Hide narrator messages from chat display entirely
+   953→  showSprite: boolean;            // Show narrator sprite on screen (default: false)
+   954→}
+   955→
+   956→export interface CharacterGroup {
+   957→  id: string;
+   958→  name: string;
+   959→  description: string;
+   960→  characterIds: string[];     // Legacy: simple list of character IDs
+   961→  members: GroupMember[];     // Enhanced: detailed member info
+   962→  avatar: string;
+   963→  systemPrompt: string;
+   964→  activationStrategy: GroupActivationStrategy;
+   965→  minResponsesPerTurn: number;  // Minimum responses per turn (for reactive/random/smart)
+   966→  maxResponsesPerTurn: number;  // Limit responses per turn (except 'all' strategy)
+   967→  allowMentions: boolean;       // Enable mention detection
+   968→  mentionTriggers: string[];    // Additional mention trigger words
+   969→  conversationStyle: 'sequential' | 'parallel';  // How responses are generated
+   970→  hudTemplateId?: string | null;  // HUD template to use for this group
+   971→  lorebookIds?: string[];         // Lorebooks to use for this group
+   972→  questTemplateIds?: string[];       // Quest templates to use for this group
+   973→  embeddingNamespaces?: string[];   // Embedding namespaces to search during chat (overrides strategy)
+   974→  narratorSettings?: NarratorSettings;  // Narrator behavior configuration
+   975→  createdAt: string;
+   976→  updatedAt: string;
+   977→}
+   978→
+   979→export interface MentionDetectionResult {
+   980→  characterId: string;
+   981→  characterName: string;
+   982→  triggerType: 'name' | 'alias' | 'pronoun' | 'keyword';
+   983→  matchedText: string;
+   984→  position: number;
+   985→}
+   986→
+   987→export interface GroupStreamEvent {
+   988→  type: 'character_start' | 'token' | 'character_done' | 'character_error' | 'done' | 'error';
+   989→  characterId?: string;
+   990→  characterName?: string;
+   991→  content?: string;
+   992→  error?: string;
+   993→}
+   994→
+   995→// ============ LLM Configuration Types ============
+   996→
+   997→export interface LLMConfig {
+   998→  id: string;
+   999→  name: string;
+  1000→  provider: LLMProvider;
+  1001→  endpoint: string;
+  1002→  apiKey?: string;
+  1003→  model: string;
+  1004→  parameters: LLMParameters;
+  1005→  isActive: boolean;
+  1006→  // Test Mock provider settings
+  1007→  mockResponse?: string;  // Custom response for test-mock provider
+  1008→}
+  1009→
+  1010→export type LLMProvider = 
+  1011→  | 'text-generation-webui'
+  1012→  | 'openai'
+  1013→  | 'anthropic'
+  1014→  | 'ollama'
+  1015→  | 'koboldcpp'
+  1016→  | 'vllm'
+  1017→  | 'lm-studio'
+  1018→  | 'z-ai'
+  1019→  | 'grok'
+  1020→  | 'custom'
+  1021→  | 'test-mock';  // Test provider for peticiones/solicitudes testing
+  1022→
+  1023→export interface LLMParameters {
+  1024→  temperature: number;
+  1025→  topP: number;
+  1026→  topK: number;
+  1027→  maxTokens: number;
+  1028→  contextSize: number;
+  1029→  repetitionPenalty: number;
+  1030→  frequencyPenalty: number;
+  1031→  presencePenalty: number;
+  1032→  stopStrings: string[];
+  1033→  stream: boolean;
+  1034→}
+  1035→
+  1036→// ============ Prompt Template Types ============
+  1037→
+  1038→export interface PromptTemplate {
+  1039→  id: string;
+  1040→  name: string;
+  1041→  description: string;
+  1042→  systemPrompt: string;
+  1043→  userPrompt: string;
+  1044→  assistantPrompt: string;
+  1045→  contextTemplate: string;
+  1046→  characterTemplate: string;
+  1047→  groupTemplate: string;
+  1048→  isDefault: boolean;
+  1049→}
+  1050→
+  1051→// ============ TTS Types ============
+  1052→
+  1053→export interface TTSConfig {
+  1054→  id: string;
+  1055→  name: string;
+  1056→  provider: TTSProvider;
+  1057→  endpoint: string;
+  1058→  apiKey?: string;
+  1059→  voice: string;
+  1060→  speed: number;
+  1061→  pitch: number;
+  1062→  isActive: boolean;
+  1063→  // TTS-WebUI specific settings
+  1064→  model?: string;                    // TTS model to use (e.g., 'chatterbox-tts', 'kokoro')
+  1065→  referenceAudio?: string;           // Path/URL to reference audio for voice cloning
+  1066→  language?: string;                 // Language code for multilingual models
+  1067→}
+  1068→
+  1069→export type TTSProvider = 
+  1070→  | 'tts-webui'                      // TTS-WebUI (OpenAI compatible, Chatterbox, Whisper)
+  1071→  | 'omnivoice'                      // OmniVoice Studio (OpenAI compatible, multi-engine)
+  1072→  | 'edge-tts'
+  1073→  | 'elevenlabs'
+  1074→  | 'coqui'
+  1075→  | 'bark'
+  1076→  | 'silero'
+  1077→  | 'z-ai'                           // Z.ai SDK TTS
+  1078→  | 'custom';
+  1079→
+  1080→export type TTSProviderType = 'tts-webui' | 'omnivoice' | 'z-ai' | 'custom';
+  1081→
+  1082→// ============================================
+  1083→// VOICE INFO & OMNIVOICE TYPES
+  1084→// ============================================
+  1085→
+  1086→/**
+  1087→ * Voice info from TTS providers
+  1088→ * Works for both TTS-WebUI (path-based) and OmniVoice (profile-based)
+  1089→ */
+  1090→export interface VoiceInfo {
+  1091→  id: string;                              // Voice ID (path for TTS-WebUI, profile_id for OmniVoice)
+  1092→  name: string;                            // Display name
+  1093→  path: string;                            // Same as id, for compatibility
+  1094→  language?: string;                       // Language code (es, en, ja, etc.)
+  1095→  type?: 'profile' | 'openai_alias' | string;  // OmniVoice voice type
+  1096→  description?: string;                    // Voice description (OmniVoice)
+  1097→  engineId?: string;                       // Associated TTS engine (OmniVoice)
+  1098→}
+  1099→
+  1100→/**
+  1101→ * OmniVoice engine info from /v1/audio/voices
+  1102→ */
+  1103→export interface OmniVoiceEngine {
+  1104→  id: string;
+  1105→  display_name: string;
+  1106→  available: boolean;
+  1107→  reason: string;
+  1108→}
+  1109→
+  1110→/**
+  1111→ * OmniVoice voice profile from /profiles endpoint
+  1112→ * Contains full profile details including reference audio and instruct
+  1113→ */
+  1114→export interface OmniVoiceProfile {
+  1115→  id: string;
+  1116→  name: string;
+  1117→  ref_audio_path: string;
+  1118→  ref_text: string;
+  1119→  instruct: string;                        // Voice design instruction (e.g., "female, young adult, high pitch")
+  1120→  language: string;                        // Language code or "Auto"
+  1121→  locked_audio_path: string;
+  1122→  seed: number | null;
+  1123→  is_locked: number;                       // 0=unlocked, 1=locked
+  1124→  personality: string;                     // Archetype ID that created this profile
+  1125→  description: string;                     // Human-readable description
+  1126→  is_demo: number;                         // Whether this is a bundled demo profile
+  1127→  created_at: number;                      // Unix timestamp
+  1128→}
+  1129→
+  1130→/**
+  1131→ * OmniVoice voice archetype from /archetypes endpoint
+  1132→ * Curated voice designs with predefined attributes
+  1133→ */
+  1134→export interface OmniVoiceArchetype {
+  1135→  id: string;
+  1136→  name: string;
+  1137→  icon: string;
+  1138→  use_case: string;                        // e.g., "narration", "dialogue"
+  1139→  instruct: string;                        // Voice design instruction string
+  1140→  attrs: {
+  1141→    Gender?: string;
+  1142→    Age?: string;
+  1143→    Pitch?: string;
+  1144→    Style?: string;
+  1145→    EnglishAccent?: string;
+  1146→    [key: string]: string | undefined;
+  1147→  };
+  1148→  facets: {
+  1149→    gender?: string;
+  1150→    age?: string;
+  1151→    pitch?: string;
+  1152→    accent?: string;
+  1153→    whisper?: boolean;
+  1154→    lang?: string;
+  1155→    [key: string]: string | boolean | undefined;
+  1156→  };
+  1157→  sample_script: string;
+  1158→  preview_url: string | null;
+  1159→  is_featured: boolean;
+  1160→  language: string;
+  1161→}
+  1162→
+  1163→// TTS-WebUI specific configuration
+  1164→export interface TTSWebUIConfig {
+  1165→  enabled: boolean;
+  1166→  autoGeneration: boolean;           // Auto-play TTS on new messages
+  1167→  provider: TTSProviderType;         // Active TTS provider
+  1168→  baseUrl: string;                   // e.g., 'http://localhost:7778' or 'http://localhost:3900'
+  1169→  model: string;                     // Default TTS model (chatterbox, multilingual, omnivoice, etc.)
+  1170→  whisperModel: string;              // Default Whisper model for ASR
+  1171→  defaultVoice?: string;             // Default voice/reference audio path (e.g., 'voices/chatterbox/es-rick.wav')
+  1172→  speed: number;                     // Speech speed multiplier
+  1173→  responseFormat: 'mp3' | 'wav' | 'ogg' | 'flac';
+  1174→  language?: string;                 // Language for multilingual models (es, en, ja, etc.)
+  1175→  // Advanced TTS parameters
+  1176→  exaggeration: number;              // 0-1, controls expressiveness (default: 0.5)
+  1177→  cfgWeight: number;                 // 0-1, classifier-free guidance weight (default: 0.5)
+  1178→  temperature: number;               // 0-2, sampling temperature (default: 0.8)
+  1179→  // Text generation options (what to generate)
+  1180→  // Positive logic: true = generate, false = skip
+  1181→  generateDialogues: boolean;        // Generate dialogues ("text in quotes")
+  1182→  generateNarrations: boolean;       // Generate narrations (*text in asterisks*)
+  1183→  generatePlainText: boolean;        // Generate plain text (no quotes or asterisks)
+  1184→  applyRegex: boolean;               // Apply custom regex filter
+  1185→  customRegex?: string;              // Custom regex pattern to apply
+  1186→  // OmniVoice-specific settings
+  1187→  voiceDesign?: string;              // Voice design description (e.g., "young female, warm tone")
+  1188→  instruct?: string;                 // Style instruction (e.g., "speak slowly")
+  1189→}
+  1190→
+  1191→// Voice reference for voice cloning
+  1192→export interface VoiceReference {
+  1193→  id: string;
+  1194→  name: string;
+  1195→  characterId?: string;              // Associated character (optional)
+  1196→  audioPath: string;                 // Path to reference audio file
+  1197→  description?: string;              // Description of the voice
+  1198→  createdAt: string;
+  1199→}
+  1200→
+  1201→export interface VoiceSettings {
+  1202→  enabled: boolean;
+  1203→  voiceId: string;
+  1204→  speed: number;
+  1205→  pitch: number;
+  1206→  emotionMapping: Record<string, string>;
+  1207→}
+  1208→
+  1209→// ============================================
+  1210→// DUAL VOICE SYSTEM (Dialogue + Narrator)
+  1211→// ============================================
+  1212→
+  1213→/**
+  1214→ * Configuration for a single voice (dialogue or narrator)
+  1215→ * Can override global TTS settings
+  1216→ */
+  1217→export interface CharacterVoiceConfig {
+  1218→  enabled: boolean;
+  1219→  voiceId: string;              // Voice ID from TTS-WebUI (e.g., "voices/chatterbox/es-rick.wav")
+  1220→  // Parameters that override global config
+  1221→  exaggeration?: number;        // 0-1, expressiveness (default: 0.5)
+  1222→  cfgWeight?: number;           // 0-1, classifier-free guidance (default: 0.5)
+  1223→  temperature?: number;         // 0-2, sampling variability (default: 0.8)
+  1224→  speed?: number;               // 0.5-2, speech speed multiplier (default: 1.0)
+  1225→  language?: string;            // Language code: es, en, ja, etc.
+  1226→}
+  1227→
+  1228→/**
+  1229→ * Complete voice settings for a character
+  1230→ * Supports dual voice system: dialogue voice + narrator voice
+  1231→ */
+  1232→export interface CharacterVoiceSettings {
+  1233→  enabled: boolean;             // TTS enabled for this character
+  1234→  // Voice for dialogues (text in "quotes")
+  1235→  dialogueVoice: CharacterVoiceConfig;
+  1236→  // Voice for narrator (text in *asterisks*)
+  1237→  narratorVoice: CharacterVoiceConfig;
+  1238→  // Text generation options (what to generate)
+  1239→  // Positive logic: true = generate, false = skip
+  1240→  generateDialogues: boolean;        // Generate dialogues ("text in quotes")
+  1241→  generateNarrations: boolean;       // Generate narrations (*text in asterisks*)
+  1242→  generatePlainText: boolean;        // Generate plain text (no quotes or asterisks)
+  1243→  // Legacy compatibility
+  1244→  emotionMapping?: Record<string, string>;
+  1245→}
+  1246→
+  1247→// Default voice configurations
+  1248→export const DEFAULT_VOICE_CONFIG: CharacterVoiceConfig = {
+  1249→  enabled: true,
+  1250→  voiceId: 'default',
+  1251→  exaggeration: 0.5,
+  1252→  cfgWeight: 0.5,
+  1253→  temperature: 0.8,
+  1254→  speed: 1.0,
+  1255→};
+  1256→
+  1257→export const DEFAULT_CHARACTER_VOICE_SETTINGS: CharacterVoiceSettings = {
+  1258→  enabled: false,
+  1259→  dialogueVoice: { ...DEFAULT_VOICE_CONFIG },
+  1260→  narratorVoice: { ...DEFAULT_VOICE_CONFIG },
+  1261→  generateDialogues: true,       // By default, generate all text types
+  1262→  generateNarrations: true,
+  1263→  generatePlainText: true,
+  1264→};
+  1265→
+  1266→// ============================================
+  1267→// PROACTIVE MESSAGES SYSTEM
+  1268→// ============================================
+  1269→
+  1270→/**
+  1271→ * Configuration for proactive messages
+  1272→ * Characters can send messages without the user speaking first, based on timers
+  1273→ */
+  1274→export interface ProactiveMessagesConfig {
+  1275→  enabled: boolean;                   // Master toggle
+  1276→  intervalSeconds: number;            // How often (in seconds) to send a proactive message
+  1277→  minMessagesBeforeStart: number;     // Minimum messages in the chat before proactive starts
+  1278→  maxPerSession: number;              // Max proactive messages per session (0 = unlimited)
+  1279→  customPrompt?: string;              // Optional custom instruction for proactive message generation
+  1280→  nudgeTemplate?: string;             // Optional nudge message template (replaces default "[La escena continúa] {{user}} parece distraído...")
+  1281→  allowedStates: ('idle' | 'user_away')[];  // When to trigger (idle = no user activity, user_away = tab not focused)
+  1282→
+  1283→  // ─── FASE 3: Proactividad Inteligente ───
+  1284→  /** Pool of alternative nudge templates that rotate to add variety */
+  1285→  nudgeTemplates?: string[];
+  1286→  /** Number of recent messages to include as context in the nudge (0 = disabled, default 3) */
+  1287→  contextMessagesCount?: number;
+  1288→  /** Minutes before the character can repeat a similar topic (0 = disabled) */
+  1289→  thematicCooldownMinutes?: number;
+  1290→  /** Enable proactivity in group chats */
+  1291→  groupChatEnabled?: boolean;
+  1292→  /** Strategy for group chat proactive messages */
+  1293→  groupChatStrategy?: 'any_speaker' | 'mentioned_only' | 'emotional_reaction';
+  1294→}
+  1295→
+  1296→export const DEFAULT_PROACTIVE_MESSAGES_CONFIG: ProactiveMessagesConfig = {
+  1297→  enabled: false,
+  1298→  intervalSeconds: 300,               // 5 minutes default
+  1299→  minMessagesBeforeStart: 5,          // Wait for at least 5 messages
+  1300→  maxPerSession: 0,                   // Unlimited
+  1301→  customPrompt: '',
+  1302→  nudgeTemplate: '',
+  1303→  allowedStates: ['idle'],
+  1304→  // FASE 3 defaults
+  1305→  nudgeTemplates: [],
+  1306→  contextMessagesCount: 3,
+  1307→  thematicCooldownMinutes: 0,
+  1308→  groupChatEnabled: false,
+  1309→  groupChatStrategy: 'any_speaker',
+  1310→};
+  1311→
+  1312→// Metadata for proactive messages (stored in ChatMessage.metadata)
+  1313→export interface ProactiveMessageInfo {
+  1314→  isProactive: true;
+  1315→  triggeredAt: string;
+  1316→  reason: 'timer_idle' | 'timer_away';
+  1317→  characterName: string;
+  1318→  /** Index of the nudge template used (for rotation tracking) */
+  1319→  nudgeIndex?: number;
+  1320→  /** Brief topic/theme of the proactive message (for cooldown tracking) */
+  1321→  topic?: string;
+  1322→}
+  1323→
+  1324→// ASR (Speech-to-Text) configuration
+  1325→export interface ASRConfig {
+  1326→  enabled: boolean;
+  1327→  provider: 'tts-webui' | 'whisper' | 'z-ai';
+  1328→  endpoint?: string;
+  1329→  model: string;                     // e.g., 'whisper-large-v3'
+  1330→  language?: string;
+  1331→}
+  1332→
+  1333→// ============ KWS (Keyword Spotting / Wake Word) Types ============
+  1334→
+  1335→/**
+  1336→ * Wake Word configuration
+  1337→ * Controls how the system detects activation phrases
+  1338→ */
+  1339→export interface WakeWordConfig {
+  1340→  enabled: boolean;
+  1341→  wakeWords: string[];               // e.g., ["hey luna", "luna", "oye luna"]
+  1342→  sensitivity: 'low' | 'medium' | 'high';  // Detection sensitivity
+  1343→  cooldownMs: number;                // Cooldown between detections (default: 3000ms)
+  1344→  language?: string;                 // Language for speech recognition (e.g., 'es-ES')
+  1345→}
+  1346→
+  1347→/**
+  1348→ * VAD (Voice Activity Detection) configuration
+  1349→ * Controls automatic recording stop based on silence detection
+  1350→ */
+  1351→export interface VADConfig {
+  1352→  enabled: boolean;                  // Enable auto-stop on silence
+  1353→  silenceThreshold: number;          // Audio level threshold (0-100, default: 30)
+  1354→  silenceDurationMs: number;         // Silence duration to trigger stop (default: 1500ms)
+  1355→  minRecordingMs: number;            // Minimum recording time before VAD can stop (default: 500ms)
+  1356→  maxRecordingMs: number;            // Maximum recording time (default: 30000ms)
+  1357→}
+  1358→
+  1359→/**
+  1360→ * Result of wake word detection
+  1361→ */
+  1362→export interface WakeWordDetectionResult {
+  1363→  characterId: string;
+  1364→  wakeWord: string;
+  1365→  confidence: number;                // 0-1 confidence score
+  1366→  timestamp: number;                 // Detection timestamp
+  1367→}
+  1368→
+  1369→// Default configurations
+  1370→export const DEFAULT_WAKE_WORD_CONFIG: WakeWordConfig = {
+  1371→  enabled: false,
+  1372→  wakeWords: [],
+  1373→  sensitivity: 'medium',
+  1374→  cooldownMs: 3000,
+  1375→  language: 'es-ES',
+  1376→};
+  1377→
+  1378→export const DEFAULT_VAD_CONFIG: VADConfig = {
+  1379→  enabled: true,
+  1380→  silenceThreshold: 30,
+  1381→  silenceDurationMs: 1500,
+  1382→  minRecordingMs: 500,
+  1383→  maxRecordingMs: 30000,
+  1384→};
+  1385→
+  1386→// ============ Background Types ============
+  1387→
+  1388→export interface Background {
+  1389→  id: string;
+  1390→  name: string;
+  1391→  url: string;
+  1392→  thumbnail: string;
+  1393→  category: string;
+  1394→  tags: string[];
+  1395→}
+  1396→
+  1397→// ============ Persona Types ============
+  1398→
+  1399→export interface Persona {
+  1400→  id: string;
+  1401→  name: string;
+  1402→  description: string;  // The user's personality/description
+  1403→  avatar: string;       // User's avatar image
+  1404→  isActive: boolean;    // Currently selected persona
+  1405→  // Stats system for user (peticiones/solicitudes)
+  1406→  statsConfig?: CharacterStatsConfig;
+  1407→  // Inventory V2 - Currency & Items
+  1408→  currency: number;              // Current currency amount (default: 0)
+  1409→  currencyName: string;          // Currency display name (default: 'Divisa')
+  1410→  currencyIcon: string;          // Currency icon emoji (default: '💰')
+  1411→  inventoryItems: PersonaInventoryEntry[]; // Items this persona owns
+  1412→  createdAt: string;
+  1413→  updatedAt: string;
+  1414→}
+  1415→
+  1416→// ============ Sound Types ============
+  1417→
+  1418→export interface SoundTrigger {
+  1419→  id: string;
+  1420→  name: string;
+  1421→  description: string;              // Description of the sound for {{sonidos}} template
+  1422→  characterIds: string[];           // Characters this sound is associated with (for {{sonidos}} filtering)
+  1423→  active: boolean;
+  1424→  keywords: string[];
+  1425→  keywordsEnabled: Record<string, boolean>;
+  1426→  collection: string;
+  1427→  playMode: 'random' | 'cyclic';
+  1428→  volume: number;
+  1429→  cooldown: number;
+  1430→  delay: number;
+  1431→  currentIndex: number;
+  1432→  createdAt: string;
+  1433→  updatedAt: string;
+  1434→}
+  1435→
+  1436→export interface SoundCollection {
+  1437→  name: string;
+  1438→  path: string;
+  1439→  files: string[];
+  1440→}
+  1441→
+  1442→export interface ComicSoundSettings {
+  1443→  /** Enable comic sound visual effects */
+  1444→  enabled: boolean;
+  1445→  /** Max simultaneous effects on screen (1-10) */
+  1446→  maxEffects: number;
+  1447→  /** Total animation duration in ms (500-3000) - single playback lifecycle */
+  1448→  duration: number;
+  1449→  /** Minimum scale factor (0.3-1.5) */
+  1450→  minScale: number;
+  1451→  /** Maximum scale factor (0.5-2.5) */
+  1452→  maxScale: number;
+  1453→  /** Allowed template types (empty = all) */
+  1454→  allowedTemplates: ComicTemplateType[];
+  1455→}
+  1456→
+  1457→export type ComicTemplateType =
+  1458→  | 'vertical'
+  1459→  | 'oval'
+  1460→  | 'wail'
+  1461→  | 'tall';
+  1462→
+  1463→export const COMIC_TEMPLATE_TYPES: ComicTemplateType[] = [
+  1464→  'vertical',
+  1465→  'oval',
+  1466→  'wail',
+  1467→  'tall',
+  1468→];
+  1469→
+  1470→export const COMIC_TEMPLATE_LABELS: Record<ComicTemplateType, string> = {
+  1471→  vertical: 'Vertical',
+  1472→  oval: 'Óvalo',
+  1473→  wail: 'Gemido',
+  1474→  tall: 'Alto',
+  1475→};
+  1476→
+  1477→export const COMIC_TEMPLATE_DESCRIPTIONS: Record<ComicTemplateType, string> = {
+  1478→  vertical: 'Sonidos pequeños verticales como mhi, egh, bho',
+  1479→  oval: 'Palabras horizontales como movah',
+  1480→  wail: 'Sonido grande, gemido o grito vertical',
+  1481→  tall: 'OOH, !?, respiración o pregunta vertical',
+  1482→};
+  1483→
+  1484→export const DEFAULT_COMIC_SOUND_SETTINGS: ComicSoundSettings = {
+  1485→  enabled: true,
+  1486→  maxEffects: 5,
+  1487→  duration: 880,
+  1488→  minScale: 0.7,
+  1489→  maxScale: 1.4,
+  1490→  allowedTemplates: [],
+  1491→};
+  1492→
+  1493→export interface SoundSettings {
+  1494→  enabled: boolean;
+  1495→  globalVolume: number;
+  1496→  maxSoundsPerMessage: number;
+  1497→  globalCooldown: number;
+  1498→  realtimeEnabled: boolean;
+  1499→  // Template for {{sonidos}} key resolution
+  1500→  soundListPrefix?: string;         // Text before the sound list
+  1501→  soundListSuffix?: string;         // Text after the sound list
+  1502→}
+  1503→
+  1504→// Sound Sequence Trigger - plays multiple sound triggers in sequence
+  1505→export interface SoundSequenceTrigger {
+  1506→  id: string;
+  1507→  name: string;
+  1508→  active: boolean;
+  1509→  activationKey: string;           // Key detected by post-LLM system
+  1510→  activationKeys?: string[];       // Alternative keys
+  1511→  activationKeyCaseSensitive?: boolean;
+  1512→  sequence: string[];              // Array of sound trigger keywords to play in order
+  1513→                                   // Each entry references an existing sound trigger's keyword
+  1514→  volume: number;                  // Override volume (0-1), or use individual trigger volumes
+  1515→  delayBetween: number;            // Delay in ms between each sound in sequence
+  1516→  cooldown: number;                // Cooldown before this sequence can trigger again
+  1517→  createdAt: string;
+  1518→  updatedAt: string;
+  1519→}
+  1520→
+  1521→// ============ Background Trigger Types ============
+  1522→
+  1523→export type OverlayPlacement = 'none' | 'back' | 'front';
+  1524→
+  1525→export interface BackgroundItem {
+  1526→  backgroundLabel: string;    // Name/label for this background
+  1527→  backgroundUrl?: string;     // Direct URL (optional, can be resolved from index)
+  1528→  key: string;                // BG-key that must match in message
+  1529→  overlayLabel?: string;      // Optional overlay image label
+  1530→  overlayPlacement: OverlayPlacement;
+  1531→  overlayUrl?: string;        // Direct URL for overlay (optional)
+  1532→  enabled: boolean;
+  1533→  spriteLoc?: {               // Saved sprite position for this background
+  1534→    left: number;
+  1535→    top: number;
+  1536→    width: number;
+  1537→    height: number;
+  1538→  };
+  1539→}
+  1540→
+  1541→export interface BackgroundPack {
+  1542→  id: string;
+  1543→  title: string;
+  1544→  active: boolean;
+  1545→  keywords: string[];         // Pack-level keywords (must match first)
+  1546→  requirePipes: boolean;      // Keywords must be wrapped in |pipes|
+  1547→  caseSensitive: boolean;     // Case sensitivity for matching
+  1548→  requireBgKey: boolean;      // BG-key must also match (if false, any item can be picked)
+  1549→  cooldown: number;           // Cooldown in ms between triggers
+  1550→  playMode: 'random' | 'cyclic';  // How to select background when multiple match
+  1551→  items: BackgroundItem[];
+  1552→  currentIndex: number;       // For cyclic mode
+  1553→  createdAt: string;
+  1554→  updatedAt: string;
+  1555→}
+  1556→
+  1557→export interface BackgroundIndexEntry {
+  1558→  label: string;              // Unique label for this background
+  1559→  filename: string;           // Original filename
+  1560→  url: string;                // Full URL to the background image
+  1561→  thumb?: string;             // Thumbnail URL
+  1562→  pack: string;               // Pack name this belongs to
+  1563→}
+  1564→
+  1565→export interface BackgroundIndex {
+  1566→  backgrounds: BackgroundIndexEntry[];
+  1567→  lastUpdated: number;
+  1568→  source: string;             // Where backgrounds were scanned from
+  1569→}
+  1570→
+  1571→// ============ Background Collection with Metadata ============
+  1572→
+  1573→/**
+  1574→ * Background entry within a collection (from JSON metadata)
+  1575→ */
+  1576→export interface BackgroundCollectionEntry {
+  1577→  id: string;                 // Unique ID within collection
+  1578→  name: string;               // Display name (e.g., "Bosque Nocturno")
+  1579→  url: string;                // URL to the background image
+  1580→  triggerKeys: string[];      // Primary keywords that trigger this background
+  1581→  contextKeys: string[];      // Secondary keywords that must ALSO be present
+  1582→  tags?: string[];            // Optional tags for organization
+  1583→  transitionDuration?: number; // Override transition duration (ms)
+  1584→}
+  1585→
+  1586→/**
+  1587→ * Background file from filesystem
+  1588→ */
+  1589→export interface BackgroundFile {
+  1590→  name: string;               // Filename
+  1591→  url: string;                // URL path to the file
+  1592→  type: 'image' | 'video';    // Media type
+  1593→}
+  1594→
+  1595→/**
+  1596→ * Background collection with JSON metadata
+  1597→ * Each collection folder can have a collection.json file
+  1598→ */
+  1599→export interface BackgroundCollection {
+  1600→  name: string;               // Collection name (folder name)
+  1601→  path: string;               // Path to collection folder
+  1602→  description?: string;       // Optional description
+  1603→  version?: string;           // Optional version string
+  1604→  transitionDuration?: number; // Default transition duration for this collection
+  1605→  entries: BackgroundCollectionEntry[];
+  1606→  files: BackgroundFile[];    // All files in the collection with metadata
+  1607→}
+  1608→
+  1609→// ============ Background Trigger Pack (Unified System) ============
+  1610→
+  1611→/**
+  1612→ * Match mode for background triggers
+  1613→ * - any_any: ANY trigger key AND ANY context key (default)
+  1614→ * - all_any: ALL trigger keys AND ANY context key
+  1615→ * - any_all: ANY trigger key AND ALL context keys
+  1616→ * - all_all: ALL trigger keys AND ALL context keys
+  1617→ */
+  1618→export type BackgroundMatchMode = 'any_any' | 'all_any' | 'any_all' | 'all_all';
+  1619→
+  1620→/**
+  1621→ * Transition types for background changes
+  1622→ */
+  1623→export type BackgroundTransitionType = 
+  1624→  | 'none' 
+  1625→  | 'fade' 
+  1626→  | 'slide-left' 
+  1627→  | 'slide-right' 
+  1628→  | 'slide-up' 
+  1629→  | 'slide-down'
+  1630→  | 'zoom-in'
+  1631→  | 'zoom-out'
+  1632→  | 'crossfade';
+  1633→
+  1634→/**
+  1635→ * Overlay positioning
+  1636→ */
+  1637→export type OverlayPosition = 'back' | 'front' | 'fill';
+  1638→
+  1639→/**
+  1640→ * Background overlay - layer displayed over/under main background
+  1641→ */
+  1642→export interface BackgroundOverlay {
+  1643→  id: string;
+  1644→  url: string;                 // URL to overlay image/video
+  1645→  name: string;                // Display name
+  1646→  position: OverlayPosition;   // back = behind main, front = on top
+  1647→  opacity: number;             // 0-1
+  1648→  blendMode?: string;          // CSS blend mode (overlay, multiply, screen, etc.)
+  1649→  animated?: boolean;          // For animated overlays (rain, snow, etc.)
+  1650→  animationSpeed?: number;     // Animation speed multiplier
+  1651→}
+  1652→
+  1653→/**
+  1654→ * Background variant - alternative version of same background
+  1655→ * e.g., day/night versions of same location
+  1656→ */
+  1657→export interface BackgroundVariant {
+  1658→  id: string;
+  1659→  name: string;                // e.g., "Night", "Sunset", "Rain"
+  1660→  url: string;                 // URL to variant background
+  1661→  timeOfDay?: 'day' | 'night' | 'dawn' | 'dusk' | 'any';
+  1662→  weather?: 'clear' | 'rain' | 'snow' | 'storm' | 'any';
+  1663→  triggerKeys: string[];       // Keywords that activate this variant
+  1664→  contextKeys: string[];       // Additional context required
+  1665→  overlays: BackgroundOverlay[]; // Overlays specific to this variant
+  1666→}
+  1667→
+  1668→/**
+  1669→ * Individual background item within a trigger pack
+  1670→ */
+  1671→export interface BackgroundTriggerItem {
+  1672→  id: string;
+  1673→  backgroundUrl: string;      // URL to the background
+  1674→  backgroundName: string;     // Display name
+  1675→  triggerKeys: string[];      // Primary keywords
+  1676→  contextKeys: string[];      // Secondary keywords
+  1677→  matchMode?: BackgroundMatchMode;  // Override pack's default match mode
+  1678→  enabled: boolean;
+  1679→  priority: number;           // Higher = more important (0-100)
+  1680→  transitionDuration?: number; // Custom transition duration
+  1681→  transitionType?: BackgroundTransitionType; // Custom transition
+  1682→  // Overlays for this background
+  1683→  overlays: BackgroundOverlay[];
+  1684→  // Variants (day/night, etc.)
+  1685→  variants: BackgroundVariant[];
+  1686→}
+  1687→
+  1688→/**
+  1689→ * Background Trigger Pack - integrates with unified trigger system
+  1690→ * Supports priority, multiple match modes, overlays, variants, and return to default
+  1691→ */
+  1692→export interface BackgroundTriggerPack {
+  1693→  id: string;
+  1694→  name: string;
+  1695→  active: boolean;
+  1696→  collection: string;         // Collection name to use
+  1697→  priority: number;           // Pack priority (higher = checked first, 0-100)
+  1698→  cooldown: number;           // Cooldown in ms (0 = no cooldown)
+  1699→  matchMode: BackgroundMatchMode;  // Default match mode for items
+  1700→  transitionDuration: number; // Default transition duration in ms
+  1701→  transitionType: BackgroundTransitionType;  // Transition effect
+  1702→  items: BackgroundTriggerItem[];
+  1703→  // Default overlays applied to all backgrounds in this pack
+  1704→  defaultOverlays: BackgroundOverlay[];
+  1705→  // Return to default settings
+  1706→  returnToDefault: boolean;   // Enable return to default after inactivity
+  1707→  returnToDefaultAfter: number; // Time in ms before returning to default
+  1708→  defaultBackground: string;  // URL to default background for this pack
+  1709→  createdAt: string;
+  1710→  updatedAt: string;
+  1711→}
+  1712→
+  1713→export interface BackgroundTriggerSettings {
+  1714→  enabled: boolean;
+  1715→  globalCooldown: number;     // Global cooldown between any background changes
+  1716→  realtimeEnabled: boolean;   // Detect during streaming
+  1717→  transitionDuration: number; // Default fade transition duration in ms
+  1718→  defaultTransitionType: BackgroundTransitionType; // Default transition
+  1719→  // Global return to default
+  1720→  returnToDefaultEnabled: boolean;  // Enable global return to default
+  1721→  returnToDefaultAfter: number;     // Time in ms (default 5 minutes)
+  1722→  defaultBackgroundUrl: string;     // Global default background
+  1723→  // Global overlays (always applied)
+  1724→  globalOverlays: BackgroundOverlay[];
+  1725→}
+  1726→
+  1727→export interface BackgroundTriggerHit {
+  1728→  packId: string;
+  1729→  pack?: BackgroundTriggerPack;
+  1730→  backgroundUrl: string;
+  1731→  backgroundName: string;
+  1732→  transitionDuration: number;
+  1733→  transitionType: BackgroundTransitionType;
+  1734→  priority: number;
+  1735→  overlays: BackgroundOverlay[];
+  1736→  variant?: BackgroundVariant;
+  1737→}
+  1738→
+  1739→// ============ Settings Types ============
+  1740→
+  1741→export interface ChatLayoutSettings {
+  1742→  novelMode: boolean;
+  1743→  chatWidth: number;      // percentage (20-100)
+  1744→  chatHeight: number;     // percentage (30-100)
+  1745→  chatX: number;          // percentage (0-100)
+  1746→  chatY: number;          // percentage (0-100)
+  1747→  chatOpacity: number;    // 0-1
+  1748→  blurBackground: boolean;
+  1749→  showCharacterSprite: boolean;
+  1750→}
+  1751→
+  1752→export type BackgroundFit = 'cover' | 'contain' | 'stretch';
+  1753→
+  1754→// Context settings for message limits
+  1755→export interface ContextSettings {
+  1756→  maxMessages: number;           // Maximum messages in context (sliding window)
+  1757→  maxTokens: number;             // Maximum tokens for context
+  1758→  keepFirstN: number;            // Always keep first N messages
+  1759→  keepLastN: number;             // Always keep last N messages
+  1760→  enableSummaries: boolean;      // Enable future summarization
+  1761→  summaryThreshold: number;      // When to trigger summarization
+  1762→}
+  1763→
+  1764→// ============ Chatbox Appearance Settings ============
+  1765→
+  1766→// Predefined themes
+  1767→export type ChatboxTheme = 
+  1768→  | 'default'      // Dark/Light based on system
+  1769→  | 'midnight'     // Deep dark blue
+  1770→  | 'forest'       // Green nature theme
+  1771→  | 'sunset'       // Warm orange/red
+  1772→  | 'ocean'        // Blue ocean theme
+  1773→  | 'lavender'     // Soft purple
+  1774→  | 'cherry'       // Pink sakura theme
+  1775→  | 'custom'       // User-defined colors
+  1776→  | 'cyberpunk'    // Neon effects, glitch animations
+  1777→  | 'steampunk'    // Victorian industrial, brass/copper
+  1778→  | 'gothic'       // Dark elegant, ornate borders
+  1779→  | 'retro'        // 80s/90s CRT aesthetic
+  1780→  | 'pixelart';    // 8-bit/16-bit retro gaming
+  1781→
+  1782→// Avatar shape options
+  1783→export type AvatarShape = 'circle' | 'square' | 'rounded' | 'rectangular';
+  1784→
+  1785→// Bubble style options
+  1786→export type BubbleStyleType = 'modern' | 'classic' | 'minimal' | 'neon' | 'elegant' | 'dark';
+  1787→
+  1788→// Streaming animation style
+  1789→export type StreamingAnimationStyle = 'typing-cursor' | 'fade-in' | 'grow' | 'typewriter';
+  1790→
+  1791→// Cursor style for streaming
+  1792→export type StreamingCursorStyle = 'block' | 'line' | 'underscore' | 'dot';
+  1793→
+  1794→// Font family options
+  1795→export type FontFamilyType = 'system' | 'serif' | 'sans' | 'mono' | 'custom';
+  1796→
+  1797→// Background settings for chatbox
+  1798→export interface ChatboxBackgroundSettings {
+  1799→  transparency: number;        // 0-1, background opacity
+  1800→  blur: number;                // 0-20, blur radius in pixels
+  1801→  useGlassEffect: boolean;     // Glassmorphism effect
+  1802→  customBackgroundColor?: string; // Custom background color (hex)
+  1803→}
+  1804→
+  1805→// Font settings for chatbox
+  1806→export interface ChatboxFontSettings {
+  1807→  fontFamily: FontFamilyType;
+  1808→  customFontFamily?: string;   // For custom font
+  1809→  fontSize: 'xs' | 'sm' | 'base' | 'lg' | 'xl';
+  1810→  fontWeight: 'normal' | 'medium' | 'semibold' | 'bold';
+  1811→  lineHeight: 'tight' | 'normal' | 'relaxed' | 'loose';
+  1812→  letterSpacing: 'tighter' | 'tight' | 'normal' | 'wide' | 'wider';
+  1813→}
+  1814→
+  1815→// Text formatting settings
+  1816→export interface ChatboxTextFormatting {
+  1817→  enableMarkdown: boolean;
+  1818→  enableCodeHighlight: boolean;
+  1819→  enableQuotes: boolean;       // Show quotes in blockquote style
+  1820→  codeBlockTheme: 'dark' | 'light' | 'auto';
+  1821→}
+  1822→
+  1823→// Text colors for different message types
+  1824→export interface ChatboxTextColors {
+  1825→  userMessage: string;         // Color for user messages
+  1826→  characterMessage: string;    // Color for character/assistant messages
+  1827→  narratorMessage: string;     // Color for narrator messages
+  1828→  systemMessage: string;       // Color for system messages
+  1829→  linkColor: string;           // Color for links
+  1830→  codeColor: string;           // Color for inline code
+  1831→}
+  1832→
+  1833→// Message bubble settings
+  1834→export interface MessageBubbleSettings {
+  1835→  style: BubbleStyleType;
+  1836→  transparency: number;        // 0-1
+  1837→  borderRadius: number;        // 0-32, border radius in pixels
+  1838→  shadowEnabled: boolean;
+  1839→  shadowIntensity: 'none' | 'soft' | 'medium' | 'strong';
+  1840→  maxWidth: number;            // 50-100, percentage
+  1841→  
+  1842→  // Colors for different bubble types
+  1843→  userBubbleColor: string;
+  1844→  userBubbleTextColor: string;
+  1845→  characterBubbleColor: string;
+  1846→  characterBubbleTextColor: string;
+  1847→  narratorBubbleColor: string;
+  1848→  narratorBubbleTextColor: string;
+  1849→  systemBubbleColor: string;
+  1850→  systemBubbleTextColor: string;
+  1851→}
+  1852→
+  1853→// Avatar settings
+  1854→export interface ChatboxAvatarSettings {
+  1855→  show: boolean;
+  1856→  shape: AvatarShape;
+  1857→  size: 'sm' | 'md' | 'lg' | 'xl';
+  1858→  borderRadius: number;        // 0-50, for square/rounded shapes
+  1859→  showBorder: boolean;
+  1860→  borderColor: string;
+  1861→  borderWidth: number;         // 1-4
+  1862→}
+  1863→
+  1864→// Streaming/typing settings
+  1865→export interface ChatboxStreamingSettings {
+  1866→  animationStyle: StreamingAnimationStyle;
+  1867→  animationSpeed: number;      // 10-200, characters per second
+  1868→  streamingTextColor: string;
+  1869→  cursorStyle: StreamingCursorStyle;
+  1870→  cursorColor: string;
+  1871→  cursorBlinkRate: number;     // 200-1000, blink rate in ms
+  1872→  showCursor: boolean;
+  1873→}
+  1874→
+  1875→// Input box settings
+  1876→export interface ChatboxInputSettings {
+  1877→  backgroundColor: string;
+  1878→  textColor: string;
+  1879→  placeholderColor: string;
+  1880→  borderColor: string;
+  1881→  borderRadius: number;
+  1882→  focusBorderColor: string;
+  1883→  fontSize: 'sm' | 'base' | 'lg';
+  1884→}
+  1885→
+  1886→// Theme color presets for special themes
+  1887→export interface ThemeColorPreset {
+  1888→  primary: string;
+  1889→  secondary: string;
+  1890→  background: string;
+  1891→  accent: string;
+  1892→}
+  1893→
+  1894→// Theme color presets map
+  1895→export const THEME_COLOR_PRESETS: Record<string, ThemeColorPreset> = {
+  1896→  cyberpunk: {
+  1897→    primary: '#00FFFF',    // Neon Cyan
+  1898→    secondary: '#FF00FF',  // Neon Magenta
+  1899→    background: '#0A0A0F', // Deep Black
+  1900→    accent: '#39FF14',     // Toxic Green
+  1901→  },
+  1902→  steampunk: {
+  1903→    primary: '#B5A642',    // Brass
+  1904→    secondary: '#B87333',  // Copper
+  1905→    background: '#3C2415', // Dark Leather
+  1906→    accent: '#4A7C59',     // Patina Green
+  1907→  },
+  1908→  gothic: {
+  1909→    primary: '#C0C0C0',    // Silver
+  1910→    secondary: '#8B0000',  // Blood Red
+  1911→    background: '#0D0D0D', // Deep Black
+  1912→    accent: '#9966CC',     // Amethyst
+  1913→  },
+  1914→  retro: {
+  1915→    primary: '#00FF00',    // CGA Green
+  1916→    secondary: '#00FFFF',  // CGA Cyan
+  1917→    background: '#0A0A0A', // CRT Black
+  1918→    accent: '#FF00FF',     // CGA Magenta
+  1919→  },
+  1920→  pixelart: {
+  1921→    primary: '#00A800',    // NES Green
+  1922→    secondary: '#F83800',  // NES Red
+  1923→    background: '#0A0A0A', // Black
+  1924→    accent: '#FCFCFC',     // White
+  1925→  },
+  1926→};
+  1927→
+  1928→// Complete chatbox appearance settings
+  1929→export interface ChatboxAppearanceSettings {
+  1930→  // Theme
+  1931→  theme: ChatboxTheme;
+  1932→  customThemeColors?: {
+  1933→    primary: string;
+  1934→    secondary: string;
+  1935→    accent: string;
+  1936→    background: string;
+  1937→    surface: string;
+  1938→    text: string;
+  1939→  };
+  1940→  
+  1941→  // Components
+  1942→  background: ChatboxBackgroundSettings;
+  1943→  font: ChatboxFontSettings;
+  1944→  textFormatting: ChatboxTextFormatting;
+  1945→  textColors: ChatboxTextColors;
+  1946→  bubbles: MessageBubbleSettings;
+  1947→  avatars: ChatboxAvatarSettings;
+  1948→  streaming: ChatboxStreamingSettings;
+  1949→  input: ChatboxInputSettings;
+  1950→  
+  1951→  // Spacing
+  1952→  messageSpacing: 'compact' | 'normal' | 'spacious';
+  1953→  groupMessages: boolean;      // Group consecutive messages from same sender
+  1954→  showTimestamps: boolean;
+  1955→  showTokens: boolean;
+  1956→  
+  1957→  // Animations
+  1958→  animateEntry: boolean;
+  1959→  entryAnimation: 'fade' | 'slide' | 'scale' | 'none';
+  1960→  animationDurationMs: number;
+  1961→  
+  1962→  // Theme Effects (NEW)
+  1963→  enableAnimations: boolean;   // Enable animated theme effects
+  1964→  enableParticles: boolean;    // Enable floating particles
+  1965→  animationIntensity: number;  // 0-100, controls animation speed/visibility
+  1966→}
+  1967→
+  1968→// Default chatbox appearance settings
+  1969→export const DEFAULT_CHATBOX_APPEARANCE: ChatboxAppearanceSettings = {
+  1970→  theme: 'default',
+  1971→  
+  1972→  background: {
+  1973→    transparency: 0.95,
+  1974→    blur: 8,
+  1975→    useGlassEffect: true,
+  1976→  },
+  1977→  
+  1978→  font: {
+  1979→    fontFamily: 'system',
+  1980→    fontSize: 'base',
+  1981→    fontWeight: 'normal',
+  1982→    lineHeight: 'relaxed',
+  1983→    letterSpacing: 'normal',
+  1984→  },
+  1985→  
+  1986→  textFormatting: {
+  1987→    enableMarkdown: true,
+  1988→    enableCodeHighlight: true,
+  1989→    enableQuotes: true,
+  1990→    codeBlockTheme: 'auto',
+  1991→  },
+  1992→  
+  1993→  textColors: {
+  1994→    userMessage: '#3b82f6',
+  1995→    characterMessage: '#f59e0b',
+  1996→    narratorMessage: '#8b5cf6',
+  1997→    systemMessage: '#6b7280',
+  1998→    linkColor: '#3b82f6',
+  1999→    codeColor: '#10b981',
+  2000→  },
+
+[showing lines 1-2000 of 4888; use offset=2001 with limit to continue reading]

@@ -501,6 +501,12 @@
       "messagesSinceLastSummary": 1,
       "lastSummaryMessageIndex": 0,
       "isGroupChat": true
+    },
+    "22eca5dd-1202-4d7d-a3e5-ead59a249b7f": {
+      "sessionId": "22eca5dd-1202-4d7d-a3e5-ead59a249b7f",
+      "messagesSinceLastSummary": 0,
+      "lastSummaryMessageIndex": 0,
+      "isGroupChat": false
     }
   }
 }

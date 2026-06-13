@@ -56,6 +56,18 @@ interface UseProactiveMessagesReturn {
 }
 
 /**
+ * Extract a brief topic from a proactive message for thematic cooldown tracking.
+ * Takes the first meaningful phrase/sentence (up to 60 chars).
+ */
+function extractTopic(message: string): string {
+  // Remove common action markers like *...*
+  const cleaned = message.replace(/\*[^*]+\*/g, '').trim();
+  // Take first sentence or phrase up to 60 chars
+  const firstSentence = cleaned.match(/^(.{5,60}?)[.!?]/)?.[1] || cleaned.slice(0, 60);
+  return firstSentence.trim().replace(/\s+/g, ' ');
+}
+
+/**
  * Hook that manages proactive message timers for the active character.
  * 
  * Timer Logic:
@@ -85,6 +97,9 @@ export function useProactiveMessages({
   const isGeneratingRef = useRef(false);
   const lastMessageIdRef = useRef<string>('');
   const isActiveRef = useRef(false);
+  // FASE 3: Track nudge rotation and thematic cooldown
+  const usedNudgeIndicesRef = useRef<number[]>([]);
+  const recentTopicsRef = useRef<{ topic: string; timestamp: number }[]>([]);
 
   // Keep refs in sync with props
   isGeneratingRef.current = isGenerating;
@@ -119,11 +134,12 @@ export function useProactiveMessages({
   const inactiveReason: ProactiveInactiveReason = useMemo(() => {
     if (!activeCharacter) return 'no_character';
     if (!config?.enabled) return 'not_configured';
-    if (activeGroupId) return 'group_chat';
+    // FASE 3: Allow group chat if groupChatEnabled is true
+    if (activeGroupId && !config?.groupChatEnabled) return 'group_chat';
     if (!activeSession) return 'no_session';
     if (!llmConfig) return 'no_llm';
     return null; // Active!
-  }, [activeCharacter, config?.enabled, activeGroupId, activeSession, llmConfig]);
+  }, [activeCharacter, config?.enabled, activeGroupId, config?.groupChatEnabled, activeSession, llmConfig]);
 
   const isConfigured = !!(config?.enabled && activeCharacter);
   const isActive = inactiveReason === null;
@@ -135,6 +151,9 @@ export function useProactiveMessages({
       lastActivityTimeRef.current = Date.now();
       sessionCountRef.current = 0;
       setSessionCount(0);
+      // FASE 3: Reset tracking data on session change
+      usedNudgeIndicesRef.current = [];
+      recentTopicsRef.current = [];
       return;
     }
 
@@ -146,6 +165,16 @@ export function useProactiveMessages({
     ).length;
     sessionCountRef.current = existingProactiveCount;
     setSessionCount(existingProactiveCount);
+
+    // FASE 3: Restore recent topics from existing proactive messages for thematic cooldown
+    const existingTopics = messages
+      .filter((m) => m.metadata?.proactiveInfo?.isProactive && m.metadata?.proactiveInfo?.topic)
+      .slice(-5)
+      .map((m) => ({
+        topic: m.metadata.proactiveInfo.topic!,
+        timestamp: new Date(m.timestamp).getTime(),
+      }));
+    recentTopicsRef.current = existingTopics;
 
     // Set last activity time from the last message's timestamp
     if (messages.length > 0) {
@@ -182,6 +211,39 @@ export function useProactiveMessages({
   const generateProactiveMessage = useCallback(async (reason: 'timer_idle' | 'timer_away' | 'manual' = 'timer_idle') => {
     if (!activeCharacter || !activeSession || !llmConfig || !config) return;
     if (isGeneratingRef.current || isGeneratingProactive) return;
+
+    // FASE 3: Group chat strategy enforcement
+    if (activeGroupId && config.groupChatEnabled) {
+      const strategy = config.groupChatStrategy || 'any_speaker';
+      const recentMessages = activeSession.messages
+        .filter((m: any) => !m.isDeleted && m.content?.trim())
+        .slice(-6);
+      const lastSpeakerMessages = recentMessages.filter((m: any) => m.role === 'assistant' && m.characterId !== activeCharacter.id);
+      const lastContent = lastSpeakerMessages.map((m: any) => m.content?.toLowerCase() || '').join(' ');
+      const charName = activeCharacter.name.toLowerCase();
+      const charFirstName = charName.split(' ')[0];
+
+      if (strategy === 'mentioned_only') {
+        // Only proceed if the character was explicitly mentioned in recent messages
+        const isMentioned = lastContent.includes(charName) || lastContent.includes(charFirstName);
+        if (!isMentioned) {
+          console.log(`[Proactive] Skipping: ${activeCharacter.name} not mentioned (strategy: mentioned_only)`);
+          return;
+        }
+      } else if (strategy === 'emotional_reaction') {
+        // Only proceed if there's emotional significance in recent messages
+        const emotionalKeywords = ['enojado', 'furioso', 'triste', 'llorar', 'feliz', 'alegría', 'asustado', 'miedo', 'sorprendente', 'shock', 'odio', 'amor', 'beso', 'abrazo', 'gritar', 'llorar', 'morir', 'herida', 'sangre', 'traición', 'perdón'];
+        const hasEmotionalContent = emotionalKeywords.some(kw => lastContent.includes(kw));
+        const charEmotionalState = useTavernStore.getState().sessions
+          ?.find((s: any) => s.id === useTavernStore.getState().activeSessionId)
+          ?.sessionStats?.characterStats?.[activeCharacter.id]?.emotionalState;
+        const hasStrongEmotion = charEmotionalState && charEmotionalState !== 'neutral';
+        if (!hasEmotionalContent && !hasStrongEmotion) {
+          console.log(`[Proactive] Skipping: no emotional trigger (strategy: emotional_reaction)`);
+          return;
+        }
+      }
+    }
 
     // Check minimum messages requirement
     const messageCount = activeSession.messages.filter((m) => !m.isDeleted).length;
@@ -293,6 +355,16 @@ export function useProactiveMessages({
               inventorySettings: invSettings,
             };
           })(),
+          // FASE 3: Proactividad Inteligente
+          usedNudgeIndices: usedNudgeIndicesRef.current,
+          recentTopics: recentTopicsRef.current
+            .filter(t => {
+              const cooldownMinutes = config.thematicCooldownMinutes ?? 0;
+              if (cooldownMinutes <= 0) return false;
+              return Date.now() - t.timestamp < cooldownMinutes * 60 * 1000;
+            })
+            .map(t => t.topic),
+          isGroupChat: !!activeGroupId,
         }),
       });
 
@@ -338,6 +410,10 @@ export function useProactiveMessages({
                 case 'proactive_start':
                   // Stream initialized - notify UI for real-time display
                   console.log(`[Proactive] Stream started for ${parsed.characterName} (reason: ${parsed.reason})`);
+                  // FASE 3: Track nudge index for rotation
+                  if (typeof parsed.nudgeIndex === 'number') {
+                    usedNudgeIndicesRef.current = [...usedNudgeIndicesRef.current, parsed.nudgeIndex].slice(-5);
+                  }
                   onProactiveStreamStart?.(parsed.characterId, parsed.characterName);
                   break;
 
@@ -508,7 +584,18 @@ export function useProactiveMessages({
                         triggeredAt: new Date().toISOString(),
                         reason: proactiveReason,
                         characterName: parsed.characterName || activeCharacter.name,
+                        // FASE 3: Track nudge index and topic
+                        nudgeIndex: usedNudgeIndicesRef.current[usedNudgeIndicesRef.current.length - 1],
+                        topic: extractTopic(cleanedMessage),
                       };
+
+                      // FASE 3: Track topic for thematic cooldown
+                      if (proactiveInfo.topic) {
+                        recentTopicsRef.current = [
+                          ...recentTopicsRef.current,
+                          { topic: proactiveInfo.topic, timestamp: Date.now() },
+                        ].slice(-10); // Keep last 10 topics
+                      }
 
                       // Prefer toolsUsed from the done event (authoritative server list)
                       // Fall back to locally accumulated tools from tool_call_result events

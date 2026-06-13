@@ -1,0 +1,2002 @@
+     1→'use client';
+     2→
+     3→import { useState, Fragment } from 'react';
+     4→import { Button } from '@/components/ui/button';
+     5→import { Input } from '@/components/ui/input';
+     6→import { Textarea } from '@/components/ui/textarea';
+     7→import { Label } from '@/components/ui/label';
+     8→import { Switch } from '@/components/ui/switch';
+     9→import { Slider } from '@/components/ui/slider';
+    10→import { Badge } from '@/components/ui/badge';
+    11→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+    12→import {
+    13→  Accordion,
+    14→  AccordionContent,
+    15→  AccordionItem,
+    16→  AccordionTrigger,
+    17→} from '@/components/ui/accordion';
+    18→import {
+    19→  Tooltip,
+    20→  TooltipContent,
+    21→  TooltipProvider,
+    22→  TooltipTrigger,
+    23→} from '@/components/ui/tooltip';
+    24→import {
+    25→  Popover,
+    26→  PopoverContent,
+    27→  PopoverTrigger,
+    28→} from '@/components/ui/popover';
+    29→import {
+    30→  Dialog,
+    31→  DialogContent,
+    32→  DialogHeader,
+    33→  DialogTitle,
+    34→  DialogFooter,
+    35→} from '@/components/ui/dialog';
+    36→import { cn } from '@/lib/utils';
+    37→import {
+    38→  Plus,
+    39→  Trash2,
+    40→  GripVertical,
+    41→  HelpCircle,
+    42→  ChevronDown,
+    43→  ChevronUp,
+    44→  Sparkles,
+    45→  Sword,
+    46→  Target,
+    47→  Mail,
+    48→  Settings2,
+    49→  AlertCircle,
+    50→  Info,
+    51→  Zap,
+    52→  CaseSensitive,
+    53→  Minus,
+    54→  Coins,
+    55→  Gift,
+    56→  X,
+    57→  Inbox,
+    58→  Timer,
+    59→  Clock,
+    60→  Package,
+    61→  GitBranch,
+    62→  Pencil,
+    63→  ArrowUpNarrowWide,
+    64→  Layers,
+    65→  Heart,
+    66→} from 'lucide-react';
+    67→import type {
+    68→  CharacterStatsConfig,
+    69→  AttributeDefinition,
+    70→  SkillDefinition,
+    71→  IntentionDefinition,
+    72→  InvitationDefinition,
+    73→  SolicitudDefinition,
+    74→  StatRequirement,
+    75→  AttributeType,
+    76→  RequirementOperator,
+    77→  ActivationCost,
+    78→  CostOperator,
+    79→  QuestReward,
+    80→  TriggerCategory,
+    81→  TriggerTargetMode,
+    82→  TriggerFallbackMode,
+    83→  ActionType,
+    84→  ObjectiveDropdownOption,
+    85→  QuestTemplate,
+    86→  SolicitudDropdownOption,
+    87→  SpritePackV2,
+    88→  ThresholdEffect,
+    89→} from '@/types';
+    90→import { DEFAULT_STATS_BLOCK_HEADERS, DEFAULT_STATS_CONFIG, DEFAULT_EMOTIONAL_CONFIG } from '@/types';
+    91→import type { EmotionalStateConfig } from '@/types';
+    92→import {
+    93→  createTriggerReward,
+    94→  createObjectiveReward,
+    95→  createSolicitudReward,
+    96→  createTargetAttributeReward,
+    97→  createCurrencyReward,
+    98→  createActivateSpritePackReward,
+    99→  describeReward,
+   100→  normalizeReward,
+   101→} from '@/lib/quest/quest-reward-utils';
+   102→
+   103→interface StatsEditorProps {
+   104→  statsConfig: CharacterStatsConfig | undefined;
+   105→  onChange: (statsConfig: CharacterStatsConfig) => void;
+   106→  allCharacters?: { id: string; name: string; solicitudDefinitions: SolicitudDefinition[] }[];
+   107→  questTemplates?: QuestTemplate[];
+   108→  questTemplateIds?: string[];  // IDs de plantillas asignadas al personaje
+   109→  availableTargets?: {
+   110→    id: string;
+   111→    name: string;
+   112→    attributes: Array<{
+   113→      key: string;
+   114→      name: string;
+   115→      type: 'number' | 'keyword' | 'text';
+   116→      min?: number;
+   117→      max?: number;
+   118→    }>;
+   119→    spritePacks?: Array<{ id: string; name: string; conditionalMode?: boolean; spriteCount: number }>;
+   120→  }[];
+   121→  spritePacksV2?: SpritePackV2[];  // for activate_sprite_pack reward
+   122→  emotionalConfig?: import('@/types').EmotionalStateConfig;  // FASE 5: Emotional state config
+   123→  onEmotionalConfigChange?: (config: import('@/types').EmotionalStateConfig) => void;  // FASE 5
+   124→}
+   125→
+   126→// ============================================
+   127→// Attribute Editor Component (Accordion Style)
+   128→// ============================================
+   129→
+   130→interface AttributeEditorProps {
+   131→  attribute: AttributeDefinition;
+   132→  index: number;
+   133→  onChange: (index: number, updates: Partial<AttributeDefinition>) => void;
+   134→  onDelete: (index: number) => void;
+   135→  allAttributes: AttributeDefinition[];
+   136→  availableTargets?: StatsEditorProps['availableTargets'];
+   137→  spritePacksV2?: SpritePackV2[];
+   138→}
+   139→
+   140→function AttributeEditor({ attribute, index, onChange, onDelete, allAttributes, availableTargets = [], spritePacksV2 }: AttributeEditorProps) {
+   141→  const [expanded, setExpanded] = useState(false);
+   142→  
+   143→  // Get display info
+   144→  const displayIcon = attribute.icon || (attribute.type === 'number' ? '🔢' : attribute.type === 'keyword' ? '🏷️' : '📝');
+   145→  const displayValue = attribute.defaultValue?.toString() || '0';
+   146→  
+   147→  return (
+   148→    <div className="border rounded-lg bg-muted/30">
+   149→      {/* Header - Clickable */}
+   150→      <div 
+   151→        className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+   152→        onClick={() => setExpanded(!expanded)}
+   153→      >
+   154→        <div className="flex items-center gap-2">
+   155→          <GripVertical className="w-4 h-4 text-muted-foreground cursor-grab" />
+   156→          <span className="text-lg">{displayIcon}</span>
+   157→          <span className="font-medium text-sm">
+   158→            {attribute.name || `Atributo #${index + 1}`}
+   159→          </span>
+   160→          {attribute.key && (
+   161→            <code className="text-xs bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
+   162→              {'{{' + attribute.key + '}}'}
+   163→            </code>
+   164→          )}
+   165→          <Badge variant="outline" className={cn(
+   166→            "text-xs capitalize",
+   167→            attribute.type === 'number' ? 'border-blue-500/30 text-blue-500' :
+   168→            attribute.type === 'keyword' ? 'border-purple-500/30 text-purple-500' :
+   169→            'border-amber-500/30 text-amber-500'
+   170→          )}>
+   171→            {attribute.type === 'number' ? '🔢 Numérico' : attribute.type === 'keyword' ? '🏷️ Estado' : '📝 Texto'}
+   172→          </Badge>
+   173→          {attribute.timer?.enabled && (
+   174→            <Badge variant="outline" className="text-xs border-emerald-500/30 text-emerald-400">
+   175→              <Timer className="w-2.5 h-2.5 mr-0.5" />
+   176→              {attribute.timer.intervalMinutes}min
+   177→            </Badge>
+   178→          )}
+   179→        </div>
+   180→        <div className="flex items-center gap-1">
+   181→          <span className="text-xs text-muted-foreground mr-2">
+   182→            {attribute.type === 'number' ? `${displayValue}` : displayValue.slice(0, 15)}
+   183→          </span>
+   184→          <Button
+   185→            variant="ghost"
+   186→            size="icon"
+   187→            className="h-7 w-7"
+   188→            onClick={(e) => { e.stopPropagation(); onDelete(index); }}
+   189→          >
+   190→            <Trash2 className="w-3.5 h-3.5 text-destructive" />
+   191→          </Button>
+   192→          {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+   193→        </div>
+   194→      </div>
+   195→      
+   196→      {/* Expanded Content */}
+   197→      {expanded && (
+   198→        <div className="px-4 pb-4 space-y-4 border-t">
+   199→          {/* Basic Info */}
+   200→          <div className="pt-3 grid grid-cols-2 gap-3">
+   201→            <div>
+   202→              <div className="flex items-center gap-1.5 mb-1">
+   203→                <Label className="text-xs">Nombre *</Label>
+   204→                <Tooltip>
+   205→                  <TooltipTrigger asChild>
+   206→                    <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   207→                  </TooltipTrigger>
+   208→                  <TooltipContent className="max-w-xs">
+   209→                    <p>Nombre visible del atributo. Ejemplo: "Vida", "Maná", "Resistencia"</p>
+   210→                  </TooltipContent>
+   211→                </Tooltip>
+   212→              </div>
+   213→              <Input
+   214→                value={attribute.name}
+   215→                onChange={(e) => onChange(index, { name: e.target.value })}
+   216→                placeholder="Vida, Maná, Resistencia..."
+   217→                className="h-8"
+   218→              />
+   219→            </div>
+   220→            <div>
+   221→              <div className="flex items-center gap-1.5 mb-1">
+   222→                <Label className="text-xs">Key *</Label>
+   223→                <Tooltip>
+   224→                  <TooltipTrigger asChild>
+   225→                    <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   226→                  </TooltipTrigger>
+   227→                  <TooltipContent className="max-w-xs">
+   228→                    <p>Identificador único para usar en templates. Se convierte automáticamente a minúsculas y guiones bajos.</p>
+   229→                    <p className="mt-1 text-xs text-muted-foreground">Uso: {'{{vida}}'} en cualquier sección del personaje</p>
+   230→                  </TooltipContent>
+   231→                </Tooltip>
+   232→              </div>
+   233→              <Input
+   234→                value={attribute.key}
+   235→                onChange={(e) => onChange(index, { key: e.target.value.toLowerCase().replace(/\s+/g, '_') })}
+   236→                placeholder="vida, mana, resistencia..."
+   237→                className="h-8 font-mono text-xs"
+   238→              />
+   239→            </div>
+   240→          </div>
+   241→          
+   242→          {/* Type Selection - Two main categories: Numeric / Text */}
+   243→          <div className="space-y-3">
+   244→            <div>
+   245→              <div className="flex items-center gap-1.5 mb-2">
+   246→                <Label className="text-xs font-medium">Tipo de atributo</Label>
+   247→                <Tooltip>
+   248→                  <TooltipTrigger asChild>
+   249→                    <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   250→                  </TooltipTrigger>
+   251→                  <TooltipContent className="max-w-xs">
+   252→                    <p className="font-medium">🔢 Numérico:</p>
+   253→                    <p className="text-xs text-muted-foreground">Valores numéricos con min/max. Soporta operaciones aritméticas (+, -, *, /). Ej: Vida (0-100), Maná</p>
+   254→                    <p className="font-medium mt-2">📝 Texto:</p>
+   255→                    <p className="text-xs text-muted-foreground">Texto libre sin restricciones. Solo soporta el operador = (establecer). Ej: Notas, descripciones</p>
+   256→                    <p className="font-medium mt-2">🏷️ Estado:</p>
+   257→                    <p className="text-xs text-muted-foreground">Variante de texto que representa estados o condiciones. Solo soporta = (establecer). Ej: "enojado", "feliz", "neutral"</p>
+   258→                  </TooltipContent>
+   259→                </Tooltip>
+   260→              </div>
+   261→              {/* Two main category buttons */}
+   262→              <div className="grid grid-cols-2 gap-2">
+   263→                <button
+   264→                  type="button"
+   265→                  className={cn(
+   266→                    'flex flex-col items-center gap-1 p-2.5 rounded-lg border-2 transition-all',
+   267→                    attribute.type === 'number'
+   268→                      ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400'
+   269→                      : 'border-border hover:border-blue-500/50 hover:bg-blue-500/5'
+   270→                  )}
+   271→                  onClick={() => onChange(index, { type: 'number', defaultValue: 0 })}
+   272→                >
+   273→                  <span className="text-xl">🔢</span>
+   274→                  <span className="text-xs font-medium">Numérico</span>
+   275→                  <span className="text-[10px] text-muted-foreground">Operaciones aritméticas</span>
+   276→                </button>
+   277→                <div className="space-y-1.5">
+   278→                  <button
+   279→                    type="button"
+   280→                    className={cn(
+   281→                      'w-full flex items-center gap-2 p-2 rounded-lg border-2 transition-all',
+   282→                      attribute.type === 'text'
+   283→                        ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+   284→                        : 'border-border hover:border-amber-500/50 hover:bg-amber-500/5'
+   285→                    )}
+   286→                    onClick={() => onChange(index, { type: 'text', defaultValue: '' })}
+   287→                  >
+   288→                    <span className="text-base">📝</span>
+   289→                    <div className="text-left">
+   290→                      <span className="text-xs font-medium block">Texto</span>
+   291→                      <span className="text-[10px] text-muted-foreground">Texto libre</span>
+   292→                    </div>
+   293→                  </button>
+   294→                  <button
+   295→                    type="button"
+   296→                    className={cn(
+   297→                      'w-full flex items-center gap-2 p-2 rounded-lg border-2 transition-all',
+   298→                      attribute.type === 'keyword'
+   299→                        ? 'border-purple-500 bg-purple-500/10 text-purple-600 dark:text-purple-400'
+   300→                        : 'border-border hover:border-purple-500/50 hover:bg-purple-500/5'
+   301→                    )}
+   302→                    onClick={() => onChange(index, { type: 'keyword', defaultValue: '' })}
+   303→                  >
+   304→                    <span className="text-base">🏷️</span>
+   305→                    <div className="text-left">
+   306→                      <span className="text-xs font-medium block">Estado</span>
+   307→                      <span className="text-[10px] text-muted-foreground">Texto con estados</span>
+   308→                    </div>
+   309→                  </button>
+   310→                </div>
+   311→              </div>
+   312→            </div>
+   313→            <div>
+   314→              <Label className="text-xs mb-1 block">Valor por defecto</Label>
+   315→              {attribute.type === 'number' ? (
+   316→                <Input
+   317→                  type="number"
+   318→                  value={attribute.defaultValue}
+   319→                  onChange={(e) => onChange(index, { 
+   320→                    defaultValue: parseFloat(e.target.value) || 0
+   321→                  })}
+   322→                  className="h-8"
+   323→                  placeholder="0"
+   324→                />
+   325→              ) : attribute.type === 'keyword' ? (
+   326→                <Input
+   327→                  type="text"
+   328→                  value={attribute.defaultValue}
+   329→                  onChange={(e) => onChange(index, { defaultValue: e.target.value })}
+   330→                  className="h-8"
+   331→                  placeholder="neutral (separa opciones con |)"
+   332→                />
+   333→              ) : (
+   334→                <Textarea
+   335→                  value={attribute.defaultValue}
+   336→                  onChange={(e) => onChange(index, { defaultValue: e.target.value })}
+   337→                  className="min-h-[60px] text-xs"
+   338→                  placeholder="Texto libre..."
+   339→                  rows={2}
+   340→                />
+   341→              )}
+   342→              {attribute.type === 'keyword' && (
+   343→                <p className="text-[10px] text-muted-foreground mt-1">
+   344→                  Para estados múltiples, separa con | Ej: enojado|feliz|neutral
+   345→                </p>
+   346→              )}
+   347→            </div>
+   348→          </div>
+   349→          
+   350→          {/* Number-specific: Min/Max */}
+   351→          {attribute.type === 'number' && (
+   352→            <div className="grid grid-cols-2 gap-3">
+   353→              <div>
+   354→                <Label className="text-xs mb-1 block">Valor mínimo</Label>
+   355→                <Input
+   356→                  type="number"
+   357→                  value={attribute.min ?? ''}
+   358→                  onChange={(e) => {
+   359→                    const parsed = parseFloat(e.target.value);
+   360→                    onChange(index, { min: isNaN(parsed) ? undefined : parsed });
+   361→                  }}
+   362→                  placeholder="0"
+   363→                  className="h-8"
+   364→                />
+   365→              </div>
+   366→              <div>
+   367→                <Label className="text-xs mb-1 block">Valor máximo</Label>
+   368→                <Input
+   369→                  type="number"
+   370→                  value={attribute.max ?? ''}
+   371→                  onChange={(e) => {
+   372→                    const parsed = parseFloat(e.target.value);
+   373→                    onChange(index, { max: isNaN(parsed) ? undefined : parsed });
+   374→                  }}
+   375→                  placeholder="100"
+   376→                  className="h-8"
+   377→                />
+   378→              </div>
+   379→            </div>
+   380→          )}
+   381→
+   382→          {/* Threshold Effects V2 - Flexible conditions with priority */}
+   383→          {attribute.type === 'number' && (
+   384→            <ThresholdEffectsSection
+   385→              attribute={attribute}
+   386→              index={index}
+   387→              onChange={onChange}
+   388→              allAttributes={allAttributes}
+   389→              availableTargets={availableTargets}
+   390→              spritePacksV2={spritePacksV2}
+   391→            />
+   392→          )}
+   393→
+   394→          {/* Detection Keys (Post-LLM) - Similar to HUD Field System */}
+   395→          <div className="space-y-3 p-3 bg-muted/50 rounded-lg border">
+   396→            <div className="flex items-center gap-2">
+   397→              <Zap className="w-4 h-4 text-amber-500" />
+   398→              <Label className="text-xs font-medium">Detección automática (Post-LLM)</Label>
+   399→              <Tooltip>
+   400→                <TooltipTrigger asChild>
+   401→                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   402→                </TooltipTrigger>
+   403→                <TooltipContent className="max-w-sm">
+   404→                  <p>Cuando el LLM escriba estas keys en su respuesta, el valor se actualizará automáticamente.</p>
+   405→                  <p className="mt-1 text-xs text-muted-foreground">El sistema detecta: key=valor, key: valor, [key=valor]</p>
+   406→                </TooltipContent>
+   407→              </Tooltip>
+   408→            </div>
+   409→            
+   410→            {/* Primary Key Display */}
+   411→            <div className="flex items-center gap-2 p-2 bg-amber-500/10 rounded border border-amber-500/20">
+   412→              <span className="text-xs text-muted-foreground">Key principal:</span>
+   413→              <code className="text-xs bg-background px-2 py-0.5 rounded font-mono">
+   414→                {attribute.key || '(sin key)'}
+   415→              </code>
+   416→              <span className="text-[10px] text-muted-foreground">
+   417→                (siempre detectada)
+   418→              </span>
+   419→            </div>
+   420→            
+   421→            {/* Alternative Keys */}
+   422→            <div>
+   423→              <div className="flex items-center gap-1.5 mb-1">
+   424→                <Label className="text-xs">Keys alternativas</Label>
+   425→                <Tooltip>
+   426→                  <TooltipTrigger asChild>
+   427→                    <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   428→                  </TooltipTrigger>
+   429→                  <TooltipContent className="max-w-xs">
+   430→                    <p>Keys adicionales que también actualizarán este atributo.</p>
+   431→                    <p className="mt-1 text-xs text-muted-foreground">Ejemplo: HP, hp, ❤️ detectará "HP: 50", "hp=30", "❤️ 100"</p>
+   432→                  </TooltipContent>
+   433→                </Tooltip>
+   434→              </div>
+   435→              <div className="flex gap-2">
+   436→                <Input
+   437→                  value={(attribute.keys || []).join(', ')}
+   438→                  onChange={(e) => {
+   439→                    const keys = e.target.value.split(',').map(k => k.trim()).filter(Boolean);
+   440→                    onChange(index, { keys: keys.length > 0 ? keys : undefined });
+   441→                  }}
+   442→                  placeholder="HP, hp, ❤️ (separar con comas)"
+   443→                  className="h-8 flex-1"
+   444→                />
+   445→              </div>
+   446→              {/* Show detected keys preview */}
+   447→              {((attribute.keys?.length || 0) > 0 || attribute.key) && (
+   448→                <div className="flex flex-wrap gap-1 mt-2">
+   449→                  {[attribute.key, ...(attribute.keys || [])].filter(Boolean).map((key, i) => (
+   450→                    <Badge key={i} variant="outline" className="text-[10px] font-mono">
+   451→                      {key}
+   452→                    </Badge>
+   453→                  ))}
+   454→                </div>
+   455→              )}
+   456→            </div>
+   457→            
+   458→            {/* Case Sensitivity */}
+   459→            <div className="flex items-center gap-2">
+   460→              <Switch
+   461→                checked={attribute.caseSensitive ?? false}
+   462→                onCheckedChange={(checked) => onChange(index, { caseSensitive: checked })}
+   463→              />
+   464→              <Label className="text-xs flex items-center gap-1">
+   465→                <CaseSensitive className="w-3 h-3" />
+   466→                Distinguir mayúsculas/minúsculas
+   467→              </Label>
+   468→              <Tooltip>
+   469→                <TooltipTrigger asChild>
+   470→                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   471→                </TooltipTrigger>
+   472→                <TooltipContent className="max-w-xs">
+   473→                  <p>Si está desactivado (por defecto), "HP: 50" y "hp: 50" serán equivalentes.</p>
+   474→                </TooltipContent>
+   475→              </Tooltip>
+   476→            </div>
+   477→            
+   478→            {/* Detection Examples */}
+   479→            <div className="text-[10px] text-muted-foreground space-y-1 p-2 bg-background/50 rounded">
+   480→              <p className="font-medium text-foreground/70">Formatos detectados:</p>
+   481→              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+   482→                <p>• <code>[Vida=50]</code></p>
+   483→                <p>• <code>Vida: 50</code></p>
+   484→                <p>• <code>HP=50</code></p>
+   485→                <p>• <code>hp: 50</code></p>
+   486→              </div>
+   487→            </div>
+   488→          </div>
+   489→          
+   490→          {/* Output Format */}
+   491→          <div className="space-y-2">
+   492→            <div className="flex items-center gap-1.5 mb-1">
+   493→              <Label className="text-xs">Formato de salida</Label>
+   494→              <Tooltip>
+   495→                <TooltipTrigger asChild>
+   496→                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   497→                </TooltipTrigger>
+   498→                <TooltipContent className="max-w-xs">
+   499→                  <p>Cómo se mostrará el valor cuando uses {'{{' + attribute.key + '}}'} en el prompt.</p>
+   500→                  <p className="mt-1 text-xs text-muted-foreground">Usa {'{value}'} como placeholder para el valor actual.</p>
+   501→                  <p className="mt-1 text-xs">{`Ejemplo: "Vida: {value}" → "Vida: 50"`}</p>
+   502→                </TooltipContent>
+   503→              </Tooltip>
+   504→            </div>
+   505→            <Input
+   506→              value={attribute.outputFormat || ''}
+   507→              onChange={(e) => onChange(index, { outputFormat: e.target.value || undefined })}
+   508→              placeholder={attribute.type === 'number' ? "Vida: {value}" : "Estado: {value}"}
+   509→              className="h-8"
+   510→            />
+   511→            {attribute.outputFormat && (
+   512→              <p className="text-xs text-muted-foreground">
+   513→                Vista previa: <code className="bg-muted px-1 rounded">{attribute.outputFormat.replace('{value}', String(attribute.defaultValue || '0'))}</code>
+   514→              </p>
+   515→            )}
+   516→          </div>
+   517→          
+   518→          {/* UI Settings */}
+   519→          <div className="flex items-center gap-4 pt-2 flex-wrap">
+   520→            <div className="flex items-center gap-2">
+   521→              <Label className="text-xs">Icono</Label>
+   522→              <Input
+   523→                value={attribute.icon || ''}
+   524→                onChange={(e) => onChange(index, { icon: e.target.value || undefined })}
+   525→                placeholder="❤️"
+   526→                className="h-8 w-16 text-center"
+   527→              />
+   528→            </div>
+   529→            <div className="flex items-center gap-2">
+   530→              <Label className="text-xs">Color</Label>
+   531→              <Input
+   532→                value={attribute.color || ''}
+   533→                onChange={(e) => onChange(index, { color: e.target.value || undefined })}
+   534→                placeholder="red"
+   535→                className="h-8 w-20"
+   536→              />
+   537→            </div>
+   538→            <div className="flex items-center gap-2">
+   539→              <Switch
+   540→                checked={attribute.showInHUD ?? true}
+   541→                onCheckedChange={(checked) => onChange(index, { showInHUD: checked })}
+   542→              />
+   543→              <Label className="text-xs">Mostrar en HUD</Label>
+   544→            </div>
+   545→          </div>
+   546→          
+   547→          {/* HUD Customization */}
+   548→          {attribute.showInHUD !== false && (
+   549→            <div className="p-3 bg-muted/30 rounded-lg border border-border/40 space-y-3">
+   550→              <div className="flex items-center gap-2">
+   551→                <Settings2 className="w-4 h-4 text-cyan-500" />
+   552→                <Label className="text-xs font-medium">Personalización del HUD</Label>
+   553→              </div>
+   554→              
+   555→              <div className="grid grid-cols-2 gap-3">
+   556→                {/* HUD Style */}
+   557→                <div>
+   558→                  <Label className="text-xs text-muted-foreground mb-1 block">Estilo visual</Label>
+   559→                  <Select
+   560→                    value={attribute.hudStyle || 'default'}
+   561→                    onValueChange={(value) => onChange(index, { hudStyle: value as any })}
+   562→                  >
+   563→                    <SelectTrigger className="h-8">
+   564→                      <SelectValue />
+   565→                    </SelectTrigger>
+   566→                    <SelectContent>
+   567→                      <SelectItem value="default">📝 Por defecto</SelectItem>
+   568→                      <SelectItem value="progress">📊 Barra progreso</SelectItem>
+   569→                      <SelectItem value="badge">🏷️ Badge</SelectItem>
+   570→                      <SelectItem value="gauge">⭕ Gauge circular</SelectItem>
+   571→                      <SelectItem value="pill">💊 Píldora</SelectItem>
+   572→                      <SelectItem value="status">🟢 Estado</SelectItem>
+   573→                      <SelectItem value="dots">••• Puntos</SelectItem>
+   574→                      <SelectItem value="meter">📈 Medidor vertical</SelectItem>
+   575→                    </SelectContent>
+   576→                  </Select>
+   577→                </div>
+   578→                
+   579→                {/* HUD Unit */}
+   580→                <div>
+   581→                  <Label className="text-xs text-muted-foreground mb-1 block">Unidad</Label>
+   582→                  <Input
+   583→                    value={attribute.hudUnit || ''}
+   584→                    onChange={(e) => onChange(index, { hudUnit: e.target.value || undefined })}
+   585→                    placeholder="%, pts, ❤️"
+   586→                    className="h-8"
+   587→                  />
+   588→                </div>
+   589→              </div>
+   590→              
+   591→              {/* Preview */}
+   592→              <div className="mt-2 p-2 bg-slate-900/50 rounded border border-white/10">
+   593→                <p className="text-[10px] text-muted-foreground mb-1">Vista previa:</p>
+   594→                <AttributeHUDPreview attribute={attribute} />
+   595→              </div>
+   596→            </div>
+   597→          )}
+   598→          
+   599→          {/* Timer - Automatic attribute changes over time */}
+   600→          <div className="space-y-3 p-3 bg-emerald-500/5 rounded-lg border border-emerald-500/20">
+   601→            <div className="flex items-center justify-between">
+   602→              <div className="flex items-center gap-2">
+   603→                <Timer className="w-4 h-4 text-emerald-400" />
+   604→                <Label className="text-xs font-medium text-emerald-400">Timer automático</Label>
+   605→                <Tooltip>
+   606→                  <TooltipTrigger asChild>
+   607→                    <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   608→                  </TooltipTrigger>
+   609→                  <TooltipContent className="max-w-sm">
+   610→                    <p>El atributo cambia automáticamente con el tiempo.</p>
+   611→                    <p className="mt-1 text-xs text-muted-foreground">• Numérico: suma/resta/multiplica/divide cada X minutos</p>
+   612→                    <p className="text-xs text-muted-foreground">• Estado/Texto: cicla, aleatorio o establece valores</p>
+   613→                    <p className="text-xs text-muted-foreground">• Solo aplica cuando se cumplen las condiciones (si las hay)</p>
+   614→                  </TooltipContent>
+   615→                </Tooltip>
+   616→              </div>
+   617→              <Switch
+   618→                checked={attribute.timer?.enabled ?? false}
+   619→                onCheckedChange={(checked) => onChange(index, {
+   620→                  timer: {
+   621→                    ...attribute.timer,
+   622→                    enabled: checked,
+   623→                    intervalMinutes: attribute.timer?.intervalMinutes || 5,
+   624→                  }
+   625→                })}
+   626→              />
+   627→            </div>
+   628→            
+   629→            {attribute.timer?.enabled && (
+   630→              <div className="space-y-3">
+   631→                {/* Interval */}
+   632→                <div className="grid grid-cols-2 gap-3">
+   633→                  <div>
+   634→                    <Label className="text-xs mb-1 block">Intervalo (minutos)</Label>
+   635→                    <Input
+   636→                      type="number"
+   637→                      min={1}
+   638→                      value={attribute.timer.intervalMinutes || 5}
+   639→                      onChange={(e) => onChange(index, {
+   640→                        timer: {
+   641→                          ...attribute.timer!,
+   642→                          intervalMinutes: Math.max(1, parseInt(e.target.value) || 5),
+   643→                        }
+   644→                      })}
+   645→                      className="h-8"
+   646→                      placeholder="5"
+   647→                    />
+   648→                    <p className="text-[10px] text-muted-foreground mt-0.5">
+   649→                      Cada cuántos minutos se actualiza
+   650→                    </p>
+   651→                  </div>
+   652→                  
+   653→                  {/* Numeric operation */}
+   654→                  {attribute.type === 'number' && (
+   655→                    <div>
+   656→                      <Label className="text-xs mb-1 block">Operación</Label>
+   657→                      <Select
+   658→                        value={attribute.timer.numericOperation || 'add'}
+   659→                        onValueChange={(value) => onChange(index, {
+   660→                          timer: {
+   661→                            ...attribute.timer!,
+   662→                            numericOperation: value as 'add' | 'subtract' | 'multiply' | 'divide' | 'set',
+   663→                          }
+   664→                        })}
+   665→                      >
+   666→                        <SelectTrigger className="h-8">
+   667→                          <SelectValue />
+   668→                        </SelectTrigger>
+   669→                        <SelectContent>
+   670→                          <SelectItem value="add">➕ Sumar (+)</SelectItem>
+   671→                          <SelectItem value="subtract">➖ Restar (-)</SelectItem>
+   672→                          <SelectItem value="multiply">✖️ Multiplicar (×)</SelectItem>
+   673→                          <SelectItem value="divide">➗ Dividir (÷)</SelectItem>
+   674→                          <SelectItem value="set">📌 Establecer (=)</SelectItem>
+   675→                        </SelectContent>
+   676→                      </Select>
+   677→                    </div>
+   678→                  )}
+   679→                  
+   680→                  {/* Text/Keyword operation */}
+   681→                  {(attribute.type === 'keyword' || attribute.type === 'text') && (
+   682→                    <div>
+   683→                      <Label className="text-xs mb-1 block">Operación</Label>
+   684→                      <Select
+   685→                        value={attribute.timer.textOperation || 'set'}
+   686→                        onValueChange={(value) => onChange(index, {
+   687→                          timer: {
+   688→                            ...attribute.timer!,
+   689→                            textOperation: value as 'cycle' | 'random' | 'set',
+   690→                          }
+   691→                        })}
+   692→                      >
+   693→                        <SelectTrigger className="h-8">
+   694→                          <SelectValue />
+   695→                        </SelectTrigger>
+   696→                        <SelectContent>
+   697→                          <SelectItem value="cycle">🔄 Cíclico (rotar)</SelectItem>
+   698→                          <SelectItem value="random">🎲 Aleatorio</SelectItem>
+   699→                          <SelectItem value="set">📌 Establecer</SelectItem>
+   700→                        </SelectContent>
+   701→                      </Select>
+   702→                    </div>
+   703→                  )}
+   704→                </div>
+   705→                
+   706→                {/* Numeric value */}
+   707→                {attribute.type === 'number' && (
+   708→                  <div>
+   709→                    <Label className="text-xs mb-1 block">
+   710→                      Valor {attribute.timer.numericOperation === 'add' ? '(cantidad a sumar)' :
+   711→                             attribute.timer.numericOperation === 'subtract' ? '(cantidad a restar)' :
+   712→                             attribute.timer.numericOperation === 'multiply' ? '(multiplicador)' :
+   713→                             attribute.timer.numericOperation === 'divide' ? '(divisor)' :
+   714→                             '(valor a establecer)'}
+   715→                    </Label>
+   716→                    <Input
+   717→                      type="number"
+   718→                      value={attribute.timer.numericValue ?? 1}
+   719→                      onChange={(e) => onChange(index, {
+   720→                        timer: {
+   721→                          ...attribute.timer!,
+   722→                          numericValue: parseFloat(e.target.value) || 0,
+   723→                        }
+   724→                      })}
+   725→                      className="h-8"
+   726→                      placeholder="1"
+   727→                    />
+   728→                    <p className="text-[10px] text-muted-foreground mt-0.5">
+   729→                      {attribute.timer.numericOperation === 'add' || !attribute.timer.numericOperation
+   730→                        ? `Ej: Cada ${attribute.timer.intervalMinutes || 5} min, +${attribute.timer.numericValue || 1}`
+   731→                        : attribute.timer.numericOperation === 'subtract'
+   732→                        ? `Ej: Cada ${attribute.timer.intervalMinutes || 5} min, -${attribute.timer.numericValue || 1}`
+   733→                        : attribute.timer.numericOperation === 'set'
+   734→                        ? `Ej: Cada ${attribute.timer.intervalMinutes || 5} min, = ${attribute.timer.numericValue || 0}`
+   735→                        : `Ej: Cada ${attribute.timer.intervalMinutes || 5} min, ${attribute.timer.numericOperation === 'multiply' ? '×' : '÷'}${attribute.timer.numericValue || 1}`
+   736→                      }
+   737→                    </p>
+   738→                  </div>
+   739→                )}
+   740→                
+   741→                {/* Text values for cycle/random */}
+   742→                {(attribute.type === 'keyword' || attribute.type === 'text') && 
+   743→                 (attribute.timer.textOperation === 'cycle' || attribute.timer.textOperation === 'random') && (
+   744→                  <div>
+   745→                    <Label className="text-xs mb-1 block">
+   746→                      Valores (separar con comas)
+   747→                    </Label>
+   748→                    <Input
+   749→                      value={attribute.timer.textValues || ''}
+   750→                      onChange={(e) => onChange(index, {
+   751→                        timer: {
+   752→                          ...attribute.timer!,
+   753→                          textValues: e.target.value,
+   754→                        }
+   755→                      })}
+   756→                      placeholder="caja, roca, botella"
+   757→                      className="h-8"
+   758→                    />
+   759→                    <p className="text-[10px] text-muted-foreground mt-0.5">
+   760→                      {attribute.timer.textOperation === 'cycle'
+   761→                        ? 'Rotará ciclicamente por estos valores'
+   762→                        : 'Seleccionará un valor aleatorio cada tick'
+   763→                      }
+   764→                    </p>
+   765→                    {attribute.timer.textValues && (
+   766→                      <div className="flex flex-wrap gap-1 mt-1">
+   767→                        {attribute.timer.textValues.split(',').map((v, i) => v.trim()).filter(Boolean).map((v, i) => (
+   768→                          <Badge key={i} variant="outline" className="text-[10px]">
+   769→                            {v}
+   770→                          </Badge>
+   771→                        ))}
+   772→                      </div>
+   773→                    )}
+   774→                  </div>
+   775→                )}
+   776→                
+   777→                {/* Text value for set */}
+   778→                {(attribute.type === 'keyword' || attribute.type === 'text') && 
+   779→                 attribute.timer.textOperation === 'set' && (
+   780→                  <div>
+   781→                    <Label className="text-xs mb-1 block">Valor a establecer</Label>
+   782→                    <Input
+   783→                      value={attribute.timer.textValue || ''}
+   784→                      onChange={(e) => onChange(index, {
+   785→                        timer: {
+   786→                          ...attribute.timer!,
+   787→                          textValue: e.target.value,
+   788→                        }
+   789→                      })}
+   790→                      placeholder="nuevo valor"
+   791→                      className="h-8"
+   792→                    />
+   793→                  </div>
+   794→                )}
+   795→                
+   796→                {/* Timer conditions */}
+   797→                <div className="space-y-2 p-2 bg-background/50 rounded border border-emerald-500/10">
+   798→                  <div className="flex items-center gap-2">
+   799→                    <AlertCircle className="w-3 h-3 text-emerald-400" />
+   800→                    <Label className="text-xs font-medium">Condiciones (opcional)</Label>
+   801→                    <Tooltip>
+   802→                      <TooltipTrigger asChild>
+   803→                        <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   804→                      </TooltipTrigger>
+   805→                      <TooltipContent className="max-w-sm">
+   806→                        <p>El timer solo se aplicará cuando todas las condiciones se cumplan.</p>
+   807→                        <p className="mt-1 text-xs text-muted-foreground">Ejemplo: Vida &gt; 0 (no regenerar si está muerto)</p>
+   808→                      </TooltipContent>
+   809→                    </Tooltip>
+   810→                  </div>
+   811→                  
+   812→                  {(attribute.timer.condition || []).map((cond, condIdx) => (
+   813→                    <div key={condIdx} className="flex items-center gap-2">
+   814→                      <Select
+   815→                        value={cond.attributeKey}
+   816→                        onValueChange={(value) => {
+   817→                          const newConditions = [...(attribute.timer?.condition || [])];
+   818→                          newConditions[condIdx] = { ...newConditions[condIdx], attributeKey: value };
+   819→                          onChange(index, { timer: { ...attribute.timer!, condition: newConditions } });
+   820→                        }}
+   821→                      >
+   822→                        <SelectTrigger className="h-7 w-28">
+   823→                          <SelectValue placeholder="Atributo" />
+   824→                        </SelectTrigger>
+   825→                        <SelectContent>
+   826→                          {allAttributes.map(attr => (
+   827→                            <SelectItem key={attr.key} value={attr.key}>
+   828→                              {attr.name || attr.key}
+   829→                            </SelectItem>
+   830→                          ))}
+   831→                        </SelectContent>
+   832→                      </Select>
+   833→                      <Select
+   834→                        value={cond.operator}
+   835→                        onValueChange={(value) => {
+   836→                          const newConditions = [...(attribute.timer?.condition || [])];
+   837→                          newConditions[condIdx] = { ...newConditions[condIdx], operator: value as any };
+   838→                          onChange(index, { timer: { ...attribute.timer!, condition: newConditions } });
+   839→                        }}
+   840→                      >
+   841→                        <SelectTrigger className="h-7 w-16">
+   842→                          <SelectValue />
+   843→                        </SelectTrigger>
+   844→                        <SelectContent>
+   845→                          <SelectItem value=">">&gt;</SelectItem>
+   846→                          <SelectItem value=">=">&ge;</SelectItem>
+   847→                          <SelectItem value="<">&lt;</SelectItem>
+   848→                          <SelectItem value="<=">&le;</SelectItem>
+   849→                          <SelectItem value="==">=</SelectItem>
+   850→                          <SelectItem value="!=">&ne;</SelectItem>
+   851→                          <SelectItem value="contains">contiene</SelectItem>
+   852→                          <SelectItem value="not_contains">no contiene</SelectItem>
+   853→                        </SelectContent>
+   854→                      </Select>
+   855→                      {cond.operator === 'contains' || cond.operator === 'not_contains' ? (
+   856→                        <Input
+   857→                          value={typeof cond.value === 'string' ? cond.value : ''}
+   858→                          onChange={(e) => {
+   859→                            const newConditions = [...(attribute.timer?.condition || [])];
+   860→                            newConditions[condIdx] = { ...newConditions[condIdx], value: e.target.value };
+   861→                            onChange(index, { timer: { ...attribute.timer!, condition: newConditions } });
+   862→                          }}
+   863→                          className="h-7 w-20"
+   864→                          placeholder="texto"
+   865→                        />
+   866→                      ) : (
+   867→                        <Input
+   868→                          type="number"
+   869→                          value={typeof cond.value === 'number' ? cond.value : ''}
+   870→                          onChange={(e) => {
+   871→                            const newConditions = [...(attribute.timer?.condition || [])];
+   872→                            newConditions[condIdx] = { ...newConditions[condIdx], value: parseFloat(e.target.value) || 0 };
+   873→                            onChange(index, { timer: { ...attribute.timer!, condition: newConditions } });
+   874→                          }}
+   875→                          className="h-7 w-16"
+   876→                          placeholder="valor"
+   877→                        />
+   878→                      )}
+   879→                      <Button
+   880→                        variant="ghost"
+   881→                        size="icon"
+   882→                        className="h-7 w-7"
+   883→                        onClick={() => {
+   884→                          const newConditions = (attribute.timer?.condition || []).filter((_, i) => i !== condIdx);
+   885→                          onChange(index, { timer: { ...attribute.timer!, condition: newConditions.length > 0 ? newConditions : undefined } });
+   886→                        }}
+   887→                      >
+   888→                        <X className="w-3 h-3" />
+   889→                      </Button>
+   890→                    </div>
+   891→                  ))}
+   892→                  
+   893→                  {/* AND/OR toggle for timer conditions */}
+   894→                  {(attribute.timer?.condition || []).length >= 2 && (
+   895→                    <div className="flex items-center gap-1.5">
+   896→                      <Button
+   897→                        variant="outline"
+   898→                        size="sm"
+   899→                        className={cn(
+   900→                          "h-5 px-1.5 text-[9px] transition-colors",
+   901→                          (!attribute.timer?.conditionOperator || attribute.timer.conditionOperator === 'AND')
+   902→                            ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
+   903→                            : "bg-muted/30 text-muted-foreground border-transparent"
+   904→                        )}
+   905→                        onClick={() => {
+   906→                          onChange(index, { timer: { ...attribute.timer!, conditionOperator: 'AND' } });
+   907→                        }}
+   908→                      >
+   909→                        Y (AND)
+   910→                      </Button>
+   911→                      <Button
+   912→                        variant="outline"
+   913→                        size="sm"
+   914→                        className={cn(
+   915→                          "h-5 px-1.5 text-[9px] transition-colors",
+   916→                          attribute.timer?.conditionOperator === 'OR'
+   917→                            ? "bg-purple-500/20 text-purple-400 border-purple-500/30"
+   918→                            : "bg-muted/30 text-muted-foreground border-transparent"
+   919→                        )}
+   920→                        onClick={() => {
+   921→                          onChange(index, { timer: { ...attribute.timer!, conditionOperator: 'OR' } });
+   922→                        }}
+   923→                      >
+   924→                        O (OR)
+   925→                      </Button>
+   926→                      <span className="text-[9px] text-muted-foreground">
+   927→                        {(!attribute.timer?.conditionOperator || attribute.timer.conditionOperator === 'AND')
+   928→                          ? 'Todas deben cumplirse'
+   929→                          : 'Al menos una debe cumplirse'}
+   930→                      </span>
+   931→                    </div>
+   932→                  )}
+   933→                  
+   934→                  <Button
+   935→                    variant="outline"
+   936→                    size="sm"
+   937→                    className="h-6 text-[10px] border-emerald-500/30 hover:bg-emerald-500/10"
+   938→                    onClick={() => {
+   939→                      const newConditions = [...(attribute.timer?.condition || []), {
+   940→                        attributeKey: allAttributes[0]?.key || '',
+   941→                        operator: '>' as const,
+   942→                        value: 0,
+   943→                      }];
+   944→                      onChange(index, { timer: { ...attribute.timer!, condition: newConditions } });
+   945→                    }}
+   946→                  >
+   947→                    <Plus className="w-2.5 h-2.5 mr-0.5" /> Agregar condición
+   948→                  </Button>
+   949→                </div>
+   950→              </div>
+   951→            )}
+   952→          </div>
+   953→        </div>
+   954→      )}
+   955→    </div>
+   956→  );
+   957→}
+   958→
+   959→// ============================================
+   960→// Attribute HUD Preview Component
+   961→// ============================================
+   962→
+   963→interface AttributeHUDPreviewProps {
+   964→  attribute: AttributeDefinition;
+   965→}
+   966→
+   967→function AttributeHUDPreview({ attribute }: AttributeHUDPreviewProps) {
+   968→  const value = attribute.defaultValue ?? (attribute.type === 'number' ? 0 : '');
+   969→  const style = attribute.hudStyle || 'default';
+   970→  const color = attribute.color || 'default';
+   971→  const icon = attribute.icon;
+   972→  const unit = attribute.hudUnit;
+   973→  const min = attribute.min ?? 0;
+   974→  const max = attribute.max ?? 100;
+   975→  
+   976→  // Color classes
+   977→  const colorClasses: Record<string, string> = {
+   978→    red: 'text-red-400',
+   979→    green: 'text-green-400',
+   980→    blue: 'text-blue-400',
+   981→    yellow: 'text-yellow-400',
+   982→    purple: 'text-purple-400',
+   983→    orange: 'text-orange-400',
+   984→    pink: 'text-pink-400',
+   985→    cyan: 'text-cyan-400',
+   986→    default: 'text-white/80',
+   987→  };
+   988→  
+   989→  const bgColorClasses: Record<string, string> = {
+   990→    red: 'bg-red-500/20 border-red-500/30',
+   991→    green: 'bg-green-500/20 border-green-500/30',
+   992→    blue: 'bg-blue-500/20 border-blue-500/30',
+   993→    yellow: 'bg-yellow-500/20 border-yellow-500/30',
+   994→    purple: 'bg-purple-500/20 border-purple-500/30',
+   995→    orange: 'bg-orange-500/20 border-orange-500/30',
+   996→    pink: 'bg-pink-500/20 border-pink-500/30',
+   997→    cyan: 'bg-cyan-500/20 border-cyan-500/30',
+   998→    default: 'bg-white/10 border-white/20',
+   999→  };
+  1000→  
+  1001→  const progressColorClasses: Record<string, string> = {
+  1002→    red: 'bg-red-500',
+  1003→    green: 'bg-green-500',
+  1004→    blue: 'bg-blue-500',
+  1005→    yellow: 'bg-yellow-500',
+  1006→    purple: 'bg-purple-500',
+  1007→    orange: 'bg-orange-500',
+  1008→    pink: 'bg-pink-500',
+  1009→    cyan: 'bg-cyan-500',
+  1010→    default: 'bg-white/50',
+  1011→  };
+  1012→  
+  1013→  const textColor = colorClasses[color] || colorClasses.default;
+  1014→  const bgColor = bgColorClasses[color] || bgColorClasses.default;
+  1015→  const progressColor = progressColorClasses[color] || progressColorClasses.default;
+  1016→  
+  1017→  // Render based on style
+  1018→  switch (style) {
+  1019→    case 'progress': {
+  1020→      const percentage = Math.max(0, Math.min(100, ((Number(value) - min) / (max - min)) * 100));
+  1021→      return (
+  1022→        <div className="space-y-1">
+  1023→          <div className="flex items-center justify-between gap-2">
+  1024→            <div className="flex items-center gap-1.5">
+  1025→              {icon && <span className="text-sm">{icon}</span>}
+  1026→              <span className="text-xs text-white/50">{attribute.name}</span>
+  1027→            </div>
+  1028→            <span className="text-xs font-medium text-white/80">
+  1029→              {value}{unit && <span className="text-white/40 ml-0.5">{unit}</span>}
+  1030→            </span>
+  1031→          </div>
+  1032→          <div className="w-full bg-white/10 rounded-full h-2">
+  1033→            <div className={`h-full rounded-full transition-all ${progressColor}`} style={{ width: `${percentage}%` }} />
+  1034→          </div>
+  1035→        </div>
+  1036→      );
+  1037→    }
+  1038→    
+  1039→    case 'gauge': {
+  1040→      const percentage = Math.max(0, Math.min(100, ((Number(value) - min) / (max - min)) * 100));
+  1041→      const circumference = 2 * Math.PI * 28;
+  1042→      const offset = circumference - (percentage / 100) * circumference;
+  1043→      return (
+  1044→        <div className="flex items-center gap-2">
+  1045→          <div className="relative w-10 h-10">
+  1046→            <svg className="w-10 h-10 transform -rotate-90">
+  1047→              <circle cx="20" cy="20" r="16" stroke="rgba(255,255,255,0.1)" strokeWidth="4" fill="none" />
+  1048→              <circle cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="4" fill="none"
+  1049→                strokeDasharray={circumference} strokeDashoffset={offset}
+  1050→                className={textColor} style={{ transition: 'stroke-dashoffset 0.5s' }} />
+  1051→            </svg>
+  1052→            <div className="absolute inset-0 flex items-center justify-center">
+  1053→              <span className="text-[10px] font-bold text-white">{value}</span>
+  1054→            </div>
+  1055→          </div>
+  1056→          <div className="flex flex-col">
+  1057→            <span className="text-xs text-white/50">{attribute.name}</span>
+  1058→            {unit && <span className="text-[10px] text-white/30">{unit}</span>}
+  1059→          </div>
+  1060→        </div>
+  1061→      );
+  1062→    }
+  1063→    
+  1064→    case 'badge':
+  1065→      return (
+  1066→        <div className="flex items-center gap-2">
+  1067→          {icon && <span className="text-sm">{icon}</span>}
+  1068→          <span className="text-xs text-white/50">{attribute.name}:</span>
+  1069→          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${bgColor} ${textColor}`}>
+  1070→            {value}
+  1071→            {unit && <span className="ml-0.5 opacity-60">{unit}</span>}
+  1072→          </span>
+  1073→        </div>
+  1074→      );
+  1075→    
+  1076→    case 'pill':
+  1077→      return (
+  1078→        <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${bgColor}`}>
+  1079→          {icon && <span className="text-sm">{icon}</span>}
+  1080→          <span className="text-xs text-white/60">{attribute.name}:</span>
+  1081→          <span className={`text-sm font-medium ${textColor}`}>
+  1082→            {value}
+  1083→            {unit && <span className="text-white/40 ml-0.5">{unit}</span>}
+  1084→          </span>
+  1085→        </div>
+  1086→      );
+  1087→    
+  1088→    case 'status': {
+  1089→      const statusColor = typeof value === 'boolean' 
+  1090→        ? (value ? 'bg-green-500' : 'bg-red-500')
+  1091→        : progressColor;
+  1092→      return (
+  1093→        <div className="flex items-center gap-2">
+  1094→          <div className={`w-2 h-2 rounded-full ${statusColor} animate-pulse`} />
+  1095→          <span className="text-xs text-white/50">{attribute.name}:</span>
+  1096→          <span className={`text-sm font-medium ${textColor}`}>
+  1097→            {typeof value === 'boolean' ? (value ? 'Activo' : 'Inactivo') : String(value)}
+  1098→          </span>
+  1099→        </div>
+  1100→      );
+  1101→    }
+  1102→    
+  1103→    case 'dots': {
+  1104→      const numDots = typeof value === 'boolean' ? (value ? 5 : 0) : Math.min(5, Math.max(0, Number(value)));
+  1105→      return (
+  1106→        <div className="flex items-center gap-2">
+  1107→          {icon && <span className="text-sm">{icon}</span>}
+  1108→          <span className="text-xs text-white/50">{attribute.name}:</span>
+  1109→          <div className="flex gap-1">
+  1110→            {[1, 2, 3, 4, 5].map((i) => (
+  1111→              <div key={i} className={`w-2 h-2 rounded-full ${i <= numDots ? progressColor : 'bg-white/20'}`} />
+  1112→            ))}
+  1113→          </div>
+  1114→        </div>
+  1115→      );
+  1116→    }
+  1117→    
+  1118→    case 'meter': {
+  1119→      const percentage = Math.max(0, Math.min(100, ((Number(value) - min) / (max - min)) * 100));
+  1120→      return (
+  1121→        <div className="flex items-end gap-2 h-8">
+  1122→          <div className="relative w-4 h-full bg-white/10 rounded-sm overflow-hidden">
+  1123→            <div className={`absolute bottom-0 w-full transition-all ${progressColor}`} style={{ height: `${percentage}%` }} />
+  1124→          </div>
+  1125→          <div className="flex flex-col justify-end">
+  1126→            <span className="text-[8px] text-white/50">{attribute.name}</span>
+  1127→            <span className={`text-[10px] font-bold ${textColor}`}>{value}</span>
+  1128→          </div>
+  1129→        </div>
+  1130→      );
+  1131→    }
+  1132→    
+  1133→    default:
+  1134→      return (
+  1135→        <div className="flex items-center gap-2">
+  1136→          {icon && <span className="text-sm">{icon}</span>}
+  1137→          <span className="text-xs text-white/50">{attribute.name}:</span>
+  1138→          <span className={`text-sm font-medium px-2 py-0.5 rounded border ${bgColor} ${textColor}`}>
+  1139→            {value}
+  1140→            {unit && <span className="text-white/40 ml-0.5">{unit}</span>}
+  1141→          </span>
+  1142→        </div>
+  1143→      );
+  1144→  }
+  1145→}
+  1146→
+  1147→// ============================================
+  1148→// Requirement Operator Toggle (AND/OR) Component
+  1149→// ============================================
+  1150→
+  1151→interface RequirementOperatorToggleProps {
+  1152→  operator: 'AND' | 'OR' | undefined;
+  1153→  onChange: (operator: 'AND' | 'OR') => void;
+  1154→  requirementCount: number;
+  1155→}
+  1156→
+  1157→function RequirementOperatorToggle({ operator, onChange, requirementCount }: RequirementOperatorToggleProps) {
+  1158→  if (requirementCount < 2) return null;
+  1159→
+  1160→  const currentOperator = operator || 'AND';
+  1161→
+  1162→  return (
+  1163→    <div className="flex items-center gap-2 py-1">
+  1164→      <div className="flex items-center gap-1">
+  1165→        <button
+  1166→          type="button"
+  1167→          className={cn(
+  1168→            'px-2 py-0.5 text-xs rounded border transition-colors',
+  1169→            currentOperator === 'AND'
+  1170→              ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+  1171→              : 'bg-muted/30 text-muted-foreground border-transparent'
+  1172→          )}
+  1173→          onClick={() => onChange('AND')}
+  1174→        >
+  1175→          Y (AND)
+  1176→        </button>
+  1177→        <button
+  1178→          type="button"
+  1179→          className={cn(
+  1180→            'px-2 py-0.5 text-xs rounded border transition-colors',
+  1181→            currentOperator === 'OR'
+  1182→              ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+  1183→              : 'bg-muted/30 text-muted-foreground border-transparent'
+  1184→          )}
+  1185→          onClick={() => onChange('OR')}
+  1186→        >
+  1187→          O (OR)
+  1188→        </button>
+  1189→      </div>
+  1190→      <span className="text-[10px] text-muted-foreground">
+  1191→        {currentOperator === 'AND' ? 'Todas deben cumplirse' : 'Al menos una debe cumplirse'}
+  1192→      </span>
+  1193→    </div>
+  1194→  );
+  1195→}
+  1196→
+  1197→// ============================================
+  1198→// Requirement Editor Component
+  1199→// ============================================
+  1200→
+  1201→interface RequirementEditorProps {
+  1202→  requirement: StatRequirement;
+  1203→  availableAttributes: AttributeDefinition[];
+  1204→  availableTargets?: StatsEditorProps['availableTargets'];
+  1205→  onChange: (updates: Partial<StatRequirement>) => void;
+  1206→  onDelete: () => void;
+  1207→}
+  1208→
+  1209→// Numeric operator definitions with descriptions
+  1210→const NUMERIC_OPERATOR_OPTIONS: { value: RequirementOperator; label: string; description: string }[] = [
+  1211→  { value: '>=', label: '≥', description: 'Mayor o igual que' },
+  1212→  { value: '>', label: '>', description: 'Mayor que' },
+  1213→  { value: '<=', label: '≤', description: 'Menor o igual que' },
+  1214→  { value: '<', label: '<', description: 'Menor que' },
+  1215→  { value: '==', label: '=', description: 'Exactamente igual' },
+  1216→  { value: '!=', label: '≠', description: 'Diferente de' },
+  1217→  { value: 'between', label: '∈', description: 'Entre (rango)' },
+  1218→];
+  1219→
+  1220→// Text operator definitions with descriptions
+  1221→const TEXT_OPERATOR_OPTIONS: { value: RequirementOperator; label: string; description: string }[] = [
+  1222→  { value: '==', label: '=', description: 'Exactamente igual' },
+  1223→  { value: '!=', label: '≠', description: 'Diferente de' },
+  1224→  { value: 'contains', label: '⊂', description: 'Contiene' },
+  1225→  { value: 'not_contains', label: '⊄', description: 'No contiene' },
+  1226→];
+  1227→
+  1228→function RequirementEditor({ requirement, availableAttributes, availableTargets = [], onChange, onDelete }: RequirementEditorProps) {
+  1229→  const isTargetMode = requirement.targetCharacterId !== undefined;
+  1230→  const selectedTarget = isTargetMode && requirement.targetCharacterId
+  1231→    ? availableTargets.find(t => t.id === requirement.targetCharacterId)
+  1232→    : undefined;
+  1233→  const targetAttrs = selectedTarget?.attributes || [];
+  1234→
+  1235→  // Determine the selected attribute and its type
+  1236→  const selectedSelfAttr = !isTargetMode ? availableAttributes.find(a => a.key === requirement.attributeKey) : undefined;
+  1237→  const selectedTargetAttr = isTargetMode ? targetAttrs.find(a => a.key === requirement.attributeKey) : undefined;
+  1238→  const selectedAttr = selectedSelfAttr || selectedTargetAttr;
+  1239→  const attrType = selectedAttr?.type || 'number';
+  1240→  const isTextType = attrType === 'text' || attrType === 'keyword';
+  1241→
+  1242→  const operatorOptions = isTextType ? TEXT_OPERATOR_OPTIONS : NUMERIC_OPERATOR_OPTIONS;
+  1243→  const selectedOperator = operatorOptions.find(op => op.value === requirement.operator);
+  1244→
+  1245→  return (
+  1246→    <div className="flex items-center gap-2 bg-muted/50 rounded p-2 flex-wrap">
+  1247→      {/* Target/Mode indicator */}
+  1248→      <Select
+  1249→        value={isTargetMode ? 'target' : 'self'}
+  1250→        onValueChange={(value) => {
+  1251→          if (value === 'target') {
+  1252→            onChange({ attributeKey: '', targetCharacterId: '', targetAttributeName: '', operator: '==', value: '' });
+  1253→          } else {
+  1254→            onChange({ attributeKey: '', targetCharacterId: undefined, targetAttributeName: undefined, operator: '>=', value: 0 });
+  1255→          }
+  1256→        }}
+  1257→      >
+  1258→        <SelectTrigger className="h-7 w-16 text-xs">
+  1259→          <SelectValue />
+  1260→        </SelectTrigger>
+  1261→        <SelectContent>
+  1262→          <SelectItem value="self">
+  1263→            <span className="flex items-center gap-1">🎭 Yo</span>
+  1264→          </SelectItem>
+  1265→          <SelectItem value="target">
+  1266→            <span className="flex items-center gap-1">🎯 Target</span>
+  1267→          </SelectItem>
+  1268→        </SelectContent>
+  1269→      </Select>
+  1270→
+  1271→      {isTargetMode ? (
+  1272→        <>
+  1273→          {/* Target selector */}
+  1274→          <Select
+  1275→            value={requirement.targetCharacterId || ''}
+  1276→            onValueChange={(value) => {
+  1277→              const target = availableTargets.find(t => t.id === value);
+  1278→              onChange({ targetCharacterId: value, attributeKey: '', targetAttributeName: target?.name || '' });
+  1279→            }}
+  1280→          >
+  1281→            <SelectTrigger className="h-7 w-28 text-xs">
+  1282→              <SelectValue placeholder="Target..." />
+  1283→            </SelectTrigger>
+  1284→            <SelectContent>
+  1285→              {availableTargets.map(t => (
+  1286→                <SelectItem key={t.id} value={t.id}>
+  1287→                  {t.id === '__user__' ? '👤 ' : '🎭 '}{t.name}
+  1288→                </SelectItem>
+  1289→              ))}
+  1290→            </SelectContent>
+  1291→          </Select>
+  1292→
+  1293→          {/* Target attribute selector */}
+  1294→          <Select
+  1295→            value={requirement.attributeKey}
+  1296→            onValueChange={(value) => {
+  1297→              const attr = targetAttrs.find(a => a.key === value);
+  1298→              const isText = attr?.type === 'text' || attr?.type === 'keyword';
+  1299→              onChange({
+  1300→                attributeKey: value,
+  1301→                targetAttributeName: attr?.name || '',
+  1302→                operator: isText ? '==' : '>=',
+  1303→                value: isText ? '' : 0,
+  1304→              });
+  1305→            }}
+  1306→            disabled={!requirement.targetCharacterId}
+  1307→          >
+  1308→            <SelectTrigger className="h-7 w-28 text-xs">
+  1309→              <SelectValue placeholder="Atributo..." />
+  1310→            </SelectTrigger>
+  1311→            <SelectContent>
+  1312→              {targetAttrs.map((attr, i) => (
+  1313→                <SelectItem key={attr.key || `attr-${i}`} value={attr.key}>
+  1314→                  <span className="flex items-center gap-1">
+  1315→                    <span className={attr.type === 'text' || attr.type === 'keyword' ? 'text-blue-400' : 'text-green-400'}>
+  1316→                      {attr.type === 'text' ? '📝' : attr.type === 'keyword' ? '🏷️' : '🔢'}
+  1317→                    </span>
+  1318→                    {attr.name}
+  1319→                  </span>
+  1320→                </SelectItem>
+  1321→              ))}
+  1322→            </SelectContent>
+  1323→          </Select>
+  1324→        </>
+  1325→      ) : (
+  1326→        /* Self attribute selector */
+  1327→        <Select
+  1328→          value={requirement.attributeKey}
+  1329→          onValueChange={(value) => {
+  1330→            const attr = availableAttributes.find(a => a.key === value);
+  1331→            const isText = attr?.type === 'text' || attr?.type === 'keyword';
+  1332→            onChange({
+  1333→              attributeKey: value,
+  1334→              operator: isText ? '==' : '>=',
+  1335→              value: isText ? '' : 0,
+  1336→            });
+  1337→          }}
+  1338→        >
+  1339→          <SelectTrigger className="h-7 w-24 text-xs">
+  1340→            <SelectValue placeholder="Atributo" />
+  1341→          </SelectTrigger>
+  1342→          <SelectContent>
+  1343→            {availableAttributes.map(attr => (
+  1344→              <SelectItem key={attr.id} value={attr.key}>
+  1345→                <span className="flex items-center gap-1">
+  1346→                  <span className={attr.type === 'text' || attr.type === 'keyword' ? 'text-blue-400' : 'text-green-400'}>
+  1347→                    {attr.type === 'text' ? '📝' : attr.type === 'keyword' ? '🏷️' : '🔢'}
+  1348→                  </span>
+  1349→                  {attr.name}
+  1350→                </span>
+  1351→              </SelectItem>
+  1352→            ))}
+  1353→          </SelectContent>
+  1354→        </Select>
+  1355→      )}
+  1356→
+  1357→      {/* Operator selector with descriptions */}
+  1358→      <Tooltip>
+  1359→        <TooltipTrigger asChild>
+  1360→          <Select
+  1361→            value={operatorOptions.some(op => op.value === requirement.operator) ? requirement.operator : operatorOptions[0].value}
+  1362→            onValueChange={(value: RequirementOperator) => onChange({ operator: value })}
+  1363→          >
+  1364→            <SelectTrigger className="h-7 w-16 text-xs">
+  1365→              <SelectValue />
+  1366→            </SelectTrigger>
+  1367→            <SelectContent>
+  1368→              {operatorOptions.map(op => (
+  1369→                <SelectItem key={op.value} value={op.value}>
+  1370→                  <div className="flex items-center gap-2">
+  1371→                    <span className="font-mono w-4">{op.label}</span>
+  1372→                    <span className="text-muted-foreground text-xs">{op.description}</span>
+  1373→                  </div>
+  1374→                </SelectItem>
+  1375→              ))}
+  1376→            </SelectContent>
+  1377→          </Select>
+  1378→        </TooltipTrigger>
+  1379→        <TooltipContent className="max-w-xs">
+  1380→          <p className="font-medium">{selectedOperator?.description}</p>
+  1381→          <p className="text-xs text-muted-foreground mt-1">
+  1382→            {requirement.operator === 'between'
+  1383→              ? `El valor debe estar entre ${requirement.value} y ${requirement.valueMax || '?'}`
+  1384→              : `El valor debe ser ${selectedOperator?.description} ${requirement.value}`
+  1385→            }
+  1386→          </p>
+  1387→        </TooltipContent>
+  1388→      </Tooltip>
+  1389→
+  1390→      {/* Value input - text or number based on attribute type */}
+  1391→      {isTextType ? (
+  1392→        <Input
+  1393→          type="text"
+  1394→          value={typeof requirement.value === 'string' ? requirement.value : String(requirement.value)}
+  1395→          onChange={(e) => onChange({ value: e.target.value })}
+  1396→          placeholder="Texto..."
+  1397→          className="h-7 w-24 text-xs"
+  1398→        />
+  1399→      ) : (
+  1400→        <Input
+  1401→          type="number"
+  1402→          value={requirement.value}
+  1403→          onChange={(e) => onChange({ value: parseFloat(e.target.value) || 0 })}
+  1404→          className="h-7 w-16 text-xs"
+  1405→        />
+  1406→      )}
+  1407→
+  1408→      {/* Max value for between operator (only for numeric) */}
+  1409→      {!isTextType && requirement.operator === 'between' && (
+  1410→        <>
+  1411→          <span className="text-xs text-muted-foreground">y</span>
+  1412→          <Input
+  1413→            type="number"
+  1414→            value={requirement.valueMax ?? ''}
+  1415→            onChange={(e) => {
+  1416→              const parsed = parseFloat(e.target.value);
+  1417→              onChange({ valueMax: isNaN(parsed) ? undefined : parsed });
+  1418→            }}
+  1419→            placeholder="max"
+  1420→            className="h-7 w-16 text-xs"
+  1421→          />
+  1422→        </>
+  1423→      )}
+  1424→
+  1425→      {/* Delete button */}
+  1426→      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onDelete}>
+  1427→        <Trash2 className="w-3 h-3 text-muted-foreground" />
+  1428→      </Button>
+  1429→    </div>
+  1430→  );
+  1431→}
+  1432→
+  1433→// ============================================
+  1434→// Activation Cost Editor Component
+  1435→// ============================================
+  1436→
+  1437→interface ActivationCostEditorProps {
+  1438→  cost: ActivationCost;
+  1439→  availableAttributes: AttributeDefinition[];
+  1440→  onChange: (updates: Partial<ActivationCost>) => void;
+  1441→  onDelete: () => void;
+  1442→}
+  1443→
+  1444→// Cost operator definitions with descriptions
+  1445→const COST_OPERATOR_OPTIONS: { value: CostOperator; label: string; description: string; symbol: string }[] = [
+  1446→  { value: '-', label: '-', description: 'Restar', symbol: '−' },
+  1447→  { value: '+', label: '+', description: 'Sumar', symbol: '+' },
+  1448→  { value: '*', label: '×', description: 'Multiplicar', symbol: '×' },
+  1449→  { value: '/', label: '÷', description: 'Dividir', symbol: '÷' },
+  1450→  { value: '=', label: '=', description: 'Establecer', symbol: '=' },
+  1451→  { value: 'set_min', label: 'Min', description: 'Establecer mínimo', symbol: '⌊' },
+  1452→  { value: 'set_max', label: 'Max', description: 'Establecer máximo', symbol: '⌈' },
+  1453→];
+  1454→
+  1455→function ActivationCostEditor({ cost, availableAttributes, onChange, onDelete }: ActivationCostEditorProps) {
+  1456→  const selectedOperator = COST_OPERATOR_OPTIONS.find(op => op.value === cost.operator);
+  1457→  const selectedAttr = availableAttributes.find(attr => attr.key === cost.attributeKey);
+  1458→  
+  1459→  return (
+  1460→    <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded p-2 flex-wrap">
+  1461→      <Coins className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+  1462→      
+  1463→      {/* Attribute selector */}
+  1464→      <Select
+  1465→        value={cost.attributeKey}
+  1466→        onValueChange={(value) => onChange({ attributeKey: value })}
+  1467→      >
+  1468→        <SelectTrigger className="h-7 w-24 text-xs">
+  1469→          <SelectValue placeholder="Atributo" />
+  1470→        </SelectTrigger>
+  1471→        <SelectContent>
+  1472→          {availableAttributes.map(attr => (
+  1473→            <SelectItem key={attr.id} value={attr.key}>{attr.name}</SelectItem>
+  1474→          ))}
+  1475→        </SelectContent>
+  1476→      </Select>
+  1477→      
+  1478→      {/* Operator selector with descriptions */}
+  1479→      <Tooltip>
+  1480→        <TooltipTrigger asChild>
+  1481→          <Select
+  1482→            value={cost.operator}
+  1483→            onValueChange={(value: CostOperator) => onChange({ operator: value })}
+  1484→          >
+  1485→            <SelectTrigger className="h-7 w-16 text-xs">
+  1486→              <SelectValue />
+  1487→            </SelectTrigger>
+  1488→            <SelectContent>
+  1489→              {COST_OPERATOR_OPTIONS.map(op => (
+  1490→                <SelectItem key={op.value} value={op.value}>
+  1491→                  <div className="flex items-center gap-2">
+  1492→                    <span className="font-mono w-4">{op.label}</span>
+  1493→                    <span className="text-muted-foreground text-xs">{op.description}</span>
+  1494→                  </div>
+  1495→                </SelectItem>
+  1496→              ))}
+  1497→            </SelectContent>
+  1498→          </Select>
+  1499→        </TooltipTrigger>
+  1500→        <TooltipContent className="max-w-xs">
+  1501→          <p className="font-medium">{selectedOperator?.description}</p>
+  1502→          <p className="text-xs text-muted-foreground mt-1">
+  1503→            {cost.operator === '-' 
+  1504→              ? `Resta ${cost.value} de ${selectedAttr?.name || cost.attributeKey}`
+  1505→              : cost.operator === '+'
+  1506→              ? `Suma ${cost.value} a ${selectedAttr?.name || cost.attributeKey}`
+  1507→              : cost.operator === '='
+  1508→              ? `Establece ${selectedAttr?.name || cost.attributeKey} en ${cost.value}`
+  1509→              : cost.operator === 'set_min'
+  1510→              ? `${selectedAttr?.name || cost.attributeKey} será al menos ${cost.value}`
+  1511→              : cost.operator === 'set_max'
+  1512→              ? `${selectedAttr?.name || cost.attributeKey} será como máximo ${cost.value}`
+  1513→              : `Aplica ${cost.operator}${cost.value} a ${selectedAttr?.name || cost.attributeKey}`
+  1514→            }
+  1515→          </p>
+  1516→        </TooltipContent>
+  1517→      </Tooltip>
+  1518→      
+  1519→      {/* Value input */}
+  1520→      <Input
+  1521→        type="number"
+  1522→        value={cost.value}
+  1523→        onChange={(e) => onChange({ value: parseFloat(e.target.value) || 0 })}
+  1524→        className="h-7 w-16 text-xs"
+  1525→      />
+  1526→      
+  1527→      {/* Description input (optional) */}
+  1528→      <Input
+  1529→        value={cost.description || ''}
+  1530→        onChange={(e) => onChange({ description: e.target.value || undefined })}
+  1531→        placeholder="Descripción opcional..."
+  1532→        className="h-7 w-32 text-xs"
+  1533→      />
+  1534→      
+  1535→      {/* Delete button */}
+  1536→      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onDelete}>
+  1537→        <Trash2 className="w-3 h-3 text-muted-foreground" />
+  1538→      </Button>
+  1539→    </div>
+  1540→  );
+  1541→}
+  1542→
+  1543→// ============================================
+  1544→// Threshold Effect Dialog - Edit a single threshold effect in a dialog
+  1545→// ============================================
+  1546→
+  1547→interface ThresholdEffectDialogProps {
+  1548→  effect: ThresholdEffect;
+  1549→  open: boolean;
+  1550→  onOpenChange: (open: boolean) => void;
+  1551→  onSave: (updatedEffect: ThresholdEffect) => void;
+  1552→  allAttributes: AttributeDefinition[];
+  1553→  availableTargets: StatsEditorProps['availableTargets'];
+  1554→  spritePacksV2?: SpritePackV2[];
+  1555→  attributeKey: string;  // The parent attribute's key (for self-referencing conditions)
+  1556→}
+  1557→
+  1558→function ThresholdEffectDialog({ effect, open, onOpenChange, onSave, allAttributes, availableTargets, spritePacksV2, attributeKey }: ThresholdEffectDialogProps) {
+  1559→  // Local state for editing
+  1560→  const [localEffect, setLocalEffect] = useState<ThresholdEffect>({ ...effect });
+  1561→
+  1562→  // Sync when effect prop changes or dialog opens
+  1563→  const prevOpenRef = useState(false);
+  1564→  if (open && !prevOpenRef[0]) {
+  1565→    setLocalEffect({ ...effect });
+  1566→    prevOpenRef[1](true);
+  1567→  }
+  1568→  if (!open && prevOpenRef[0]) {
+  1569→    prevOpenRef[1](false);
+  1570→  }
+  1571→
+  1572→  const updateEffect = (updates: Partial<ThresholdEffect>) => {
+  1573→    setLocalEffect(prev => ({ ...prev, ...updates }));
+  1574→  };
+  1575→
+  1576→  // Condition management
+  1577→  const addCondition = () => {
+  1578→    const newCondition: StatRequirement = {
+  1579→      attributeKey: attributeKey,  // Default to self attribute
+  1580→      operator: '<=',
+  1581→      value: 0,
+  1582→    };
+  1583→    updateEffect({ conditions: [...localEffect.conditions, newCondition] });
+  1584→  };
+  1585→
+  1586→  const removeCondition = (idx: number) => {
+  1587→    updateEffect({ conditions: localEffect.conditions.filter((_, i) => i !== idx) });
+  1588→  };
+  1589→
+  1590→  const updateCondition = (idx: number, updates: Partial<StatRequirement>) => {
+  1591→    const updated = [...localEffect.conditions];
+  1592→    updated[idx] = { ...updated[idx], ...updates };
+  1593→    updateEffect({ conditions: updated });
+  1594→  };
+  1595→
+  1596→  // Reward management
+  1597→  const addReward = (type: QuestReward['type']) => {
+  1598→    let newReward: QuestReward;
+  1599→    switch (type) {
+  1600→      case 'trigger':
+  1601→        newReward = createTriggerReward('sprite', '', 'self');
+  1602→        break;
+  1603→      case 'attribute':
+  1604→        newReward = {
+  1605→          id: `threshold-reward-${Date.now().toString(36)}`,
+  1606→          type: 'attribute',
+  1607→          attribute: { key: '', value: 0, action: 'set' }
+  1608→        };
+  1609→        break;
+  1610→      case 'target_attribute':
+  1611→        newReward = createTargetAttributeReward('', '', 0, 'set');
+  1612→        break;
+  1613→      case 'currency':
+  1614→        newReward = createCurrencyReward(0);
+  1615→        break;
+  1616→      case 'activate_sprite_pack':
+  1617→        newReward = createActivateSpritePackReward('', { targetMode: 'self' });
+  1618→        break;
+  1619→      case 'conditional_sprite_collection':
+  1620→        newReward = {
+  1621→          id: `threshold-reward-${Date.now().toString(36)}`,
+  1622→          type: 'conditional_sprite_collection',
+  1623→          conditional_sprite_collection: {
+  1624→            collectionId: '',
+  1625→            targetMode: 'self',
+  1626→          }
+  1627→        };
+  1628→        break;
+  1629→      default:
+  1630→        newReward = createTriggerReward('sprite', '', 'self');
+  1631→    }
+  1632→    updateEffect({ rewards: [...localEffect.rewards, newReward] });
+  1633→  };
+  1634→
+  1635→  const removeReward = (idx: number) => {
+  1636→    updateEffect({ rewards: localEffect.rewards.filter((_, i) => i !== idx) });
+  1637→  };
+  1638→
+  1639→  const updateReward = (idx: number, updatedReward: QuestReward) => {
+  1640→    const updated = [...localEffect.rewards];
+  1641→    updated[idx] = updatedReward;
+  1642→    updateEffect({ rewards: updated });
+  1643→  };
+  1644→
+  1645→  // Operator display helper
+  1646→  const operatorSymbol = (op: RequirementOperator) => {
+  1647→    switch (op) {
+  1648→      case '<': return '< Menor que';
+  1649→      case '<=': return '≤ Menor o igual';
+  1650→      case '>': return '> Mayor que';
+  1651→      case '>=': return '≥ Mayor o igual';
+  1652→      case '==': return '= Igual a';
+  1653→      case '!=': return '≠ Diferente de';
+  1654→      case 'between': return '↔ Entre';
+  1655→      case 'contains': return '∋ Contiene';
+  1656→      case 'not_contains': return '∌ No contiene';
+  1657→      default: return op;
+  1658→    }
+  1659→  };
+  1660→
+  1661→  return (
+  1662→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1663→      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+  1664→        <DialogHeader>
+  1665→          <DialogTitle className="flex items-center gap-2">
+  1666→            <Sparkles className="w-5 h-5 text-purple-400" />
+  1667→            Editar Efecto de Umbral
+  1668→          </DialogTitle>
+  1669→        </DialogHeader>
+  1670→
+  1671→        <div className="space-y-5 py-2">
+  1672→          {/* Name & Priority */}
+  1673→          <div className="grid grid-cols-3 gap-3">
+  1674→            <div className="col-span-2 space-y-1.5">
+  1675→              <Label className="text-xs font-medium">Nombre del Efecto</Label>
+  1676→              <Input
+  1677→                value={localEffect.name}
+  1678→                onChange={(e) => updateEffect({ name: e.target.value })}
+  1679→                placeholder="Ej: Vida Crítica, Maná Lleno..."
+  1680→                className="bg-background"
+  1681→              />
+  1682→            </div>
+  1683→            <div className="space-y-1.5">
+  1684→              <Label className="text-xs font-medium flex items-center gap-1">
+  1685→                <ArrowUpNarrowWide className="w-3 h-3" /> Prioridad
+  1686→              </Label>
+  1687→              <Input
+  1688→                type="number"
+  1689→                value={localEffect.priority}
+  1690→                onChange={(e) => updateEffect({ priority: Number(e.target.value) })}
+  1691→                className="bg-background"
+  1692→              />
+  1693→              <p className="text-[10px] text-muted-foreground">Mayor = más importante</p>
+  1694→            </div>
+  1695→          </div>
+  1696→
+  1697→          {/* Enabled toggle */}
+  1698→          <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
+  1699→            <Switch
+  1700→              checked={localEffect.enabled}
+  1701→              onCheckedChange={(checked) => updateEffect({ enabled: checked })}
+  1702→            />
+  1703→            <Label className="text-sm">{localEffect.enabled ? '✅ Activado' : '⏸ Desactivado'}</Label>
+  1704→          </div>
+  1705→
+  1706→          {/* Conditions Section */}
+  1707→          <div className="space-y-3 p-3 bg-purple-500/5 rounded-lg border border-purple-500/20">
+  1708→            <div className="flex items-center justify-between">
+  1709→              <div className="flex items-center gap-2">
+  1710→                <Layers className="w-4 h-4 text-purple-400" />
+  1711→                <Label className="text-sm font-medium text-purple-400">Condiciones</Label>
+  1712→                <Badge variant="outline" className="text-[10px] text-purple-300 border-purple-500/30">
+  1713→                  {localEffect.conditions.length} {localEffect.conditions.length === 1 ? 'regla' : 'reglas'}
+  1714→                </Badge>
+  1715→              </div>
+  1716→              <Button
+  1717→                variant="outline"
+  1718→                size="sm"
+  1719→                className="h-7 text-xs border-purple-500/30 hover:bg-purple-500/10"
+  1720→                onClick={addCondition}
+  1721→              >
+  1722→                <Plus className="w-3 h-3 mr-1" /> Condición
+  1723→              </Button>
+  1724→            </div>
+  1725→
+  1726→            {localEffect.conditions.length === 0 && (
+  1727→              <div className="text-center py-4 text-sm text-muted-foreground">
+  1728→                <p>Sin condiciones. Agrega una para definir cuándo se activa este efecto.</p>
+  1729→                <p className="text-xs mt-1">Ej: Vida ≤ 20, Maná ≥ 80</p>
+  1730→              </div>
+  1731→            )}
+  1732→
+  1733→            {localEffect.conditions.map((cond, condIdx) => (
+  1734→              <div key={condIdx} className="p-2 bg-background rounded border border-purple-500/10 space-y-2">
+  1735→                <div className="flex items-center justify-between">
+  1736→                  <Badge variant="outline" className="text-[10px] text-purple-300 border-purple-500/30">
+  1737→                    Condición {condIdx + 1}
+  1738→                  </Badge>
+  1739→                  <Button
+  1740→                    variant="ghost"
+  1741→                    size="sm"
+  1742→                    className="h-5 w-5 p-0 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+  1743→                    onClick={() => removeCondition(condIdx)}
+  1744→                  >
+  1745→                    <Trash2 className="w-3 h-3" />
+  1746→                  </Button>
+  1747→                </div>
+  1748→
+  1749→                <div className="grid grid-cols-[1fr_140px_1fr] gap-2">
+  1750→                  {/* Attribute selector */}
+  1751→                  <Select
+  1752→                    value={cond.targetCharacterId ? `__target__:${cond.targetCharacterId}:${cond.attributeKey}` : cond.attributeKey}
+  1753→                    onValueChange={(v) => {
+  1754→                      if (v.startsWith('__target__:')) {
+  1755→                        const parts = v.split(':');
+  1756→                        updateCondition(condIdx, { targetCharacterId: parts[1], attributeKey: parts[2] });
+  1757→                      } else {
+  1758→                        updateCondition(condIdx, { attributeKey: v, targetCharacterId: undefined, targetAttributeName: undefined });
+  1759→                      }
+  1760→                    }}
+  1761→                  >
+  1762→                    <SelectTrigger className="bg-background h-8 text-xs">
+  1763→                      <SelectValue placeholder="Atributo" />
+  1764→                    </SelectTrigger>
+  1765→                    <SelectContent>
+  1766→                      <SelectItem value={attributeKey}>
+  1767→                        🔢 {allAttributes.find(a => a.key === attributeKey)?.name || attributeKey} (self)
+  1768→                      </SelectItem>
+  1769→                      {allAttributes.filter(a => a.key !== attributeKey).map(attr => (
+  1770→                        <SelectItem key={attr.key} value={attr.key}>
+  1771→                          {attr.type === 'number' ? '🔢' : attr.type === 'keyword' ? '🏷️' : '📝'} {attr.name}
+  1772→                        </SelectItem>
+  1773→                      ))}
+  1774→                      {availableTargets.length > 0 && (
+  1775→                        <>
+  1776→                          <SelectItem value="__separator__" disabled className="text-[10px] text-muted-foreground">
+  1777→                            ─── Otros personajes ───
+  1778→                          </SelectItem>
+  1779→                          {availableTargets.flatMap(t =>
+  1780→                            t.attributes.map(attr => ({
+  1781→                              value: `__target__:${t.id}:${attr.key}`,
+  1782→                              label: `${t.id === '__user__' ? '👤' : '🎭'} ${t.name} → ${attr.name}`,
+  1783→                            }))
+  1784→                          ).map(item => (
+  1785→                            <SelectItem key={item.value} value={item.value}>
+  1786→                              {item.label}
+  1787→                            </SelectItem>
+  1788→                          ))}
+  1789→                        </>
+  1790→                      )}
+  1791→                    </SelectContent>
+  1792→                  </Select>
+  1793→
+  1794→                  {/* Operator selector */}
+  1795→                  <Select
+  1796→                    value={cond.operator}
+  1797→                    onValueChange={(v) => updateCondition(condIdx, { operator: v as RequirementOperator })}
+  1798→                  >
+  1799→                    <SelectTrigger className="bg-background h-8 text-xs">
+  1800→                      <SelectValue />
+  1801→                    </SelectTrigger>
+  1802→                    <SelectContent>
+  1803→                      <SelectItem value="<">{'< Menor que'}</SelectItem>
+  1804→                      <SelectItem value="<=">{'≤ Menor o igual'}</SelectItem>
+  1805→                      <SelectItem value=">">{'> Mayor que'}</SelectItem>
+  1806→                      <SelectItem value=">=">{'≥ Mayor o igual'}</SelectItem>
+  1807→                      <SelectItem value="==">{'= Igual a'}</SelectItem>
+  1808→                      <SelectItem value="!=">{'≠ Diferente de'}</SelectItem>
+  1809→                      <SelectItem value="between">{'↔ Entre'}</SelectItem>
+  1810→                      <SelectItem value="contains">{'∋ Contiene'}</SelectItem>
+  1811→                      <SelectItem value="not_contains">{'∌ No contiene'}</SelectItem>
+  1812→                    </SelectContent>
+  1813→                  </Select>
+  1814→
+  1815→                  {/* Value input */}
+  1816→                  {cond.operator === 'between' ? (
+  1817→                    <div className="flex items-center gap-1">
+  1818→                      <Input
+  1819→                        type="number"
+  1820→                        value={typeof cond.value === 'number' ? cond.value : Number(cond.value) || 0}
+  1821→                        onChange={(e) => updateCondition(condIdx, { value: Number(e.target.value) })}
+  1822→                        placeholder="Min"
+  1823→                        className="bg-background h-8 text-xs"
+  1824→                      />
+  1825→                      <span className="text-xs text-muted-foreground">y</span>
+  1826→                      <Input
+  1827→                        type="number"
+  1828→                        value={cond.valueMax || 0}
+  1829→                        onChange={(e) => updateCondition(condIdx, { valueMax: Number(e.target.value) })}
+  1830→                        placeholder="Max"
+  1831→                        className="bg-background h-8 text-xs"
+  1832→                      />
+  1833→                    </div>
+  1834→                  ) : (
+  1835→                    <Input
+  1836→                      type={allAttributes.find(a => a.key === cond.attributeKey)?.type === 'number' || !isNaN(Number(cond.value)) ? 'number' : 'text'}
+  1837→                      value={cond.value}
+  1838→                      onChange={(e) => {
+  1839→                        const v = e.target.value;
+  1840→                        const attrType = allAttributes.find(a => a.key === cond.attributeKey)?.type;
+  1841→                        updateCondition(condIdx, { value: attrType === 'number' || !isNaN(Number(v)) ? Number(v) : v });
+  1842→                      }}
+  1843→                      placeholder="Valor"
+  1844→                      className="bg-background h-8 text-xs"
+  1845→                    />
+  1846→                  )}
+  1847→                </div>
+  1848→              </div>
+  1849→            ))}
+  1850→
+  1851→            {/* AND/OR toggle for conditions */}
+  1852→            {localEffect.conditions.length >= 2 && (
+  1853→              <div className="flex items-center gap-1.5 pt-1">
+  1854→                <Button
+  1855→                  variant="outline"
+  1856→                  size="sm"
+  1857→                  className={cn(
+  1858→                    "h-6 px-2 text-[10px] transition-colors",
+  1859→                    (!localEffect.conditionOperator || localEffect.conditionOperator === 'AND')
+  1860→                      ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
+  1861→                      : "bg-muted/30 text-muted-foreground border-transparent"
+  1862→                  )}
+  1863→                  onClick={() => updateEffect({ conditionOperator: 'AND' })}
+  1864→                >
+  1865→                  Y (AND)
+  1866→                </Button>
+  1867→                <Button
+  1868→                  variant="outline"
+  1869→                  size="sm"
+  1870→                  className={cn(
+  1871→                    "h-6 px-2 text-[10px] transition-colors",
+  1872→                    localEffect.conditionOperator === 'OR'
+  1873→                      ? "bg-purple-500/20 text-purple-400 border-purple-500/30"
+  1874→                      : "bg-muted/30 text-muted-foreground border-transparent"
+  1875→                  )}
+  1876→                  onClick={() => updateEffect({ conditionOperator: 'OR' })}
+  1877→                >
+  1878→                  O (OR)
+  1879→                </Button>
+  1880→                <span className="text-[10px] text-muted-foreground">
+  1881→                  {(!localEffect.conditionOperator || localEffect.conditionOperator === 'AND')
+  1882→                    ? 'Todas deben cumplirse'
+  1883→                    : 'Al menos una debe cumplirse'}
+  1884→                </span>
+  1885→              </div>
+  1886→            )}
+  1887→          </div>
+  1888→
+  1889→          {/* Rewards Section */}
+  1890→          <div className="space-y-3 p-3 bg-amber-500/5 rounded-lg border border-amber-500/20">
+  1891→            <div className="flex items-center justify-between">
+  1892→              <div className="flex items-center gap-2">
+  1893→                <Gift className="w-4 h-4 text-amber-400" />
+  1894→                <Label className="text-sm font-medium text-amber-400">Recompensas</Label>
+  1895→                <Badge variant="outline" className="text-[10px] text-amber-300 border-amber-500/30">
+  1896→                  {localEffect.rewards.length} {localEffect.rewards.length === 1 ? 'recompensa' : 'recompensas'}
+  1897→                </Badge>
+  1898→              </div>
+  1899→            </div>
+  1900→
+  1901→            {/* Add reward buttons */}
+  1902→            <div className="flex flex-wrap gap-1.5">
+  1903→              <Button variant="outline" size="sm" className="h-6 text-[10px] border-purple-500/30 hover:bg-purple-500/10" onClick={() => addReward('trigger')}>
+  1904→                <Plus className="w-2.5 h-2.5 mr-0.5" /> ⚡ Efecto
+  1905→              </Button>
+  1906→              <Button variant="ghost" size="sm" className="h-6 text-[10px] text-amber-400 hover:bg-amber-500/10 border border-dashed border-amber-500/30" onClick={() => addReward('attribute')}>
+  1907→                <Plus className="w-2.5 h-2.5 mr-0.5" /> 📊 Atributo
+  1908→              </Button>
+  1909→              <Button variant="ghost" size="sm" className="h-6 text-[10px] text-blue-400 hover:bg-blue-500/10 border border-dashed border-blue-500/30" onClick={() => addReward('target_attribute')}>
+  1910→                <Plus className="w-2.5 h-2.5 mr-0.5" /> 🔗 Atributo Target
+  1911→              </Button>
+  1912→              <Button variant="ghost" size="sm" className="h-6 text-[10px] text-amber-400 hover:bg-amber-500/10 border border-dashed border-amber-500/30" onClick={() => addReward('currency')}>
+  1913→                <Plus className="w-2.5 h-2.5 mr-0.5" /> 💰 Divisa
+  1914→              </Button>
+  1915→              <Button variant="ghost" size="sm" className="h-6 text-[10px] text-emerald-400 hover:bg-emerald-500/10 border border-dashed border-emerald-500/30" onClick={() => addReward('activate_sprite_pack')}>
+  1916→                <Plus className="w-2.5 h-2.5 mr-0.5" /> 🎨 Sprite Pack
+  1917→              </Button>
+  1918→              <Button variant="ghost" size="sm" className="h-6 text-[10px] text-cyan-400 hover:bg-cyan-500/10 border border-dashed border-cyan-500/30" onClick={() => addReward('conditional_sprite_collection')}>
+  1919→                <Plus className="w-2.5 h-2.5 mr-0.5" /> 🖼️ Colección Condicional
+  1920→              </Button>
+  1921→            </div>
+  1922→
+  1923→            {localEffect.rewards.length === 0 && (
+  1924→              <div className="text-center py-3 text-sm text-muted-foreground">
+  1925→                Sin recompensas. Agrega efectos, atributos o sprite packs.
+  1926→              </div>
+  1927→            )}
+  1928→
+  1929→            {localEffect.rewards.map((reward, rewardIdx) => {
+  1930→              const normalized = normalizeReward(reward);
+  1931→              const isTrig = normalized.type === 'trigger';
+  1932→              const isAttr = normalized.type === 'attribute';
+  1933→              const isTargetAttr = normalized.type === 'target_attribute';
+  1934→              const isCurrency = normalized.type === 'currency';
+  1935→              const isSpritePack = normalized.type === 'activate_sprite_pack';
+  1936→              const isCondSprite = normalized.type === 'conditional_sprite_collection';
+  1937→
+  1938→              return (
+  1939→                <div key={reward.id} className={`p-2.5 rounded border space-y-2 ${
+  1940→                  isSpritePack ? 'bg-emerald-500/5 border-emerald-500/10' :
+  1941→                  isCondSprite ? 'bg-cyan-500/5 border-cyan-500/10' :
+  1942→                  isAttr ? 'bg-amber-500/5 border-amber-500/10' :
+  1943→                  isTargetAttr ? 'bg-blue-500/5 border-blue-500/10' :
+  1944→                  isCurrency ? 'bg-amber-500/5 border-amber-500/10' :
+  1945→                  'bg-purple-500/5 border-purple-500/10'
+  1946→                }`}>
+  1947→                  <div className="flex items-center gap-2">
+  1948→                    <Badge variant="outline" className={`text-[10px] ${
+  1949→                      isSpritePack ? 'text-emerald-400 border-emerald-500/30' :
+  1950→                      isCondSprite ? 'text-cyan-400 border-cyan-500/30' :
+  1951→                      isAttr ? 'text-amber-400 border-amber-500/30' :
+  1952→                      isTargetAttr ? 'text-blue-400 border-blue-500/30' :
+  1953→                      isCurrency ? 'text-amber-400 border-amber-500/30' :
+  1954→                      'text-purple-400 border-purple-500/30'
+  1955→                    }`}>
+  1956→                      {isSpritePack ? '🎨 Sprite Pack' : isCondSprite ? '🖼️ Col. Condicional' : isAttr ? '📊 Atributo' : isTargetAttr ? '🔗 Atributo Target' : isCurrency ? '💰 Divisa' : '⚡ Trigger'}
+  1957→                    </Badge>
+  1958→                    <span className="text-[10px] text-muted-foreground ml-auto">
+  1959→                      {describeReward(normalized)}
+  1960→                    </span>
+  1961→                    <Button
+  1962→                      variant="ghost"
+  1963→                      size="sm"
+  1964→                      className="h-5 w-5 p-0 text-red-400 hover:bg-red-500/10"
+  1965→                      onClick={() => removeReward(rewardIdx)}
+  1966→                    >
+  1967→                      <X className="w-3 h-3" />
+  1968→                    </Button>
+  1969→                  </div>
+  1970→
+  1971→                  {/* Trigger reward editor */}
+  1972→                  {isTrig && normalized.trigger && (
+  1973→                    <div className="grid grid-cols-3 gap-2">
+  1974→                      <Select
+  1975→                        value={normalized.trigger.category}
+  1976→                        onValueChange={(v) => updateReward(rewardIdx, { ...reward, trigger: { ...normalized.trigger!, category: v as TriggerCategory } })}
+  1977→                      >
+  1978→                        <SelectTrigger className="bg-background h-7 text-xs">
+  1979→                          <SelectValue />
+  1980→                        </SelectTrigger>
+  1981→                        <SelectContent>
+  1982→                          <SelectItem value="sprite">🖼️ Sprite</SelectItem>
+  1983→                          <SelectItem value="sound">🔊 Sonido</SelectItem>
+  1984→                          <SelectItem value="background">🌄 Fondo</SelectItem>
+  1985→                        </SelectContent>
+  1986→                      </Select>
+  1987→                      <Input
+  1988→                        value={normalized.trigger.key}
+  1989→                        onChange={(e) => updateReward(rewardIdx, { ...reward, trigger: { ...normalized.trigger!, key: e.target.value } })}
+  1990→                        placeholder="Key"
+  1991→                        className="bg-background h-7 text-xs"
+  1992→                      />
+  1993→                      <Select
+  1994→                        value={normalized.trigger.targetMode}
+  1995→                        onValueChange={(v) => updateReward(rewardIdx, { ...reward, trigger: { ...normalized.trigger!, targetMode: v as TriggerTargetMode } })}
+  1996→                      >
+  1997→                        <SelectTrigger className="bg-background h-7 text-xs">
+  1998→                          <SelectValue />
+  1999→                        </SelectTrigger>
+  2000→                        <SelectContent>
+
+[showing lines 1-2000 of 5539; use offset=2001 with limit to continue reading]

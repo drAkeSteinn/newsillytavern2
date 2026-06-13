@@ -1,0 +1,1092 @@
+     1→     1→'use client';
+     2→     2→
+     3→     3→import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
+     4→     4→import { useTavernStore } from '@/store/tavern-store';
+     5→     5→import type { TTSWebUIConfig } from '@/types';
+     6→     6→import { Button } from '@/components/ui/button';
+     7→     7→import { Input } from '@/components/ui/input';
+     8→     8→import { Textarea } from '@/components/ui/textarea';
+     9→     9→import { Label } from '@/components/ui/label';
+    10→    10→import { Badge } from '@/components/ui/badge';
+    11→    11→import { ScrollArea } from '@/components/ui/scroll-area';
+    12→    12→import {
+    13→    13→  Tooltip,
+    14→    14→  TooltipContent,
+    15→    15→  TooltipProvider,
+    16→    16→  TooltipTrigger,
+    17→    17→} from '@/components/ui/tooltip';
+    18→    18→import { cn } from '@/lib/utils';
+    19→    19→import { AnimatePresence, motion } from 'framer-motion';
+    20→    20→import { 
+    21→    21→  Camera, 
+    22→    22→  X, 
+    23→    23→  Plus, 
+    24→    24→  Sparkles, 
+    25→    25→  FileText, 
+    26→    26→  MessageSquare, 
+    27→    27→  Mic,
+    28→    28→  Image as ImageIcon,
+    29→    29→  Loader2,
+    30→    30→  HelpCircle,
+    31→    31→  Palette,
+    32→    32→  Package,
+    33→    33→  Layers,
+    34→    34→  Activity,
+    35→    35→  BookOpen,
+    36→    36→  ScrollText,
+    37→    37→  Database
+    38→    38→} from 'lucide-react';
+    39→    39→import type { CharacterCard, CharacterVoiceSettings } from '@/types';
+    40→    40→import { DEFAULT_CHARACTER_VOICE_SETTINGS } from '@/types';
+    41→    41→import { SpriteCollectionSelector } from './sprite-collection-selector';
+    42→    42→import { SpriteManager } from './sprite-manager';
+    43→    43→import { HUDSelector } from './hud-selector';
+    44→    44→import { LorebookSelector } from './lorebook-selector';
+    45→    45→import { QuestSelector } from './quest-selector';
+    46→    46→import { NamespaceSelector } from './namespace-selector';
+    47→    47→import { StatsEditor } from './stats-editor';
+    48→    48→import { CharacterVoicePanel } from './character-voice-panel';
+    49→    49→import { ProactiveMessagesPanel } from './proactive-messages-panel';
+    50→    50→import { QuickRepliesPanel } from './quick-replies-panel';
+    51→    51→import { LegacyMigrationPanel } from './legacy-migration-panel';
+    52→    52→import { getLogger } from '@/lib/logger';
+    53→    53→
+    54→    54→const editorLogger = getLogger('editor');
+    55→    55→
+    56→    56→interface CharacterEditorProps {
+    57→    57→  characterId: string | null;
+    58→    58→  open: boolean;
+    59→    59→  onClose: () => void;
+    60→    60→}
+    61→    61→
+    62→    62→const characterEditorTabs = [
+    63→    63→  { value: 'info', label: 'Información', icon: Palette },
+    64→    64→  { value: 'description', label: 'Descripción', icon: FileText },
+    65→    65→  { value: 'dialogue', label: 'Diálogo', icon: MessageSquare },
+    66→    66→  { value: 'prompt', label: 'Prompts', icon: Sparkles },
+    67→    67→  { value: 'sprites', label: 'Sprites', icon: Layers },
+    68→    68→  { value: 'stats', label: 'Stats', icon: Activity },
+    69→    69→  { value: 'voice', label: 'Voz', icon: Mic },
+    70→    70→  { value: 'proactive', label: 'Proactivo', icon: Sparkles },
+    71→    71→  { value: 'quickreplies', label: 'Resp. Rápidas', icon: MessageSquare },
+    72→    72→  { value: 'migration', label: 'Migración', icon: Database },
+    73→    73→];
+    74→    74→
+    75→    75→const defaultCharacter: Omit<CharacterCard, 'id' | 'createdAt' | 'updatedAt'> = {
+    76→    76→  name: '',
+    77→    77→  description: '',
+    78→    78→  personality: '',
+    79→    79→  scenario: '',
+    80→    80→  firstMes: '',
+    81→    81→  mesExample: '',
+    82→    82→  creatorNotes: '',
+    83→    83→  characterNote: '',
+    84→    84→  systemPrompt: '',
+    85→    85→  postHistoryInstructions: '',
+    86→    86→  alternateGreetings: [],
+    87→    87→  tags: [],
+    88→    88→  avatar: '',
+    89→    89→  sprites: [],
+    90→    90→  voice: null,
+    91→    91→  lorebookIds: [],
+    92→    92→  questTemplateIds: [],
+    93→    93→  proactiveMessages: undefined,
+    94→    94→  quickReplies: undefined,
+    95→    95→};
+    96→    96→
+    97→    97→export function CharacterEditor({ characterId, open, onClose }: CharacterEditorProps) {
+    98→    98→  // Use individual selectors to avoid re-rendering on unrelated store changes
+    99→    99→  const addCharacter = useTavernStore((s) => s.addCharacter);
+   100→   100→  const updateCharacter = useTavernStore((s) => s.updateCharacter);
+   101→   101→  const getCharacterById = useTavernStore((s) => s.getCharacterById);
+   102→   102→  const characters = useTavernStore((s) => s.characters);
+   103→   103→  const personas = useTavernStore((s) => s.personas);
+   104→   104→  const activePersonaId = useTavernStore((s) => s.activePersonaId);
+   105→   105→  const questTemplates = useTavernStore((s) => s.questTemplates);
+   106→   106→
+   107→   107→  // Active tab state
+   108→   108→  const [activeTab, setActiveTab] = useState('info');
+   109→   109→
+   110→   110→  // Global TTS config for voice panel (OmniVoice provider awareness)
+   111→   111→  const [globalTTSConfig, setGlobalTTSConfig] = useState<TTSWebUIConfig | null>(null);
+   112→   112→
+   113→   113→  const loadTTSConfig = useCallback(async () => {
+   114→   114→    try {
+   115→   115→      const response = await fetch('/api/tts/config');
+   116→   116→      const data = await response.json();
+   117→   117→      if (data.success && data.config?.tts) {
+   118→   118→        setGlobalTTSConfig(data.config.tts);
+   119→   119→      }
+   120→   120→    } catch {
+   121→   121→      // Silently fail — TTS config is optional for voice panel
+   122→   122→    }
+   123→   123→  }, []);
+   124→   124→
+   125→   125→  useEffect(() => {
+   126→   126→    if (open) {
+   127→   127→      loadTTSConfig();
+   128→   128→    }
+   129→   129→  }, [open, loadTTSConfig]);
+   130→   130→
+   131→   131→  // Reset tab when opening
+   132→   132→  useEffect(() => {
+   133→   133→    if (open) {
+   134→   134→      setActiveTab('info');
+   135→   135→    }
+   136→   136→  }, [open]);
+   137→   137→
+   138→   138→  // Escape key handler
+   139→   139→  const onCloseRef = useRef(onClose);
+   140→   140→  onCloseRef.current = onClose;
+   141→   141→
+   142→   142→  useEffect(() => {
+   143→   143→    if (!open) return;
+   144→   144→    const handleKeyDown = (e: KeyboardEvent) => {
+   145→   145→      if (e.key === 'Escape') {
+   146→   146→        e.preventDefault();
+   147→   147→        onCloseRef.current();
+   148→   148→      }
+   149→   149→    };
+   150→   150→    document.addEventListener('keydown', handleKeyDown);
+   151→   151→    return () => document.removeEventListener('keydown', handleKeyDown);
+   152→   152→  }, [open]);
+   153→   153→
+   154→   154→  // Get active persona
+   155→   155→  const activePersona = personas.find(p => p.id === activePersonaId);
+   156→   156→
+   157→   157→  // Get all characters except the one being edited (for target selection in invitations)
+   158→   158→  // Also include the active persona if it has solicitudes configured
+   159→   159→  const allCharacters = useMemo(() => {
+   160→   160→    const result = characters
+   161→   161→      .filter(c => c.id !== characterId)
+   162→   162→      .map(c => ({
+   163→   163→        id: c.id,
+   164→   164→        name: c.name,
+   165→   165→        solicitudDefinitions: c.statsConfig?.solicitudDefinitions || []
+   166→   166→      }));
+   167→   167→    
+   168→   168→    // Add active persona if it has solicitudes configured
+   169→   169→    if (activePersona?.statsConfig?.enabled && 
+   170→   170→        (activePersona.statsConfig.solicitudDefinitions?.length || 0) > 0) {
+   171→   171→      result.push({
+   172→   172→        id: '__user__',
+   173→   173→        name: activePersona.name || 'Usuario',
+   174→   174→        solicitudDefinitions: activePersona.statsConfig.solicitudDefinitions || []
+   175→   175→      });
+   176→   176→    }
+   177→   177→    
+   178→   178→    return result;
+   179→   179→  }, [characters, characterId, activePersona]);
+   180→   180→
+   181→   181→  // Build available targets for target_attribute rewards: other characters + persona
+   182→   182→  const availableTargets = useMemo(() => {
+   183→   183→    const targets: Array<{
+   184→   184→      id: string;
+   185→   185→      name: string;
+   186→   186→      attributes: Array<{ key: string; name: string; type: 'number' | 'keyword' | 'text'; min?: number; max?: number }>;
+   187→   187→      spritePacks?: Array<{ id: string; name: string; conditionalMode?: boolean; spriteCount: number }>;
+   188→   188→    }> = [];
+   189→   189→    // Helper: map attributes filtering out those without a valid key
+   190→   190→    const mapAttrs = (attrs: Array<{ key: string; name: string; type: 'number' | 'keyword' | 'text'; min?: number; max?: number }>) =>
+   191→   191→      attrs.filter(a => a.key && a.key.trim() !== '').map(a => ({
+   192→   192→        key: a.key,
+   193→   193→        name: a.name,
+   194→   194→        type: a.type,
+   195→   195→        min: a.min,
+   196→   196→        max: a.max,
+   197→   197→      }));
+   198→   198→
+   199→   199→    // Helper: map sprite packs for a character
+   200→   200→    const mapPacks = (packs: Array<{ id: string; name: string; conditionalMode?: boolean; sprites: unknown[] }>) =>
+   201→   201→      packs.map(p => ({ id: p.id, name: p.name, conditionalMode: p.conditionalMode, spriteCount: p.sprites.length }));
+   202→   202→
+   203→   203→    // Add OTHER characters with attributes (exclude the one being edited)
+   204→   204→    characters.forEach(c => {
+   205→   205→      const attrs = mapAttrs(c.statsConfig?.attributes || []);
+   206→   206→      if (c.id !== characterId && c.statsConfig?.enabled && attrs.length > 0) {
+   207→   207→        targets.push({
+   208→   208→          id: c.id,
+   209→   209→          name: c.name,
+   210→   210→          attributes: attrs,
+   211→   211→          spritePacks: mapPacks(c.spritePacksV2 || []),
+   212→   212→        });
+   213→   213→      }
+   214→   214→    });
+   215→   215→    // Add active persona with attributes
+   216→   216→    if (activePersona?.statsConfig?.enabled) {
+   217→   217→      const attrs = mapAttrs(activePersona.statsConfig.attributes || []);
+   218→   218→      if (attrs.length > 0) {
+   219→   219→        targets.push({
+   220→   220→          id: '__user__',
+   221→   221→          name: activePersona.name || 'Persona',
+   222→   222→          attributes: attrs,
+   223→   223→          spritePacks: mapPacks(activePersona.spritePacksV2 || []),
+   224→   224→        });
+   225→   225→      }
+   226→   226→    }
+   227→   227→    return targets;
+   228→   228→  }, [characters, characterId, activePersona]);
+   229→   229→
+   230→   230→  // Initialize character data based on characterId
+   231→   231→  const getInitialCharacter = () => {
+   232→   232→    if (characterId) {
+   233→   233→      const existing = getCharacterById(characterId);
+   234→   234→      if (existing) {
+   235→   235→        return existing;
+   236→   236→      }
+   237→   237→    }
+   238→   238→    return defaultCharacter;
+   239→   239→  };
+   240→   240→
+   241→   241→  const [character, setCharacter] = useState(getInitialCharacter);
+   242→   242→  const [newTag, setNewTag] = useState('');
+   243→   243→  const [uploading, setUploading] = useState(false);
+   244→   244→  const fileInputRef = useRef<HTMLInputElement>(null);
+   245→   245→
+   246→   246→  const handleSave = () => {
+   247→   247→    if (!character.name.trim()) {
+   248→   248→      alert('El nombre del personaje es requerido');
+   249→   249→      return;
+   250→   250→    }
+   251→   251→
+   252→   252→    if (characterId) {
+   253→   253→      updateCharacter(characterId, character);
+   254→   254→    } else {
+   255→   255→      addCharacter(character);
+   256→   256→    }
+   257→   257→    onClose();
+   258→   258→  };
+   259→   259→
+   260→   260→  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+   261→   261→    const file = e.target.files?.[0];
+   262→   262→    if (!file) return;
+   263→   263→
+   264→   264→    // Validate file size (max 5MB)
+   265→   265→    if (file.size > 5 * 1024 * 1024) {
+   266→   266→      alert('La imagen es muy grande. El tamaño máximo es 5MB.');
+   267→   267→      return;
+   268→   268→    }
+   269→   269→
+   270→   270→    // Validate file type
+   271→   271→    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+   272→   272→    if (!allowedTypes.includes(file.type)) {
+   273→   273→      alert('Formato no soportado. Usa JPEG, PNG, GIF o WebP.');
+   274→   274→      return;
+   275→   275→    }
+   276→   276→
+   277→   277→    setUploading(true);
+   278→   278→
+   279→   279→    try {
+   280→   280→      // Upload via API to save as file
+   281→   281→      const formData = new FormData();
+   282→   282→      formData.append('file', file);
+   283→   283→      formData.append('type', 'avatar');
+   284→   284→
+   285→   285→      const res = await fetch('/api/upload', {
+   286→   286→        method: 'POST',
+   287→   287→        body: formData,
+   288→   288→      });
+   289→   289→
+   290→   290→      const data = await res.json();
+   291→   291→
+   292→   292→      if (res.ok && data.success) {
+   293→   293→        setCharacter(prev => ({ ...prev, avatar: data.url }));
+   294→   294→      } else {
+   295→   295→        alert(data.error || 'Error al subir la imagen');
+   296→   296→      }
+   297→   297→    } catch (error) {
+   298→   298→      editorLogger.error('Upload error', { error });
+   299→   299→      alert('Error de conexión al subir la imagen');
+   300→   300→    } finally {
+   301→   301→      setUploading(false);
+   302→   302→      if (fileInputRef.current) {
+   303→   303→        fileInputRef.current.value = '';
+   304→   304→      }
+   305→   305→    }
+   306→   306→  };
+   307→   307→
+   308→   308→  const handleAddTag = () => {
+   309→   309→    if (newTag.trim() && !character.tags.includes(newTag.trim())) {
+   310→   310→      setCharacter(prev => ({
+   311→   311→        ...prev,
+   312→   312→        tags: [...prev.tags, newTag.trim()]
+   313→   313→      }));
+   314→   314→      setNewTag('');
+   315→   315→    }
+   316→   316→  };
+   317→   317→
+   318→   318→  const handleRemoveTag = (tag: string) => {
+   319→   319→    setCharacter(prev => ({
+   320→   320→      ...prev,
+   321→   321→      tags: prev.tags.filter(t => t !== tag)
+   322→   322→    }));
+   323→   323→  };
+   324→   324→
+   325→   325→  // Tab content renderers
+   326→   326→  const renderInfoTab = () => (
+   327→   327→    <div className="space-y-6">
+   328→   328→      {/* Banner */}
+   329→   329→      <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-500/20 rounded-lg">
+   330→   330→        <Palette className="w-4 h-4 text-blue-500 shrink-0" />
+   331→   331→        <p className="text-xs text-muted-foreground">
+   332→   332→          Configura <strong>avatar</strong>, <strong>información básica</strong> y <strong>asignaciones</strong> del personaje.
+   333→   333→        </p>
+   334→   334→      </div>
+   335→   335→
+   336→   336→      {/* ═══ Section: Identidad ═══ */}
+   337→   337→      <div className="rounded-lg border bg-card p-5">
+   338→   338→        <div className="flex items-center gap-2 mb-4">
+   339→   339→          <div className="flex items-center justify-center w-6 h-6 rounded-md bg-blue-500/10">
+   340→   340→            <Palette className="w-3.5 h-3.5 text-blue-500" />
+   341→   341→          </div>
+   342→   342→          <h3 className="text-sm font-semibold">Identidad</h3>
+   343→   343→        </div>
+   344→   344→
+   345→   345→        <div className="flex gap-6 items-start">
+   346→   346→          {/* Avatar */}
+   347→   347→          <div className="flex-shrink-0">
+   348→   348→            <Label className="text-xs font-medium mb-2 block">Avatar</Label>
+   349→   349→            <Tooltip>
+   350→   350→              <TooltipTrigger asChild>
+   351→   351→                <div 
+   352→   352→                  className={cn(
+   353→   353→                    "w-32 h-32 rounded-xl overflow-hidden bg-muted border-2 border-dashed border-muted-foreground/25 flex items-center justify-center transition-colors",
+   354→   354→                    !uploading && "cursor-pointer hover:border-primary/50 hover:bg-muted/50"
+   355→   355→                  )}
+   356→   356→                  onClick={() => !uploading && fileInputRef.current?.click()}
+   357→   357→                >
+   358→   358→                  {uploading ? (
+   359→   359→                    <div className="text-center text-muted-foreground">
+   360→   360→                      <Loader2 className="w-7 h-7 mx-auto animate-spin" />
+   361→   361→                      <span className="text-[10px] mt-1 block">Subiendo...</span>
+   362→   362→                    </div>
+   363→   363→                  ) : character.avatar ? (
+   364→   364→                    <img 
+   365→   365→                      src={character.avatar} 
+   366→   366→                      alt={character.name || 'Avatar'}
+   367→   367→                      className="w-full h-full object-cover"
+   368→   368→                    />
+   369→   369→                  ) : (
+   370→   370→                    <div className="text-center text-muted-foreground">
+   371→   371→                      <Camera className="w-8 h-8 mx-auto mb-1 opacity-50" />
+   372→   372→                      <span className="text-[10px]">Subir avatar</span>
+   373→   373→                    </div>
+   374→   374→                  )}
+   375→   375→                </div>
+   376→   376→              </TooltipTrigger>
+   377→   377→              <TooltipContent>
+   378→   378→                <p>Haz clic para subir avatar (máx 5MB)</p>
+   379→   379→              </TooltipContent>
+   380→   380→            </Tooltip>
+   381→   381→            <input
+   382→   382→              type="file"
+   383→   383→              ref={fileInputRef}
+   384→   384→              className="hidden"
+   385→   385→              accept="image/*"
+   386→   386→              onChange={handleAvatarUpload}
+   387→   387→              disabled={uploading}
+   388→   388→            />
+   389→   389→          </div>
+   390→   390→
+   391→   391→          {/* Name + Tags */}
+   392→   392→          <div className="flex-1 min-w-0 space-y-4">
+   393→   393→            {/* Name field */}
+   394→   394→            <div>
+   395→   395→              <div className="flex items-center gap-1.5 mb-1.5">
+   396→   396→                <Label htmlFor="name" className="text-sm font-medium">Nombre *</Label>
+   397→   397→                <Tooltip>
+   398→   398→                  <TooltipTrigger asChild>
+   399→   399→                    <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+   400→   400→                  </TooltipTrigger>
+   401→   401→                  <TooltipContent className="max-w-xs">
+   402→   402→                    <p>El nombre del personaje que se mostrará en el chat.</p>
+   403→   403→                  </TooltipContent>
+   404→   404→                </Tooltip>
+   405→   405→              </div>
+   406→   406→              <Input
+   407→   407→                id="name"
+   408→   408→                value={character.name}
+   409→   409→                onChange={(e) => setCharacter(prev => ({ ...prev, name: e.target.value }))}
+   410→   410→                placeholder="Nombre del personaje"
+   411→   411→                className="h-10"
+   412→   412→              />
+   413→   413→            </div>
+   414→   414→
+   415→   415→            {/* Tags input */}
+   416→   416→            <div>
+   417→   417→              <div className="flex items-center gap-1.5 mb-1.5">
+   418→   418→                <Label className="text-sm font-medium">Etiquetas</Label>
+   419→   419→                <Tooltip>
+   420→   420→                  <TooltipTrigger asChild>
+   421→   421→                    <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+   422→   422→                  </TooltipTrigger>
+   423→   423→                  <TooltipContent className="max-w-xs">
+   424→   424→                    <p>Tags para organizar y buscar personajes.</p>
+   425→   425→                  </TooltipContent>
+   426→   426→                </Tooltip>
+   427→   427→              </div>
+   428→   428→              <div className="flex gap-2">
+   429→   429→                <Input
+   430→   430→                  value={newTag}
+   431→   431→                  onChange={(e) => setNewTag(e.target.value)}
+   432→   432→                  placeholder="Agregar etiqueta..."
+   433→   433→                  onKeyDown={(e) => e.key === 'Enter' && handleAddTag()}
+   434→   434→                  className="h-9 flex-1"
+   435→   435→                />
+   436→   436→                <Button variant="outline" size="sm" className="h-9 px-4" onClick={handleAddTag}>
+   437→   437→                  <Plus className="w-3.5 h-3.5 mr-1" />
+   438→   438→                  Agregar
+   439→   439→                </Button>
+   440→   440→              </div>
+   441→   441→              {character.tags.length > 0 && (
+   442→   442→                <div className="flex flex-wrap gap-1.5 mt-2">
+   443→   443→                  {character.tags.map((tag) => (
+   444→   444→                    <Badge key={tag} variant="secondary" className="gap-1 text-xs py-1 px-2.5">
+   445→   445→                      {tag}
+   446→   446→                      <button
+   447→   447→                        type="button"
+   448→   448→                        className="ml-0.5 rounded-full p-0.5 hover:bg-destructive/20 hover:text-destructive transition-colors"
+   449→   449→                        onClick={(e) => { e.stopPropagation(); handleRemoveTag(tag); }}
+   450→   450→                      >
+   451→   451→                        <X className="w-3 h-3" />
+   452→   452→                      </button>
+   453→   453→                    </Badge>
+   454→   454→                  ))}
+   455→   455→                </div>
+   456→   456→              )}
+   457→   457→            </div>
+   458→   458→          </div>
+   459→   459→        </div>
+   460→   460→      </div>
+   461→   461→
+   462→   462→      {/* ═══ Section: Asignaciones ═══ */}
+   463→   463→      <div className="rounded-lg border bg-card p-5">
+   464→   464→        <div className="flex items-center gap-2 mb-4">
+   465→   465→          <div className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-500/10">
+   466→   466→            <Package className="w-3.5 h-3.5 text-amber-500" />
+   467→   467→          </div>
+   468→   468→          <h3 className="text-sm font-semibold">Asignaciones</h3>
+   469→   469→          <span className="text-xs text-muted-foreground ml-1">— Recursos vinculados a este personaje</span>
+   470→   470→        </div>
+   471→   471→
+   472→   472→        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+   473→   473→          {/* HUD Selector */}
+   474→   474→          <div className="space-y-2">
+   475→   475→            <div className="flex items-center gap-2">
+   476→   476→              <Layers className="w-4 h-4 text-blue-500" />
+   477→   477→              <Label className="text-sm font-medium">HUD</Label>
+   478→   478→              <Tooltip>
+   479→   479→                <TooltipTrigger asChild>
+   480→   480→                  <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+   481→   481→                </TooltipTrigger>
+   482→   482→                <TooltipContent className="max-w-xs">
+   483→   483→                  <p>Selecciona un template de HUD para mostrar estadísticas del personaje.</p>
+   484→   484→                </TooltipContent>
+   485→   485→              </Tooltip>
+   486→   486→            </div>
+   487→   487→            <HUDSelector
+   488→   488→              value={character.hudTemplateId}
+   489→   489→              onChange={(hudTemplateId) => setCharacter(prev => ({ ...prev, hudTemplateId }))}
+   490→   490→              placeholder="Sin HUD"
+   491→   491→            />
+   492→   492→          </div>
+   493→   493→
+   494→   494→          {/* Sprite Collection Selector */}
+   495→   495→          <div className="space-y-2">
+   496→   496→            <div className="flex items-center gap-2">
+   497→   497→              <ImageIcon className="w-4 h-4 text-green-500" />
+   498→   498→              <Label className="text-sm font-medium">Colección de Sprites</Label>
+   499→   499→              <Tooltip>
+   500→   500→                <TooltipTrigger asChild>
+   501→   501→                  <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+   502→   502→                </TooltipTrigger>
+   503→   503→                <TooltipContent className="max-w-xs">
+   504→   504→                  <p>Selecciona una colección de sprites para este personaje.</p>
+   505→   505→                </TooltipContent>
+   506→   506→              </Tooltip>
+   507→   507→            </div>
+   508→   508→            <SpriteCollectionSelector
+   509→   509→              value={character.spriteConfig?.collection}
+   510→   510→              onChange={(collectionName) => setCharacter(prev => ({ 
+   511→   511→                ...prev, 
+   512→   512→                spriteConfig: { 
+   513→   513→                  ...prev.spriteConfig, 
+   514→   514→                  enabled: true,
+   515→   515→                  collection: collectionName,
+   516→   516→                  sprites: prev.spriteConfig?.sprites || {},
+   517→   517→                  stateCollections: prev.spriteConfig?.stateCollections || {}
+   518→   518→                } 
+   519→   519→              }))}
+   520→   520→              placeholder="Sin sprites"
+   521→   521→            />
+   522→   522→          </div>
+   523→   523→
+   524→   524→          {/* Lorebook Selector */}
+   525→   525→          <div className="space-y-2">
+   526→   526→            <div className="flex items-center gap-2">
+   527→   527→              <BookOpen className="w-4 h-4 text-amber-500" />
+   528→   528→              <Label className="text-sm font-medium">Lorebooks</Label>
+   529→   529→              <Tooltip>
+   530→   530→                <TooltipTrigger asChild>
+   531→   531→                  <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+   532→   532→                </TooltipTrigger>
+   533→   533→                <TooltipContent className="max-w-xs">
+   534→   534→                  <p>Lorebooks que se inyectarán en el prompt al chatear con este personaje.</p>
+   535→   535→                </TooltipContent>
+   536→   536→              </Tooltip>
+   537→   537→            </div>
+   538→   538→            <LorebookSelector
+   539→   539→              value={character.lorebookIds}
+   540→   540→              onChange={(lorebookIds) => setCharacter(prev => ({ ...prev, lorebookIds }))}
+   541→   541→              placeholder="Sin lorebooks asignados"
+   542→   542→            />
+   543→   543→          </div>
+   544→   544→
+   545→   545→          {/* Quest Templates Selector */}
+   546→   546→          <div className="space-y-2">
+   547→   547→            <div className="flex items-center gap-2">
+   548→   548→              <ScrollText className="w-4 h-4 text-purple-500" />
+   549→   549→              <Label className="text-sm font-medium">Misiones</Label>
+   550→   550→              <Tooltip>
+   551→   551→                <TooltipTrigger asChild>
+   552→   552→                  <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+   553→   553→                </TooltipTrigger>
+   554→   554→                <TooltipContent className="max-w-xs">
+   555→   555→                  <p>Templates de misiones disponibles para este personaje.</p>
+   556→   556→                </TooltipContent>
+   557→   557→              </Tooltip>
+   558→   558→            </div>
+   559→   559→            <QuestSelector
+   560→   560→              value={character.questTemplateIds}
+   561→   561→              onChange={(questTemplateIds) => setCharacter(prev => ({ ...prev, questTemplateIds }))}
+   562→   562→              placeholder="Sin misiones asignadas"
+   563→   563→            />
+   564→   564→          </div>
+   565→   565→
+   566→   566→          {/* Embedding Namespaces Selector - full width */}
+   567→   567→          <div className="space-y-2 md:col-span-2">
+   568→   568→            <div className="flex items-center gap-2">
+   569→   569→              <Database className="w-4 h-4 text-violet-500" />
+   570→   570→              <Label className="text-sm font-medium">Colecciones de Contexto</Label>
+   571→   571→              <Tooltip>
+   572→   572→                <TooltipTrigger asChild>
+   573→   573→                  <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+   574→   574→                </TooltipTrigger>
+   575→   575→                <TooltipContent className="max-w-xs">
+   576→   576→                  <p>Namespaces adicionales de embeddings para buscar contexto especializado. Se añaden a los namespaces automáticos de la sesión y del personaje.</p>
+   577→   577→                </TooltipContent>
+   578→   578→              </Tooltip>
+   579→   579→            </div>
+   580→   580→            <NamespaceSelector
+   581→   581→              value={character.embeddingNamespaces}
+   582→   582→              onChange={(embeddingNamespaces) => setCharacter(prev => ({ ...prev, embeddingNamespaces }))}
+   583→   583→              placeholder="Solo namespaces automáticos"
+   584→   584→            />
+   585→   585→          </div>
+   586→   586→        </div>
+   587→   587→      </div>
+   588→   588→    </div>
+   589→   589→  );
+   590→   590→
+   591→   591→  const renderDescriptionTab = () => (
+   592→   592→    <div className="space-y-4">
+   593→   593→      {/* Banner compact */}
+   594→   594→      <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/20 rounded-lg">
+   595→   595→        <FileText className="w-4 h-4 text-emerald-500 shrink-0" />
+   596→   596→        <p className="text-xs text-muted-foreground">
+   597→   597→          Define la <strong>historia</strong>, <strong>personalidad</strong> y <strong>escenario</strong> del personaje.
+   598→   598→        </p>
+   599→   599→      </div>
+   600→   600→      
+   601→   601→      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+   602→   602→        {/* Descripción Principal - wider left area (3/5) */}
+   603→   603→        <div className="lg:col-span-3">
+   604→   604→          <div className="flex items-center gap-2 mb-2">
+   605→   605→            <FileText className="w-4 h-4 text-emerald-500" />
+   606→   606→            <span className="text-xs font-medium">Descripción</span>
+   607→   607→            <Tooltip>
+   608→   608→              <TooltipTrigger asChild>
+   609→   609→                <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   610→   610→              </TooltipTrigger>
+   611→   611→              <TooltipContent className="max-w-xs">
+   612→   612→                <p>Descripción detallada del personaje: su historia, apariencia y rasgos principales.</p>
+   613→   613→              </TooltipContent>
+   614→   614→            </Tooltip>
+   615→   615→          </div>
+   616→   616→          <Textarea
+   617→   617→            id="description"
+   618→   618→            value={character.description}
+   619→   619→            onChange={(e) => setCharacter(prev => ({ ...prev, description: e.target.value }))}
+   620→   620→            placeholder="Describe tu personaje en detalle..."
+   621→   621→            className="min-h-[440px] text-sm"
+   622→   622→          />
+   623→   623→        </div>
+   624→   624→
+   625→   625→        {/* Right column - Personality and Scenario stacked (2/5) */}
+   626→   626→        <div className="lg:col-span-2 flex flex-col gap-4">
+   627→   627→          {/* Personalidad */}
+   628→   628→          <div className="flex-1 flex flex-col">
+   629→   629→            <div className="flex items-center gap-2 mb-2">
+   630→   630→              <Sparkles className="w-4 h-4 text-purple-500" />
+   631→   631→              <span className="text-xs font-medium">Personalidad</span>
+   632→   632→              <Tooltip>
+   633→   633→                <TooltipTrigger asChild>
+   634→   634→                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   635→   635→                </TooltipTrigger>
+   636→   636→                <TooltipContent className="max-w-xs">
+   637→   637→                  <p>Rasgos de carácter, manerismos y patrones de comportamiento.</p>
+   638→   638→                </TooltipContent>
+   639→   639→              </Tooltip>
+   640→   640→            </div>
+   641→   641→            <Textarea
+   642→   642→              id="personality"
+   643→   643→              value={character.personality}
+   644→   644→              onChange={(e) => setCharacter(prev => ({ ...prev, personality: e.target.value }))}
+   645→   645→              placeholder="Describe la personalidad..."
+   646→   646→              className="min-h-[200px] flex-1 text-sm"
+   647→   647→            />
+   648→   648→          </div>
+   649→   649→
+   650→   650→          {/* Escenario */}
+   651→   651→          <div className="flex-1 flex flex-col">
+   652→   652→            <div className="flex items-center gap-2 mb-2">
+   653→   653→              <Layers className="w-4 h-4 text-cyan-500" />
+   654→   654→              <span className="text-xs font-medium">Escenario</span>
+   655→   655→              <Tooltip>
+   656→   656→                <TooltipTrigger asChild>
+   657→   657→                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   658→   658→                </TooltipTrigger>
+   659→   659→                <TooltipContent className="max-w-xs">
+   660→   660→                  <p>El entorno o escenario donde existe el personaje.</p>
+   661→   661→                </TooltipContent>
+   662→   662→              </Tooltip>
+   663→   663→            </div>
+   664→   664→            <Textarea
+   665→   665→              id="scenario"
+   666→   666→              value={character.scenario}
+   667→   667→              onChange={(e) => setCharacter(prev => ({ ...prev, scenario: e.target.value }))}
+   668→   668→              placeholder="Describe el escenario..."
+   669→   669→              className="min-h-[200px] flex-1 text-sm"
+   670→   670→            />
+   671→   671→          </div>
+   672→   672→        </div>
+   673→   673→      </div>
+   674→   674→    </div>
+   675→   675→  );
+   676→   676→
+   677→   677→  const renderDialogueTab = () => (
+   678→   678→    <div className="space-y-4">
+   679→   679→      {/* Banner compact */}
+   680→   680→      <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-500/20 rounded-lg">
+   681→   681→        <MessageSquare className="w-4 h-4 text-blue-500 shrink-0" />
+   682→   682→        <p className="text-xs text-muted-foreground">
+   683→   683→          Define el <strong>primer mensaje</strong> y <strong>ejemplos de diálogo</strong> para guiar a la IA.
+   684→   684→        </p>
+   685→   685→      </div>
+   686→   686→      
+   687→   687→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   688→   688→        {/* Primer Mensaje + Saludos Alternativos */}
+   689→   689→        <div className="space-y-3">
+   690→   690→          <div>
+   691→   691→            <div className="flex items-center gap-2 mb-2">
+   692→   692→              <MessageSquare className="w-4 h-4 text-blue-500" />
+   693→   693→              <span className="text-xs font-medium">Primer Mensaje</span>
+   694→   694→              <Tooltip>
+   695→   695→                <TooltipTrigger asChild>
+   696→   696→                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   697→   697→                </TooltipTrigger>
+   698→   698→                <TooltipContent className="max-w-xs">
+   699→   699→                  <p>El primer mensaje que el personaje enviará para iniciar la conversación.</p>
+   700→   700→                </TooltipContent>
+   701→   701→              </Tooltip>
+   702→   702→            </div>
+   703→   703→            <Textarea
+   704→   704→              id="firstMes"
+   705→   705→              value={character.firstMes}
+   706→   706→              onChange={(e) => setCharacter(prev => ({ ...prev, firstMes: e.target.value }))}
+   707→   707→              placeholder="Mensaje de apertura del personaje..."
+   708→   708→              className="min-h-[200px] text-sm"
+   709→   709→            />
+   710→   710→          </div>
+   711→   711→
+   712→   712→          {/* Saludos Alternativos */}
+   713→   713→          <div>
+   714→   714→            <div className="flex items-center gap-2 mb-2">
+   715→   715→              <MessageSquare className="w-4 h-4 text-indigo-500" />
+   716→   716→              <span className="text-xs font-medium">Saludos Alternativos</span>
+   717→   717→              {character.alternateGreetings.length > 0 && (
+   718→   718→                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+   719→   719→                  {character.alternateGreetings.length} saludo{character.alternateGreetings.length !== 1 ? 's' : ''}
+   720→   720→                </Badge>
+   721→   721→              )}
+   722→   722→              <Tooltip>
+   723→   723→                <TooltipTrigger asChild>
+   724→   724→                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   725→   725→                </TooltipTrigger>
+   726→   726→                <TooltipContent className="max-w-xs">
+   727→   727→                  <p>Saludos adicionales que se seleccionarán aleatoriamente al iniciar un chat. El usuario puede deslizar entre ellos.</p>
+   728→   728→                </TooltipContent>
+   729→   729→              </Tooltip>
+   730→   730→            </div>
+   731→   731→
+   732→   732→            <div className="space-y-2">
+   733→   733→              {character.alternateGreetings.map((greeting, index) => (
+   734→   734→                <div key={index} className="relative group">
+   735→   735→                  <div className="flex items-center gap-1.5 mb-1">
+   736→   736→                    <span className="text-[10px] text-muted-foreground font-medium">#{index + 1}</span>
+   737→   737→                    <Button
+   738→   738→                      variant="ghost"
+   739→   739→                      size="sm"
+   740→   740→                      className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+   741→   741→                      onClick={() => {
+   742→   742→                        const updated = [...character.alternateGreetings];
+   743→   743→                        updated.splice(index, 1);
+   744→   744→                        setCharacter(prev => ({ ...prev, alternateGreetings: updated }));
+   745→   745→                      }}
+   746→   746→                    >
+   747→   747→                      <X className="w-3 h-3" />
+   748→   748→                    </Button>
+   749→   749→                  </div>
+   750→   750→                  <Textarea
+   751→   751→                    value={greeting}
+   752→   752→                    onChange={(e) => {
+   753→   753→                      const updated = [...character.alternateGreetings];
+   754→   754→                      updated[index] = e.target.value;
+   755→   755→                      setCharacter(prev => ({ ...prev, alternateGreetings: updated }));
+   756→   756→                    }}
+   757→   757→                    placeholder={`Saludo alternativo #${index + 1}...`}
+   758→   758→                    className="min-h-[100px] text-sm"
+   759→   759→                  />
+   760→   760→                </div>
+   761→   761→              ))}
+   762→   762→            </div>
+   763→   763→
+   764→   764→            <Button
+   765→   765→              variant="outline"
+   766→   766→              size="sm"
+   767→   767→              className="mt-2 w-full"
+   768→   768→              onClick={() => {
+   769→   769→                setCharacter(prev => ({
+   770→   770→                  ...prev,
+   771→   771→                  alternateGreetings: [...(prev.alternateGreetings || []), '']
+   772→   772→                }));
+   773→   773→              }}
+   774→   774→            >
+   775→   775→              <Plus className="w-3 h-3 mr-1.5" />
+   776→   776→              Agregar saludo
+   777→   777→            </Button>
+   778→   778→          </div>
+   779→   779→        </div>
+   780→   780→
+   781→   781→        {/* Ejemplo de Diálogo */}
+   782→   782→        <div>
+   783→   783→          <div className="flex items-center gap-2 mb-2">
+   784→   784→            <Sparkles className="w-4 h-4 text-purple-500" />
+   785→   785→            <span className="text-xs font-medium">Ejemplo de Diálogo</span>
+   786→   786→            <Tooltip>
+   787→   787→              <TooltipTrigger asChild>
+   788→   788→                <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   789→   789→              </TooltipTrigger>
+   790→   790→              <TooltipContent className="max-w-xs">
+   791→   791→                <p>Ejemplos de conversación para ayudar a la IA a entender cómo habla el personaje.</p>
+   792→   792→              </TooltipContent>
+   793→   793→            </Tooltip>
+   794→   794→          </div>
+   795→   795→          <Textarea
+   796→   796→            id="mesExample"
+   797→   797→            value={character.mesExample}
+   798→   798→            onChange={(e) => setCharacter(prev => ({ ...prev, mesExample: e.target.value }))}
+   799→   799→            placeholder={`<START>
+   800→   800→{{user}}: ¡Hola!
+   801→   801→{{char}}: *sonríe* ¡Hola!
+   802→   802→</START>`}
+   803→   803→            className="min-h-[380px] font-mono text-xs"
+   804→   804→          />
+   805→   805→          <p className="text-[10px] text-muted-foreground mt-1.5">
+   806→   806→            Usa {'<START>'}{'<'}{'/START>'} para envolver cada ejemplo y {'{{user}}'}/{'{{char}}'} para los hablantes.
+   807→   807→          </p>
+   808→   808→        </div>
+   809→   809→      </div>
+   810→   810→    </div>
+   811→   811→  );
+   812→   812→
+   813→   813→  const renderPromptTab = () => (
+   814→   814→    <div className="space-y-4">
+   815→   815→      {/* Banner compact */}
+   816→   816→      <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20 rounded-lg">
+   817→   817→        <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+   818→   818→        <p className="text-xs text-muted-foreground">
+   819→   819→          Personaliza los <strong>prompts de sistema</strong> y <strong>notas</strong> que guían el comportamiento de la IA.
+   820→   820→        </p>
+   821→   821→      </div>
+   822→   822→      
+   823→   823→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   824→   824→        <div className="space-y-4">
+   825→   825→          {/* Prompt de Sistema */}
+   826→   826→          <div>
+   827→   827→            <div className="flex items-center gap-2 mb-2">
+   828→   828→              <Sparkles className="w-4 h-4 text-amber-500" />
+   829→   829→              <span className="text-xs font-medium">Prompt de Sistema</span>
+   830→   830→              <Tooltip>
+   831→   831→                <TooltipTrigger asChild>
+   832→   832→                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   833→   833→                </TooltipTrigger>
+   834→   834→                <TooltipContent className="max-w-xs">
+   835→   835→                  <p>Sobrescribe el prompt de sistema predeterminado. Déjalo vacío para usar el default.</p>
+   836→   836→                </TooltipContent>
+   837→   837→              </Tooltip>
+   838→   838→            </div>
+   839→   839→            <Textarea
+   840→   840→              id="systemPrompt"
+   841→   841→              value={character.systemPrompt}
+   842→   842→              onChange={(e) => setCharacter(prev => ({ ...prev, systemPrompt: e.target.value }))}
+   843→   843→              placeholder="Prompt de sistema personalizado..."
+   844→   844→              className="min-h-[280px] font-mono text-xs"
+   845→   845→            />
+   846→   846→          </div>
+   847→   847→
+   848→   848→          {/* Instrucciones Post-Historia */}
+   849→   849→          <div>
+   850→   850→            <div className="flex items-center gap-2 mb-2">
+   851→   851→              <FileText className="w-4 h-4 text-cyan-500" />
+   852→   852→              <span className="text-xs font-medium">Instrucciones Post-Historia</span>
+   853→   853→              <Tooltip>
+   854→   854→                <TooltipTrigger asChild>
+   855→   855→                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   856→   856→                </TooltipTrigger>
+   857→   857→                <TooltipContent className="max-w-xs">
+   858→   858→                  <p>Instrucciones que se añaden después del historial de conversación.</p>
+   859→   859→                </TooltipContent>
+   860→   860→              </Tooltip>
+   861→   861→            </div>
+   862→   862→            <Textarea
+   863→   863→              id="postHistoryInstructions"
+   864→   864→              value={character.postHistoryInstructions}
+   865→   865→              onChange={(e) => setCharacter(prev => ({ ...prev, postHistoryInstructions: e.target.value }))}
+   866→   866→              placeholder="Instrucciones después del historial..."
+   867→   867→              className="min-h-[230px] font-mono text-xs"
+   868→   868→            />
+   869→   869→          </div>
+   870→   870→        </div>
+   871→   871→
+   872→   872→        {/* Columna derecha */}
+   873→   873→        <div className="space-y-4">
+   874→   874→          {/* Nota del Personaje */}
+   875→   875→          <div>
+   876→   876→            <div className="flex items-center gap-2 mb-2">
+   877→   877→              <MessageSquare className="w-4 h-4 text-purple-500" />
+   878→   878→              <span className="text-xs font-medium">Nota del Personaje</span>
+   879→   879→              <Tooltip>
+   880→   880→                <TooltipTrigger asChild>
+   881→   881→                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   882→   882→                </TooltipTrigger>
+   883→   883→                <TooltipContent className="max-w-xs">
+   884→   884→                  <p>Una nota que se envía a la IA con cada mensaje para influir en el comportamiento.</p>
+   885→   885→                </TooltipContent>
+   886→   886→              </Tooltip>
+   887→   887→            </div>
+   888→   888→            <Textarea
+   889→   889→              id="characterNote"
+   890→   890→              value={character.characterNote}
+   891→   891→              onChange={(e) => setCharacter(prev => ({ ...prev, characterNote: e.target.value }))}
+   892→   892→              placeholder="Nota que se enviará con cada mensaje..."
+   893→   893→              className="min-h-[280px] font-mono text-xs"
+   894→   894→            />
+   895→   895→          </div>
+   896→   896→
+   897→   897→          {/* Notas del Creador */}
+   898→   898→          <div>
+   899→   899→            <div className="flex items-center gap-2 mb-2">
+   900→   900→              <FileText className="w-4 h-4 text-muted-foreground" />
+   901→   901→              <span className="text-xs font-medium">Notas del Creador</span>
+   902→   902→              <Tooltip>
+   903→   903→                <TooltipTrigger asChild>
+   904→   904→                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   905→   905→                </TooltipTrigger>
+   906→   906→                <TooltipContent className="max-w-xs">
+   907→   907→                  <p>Notas personales sobre el personaje. No se envían a la IA.</p>
+   908→   908→                </TooltipContent>
+   909→   909→              </Tooltip>
+   910→   910→            </div>
+   911→   911→            <Textarea
+   912→   912→              id="creatorNotes"
+   913→   913→              value={character.creatorNotes}
+   914→   914→              onChange={(e) => setCharacter(prev => ({ ...prev, creatorNotes: e.target.value }))}
+   915→   915→              placeholder="Tus notas sobre este personaje..."
+   916→   916→              className="min-h-[230px] text-sm"
+   917→   917→            />
+   918→   918→          </div>
+   919→   919→        </div>
+   920→   920→      </div>
+   921→   921→    </div>
+   922→   922→  );
+   923→   923→
+   924→   924→  const renderSpritesTab = () => (
+   925→   925→    <SpriteManager
+   926→   926→      character={character}
+   927→   927→      onChange={(updates) => setCharacter(prev => ({ ...prev, ...updates }))}
+   928→   928→    />
+   929→   929→  );
+   930→   930→
+   931→   931→  const renderStatsTab = () => (
+   932→   932→    <StatsEditor
+   933→   933→      statsConfig={character.statsConfig}
+   934→   934→      onChange={(statsConfig) => setCharacter(prev => ({ ...prev, statsConfig }))}
+   935→   935→      allCharacters={allCharacters}
+   936→   936→      questTemplates={questTemplates}
+   937→   937→      questTemplateIds={character.questTemplateIds}
+   938→   938→      availableTargets={availableTargets}
+   939→   939→      spritePacksV2={character.spritePacksV2}
+   940→   940→      emotionalConfig={character.emotionalConfig}
+   941→   941→      onEmotionalConfigChange={(emotionalConfig) => setCharacter(prev => ({ ...prev, emotionalConfig }))}
+   942→   942→    />
+   943→   943→  );
+   944→   944→
+   945→   945→  const renderVoiceTab = () => (
+   946→   946→    <CharacterVoicePanel
+   947→   947→      voiceSettings={character.voice}
+   948→   948→      onChange={(voice) => setCharacter(prev => ({ ...prev, voice }))}
+   949→   949→      globalConfig={globalTTSConfig}
+   950→   950→    />
+   951→   951→  );
+   952→   952→
+   953→   953→  const renderProactiveTab = () => (
+   954→   954→    <ProactiveMessagesPanel
+   955→   955→      config={character.proactiveMessages}
+   956→   956→      onChange={(proactiveMessages) => setCharacter(prev => ({ ...prev, proactiveMessages }))}
+   957→   957→      microReactionConfig={character.microReactionConfig}
+   958→   958→      onMicroReactionConfigChange={(microReactionConfig) => setCharacter(prev => ({ ...prev, microReactionConfig }))}
+   959→   959→    />
+   960→   960→  );
+   961→   961→
+   962→   962→  const renderQuickRepliesTab = () => (
+   963→   963→    <QuickRepliesPanel
+   964→   964→      quickReplies={character.quickReplies}
+   965→   965→      statsConfig={character.statsConfig}
+   966→   966→      spritePacksV2={character.spritePacksV2}
+   967→   967→      triggerCollections={character.triggerCollections}
+   968→   968→      onChange={(quickReplies) => setCharacter(prev => ({ ...prev, quickReplies }))}
+   969→   969→    />
+   970→   970→  );
+   971→   971→
+   972→   972→  const renderMigrationTab = () => (
+   973→   973→    <LegacyMigrationPanel
+   974→   974→      character={character}
+   975→   975→      onChange={(updates) => setCharacter(prev => ({ ...prev, ...updates }))}
+   976→   976→    />
+   977→   977→  );
+   978→   978→
+   979→   979→  const renderTabContent = () => {
+   980→   980→    switch (activeTab) {
+   981→   981→      case 'info': return renderInfoTab();
+   982→   982→      case 'description': return renderDescriptionTab();
+   983→   983→      case 'dialogue': return renderDialogueTab();
+   984→   984→      case 'prompt': return renderPromptTab();
+   985→   985→      case 'sprites': return renderSpritesTab();
+   986→   986→      case 'stats': return renderStatsTab();
+   987→   987→      case 'voice': return renderVoiceTab();
+   988→   988→      case 'proactive': return renderProactiveTab();
+   989→   989→      case 'quickreplies': return renderQuickRepliesTab();
+   990→   990→      case 'migration': return renderMigrationTab();
+   991→   991→      default: return renderInfoTab();
+   992→   992→    }
+   993→   993→  };
+   994→   994→
+   995→   995→  return (
+   996→   996→    <AnimatePresence mode="wait">
+   997→   997→      {open && (
+   998→   998→        <motion.div
+   999→   999→          key="character-editor-overlay"
+  1000→  1000→          initial={{ opacity: 0 }}
+  1001→  1001→          animate={{ opacity: 1 }}
+  1002→  1002→          exit={{ opacity: 0 }}
+  1003→  1003→          transition={{ duration: 0.2, ease: 'easeInOut' }}
+  1004→  1004→          className="fixed inset-0 z-50 bg-background"
+  1005→  1005→        >
+  1006→  1006→          <div className="h-full flex">
+  1007→  1007→            {/* ===== SIDEBAR ===== */}
+  1008→  1008→            <motion.aside
+  1009→  1009→              initial={{ x: -16, opacity: 0 }}
+  1010→  1010→              animate={{ x: 0, opacity: 1 }}
+  1011→  1011→              transition={{ duration: 0.25, delay: 0.05, ease: 'easeOut' }}
+  1012→  1012→              className="w-14 md:w-60 border-r bg-muted/30 flex flex-col flex-shrink-0"
+  1013→  1013→            >
+  1014→  1014→              {/* Sidebar header with icon + character name + X close */}
+  1015→  1015→              <div className="flex items-center justify-between px-2 py-3 md:px-4 border-b">
+  1016→  1016→                <div className="flex items-center gap-2 min-w-0">
+  1017→  1017→                  <Palette className="w-5 h-5 shrink-0 text-muted-foreground" />
+  1018→  1018→                  <span className="hidden md:inline font-semibold text-sm truncate">
+  1019→  1019→                    {character.name || 'Nuevo Personaje'}
+  1020→  1020→                  </span>
+  1021→  1021→                </div>
+  1022→  1022→                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
+  1023→  1023→                  <X className="w-4 h-4" />
+  1024→  1024→                </Button>
+  1025→  1025→              </div>
+  1026→  1026→
+  1027→  1027→              {/* Navigation tabs - vertical list like settings panel */}
+  1028→  1028→              <ScrollArea className="flex-1">
+  1029→  1029→                <TooltipProvider delayDuration={400}>
+  1030→  1030→                  <nav className="p-1.5 md:p-2 space-y-0.5">
+  1031→  1031→                    {characterEditorTabs.map(tab => (
+  1032→  1032→                      <Tooltip key={tab.value}>
+  1033→  1033→                        <TooltipTrigger asChild>
+  1034→  1034→                          <button
+  1035→  1035→                            type="button"
+  1036→  1036→                            onClick={() => setActiveTab(tab.value)}
+  1037→  1037→                            className={cn(
+  1038→  1038→                              "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
+  1039→  1039→                              activeTab === tab.value
+  1040→  1040→                                ? "bg-primary/10 text-primary font-medium"
+  1041→  1041→                                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+  1042→  1042→                            )}
+  1043→  1043→                          >
+  1044→  1044→                            <tab.icon className="w-4 h-4 shrink-0" />
+  1045→  1045→                            <span className="hidden md:inline truncate">{tab.label}</span>
+  1046→  1046→                          </button>
+  1047→  1047→                        </TooltipTrigger>
+  1048→  1048→                        <TooltipContent side="right">
+  1049→  1049→                          <p>{tab.label}</p>
+  1050→  1050→                        </TooltipContent>
+  1051→  1051→                      </Tooltip>
+  1052→  1052→                    ))}
+  1053→  1053→                  </nav>
+  1054→  1054→                </TooltipProvider>
+  1055→  1055→              </ScrollArea>
+  1056→  1056→
+  1057→  1057→              {/* Footer with action buttons */}
+  1058→  1058→              <div className="p-3 md:p-4 border-t space-y-2">
+  1059→  1059→                <div className="hidden md:block text-xs text-muted-foreground mb-2">
+  1060→  1060→                  {characterId ? 'Editando personaje' : 'Creando personaje'}
+  1061→  1061→                </div>
+  1062→  1062→                <Button size="sm" onClick={handleSave} className="w-full">
+  1063→  1063→                  {characterId ? 'Guardar Cambios' : 'Crear Personaje'}
+  1064→  1064→                </Button>
+  1065→  1065→                <Button variant="outline" size="sm" onClick={onClose} className="w-full">
+  1066→  1066→                  Cancelar
+  1067→  1067→                </Button>
+  1068→  1068→              </div>
+  1069→  1069→            </motion.aside>
+  1070→  1070→
+  1071→  1071→            {/* ===== MAIN CONTENT ===== */}
+  1072→  1072→            <motion.main
+  1073→  1073→              initial={{ opacity: 0, y: 6 }}
+  1074→  1074→              animate={{ opacity: 1, y: 0 }}
+  1075→  1075→              transition={{ duration: 0.25, delay: 0.1, ease: 'easeOut' }}
+  1076→  1076→              className="flex-1 overflow-hidden min-w-0"
+  1077→  1077→            >
+  1078→  1078→              <div className="h-full overflow-y-auto">
+  1079→  1079→                <div className="max-w-6xl mx-auto p-6">
+  1080→  1080→                <TooltipProvider>
+  1081→  1081→                  {renderTabContent()}
+  1082→  1082→                </TooltipProvider>
+  1083→  1083→                </div>
+  1084→  1084→              </div>
+  1085→  1085→            </motion.main>
+  1086→  1086→          </div>
+  1087→  1087→        </motion.div>
+  1088→  1088→      )}
+  1089→  1089→    </AnimatePresence>
+  1090→  1090→  );
+  1091→  1091→}
+  1092→  1092→

@@ -14,6 +14,8 @@ import {
   X, 
   Clock,
   User,
+  Timer,
+  AlertTriangle,
 } from 'lucide-react';
 import type { SolicitudInstance } from '@/types';
 
@@ -64,6 +66,24 @@ export function SolicitudesSidePanel({
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `Hace ${hours}h`;
     return `Hace ${Math.floor(hours / 24)}d`;
+  };
+
+  // Format remaining time until expiration
+  const formatExpiration = (expiresAt?: number, expiresAtTurn?: number) => {
+    if (expiresAt) {
+      const remaining = expiresAt - Date.now();
+      if (remaining <= 0) return { text: 'Expirada', urgent: true };
+      const minutes = Math.floor(remaining / 60000);
+      if (minutes < 1) return { text: '<1m', urgent: true };
+      if (minutes < 60) return { text: `${minutes}m`, urgent: minutes < 5 };
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return { text: `${hours}h`, urgent: false };
+      return { text: `${Math.floor(hours / 24)}d`, urgent: false };
+    }
+    if (expiresAtTurn) {
+      return { text: `${expiresAtTurn} turnos`, urgent: false };
+    }
+    return null;
   };
   
   // Don't render anything if no solicitudes and not expanded
@@ -128,58 +148,86 @@ export function SolicitudesSidePanel({
                   </div>
                   
                   {/* Solicitudes for this character */}
-                  {solicitudes.map((solicitud) => (
-                    <div
-                      key={solicitud.id}
-                      className="p-2 rounded-lg border bg-amber-500/5 border-amber-500/20 hover:bg-amber-500/10 transition-colors"
-                    >
-                      {/* Key badge and time */}
-                      <div className="flex items-center justify-between gap-1 mb-1">
-                        <code className="text-[9px] bg-black/30 px-1 py-0.5 rounded font-mono text-amber-300 truncate max-w-[100px]">
-                          {solicitud.key}
-                        </code>
-                        <span className="text-[8px] text-muted-foreground flex items-center gap-0.5">
-                          <Clock className="w-2 h-2" />
-                          {formatTime(solicitud.createdAt)}
-                        </span>
+                  {solicitudes.map((solicitud) => {
+                    const expiration = formatExpiration(solicitud.expiresAt, solicitud.expiresAtTurn);
+                    const isExpiringSoon = expiration?.urgent;
+                    
+                    return (
+                      <div
+                        key={solicitud.id}
+                        className={cn(
+                          "p-2 rounded-lg border transition-colors",
+                          isExpiringSoon
+                            ? "bg-orange-500/5 border-orange-500/30 hover:bg-orange-500/10"
+                            : "bg-amber-500/5 border-amber-500/20 hover:bg-amber-500/10"
+                        )}
+                      >
+                        {/* Key badge and time */}
+                        <div className="flex items-center justify-between gap-1 mb-1">
+                          <code className="text-[9px] bg-black/30 px-1 py-0.5 rounded font-mono text-amber-300 truncate max-w-[100px]">
+                            {solicitud.key}
+                          </code>
+                          <div className="flex items-center gap-1">
+                            {/* Expiration indicator */}
+                            {expiration && (
+                              <span className={cn(
+                                "text-[8px] flex items-center gap-0.5 px-1 py-0.5 rounded",
+                                isExpiringSoon
+                                  ? "bg-orange-500/20 text-orange-400"
+                                  : "bg-muted/50 text-muted-foreground"
+                              )}>
+                                {isExpiringSoon ? (
+                                  <AlertTriangle className="w-2 h-2" />
+                                ) : (
+                                  <Timer className="w-2 h-2" />
+                                )}
+                                {expiration.text}
+                              </span>
+                            )}
+                            <span className="text-[8px] text-muted-foreground flex items-center gap-0.5">
+                              <Clock className="w-2 h-2" />
+                              {formatTime(solicitud.createdAt)}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        {/* Description */}
+                        <p className="text-[10px] text-foreground/80 mb-1.5 leading-relaxed line-clamp-2">
+                          {solicitud.description}
+                        </p>
+                        
+                        {/* Action Buttons */}
+                        <div className="flex gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-5 px-1.5 text-[9px] flex-1 bg-green-500/10 border-green-500/30 text-green-400 hover:bg-green-500/20 hover:text-green-300"
+                            onClick={() => {
+                              if (activeSessionId) {
+                                acceptUserSolicitud(activeSessionId, solicitud.id);
+                              }
+                            }}
+                          >
+                            <Check className="w-2.5 h-2.5 mr-0.5" />
+                            Aceptar
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-5 px-1.5 text-[9px] flex-1 bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20 hover:text-red-300"
+                            onClick={() => {
+                              if (activeSessionId) {
+                                rejectUserSolicitud(activeSessionId, solicitud.id);
+                              }
+                            }}
+                          >
+                            <X className="w-2.5 h-2.5 mr-0.5" />
+                            Rechazar
+                          </Button>
+                        </div>
                       </div>
-                      
-                      {/* Description */}
-                      <p className="text-[10px] text-foreground/80 mb-1.5 leading-relaxed line-clamp-2">
-                        {solicitud.description}
-                      </p>
-                      
-                      {/* Action Buttons */}
-                      <div className="flex gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-5 px-1.5 text-[9px] flex-1 bg-green-500/10 border-green-500/30 text-green-400 hover:bg-green-500/20 hover:text-green-300"
-                          onClick={() => {
-                            if (activeSessionId) {
-                              acceptUserSolicitud(activeSessionId, solicitud.id);
-                            }
-                          }}
-                        >
-                          <Check className="w-2.5 h-2.5 mr-0.5" />
-                          Aceptar
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-5 px-1.5 text-[9px] flex-1 bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20 hover:text-red-300"
-                          onClick={() => {
-                            if (activeSessionId) {
-                              rejectUserSolicitud(activeSessionId, solicitud.id);
-                            }
-                          }}
-                        >
-                          <X className="w-2.5 h-2.5 mr-0.5" />
-                          Rechazar
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ))
             )}

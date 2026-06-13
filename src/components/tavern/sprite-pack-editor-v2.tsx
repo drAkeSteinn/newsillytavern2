@@ -158,10 +158,14 @@ function SpriteConditionEditorFull({
   conditions,
   availableAttributes,
   onConditionsChange,
+  conditionOperator,
+  onConditionOperatorChange,
 }: {
   conditions: StatRequirement[];
   availableAttributes: AttributeDefinition[];
   onConditionsChange: (conditions: StatRequirement[]) => void;
+  conditionOperator?: 'AND' | 'OR';
+  onConditionOperatorChange?: (operator: 'AND' | 'OR') => void;
 }) {
   return (
     <div className="space-y-3">
@@ -279,6 +283,43 @@ function SpriteConditionEditorFull({
           </div>
         );
       })}
+      {/* AND/OR Toggle */}
+      {conditions.length >= 2 && onConditionOperatorChange && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className={cn(
+                'flex-1 h-8 text-xs font-medium rounded-md border transition-colors',
+                conditionOperator !== 'OR'
+                  ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                  : 'bg-muted/30 text-muted-foreground border-transparent'
+              )}
+              onClick={() => onConditionOperatorChange('AND')}
+            >
+              Y (AND)
+            </button>
+            <button
+              type="button"
+              className={cn(
+                'flex-1 h-8 text-xs font-medium rounded-md border transition-colors',
+                conditionOperator === 'OR'
+                  ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+                  : 'bg-muted/30 text-muted-foreground border-transparent'
+              )}
+              onClick={() => onConditionOperatorChange('OR')}
+            >
+              O (OR)
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground text-center">
+            {conditionOperator === 'OR'
+              ? 'Al menos una debe cumplirse'
+              : 'Todas deben cumplirse'}
+          </p>
+        </div>
+      )}
+
       <Button
         variant="outline"
         size="sm"
@@ -1034,13 +1075,14 @@ export function SpritePackEditorV2({
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Define las condiciones que deben cumplirse para que este sprite se muestre. 
-                      Todas las condiciones deben cumplirse simultáneamente (AND).
+                      Define las condiciones que deben cumplirse para que este sprite se muestre.
                     </p>
                     <SpriteConditionEditorFull
                       conditions={currentEditSprite.sprite.conditions || []}
                       availableAttributes={availableAttributes}
                       onConditionsChange={(conditions) => handleUpdateSpriteInPack(currentEditSprite.pack.id, currentEditSprite.sprite.id, { conditions })}
+                      conditionOperator={currentEditSprite.sprite.conditionOperator}
+                      onConditionOperatorChange={(operator) => handleUpdateSpriteInPack(currentEditSprite.pack.id, currentEditSprite.sprite.id, { conditionOperator: operator })}
                     />
                   </div>
                 )}

@@ -219,7 +219,9 @@ export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
         lorebookIds: existingGroup?.lorebookIds || [],
         questTemplateIds: existingGroup?.questTemplateIds || [],
         embeddingNamespaces: existingGroup?.embeddingNamespaces || [],
-        narratorSettings: existingGroup?.narratorSettings || DEFAULT_NARRATOR_SETTINGS
+        narratorSettings: existingGroup?.narratorSettings || DEFAULT_NARRATOR_SETTINGS,
+        firstMes: existingGroup?.firstMes || '',
+        alternateGreetings: existingGroup?.alternateGreetings || []
       };
     }
     return {
@@ -237,7 +239,9 @@ export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
       lorebookIds: [],
       questTemplateIds: [],
       embeddingNamespaces: [],
-      narratorSettings: DEFAULT_NARRATOR_SETTINGS
+      narratorSettings: DEFAULT_NARRATOR_SETTINGS,
+      firstMes: '',
+      alternateGreetings: []
     };
   }, [existingGroup]);
 
@@ -258,6 +262,8 @@ export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
   const [questTemplateIds, setQuestTemplateIds] = useState<string[]>(initialValues.questTemplateIds);
   const [embeddingNamespaces, setEmbeddingNamespaces] = useState<string[]>(initialValues.embeddingNamespaces);
   const [narratorSettings, setNarratorSettings] = useState<NarratorSettings>(initialValues.narratorSettings);
+  const [firstMes, setFirstMes] = useState(initialValues.firstMes);
+  const [alternateGreetings, setAlternateGreetings] = useState<string[]>(initialValues.alternateGreetings);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(initialValues.avatar);
@@ -439,7 +445,9 @@ export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
       questTemplateIds,
       embeddingNamespaces,
       // Always include narratorSettings to preserve config even if narrator is temporarily removed
-      narratorSettings
+      narratorSettings,
+      firstMes: firstMes || undefined,
+      alternateGreetings: alternateGreetings.length > 0 ? alternateGreetings : undefined
     };
 
     if (isNewGroup) {
@@ -713,6 +721,97 @@ export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
                 placeholder="Solo namespaces automáticos"
               />
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Primer Mensaje del Grupo */}
+      <div className="space-y-4 pt-2">
+        <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-violet-500/10 to-purple-500/10 border border-violet-500/20 rounded-lg">
+          <MessageSquare className="w-4 h-4 text-violet-500 shrink-0" />
+          <p className="text-xs text-muted-foreground">
+            Define el <strong>primer mensaje</strong> del grupo. Si no se configura, la sesión iniciará sin mensaje de apertura.
+          </p>
+        </div>
+
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <MessageSquare className="w-4 h-4 text-violet-500" />
+            <span className="text-xs font-medium">Primer Mensaje del Grupo</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p>El primer mensaje que se enviará al iniciar una sesión de chat grupal. Usa {'{{user}}'} para el nombre del usuario.</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          <Textarea
+            value={firstMes}
+            onChange={(e) => setFirstMes(e.target.value)}
+            placeholder="Mensaje de apertura del grupo..."
+            className="min-h-[160px] text-sm"
+          />
+        </div>
+
+        {/* Saludos Alternativos */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-purple-500" />
+              <span className="text-xs font-medium">Saludos Alternativos</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>Saludos alternativos que se pueden seleccionar como swipes al iniciar la sesión.</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAlternateGreetings(prev => [...prev, ''])}
+              className="h-7 text-xs gap-1"
+            >
+              <Plus className="w-3 h-3" />
+              Agregar saludo
+            </Button>
+          </div>
+
+          <div className="space-y-3">
+            {alternateGreetings.length === 0 && (
+              <p className="text-xs text-muted-foreground italic pl-1">
+                No hay saludos alternativos. Haz clic en "Agregar saludo" para añadir uno.
+              </p>
+            )}
+            {alternateGreetings.map((greeting, index) => (
+              <div key={index} className="flex gap-2 items-start">
+                <div className="flex-1">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-[10px] text-muted-foreground font-medium">Saludo {index + 1}</span>
+                  </div>
+                  <Textarea
+                    value={greeting}
+                    onChange={(e) => setAlternateGreetings(prev => 
+                      prev.map((g, i) => i === index ? e.target.value : g)
+                    )}
+                    placeholder={`Saludo alternativo ${index + 1}...`}
+                    className="min-h-[80px] text-sm"
+                  />
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setAlternateGreetings(prev => prev.filter((_, i) => i !== index))}
+                  className="mt-6 h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            ))}
           </div>
         </div>
       </div>

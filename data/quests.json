@@ -14,7 +14,10 @@
     "autoQuestMode": "random",
     "questActivationPrefix": "",
     "questCompletionPrefix": "",
-    "objectiveCompletionPrefix": "Objetivo"
+    "objectiveCompletionPrefix": "Objetivo",
+    "notificationDedupEnabled": true,
+    "notificationDedupWindowMs": 30000,
+    "notificationAutoDismissMs": 5000
   },
   "questNotifications": [
     {

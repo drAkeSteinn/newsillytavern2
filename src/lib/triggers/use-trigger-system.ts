@@ -1081,6 +1081,7 @@ export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSyste
             sessionId,
             allCharacters: allCharactersWithPersona,
             activePersona: config.activePersona,
+            currentTurn: activeSession?.turnCount || 0,
           };
 
           const solicitudResult = checkSolicitudTriggersInText(

@@ -3,7 +3,7 @@
 import { cn } from '@/lib/utils';
 import type { ChatMessage as ChatMessageType, PromptSection, ChatboxAppearanceSettings, ToolUsedInfo } from '@/types';
 import { DEFAULT_CHATBOX_APPEARANCE } from '@/types';
-import { Copy, Check, Trash2, RefreshCw, ChevronLeft, ChevronRight, Volume2, Eye, Edit2, Play, X, Check as CheckIcon, Ghost, Wrench, Zap, Dices, Globe, CloudSun, Bell, Sparkles } from 'lucide-react';
+import { Copy, Check, Trash2, RefreshCw, ChevronLeft, ChevronRight, Volume2, Eye, Edit2, Play, X, Check as CheckIcon, Ghost, Wrench, Zap, Dices, Globe, CloudSun, Bell, Sparkles, Pause, Flame, Heart } from 'lucide-react';
 import { useState, memo, Fragment, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -36,6 +36,7 @@ interface ChatMessageProps {
   displayMode?: MessageDisplayMode;
   isNarrator?: boolean;
   appearance?: ChatboxAppearanceSettings;
+  emotionalState?: string;  // FASE 5: Current emotional state for this character
 }
 
 export const ChatMessageBubble = memo(function ChatMessageBubble({
@@ -57,7 +58,8 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
   totalAlternatives = 1,
   displayMode = 'bubble',
   isNarrator = false,
-  appearance: appearanceProp
+  appearance: appearanceProp,
+  emotionalState,
 }: ChatMessageProps) {
   const [copied, setCopied] = useState(false);
   const [showPromptDialog, setShowPromptDialog] = useState(false);
@@ -350,6 +352,50 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
               >
                 <Sparkles className="w-2.5 h-2.5" />
                 Proactivo
+              </Badge>
+            )}
+            {/* FASE 4: Interrupted message indicator */}
+            {message.metadata?.isPartial && message.metadata?.interruptInfo && !message.metadata.interruptInfo.reactionGenerated && (
+              <Badge 
+                variant="outline"
+                className="text-[10px] py-0 h-4 px-1.5 gap-0.5 border-orange-500/30 text-orange-400/70 bg-orange-500/5"
+              >
+                <Pause className="w-2.5 h-2.5" />
+                Interrumpido
+              </Badge>
+            )}
+            {/* FASE 4: Interrupt reaction indicator */}
+            {message.metadata?.interruptInfo?.reactionGenerated && (
+              <Badge 
+                variant="outline"
+                className="text-[10px] py-0 h-4 px-1.5 gap-0.5 border-rose-500/30 text-rose-400/70 bg-rose-500/5"
+              >
+                <Flame className="w-2.5 h-2.5" />
+                Reacción
+              </Badge>
+            )}
+            {/* FASE 4: Micro-reactions */}
+            {message.metadata?.microReactions && message.metadata.microReactions.length > 0 && (
+              <div className="flex items-center gap-1 flex-wrap">
+                {message.metadata.microReactions.map((reaction, idx) => (
+                  <Badge
+                    key={`${reaction.characterId}-${idx}`}
+                    variant="outline"
+                    className="text-[10px] py-0 h-4 px-1.5 gap-0.5 border-violet-500/30 text-violet-400/70 bg-violet-500/5"
+                  >
+                    {reaction.reaction}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            {/* FASE 5: Emotional state indicator */}
+            {emotionalState && !isUser && (
+              <Badge
+                variant="outline"
+                className="text-[10px] py-0 h-4 px-1.5 gap-0.5 border-rose-500/30 text-rose-400/70 bg-rose-500/5"
+              >
+                <Heart className="w-2.5 h-2.5" />
+                {emotionalState}
               </Badge>
             )}
             {showTokens && message.metadata?.tokens && (

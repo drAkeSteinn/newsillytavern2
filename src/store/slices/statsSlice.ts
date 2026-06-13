@@ -48,7 +48,7 @@ export interface StatsSlice {
   // Session Stats Actions
   initializeSessionStats: (
     sessionId: string,
-    characters: Array<{ id: string; statsConfig?: CharacterStatsConfig }>
+    characters: Array<{ id: string; statsConfig?: CharacterStatsConfig; emotionalConfig?: import('@/types').EmotionalStateConfig }>
   ) => void;
   
   updateCharacterStat: (
@@ -104,7 +104,9 @@ export interface StatsSlice {
     solicitudKey: string,
     description: string,
     completionDescription: string | undefined,
-    userName: string
+    userName: string,
+    expirationTurns?: number,
+    expirationMinutes?: number
   ) => SolicitudInstance | null;
   
   acceptUserSolicitud: (
@@ -119,6 +121,12 @@ export interface StatsSlice {
   
   getPendingUserSolicitudes: (
     sessionId: string
+  ) => SolicitudInstance[];
+
+  // Solicitud Expiration
+  expireSolicitudes: (
+    sessionId: string,
+    currentTurn?: number
   ) => SolicitudInstance[];
 
   // Session Events (for {{eventos}} key)
@@ -139,6 +147,19 @@ export interface StatsSlice {
   startSessionTimer: (sessionId: string, characterId: string, statsConfig: CharacterStatsConfig) => void;
   stopSessionTimer: (sessionId: string) => void;
   getTimerRunning: (sessionId: string) => boolean;
+
+  // FASE 5: Emotional State Management
+  updateEmotionalState: (
+    sessionId: string,
+    characterId: string,
+    newState: string,
+    previousState?: string
+  ) => void;
+
+  getEmotionalState: (
+    sessionId: string,
+    characterId: string
+  ) => string | null;
 }
 
 // ============================================
@@ -272,7 +293,16 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
     
     // Initialize stats for each character
     for (const char of characters) {
-      characterStats[char.id] = createDefaultCharacterStats(char.statsConfig);
+      const stats = createDefaultCharacterStats(char.statsConfig);
+      // FASE 5: Initialize emotional state if emotional config is present
+      if (char.emotionalConfig?.enabled && char.emotionalConfig.initialState) {
+        stats.emotionalState = char.emotionalConfig.initialState;
+        stats.emotionalStateLastEval = now;
+        stats.emotionalStateTurnCount = 0;
+        // Also set as attribute value for {{emocion}} key resolution
+        stats.attributeValues['emocion'] = char.emotionalConfig.initialState;
+      }
+      characterStats[char.id] = stats;
     }
     
     const newSessionStats: SessionStats = {
@@ -1018,7 +1048,9 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
     solicitudKey: string,
     description: string,
     completionDescription: string | undefined,
-    userName: string
+    userName: string,
+    expirationTurns?: number,
+    expirationMinutes?: number
   ) => {
     const state = get();
     const sessions = state.sessions as Array<{ 
@@ -1072,6 +1104,8 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
     }
     
     // Create the new solicitud instance
+    const now = Date.now();
+    const currentTurn = get().getTurnCount?.(sessionId) || 0;
     const newSolicitud: SolicitudInstance = {
       id: `solicitud-user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       key: solicitudKey,
@@ -1080,7 +1114,9 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
       description,
       completionDescription,
       status: 'pending',
-      createdAt: Date.now(),
+      createdAt: now,
+      expiresAt: expirationMinutes && expirationMinutes > 0 ? now + expirationMinutes * 60 * 1000 : undefined,
+      expiresAtTurn: expirationTurns && expirationTurns > 0 ? currentTurn + expirationTurns : undefined,
     };
     
     // Add to target character's solicitudes
@@ -1267,6 +1303,95 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
     return session.sessionStats.solicitudes.characterSolicitudes['__user__'].filter(
       s => s.status === 'pending'
     );
+  },
+
+  /**
+   * Expire solicitudes that have passed their expiration time or turn.
+   * Returns the list of solicitudes that were expired.
+   * Should be called after each LLM turn or on a timer.
+   */
+  expireSolicitudes: (sessionId, currentTurn) => {
+    const state = get();
+    const sessions = state.sessions as Array<{ 
+      id: string; 
+      sessionStats?: SessionStats;
+    }>;
+    const sessionIndex = sessions.findIndex(s => s.id === sessionId);
+    
+    if (sessionIndex === -1) return [];
+    
+    const session = sessions[sessionIndex];
+    const sessionStats = session.sessionStats;
+    
+    if (!sessionStats?.solicitudes?.characterSolicitudes) return [];
+    
+    const now = Date.now();
+    const expiredSolicitudes: SolicitudInstance[] = [];
+    let hasChanges = false;
+    
+    const updatedCharacterSolicitudes: Record<string, SolicitudInstance[]> = {};
+    
+    for (const [charId, solicitudes] of Object.entries(sessionStats.solicitudes.characterSolicitudes)) {
+      const updatedSolicitudes = solicitudes.map(solicitud => {
+        if (solicitud.status !== 'pending') return solicitud;
+        
+        let isExpired = false;
+        
+        // Check time-based expiration
+        if (solicitud.expiresAt && now >= solicitud.expiresAt) {
+          isExpired = true;
+        }
+        
+        // Check turn-based expiration
+        if (solicitud.expiresAtTurn && currentTurn !== undefined && currentTurn >= solicitud.expiresAtTurn) {
+          isExpired = true;
+        }
+        
+        if (isExpired) {
+          hasChanges = true;
+          const expired = {
+            ...solicitud,
+            status: 'expired' as const,
+            completedAt: now,
+          };
+          expiredSolicitudes.push(expired);
+          return expired;
+        }
+        
+        return solicitud;
+      });
+      
+      updatedCharacterSolicitudes[charId] = updatedSolicitudes;
+    }
+    
+    if (!hasChanges) return [];
+    
+    const newSessionStats: SessionStats = {
+      ...sessionStats,
+      solicitudes: {
+        characterSolicitudes: updatedCharacterSolicitudes,
+        lastModified: now,
+      },
+      lastModified: now,
+    };
+    
+    set((state: any) => ({
+      sessions: state.sessions.map((s: any) =>
+        s.id === sessionId
+          ? { 
+              ...s, 
+              sessionStats: newSessionStats,
+              updatedAt: new Date().toISOString() 
+            }
+          : s
+      ),
+    }));
+    
+    if (expiredSolicitudes.length > 0) {
+      console.log(`[Solicitud] Expired ${expiredSolicitudes.length} solicitudes in session ${sessionId}`);
+    }
+    
+    return expiredSolicitudes;
   },
 
   /**
@@ -1540,6 +1665,52 @@ export const createStatsSlice = (set: any, get: any): StatsSlice => ({
     const state = get();
     return (state as any)._timerRunning?.[sessionId] === true;
   },
+
+  // FASE 5: Update emotional state for a character
+  updateEmotionalState: (sessionId, characterId, newState, previousState) => {
+    const state = get();
+    const session = state.sessions?.[sessionId];
+    if (!session?.sessionStats) return;
+
+    const charStats = session.sessionStats.characterStats?.[characterId];
+    if (!charStats) return;
+
+    // If previousState is specified, only update if it matches the current state
+    // This prevents race conditions in concurrent evaluations
+    if (previousState && charStats.emotionalState && charStats.emotionalState !== previousState) {
+      return;
+    }
+
+    const oldState = charStats.emotionalState;
+    if (oldState === newState) return; // No change needed
+
+    charStats.emotionalState = newState;
+    charStats.emotionalStateLastEval = Date.now();
+
+    // Also sync to attributeValues for {{emocion}} key resolution
+    if (!charStats.attributeValues) {
+      charStats.attributeValues = {};
+    }
+    charStats.attributeValues['emocion'] = newState;
+
+    // Increment turn counter
+    charStats.emotionalStateTurnCount = (charStats.emotionalStateTurnCount || 0) + 1;
+
+    session.sessionStats.lastModified = Date.now();
+
+    set({ sessions: { ...state.sessions } });
+
+    console.log(`[Emotion] ${characterId}: "${oldState || '(none)'}" → "${newState}"`);
+  },
+
+  // FASE 5: Get emotional state for a character
+  getEmotionalState: (sessionId, characterId) => {
+    const state = get();
+    const session = state.sessions?.[sessionId];
+    if (!session?.sessionStats) return null;
+
+    return session.sessionStats.characterStats?.[characterId]?.emotionalState || null;
+  },
 });
 
 // ============================================
@@ -1603,15 +1774,18 @@ export function evaluateRequirement(
 }
 
 /**
- * Evaluate all requirements (AND logic)
+ * Evaluate all requirements (supports AND and OR logic)
+ * Default is AND logic for backward compatibility
  */
 export function evaluateRequirements(
   requirements: StatRequirement[],
   attributeValues: Record<string, number | string>,
-  sessionStats?: SessionStats | null
+  sessionStats?: SessionStats | null,
+  operator?: 'AND' | 'OR'
 ): boolean {
   if (!requirements || requirements.length === 0) return true;
-  return requirements.every(req => evaluateRequirement(req, attributeValues, sessionStats));
+  const logicFn = operator === 'OR' ? requirements.some.bind(requirements) : requirements.every.bind(requirements);
+  return logicFn(req => evaluateRequirement(req, attributeValues, sessionStats));
 }
 
 /**
@@ -1622,7 +1796,7 @@ export function filterSkillsByRequirements(
   attributeValues: Record<string, number | string>,
   sessionStats?: SessionStats | null
 ): SkillDefinition[] {
-  return (skills || []).filter(skill => evaluateRequirements(skill.requirements, attributeValues, sessionStats));
+  return (skills || []).filter(skill => evaluateRequirements(skill.requirements, attributeValues, sessionStats, skill.requirementOperator));
 }
 
 /**
@@ -1633,7 +1807,7 @@ export function filterIntentionsByRequirements(
   attributeValues: Record<string, number | string>,
   sessionStats?: SessionStats | null
 ): IntentionDefinition[] {
-  return (intentions || []).filter(intention => evaluateRequirements(intention.requirements, attributeValues, sessionStats));
+  return (intentions || []).filter(intention => evaluateRequirements(intention.requirements, attributeValues, sessionStats, intention.requirementOperator));
 }
 
 /**
@@ -1644,5 +1818,5 @@ export function filterInvitationsByRequirements(
   attributeValues: Record<string, number | string>,
   sessionStats?: SessionStats | null
 ): InvitationDefinition[] {
-  return (invitations || []).filter(invitation => evaluateRequirements(invitation.requirements, attributeValues, sessionStats));
+  return (invitations || []).filter(invitation => evaluateRequirements(invitation.requirements, attributeValues, sessionStats, invitation.requirementOperator));
 }

@@ -1,0 +1,925 @@
+     1→// ============================================
+     2→// Key Detector - Unified Key Detection System
+     3→// ============================================
+     4→//
+     5→// Detects trigger keys in multiple formats during streaming:
+     6→// - [key] - Simple bracketed key
+     7→// - [key=value] - Key with value
+     8→// - [key: value] - Key with colon and value
+     9→// - |key| - Pipe delimited
+    10→// - Peticion:key, Peticion=key - Prefix format (solicitudes)
+    11→// - Solicitud:key, Solicitud=key - Prefix format
+    12→// - key:value, key=value - Standalone key-value
+    13→// - <quest:action/> - Quest XML tags
+    14→// - +stat, -stat, stat=N - Stats operators
+    15→// - plain_word - Simple word (for triggers configured as plain keywords)
+    16→//
+    17→// Features:
+    18→// - Position-based detection (prevents duplicates)
+    19→// - Order of appearance preserved
+    20→// - Works with character or word streaming
+    21→// - Immediate trigger execution
+    22→// - Single unified detector for ALL trigger types
+    23→// - Support for operators (+, -, =) in values
+    24→// - Streaming-safe key:value detection (waits for value completion)
+    25→
+    26→// ============================================
+    27→// Types
+    28→// ============================================
+    29→
+    30→export type KeyFormat =
+    31→  | 'bracket'        // [key] or [key=value]
+    32→  | 'pipe'           // |key|
+    33→  | 'prefix'         // Peticion:key, Solicitud=key
+    34→  | 'key_value'      // key:value, key=value
+    35→  | 'xml_tag'        // <quest:action/> or <quest:action attr="value"/>
+    36→  | 'operator'       // +value, -value, =value (for stats)
+    37→  | 'word';          // Simple word (for triggers configured as plain keywords)
+    38→
+    39→export type KeyCategory = 
+    40→  | 'sound'          // Sound trigger keyword
+    41→  | 'sprite'         // Sprite trigger keyword
+    42→  | 'background'     // Background trigger keyword
+    43→  | 'solicitud'      // Peticion/Solicitud activation/completion
+    44→  | 'skill'          // Skill activation key
+    45→  | 'stats'          // Stats modification key
+    46→  | 'hud'            // HUD update key
+    47→  | 'quest'          // Quest trigger key
+    48→  | 'item'           // Item trigger key
+    49→  | 'atmosphere'     // Atmosphere/weather effect
+    50→  | 'unknown';       // Not yet classified
+    51→
+    52→/**
+    53→ * Operator type for stats modifications
+    54→ */
+    55→export type ValueOperator = '+' | '-' | '=' | '*' | '/' | 'set' | 'add' | 'subtract';
+    56→
+    57→/**
+    58→ * Extended value information with operator support
+    59→ */
+    60→export interface KeyValueInfo {
+    61→  raw: string;              // Raw value string
+    62→  operator: ValueOperator;  // Operator applied
+    63→  numericValue?: number;    // Parsed numeric value if applicable
+    64→  stringValue?: string;     // String value if not numeric
+    65→}
+    66→
+    67→export interface DetectedKey {
+    68→  key: string;              // Normalized key (lowercase, no accents)
+    69→  original: string;         // Original key as appeared in text
+    70→  value?: string;           // Value if present (for [key=value] or key:value)
+    71→  valueInfo?: KeyValueInfo; // Parsed value with operator info
+    72→  format: KeyFormat;        // How the key appeared
+    73→  prefix?: string;          // Prefix if format is 'prefix' (Peticion, Solicitud)
+    74→  position: number;         // Character position in text
+    75→  length: number;           // Length of the full match in text
+    76→  fullMatch: string;        // The complete matched string
+    77→  
+    78→  // XML tag Specific attributes (for quest tags)
+    79→  attributes?: Record<string, string>;
+    80→  
+    81→  // Category hint (populated by classifyKey)
+    82→  category?: KeyCategory;
+    83→}
+    84→
+    85→/**
+    86→ * Tracks a potentially partial key:value match that's at the end of streaming text
+    87→ */
+    88→interface PartialMatch {
+    89→  position: number;
+    90→  key: string;
+    91→  original: string;
+    92→  value: string;
+    93→  fullMatch: string;
+    94→  endPosition: number; // Position where the match ends in text
+    95→}
+    96→
+    97→// ============================================
+    98→// Normalization
+    99→// ============================================
+   100→
+   101→/**
+   102→ * Normalize a key for matching
+   103→ * - Lowercase
+   104→ * - Remove accents (NFD normalization)
+   105→ * - Keep only letters, numbers, underscores, hyphens
+   106→ */
+   107→export function normalizeKey(text: string): string {
+   108→  if (!text) return '';
+   109→  
+   110→  let result = text.trim().toLowerCase();
+   111→  
+   112→  // Remove accents
+   113→  result = result
+   114→    .normalize('NFD')
+   115→    .replace(/[\u0300-\u036f]/g, '');
+   116→  
+   117→  // Keep only alphanumeric, underscores, hyphens
+   118→  result = result.replace(/[^a-z0-9_-]/g, '');
+   119→  
+   120→  return result;
+   121→}
+   122→
+   123→/**
+   124→ * Normalize a key but preserve more characters (for values)
+   125→ */
+   126→export function normalizeValue(text: string): string {
+   127→  if (!text) return '';
+   128→  return text.trim();
+   129→}
+   130→
+   131→/**
+   132→ * Check if a normalized key matches a pattern
+   133→ * Supports exact match only (no partials to avoid false positives)
+   134→ */
+   135→export function keyMatches(
+   136→  detectedKey: string,
+   137→  triggerKey: string,
+   138→  caseSensitive: boolean = false
+   139→): boolean {
+   140→  if (!detectedKey || !triggerKey) return false;
+   141→  
+   142→  if (caseSensitive) {
+   143→    return detectedKey === triggerKey;
+   144→  }
+   145→  
+   146→  return detectedKey.toLowerCase() === triggerKey.toLowerCase();
+   147→}
+   148→
+   149→/**
+   150→ * Check if a detected key matches any of the trigger keys
+   151→ */
+   152→export function keyMatchesAny(
+   153→  detectedKey: string,
+   154→  triggerKeys: string[],
+   155→  caseSensitive: boolean = false
+   156→): boolean {
+   157→  return triggerKeys.some(k => keyMatches(detectedKey, k, caseSensitive));
+   158→}
+   159→
+   160→/**
+   161→ * Parse a value string with potential operator prefix
+   162→ * Examples: "+10", "-5", "=100", "10" (implicit set)
+   163→ */
+   164→export function parseValueWithOperator(value: string): KeyValueInfo {
+   165→  const trimmed = value.trim();
+   166→  
+   167→  // Check for operator prefix
+   168→  const operatorMatch = trimmed.match(/^([+\-*/=])(.+)$/);
+   169→  
+   170→  if (operatorMatch) {
+   171→    const opChar = operatorMatch[1];
+   172→    const rest = operatorMatch[2].trim();
+   173→    
+   174→    const operator: ValueOperator = 
+   175→      opChar === '+' ? 'add' :
+   176→      opChar === '-' ? 'subtract' :
+   177→      opChar === '=' ? 'set' :
+   178→      opChar === '*' ? '*' :
+   179→      opChar === '/' ? '/' : 'set';
+   180→    
+   181→    const numValue = parseFloat(rest);
+   182→    
+   183→    return {
+   184→      raw: value,
+   185→      operator,
+   186→      numericValue: isNaN(numValue) ? undefined : numValue,
+   187→      stringValue: isNaN(numValue) ? rest : undefined,
+   188→    };
+   189→  }
+   190→  
+   191→  // No operator prefix - check if numeric
+   192→  const numValue = parseFloat(trimmed);
+   193→  
+   194→  return {
+   195→    raw: value,
+   196→    operator: 'set', // Default is set
+   197→    numericValue: isNaN(numValue) ? undefined : numValue,
+   198→    stringValue: isNaN(numValue) ? trimmed : undefined,
+   199→  };
+   200→}
+   201→
+   202→// ============================================
+   203→// Key Detector Class
+   204→// ============================================
+   205→
+   206→export class KeyDetector {
+   207→  // Track processed positions per message to avoid duplicates
+   208→  private processedPositions: Map<string, Set<number>> = new Map();
+   209→  
+   210→  // Track last processed length per message for incremental detection
+   211→  private lastProcessedLength: Map<string, number> = new Map();
+   212→  
+   213→  // All detected keys per message (for debugging)
+   214→  private allKeys: Map<string, DetectedKey[]> = new Map();
+   215→  
+   216→  // Track potentially partial key:value matches at end of streaming text
+   217→  // Key: messageKey, Value: the partial match info
+   218→  private partialMatches: Map<string, PartialMatch> = new Map();
+   219→
+   220→  /**
+   221→   * Detect keys incrementally in streaming text
+   222→   * Returns only NEW keys detected since last call
+   223→   */
+   224→  detectKeys(text: string, messageKey: string): DetectedKey[] {
+   225→    const processed = this.processedPositions.get(messageKey) ?? new Set();
+   226→    const allKeys = this.allKeys.get(messageKey) ?? [];
+   227→    
+   228→    const newKeys: DetectedKey[] = [];
+   229→    
+   230→    // Pattern 1: [key] or [key=value] or [key: value]
+   231→    // Extended to capture operators in values: [hp+10], [mana-5]
+   232→    const bracketPattern = /\[([a-zA-Z][a-zA-Z0-9_-]*)(?:\s*[:=]\s*([^\]]+))?\]/g;
+   233→    
+   234→    // Pattern 2: |key|
+   235→    const pipePattern = /\|([a-zA-Z][a-zA-Z0-9_-]+)\|/g;
+   236→    
+   237→    // Pattern 3: Peticion:key, Peticion=key, Peticion: key, Solicitud:key, etc.
+   238→    const prefixPattern = /(Peticion|Solicitud)\s*[:=]?\s*([a-zA-Z][a-zA-Z0-9_-]+)/gi;
+   239→    
+   240→    // Pattern 4: key:value or key=value (standalone, must be preceded by space/start)
+   241→    // STREAMING-SAFE: Value must be followed by delimiter (space, newline, punctuation)
+   242→    // If match ends at end of text, it's potentially partial and handled separately
+   243→    const keyValuePattern = /(?:^|[\s\n])([a-zA-Z][a-zA-Z0-9_-]{1,30})\s*[:=]\s*([a-zA-Z0-9_+-][a-zA-Z0-9_+-]{0,30})(?=[\s\n\r.,;:!?)]|$)/g;
+   244→    
+   245→    // Pattern 5: Quest XML tags - <quest:activate/>, <quest:progress id="x"/>, etc.
+   246→    // Also supports: <quest:activate title="Mission" description="..."/>
+   247→    const questTagPattern = /<quest:(activate|progress|complete|fail)(?:\s+([^>]*))?\/?>/gi;
+   248→    
+   249→    // Pattern 6: Operator-prefixed values (standalone stats)
+   250→    // Examples: +10 vida, -5 mana, =100 hp (at word boundary)
+   251→    // Note: These are caught by other patterns mostly, this is for standalone
+   252→    const operatorPattern = /(?:^|[\s\n])([+\-*/=])(\d+(?:\.\d+)?)\s*([a-zA-Z][a-zA-Z0-9_-]{0,20})/g;
+   253→    
+   254→    // Process all patterns
+   255→    this.processPattern(text, bracketPattern, 'bracket', processed, newKeys, (match) => {
+   256→      const key = normalizeKey(match[1]);
+   257→      const value = match[2]?.trim() || undefined;
+   258→      return {
+   259→        key,
+   260→        original: match[1],
+   261→        value,
+   262→        valueInfo: value ? parseValueWithOperator(value) : undefined,
+   263→        category: classifyKey({ key, original: match[1], value } as DetectedKey),
+   264→      };
+   265→    });
+   266→    
+   267→    this.processPattern(text, pipePattern, 'pipe', processed, newKeys, (match) => {
+   268→      const key = normalizeKey(match[1]);
+   269→      return {
+   270→        key,
+   271→        original: match[1],
+   272→        category: classifyKey({ key, original: match[1] } as DetectedKey),
+   273→      };
+   274→    });
+   275→    
+   276→    this.processPattern(text, prefixPattern, 'prefix', processed, newKeys, (match) => {
+   277→      return {
+   278→        key: normalizeKey(match[2]),
+   279→        original: match[2],
+   280→        prefix: match[1],
+   281→        category: 'solicitud' as KeyCategory,
+   282→      };
+   283→    });
+   284→    
+   285→    // Process key:value patterns with streaming-safe logic
+   286→    this.processKeyValuePattern(text, keyValuePattern, processed, newKeys, messageKey);
+   287→    
+   288→    // Process quest XML tags
+   289→    this.processPattern(text, questTagPattern, 'xml_tag', processed, newKeys, (match) => {
+   290→      const action = match[1].toLowerCase();
+   291→      const attrs = match[2] || '';
+   292→      
+   293→      // Parse attributes
+   294→      const attributes: Record<string, string> = {};
+   295→      const attrPattern = /(\w+)="([^"]*)"/g;
+   296→      let attrMatch;
+   297→      while ((attrMatch = attrPattern.exec(attrs)) !== null) {
+   298→        attributes[attrMatch[1]] = attrMatch[2];
+   299→      }
+   300→      
+   301→      // The key is the action type, with id or title as value
+   302→      const key = `quest_${action}`;
+   303→      const value = attributes.id || attributes.title || '';
+   304→      
+   305→      return {
+   306→        key,
+   307→        original: match[0],
+   308→        value,
+   309→        attributes,
+   310→        category: 'quest' as KeyCategory,
+   311→      };
+   312→    });
+   313→    
+   314→    // Process operator patterns (standalone numeric modifications)
+   315→    this.processPattern(text, operatorPattern, 'operator', processed, newKeys, (match) => {
+   316→      const opChar = match[1];
+   317→      const numValue = parseFloat(match[2]);
+   318→      const key = normalizeKey(match[3]);
+   319→      
+   320→      const operator: ValueOperator = 
+   321→        opChar === '+' ? 'add' :
+   322→        opChar === '-' ? 'subtract' :
+   323→        opChar === '=' ? 'set' :
+   324→        opChar === '*' ? '*' :
+   325→        opChar === '/' ? '/' : 'set';
+   326→      
+   327→      return {
+   328→        key,
+   329→        original: match[3],
+   330→        value: `${opChar}${numValue}`,
+   331→        valueInfo: {
+   332→          raw: match[0].trim(),
+   333→          operator,
+   334→          numericValue: numValue,
+   335→        },
+   336→        category: 'stats' as KeyCategory,
+   337→      };
+   338→    });
+   339→    
+   340→    // Sort by position (order of appearance)
+   341→    newKeys.sort((a, b) => a.position - b.position);
+   342→    
+   343→    // Update state
+   344→    this.lastProcessedLength.set(messageKey, text.length);
+   345→    this.processedPositions.set(messageKey, processed);
+   346→    this.allKeys.set(messageKey, [...allKeys, ...newKeys]);
+   347→    
+   348→    return newKeys;
+   349→  }
+   350→  
+   351→  /**
+   352→   * Process key:value pattern with streaming-safe logic
+   353→   * 
+   354→   * CRITICAL: During streaming, if a key:value pair ends at the END of the text,
+   355→   * the value might still be incomplete. We track these as "partial matches"
+   356→   * and only confirm them when we see more content that doesn't extend them.
+   357→   */
+   358→  private processKeyValuePattern(
+   359→    text: string,
+   360→    pattern: RegExp,
+   361→    processed: Set<number>,
+   362→    results: DetectedKey[],
+   363→    messageKey: string
+   364→  ): void {
+   365→    // Reset regex lastIndex
+   366→    pattern.lastIndex = 0;
+   367→    
+   368→    // Get or clear partial match for this message
+   369→    let partialMatch = this.partialMatches.get(messageKey);
+   370→    
+   371→    // Check if the previous partial match has been extended or completed
+   372→    if (partialMatch) {
+   373→      // Check if the text still contains the partial match at the same position
+   374→      const textAtPosition = text.substring(partialMatch.position);
+   375→      
+   376→      if (textAtPosition.startsWith(partialMatch.fullMatch)) {
+   377→        // The partial match is still there, check if it's been extended
+   378→        // Look for the pattern again starting from the same position
+   379→        const extendedPattern = /([a-zA-Z][a-zA-Z0-9_-]{1,30})\s*[:=]\s*([a-zA-Z0-9_+-][a-zA-Z0-9_+-]{0,30})(?=[\s\n\r.,;:!?)]|$)/g;
+   380→        extendedPattern.lastIndex = partialMatch.position;
+   381→        
+   382→        const extendedMatch = extendedPattern.exec(text);
+   383→        
+   384→        if (extendedMatch && extendedMatch.index === partialMatch.position) {
+   385→          const newValue = extendedMatch[2];
+   386→          const newFullMatch = extendedMatch[0];
+   387→          const newEndPosition = partialMatch.position + newFullMatch.length;
+   388→          
+   389→          // Check if this new match is now complete (not at end of text)
+   390→          const isComplete = newEndPosition < text.length;
+   391→          
+   392→          if (isComplete) {
+   393→            // The value is now complete - process it
+   394→            console.log(`[KeyDetector] Partial match completed: ${partialMatch.fullMatch} → ${newFullMatch}`);
+   395→            
+   396→            // Mark positions as processed
+   397→            for (let i = partialMatch.position; i < newEndPosition; i++) {
+   398→              processed.add(i);
+   399→            }
+   400→            
+   401→            const key = normalizeKey(extendedMatch[1]);
+   402→            const value = newValue?.trim();
+   403→            
+   404→            results.push({
+   405→              key,
+   406→              original: extendedMatch[1],
+   407→              value,
+   408→              valueInfo: value ? parseValueWithOperator(value) : undefined,
+   409→              format: 'key_value',
+   410→              position: partialMatch.position,
+   411→              length: newFullMatch.length,
+   412→              fullMatch: newFullMatch,
+   413→              category: classifyKey({ key, original: extendedMatch[1], value } as DetectedKey),
+   414→            });
+   415→            
+   416→            // Clear the partial match
+   417→            this.partialMatches.delete(messageKey);
+   418→            return;
+   419→          } else if (newValue !== partialMatch.value) {
+   420→            // Value was extended but still at end of text - update partial match
+   421→            console.log(`[KeyDetector] Partial match extended: ${partialMatch.value} → ${newValue}`);
+   422→            partialMatch = {
+   423→              position: partialMatch.position,
+   424→              key: partialMatch.key,
+   425→              original: partialMatch.original,
+   426→              value: newValue,
+   427→              fullMatch: newFullMatch,
+   428→              endPosition: newEndPosition,
+   429→            };
+   430→            this.partialMatches.set(messageKey, partialMatch);
+   431→            return; // Don't process, wait for more content
+   432→          }
+   433→          // Value unchanged and still partial - wait for more
+   434→          return;
+   435→        }
+   436→      }
+   437→      
+   438→      // Partial match no longer matches at expected position (text changed?)
+   439→      // Clear it and continue with normal detection
+   440→      console.log(`[KeyDetector] Partial match invalidated: ${partialMatch.fullMatch}`);
+   441→      this.partialMatches.delete(messageKey);
+   442→    }
+   443→    
+   444→    // Normal pattern matching
+   445→    for (const match of text.matchAll(pattern)) {
+   446→      const position = match.index ?? 0;
+   447→      const fullMatch = match[0];
+   448→      const length = fullMatch.length;
+   449→      const endPosition = position + length;
+   450→      
+   451→      // Skip if this position was already processed
+   452→      let hasOverlap = false;
+   453→      for (let i = position; i < endPosition; i++) {
+   454→        if (processed.has(i)) {
+   455→          hasOverlap = true;
+   456→          break;
+   457→        }
+   458→      }
+   459→      if (hasOverlap) continue;
+   460→      
+   461→      // Check if this match is at the END of the current text
+   462→      // If so, it might be a partial match (value still being streamed)
+   463→      const isAtEndOfText = endPosition >= text.length;
+   464→      
+   465→      if (isAtEndOfText) {
+   466→        // This match ends at the end of text - it might be partial
+   467→        // Store it and wait for more content
+   468→        const key = normalizeKey(match[1]);
+   469→        const value = match[2]?.trim();
+   470→        
+   471→        console.log(`[KeyDetector] Potential partial match at end: ${fullMatch} (value: ${value})`);
+   472→        
+   473→        this.partialMatches.set(messageKey, {
+   474→          position,
+   475→          key,
+   476→          original: match[1],
+   477→          value: value || '',
+   478→          fullMatch,
+   479→          endPosition,
+   480→        });
+   481→        
+   482→        // Don't add to results yet - wait for confirmation
+   483→        continue;
+   484→      }
+   485→      
+   486→      // Match is complete (not at end of text) - process it normally
+   487→      const key = normalizeKey(match[1]);
+   488→      const value = match[2]?.trim();
+   489→      
+   490→      if (!key) continue;
+   491→      
+   492→      // Mark all positions in this match as processed
+   493→      for (let i = position; i < endPosition; i++) {
+   494→        processed.add(i);
+   495→      }
+   496→      
+   497→      // Add to results
+   498→      results.push({
+   499→        key,
+   500→        original: match[1],
+   501→        value,
+   502→        valueInfo: value ? parseValueWithOperator(value) : undefined,
+   503→        format: 'key_value',
+   504→        position,
+   505→        length,
+   506→        fullMatch,
+   507→        category: classifyKey({ key, original: match[1], value } as DetectedKey),
+   508→      });
+   509→    }
+   510→  }
+   511→  
+   512→  /**
+   513→   * Process a regex pattern and extract keys
+   514→   */
+   515→  private processPattern(
+   516→    text: string,
+   517→    pattern: RegExp,
+   518→    format: KeyFormat,
+   519→    processed: Set<number>,
+   520→    results: DetectedKey[],
+   521→    extractor: (match: RegExpMatchArray) => Partial<DetectedKey>
+   522→  ): void {
+   523→    // Reset regex lastIndex
+   524→    pattern.lastIndex = 0;
+   525→    
+   526→    for (const match of text.matchAll(pattern)) {
+   527→      const position = match.index ?? 0;
+   528→      const fullMatch = match[0];
+   529→      const length = fullMatch.length;
+   530→      
+   531→      // Skip if this position was already processed
+   532→      // Use position range to avoid overlaps
+   533→      let hasOverlap = false;
+   534→      for (let i = position; i < position + length; i++) {
+   535→        if (processed.has(i)) {
+   536→          hasOverlap = true;
+   537→          break;
+   538→        }
+   539→      }
+   540→      if (hasOverlap) continue;
+   541→      
+   542→      // Extract key data
+   543→      const extracted = extractor(match);
+   544→      if (!extracted.key) continue;
+   545→      
+   546→      // Mark all positions in this match as processed
+   547→      for (let i = position; i < position + length; i++) {
+   548→        processed.add(i);
+   549→      }
+   550→      
+   551→      // Add to results
+   552→      results.push({
+   553→        key: extracted.key,
+   554→        original: extracted.original ?? extracted.key,
+   555→        value: extracted.value,
+   556→        valueInfo: extracted.valueInfo,
+   557→        format,
+   558→        prefix: extracted.prefix,
+   559→        position,
+   560→        length,
+   561→        fullMatch,
+   562→        attributes: extracted.attributes,
+   563→        category: extracted.category,
+   564→      });
+   565→    }
+   566→  }
+   567→  
+   568→  /**
+   569→   * Detect plain word keys (for triggers configured without special format)
+   570→   * This is for backward compatibility with simple keyword triggers
+   571→   * 
+   572→   * IMPORTANT: Only matches words that are registered as trigger keywords
+   573→   */
+   574→  detectWordKeys(
+   575→    text: string, 
+   576→    messageKey: string, 
+   577→    registeredKeys: string[]
+   578→  ): DetectedKey[] {
+   579→    if (registeredKeys.length === 0) return [];
+   580→    
+   581→    const processed = this.processedPositions.get(messageKey) ?? new Set();
+   582→    const newKeys: DetectedKey[] = [];
+   583→    
+   584→    // Normalize registered keys for matching
+   585→    const normalizedRegistered = registeredKeys.map(k => normalizeKey(k)).filter(k => k);
+   586→    if (normalizedRegistered.length === 0) return [];
+   587→    
+   588→    // Build pattern from registered keys
+   589→    const escapedKeys = normalizedRegistered
+   590→      .map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+   591→      .join('|');
+   592→    
+   593→    // Word boundary pattern to match exact words
+   594→    const wordPattern = new RegExp(`\\b(${escapedKeys})\\b`, 'gi');
+   595→    
+   596→    for (const match of text.matchAll(wordPattern)) {
+   597→      const position = match.index ?? 0;
+   598→      const fullMatch = match[0];
+   599→      const length = fullMatch.length;
+   600→      
+   601→      // Skip if already processed
+   602→      let hasOverlap = false;
+   603→      for (let i = position; i < position + length; i++) {
+   604→        if (processed.has(i)) {
+   605→          hasOverlap = true;
+   606→          break;
+   607→        }
+   608→      }
+   609→      if (hasOverlap) continue;
+   610→      
+   611→      // Mark positions as processed
+   612→      for (let i = position; i < position + length; i++) {
+   613→        processed.add(i);
+   614→      }
+   615→      
+   616→      const key = normalizeKey(match[1]);
+   617→      newKeys.push({
+   618→        key,
+   619→        original: match[1],
+   620→        format: 'word',
+   621→        position,
+   622→        length,
+   623→        fullMatch,
+   624→        category: classifyKey({ key, original: match[1] } as DetectedKey),
+   625→      });
+   626→    }
+   627→    
+   628→    this.processedPositions.set(messageKey, processed);
+   629→    
+   630→    return newKeys;
+   631→  }
+   632→  
+   633→  /**
+   634→   * Detect keys with batch registration (optimized for multiple key sets)
+   635→   * Each handler can register its keys and get matches in one call
+   636→   */
+   637→  detectRegisteredKeys(
+   638→    text: string,
+   639→    messageKey: string,
+   640→    keySets: Array<{
+   641→      keys: string[];
+   642→      caseSensitive?: boolean;
+   643→      requireValue?: boolean;
+   644→      category?: KeyCategory;
+   645→    }>
+   646→  ): Map<string, DetectedKey[]> {
+   647→    const results = new Map<string, DetectedKey[]>();
+   648→    
+   649→    for (const keySet of keySets) {
+   650→      const matches = this.detectWordKeys(text, messageKey, keySet.keys);
+   651→      
+   652→      // Filter by requirements if needed
+   653→      const filtered = matches.filter(key => {
+   654→        if (keySet.requireValue && !key.value) return false;
+   655→        return true;
+   656→      });
+   657→      
+   658→      if (filtered.length > 0) {
+   659→        const categoryKey = keySet.category || 'unknown';
+   660→        results.set(categoryKey, filtered);
+   661→      }
+   662→    }
+   663→    
+   664→    return results;
+   665→  }
+   666→  
+   667→  /**
+   668→   * Get all detected keys for a message
+   669→   */
+   670→  getAllKeys(messageKey: string): DetectedKey[] {
+   671→    return this.allKeys.get(messageKey) ?? [];
+   672→  }
+   673→  
+   674→  /**
+   675→   * Check if a position has been processed
+   676→   */
+   677→  isProcessed(messageKey: string, position: number): boolean {
+   678→    const processed = this.processedPositions.get(messageKey);
+   679→    return processed?.has(position) ?? false;
+   680→  }
+   681→  
+   682→  /**
+   683→   * Mark a position range as processed (for external use)
+   684→   */
+   685→  markProcessed(messageKey: string, position: number, length: number): void {
+   686→    const processed = this.processedPositions.get(messageKey) ?? new Set();
+   687→    for (let i = position; i < position + length; i++) {
+   688→      processed.add(i);
+   689→    }
+   690→    this.processedPositions.set(messageKey, processed);
+   691→  }
+   692→  
+   693→  /**
+   694→   * Force complete any pending partial match (call when streaming ends)
+   695→   */
+   696→  completePartialMatch(messageKey: string): DetectedKey | null {
+   697→    const partialMatch = this.partialMatches.get(messageKey);
+   698→    if (!partialMatch) return null;
+   699→    
+   700→    const processed = this.processedPositions.get(messageKey) ?? new Set();
+   701→    
+   702→    // Check if positions are already processed
+   703→    let hasOverlap = false;
+   704→    for (let i = partialMatch.position; i < partialMatch.endPosition; i++) {
+   705→      if (processed.has(i)) {
+   706→        hasOverlap = true;
+   707→        break;
+   708→      }
+   709→    }
+   710→    
+   711→    if (hasOverlap) {
+   712→      this.partialMatches.delete(messageKey);
+   713→      return null;
+   714→    }
+   715→    
+   716→    // Mark positions as processed
+   717→    for (let i = partialMatch.position; i < partialMatch.endPosition; i++) {
+   718→      processed.add(i);
+   719→    }
+   720→    
+   721→    this.processedPositions.set(messageKey, processed);
+   722→    this.partialMatches.delete(messageKey);
+   723→    
+   724→    console.log(`[KeyDetector] Force completing partial match: ${partialMatch.fullMatch}`);
+   725→    
+   726→    return {
+   727→      key: partialMatch.key,
+   728→      original: partialMatch.original,
+   729→      value: partialMatch.value,
+   730→      valueInfo: parseValueWithOperator(partialMatch.value),
+   731→      format: 'key_value',
+   732→      position: partialMatch.position,
+   733→      length: partialMatch.fullMatch.length,
+   734→      fullMatch: partialMatch.fullMatch,
+   735→      category: classifyKey({ 
+   736→        key: partialMatch.key, 
+   737→        original: partialMatch.original, 
+   738→        value: partialMatch.value 
+   739→      } as DetectedKey),
+   740→    };
+   741→  }
+   742→  
+   743→  /**
+   744→   * Reset state for a new message
+   745→   */
+   746→  reset(messageKey: string): void {
+   747→    this.processedPositions.delete(messageKey);
+   748→    this.lastProcessedLength.delete(messageKey);
+   749→    this.allKeys.delete(messageKey);
+   750→    this.partialMatches.delete(messageKey);
+   751→  }
+   752→  
+   753→  /**
+   754→   * Clear all state
+   755→   */
+   756→  clearAll(): void {
+   757→    this.processedPositions.clear();
+   758→    this.lastProcessedLength.clear();
+   759→    this.allKeys.clear();
+   760→    this.partialMatches.clear();
+   761→  }
+   762→}
+   763→
+   764→// ============================================
+   765→// Singleton Instance
+   766→// ============================================
+   767→
+   768→let detectorInstance: KeyDetector | null = null;
+   769→
+   770→export function getKeyDetector(): KeyDetector {
+   771→  if (!detectorInstance) {
+   772→    detectorInstance = new KeyDetector();
+   773→  }
+   774→  return detectorInstance;
+   775→}
+   776→
+   777→export function resetKeyDetector(): void {
+   778→  detectorInstance = null;
+   779→}
+   780→
+   781→// ============================================
+   782→// Utility Functions
+   783→// ============================================
+   784→
+   785→/**
+   786→ * Classify a detected key into a category based on its format and content
+   787→ * This is a hint - handlers should do their own classification
+   788→ */
+   789→export function classifyKey(key: DetectedKey): KeyCategory {
+   790→  // If already classified, return it
+   791→  if (key.category) return key.category;
+   792→  
+   793→  // XML tag format is always quest
+   794→  if (key.format === 'xml_tag') {
+   795→    return 'quest';
+   796→  }
+   797→  
+   798→  // Operator format is always stats
+   799→  if (key.format === 'operator') {
+   800→    return 'stats';
+   801→  }
+   802→  
+   803→  // Prefix-based classification
+   804→  if (key.format === 'prefix') {
+   805→    if (key.prefix?.toLowerCase() === 'peticion' || key.prefix?.toLowerCase() === 'solicitud') {
+   806→      return 'solicitud';
+   807→    }
+   808→  }
+   809→  
+   810→  // Value-based hints (if key has a value)
+   811→  if (key.value) {
+   812→    const valueLower = key.value.toLowerCase();
+   813→    if (valueLower.includes('sprite') || valueLower.includes('expresion')) {
+   814→      return 'sprite';
+   815→    }
+   816→    if (valueLower.includes('sound') || valueLower.includes('sonido')) {
+   817→      return 'sound';
+   818→    }
+   819→    if (valueLower.includes('bg') || valueLower.includes('background') || valueLower.includes('fondo')) {
+   820→      return 'background';
+   821→    }
+   822→    if (valueLower.includes('item') || valueLower.includes('objeto')) {
+   823→      return 'item';
+   824→    }
+   825→    if (valueLower.includes('atmosphere') || valueLower.includes('weather') || valueLower.includes('clima')) {
+   826→      return 'atmosphere';
+   827→    }
+   828→  }
+   829→  
+   830→  // Key name hints
+   831→  const keyLower = key.key.toLowerCase();
+   832→  
+   833→  // Direct key name matches (for key:value format like sprite:alegre, sound:laugh)
+   834→  if (keyLower === 'sprite' || keyLower === 'expresion' || keyLower === 'expression') {
+   835→    return 'sprite';
+   836→  }
+   837→  if (keyLower === 'sound' || keyLower === 'sonido' || keyLower === 'sfx') {
+   838→    return 'sound';
+   839→  }
+   840→  if (keyLower === 'bg' || keyLower === 'background' || keyLower === 'fondo') {
+   841→    return 'background';
+   842→  }
+   843→  if (keyLower === 'item' || keyLower === 'objeto') {
+   844→    return 'item';
+   845→  }
+   846→  if (keyLower === 'atmosphere' || keyLower === 'weather' || keyLower === 'clima') {
+   847→    return 'atmosphere';
+   848→  }
+   849→  if (keyLower === 'hud' || keyLower === 'ui') {
+   850→    return 'hud';
+   851→  }
+   852→  
+   853→  // Solicitud patterns
+   854→  if (keyLower.startsWith('pedir_') || keyLower.startsWith('solicitar_') || 
+   855→      keyLower.startsWith('peticion_') || keyLower.startsWith('solicitud_')) {
+   856→    return 'solicitud';
+   857→  }
+   858→  
+   859→  // Quest patterns
+   860→  if (keyLower.startsWith('quest_') || keyLower.startsWith('mision_') || 
+   861→      keyLower.startsWith('objetivo_') || keyLower.startsWith('mission_')) {
+   862→    return 'quest';
+   863→  }
+   864→  
+   865→  // Skill patterns
+   866→  if (keyLower.startsWith('skill_') || keyLower.startsWith('habilidad_') || 
+   867→      keyLower.startsWith('accion_') || keyLower.startsWith('action_') ||
+   868→      keyLower.startsWith('hab') || keyLower.match(/^hab\d/)) {
+   869→    return 'skill';
+   870→  }
+   871→  
+   872→  // Stats patterns
+   873→  if (keyLower.startsWith('stat_') || keyLower.startsWith('atributo_') ||
+   874→      keyLower === 'hp' || keyLower === 'mp' || keyLower === 'vida' ||
+   875→      keyLower === 'mana' || keyLower === 'stamina' || keyLower === 'energy' ||
+   876→      keyLower.match(/^(hp|mp|sp|exp)$/)) {
+   877→    return 'stats';
+   878→  }
+   879→  
+   880→  // Item patterns
+   881→  if (keyLower.startsWith('item_') || keyLower.startsWith('objeto_') ||
+   882→      keyLower.startsWith('get_') || keyLower.startsWith('lose_')) {
+   883→    return 'item';
+   884→  }
+   885→  
+   886→  // Background patterns
+   887→  if (keyLower.startsWith('bg_') || keyLower.startsWith('fondo_') ||
+   888→      keyLower.startsWith('background_') || keyLower.startsWith('scene_')) {
+   889→    return 'background';
+   890→  }
+   891→  
+   892→  // Sound patterns
+   893→  if (keyLower.startsWith('sound_') || keyLower.startsWith('sonido_') ||
+   894→      keyLower.startsWith('sfx_') || keyLower.startsWith('audio_')) {
+   895→    return 'sound';
+   896→  }
+   897→  
+   898→  // Sprite patterns
+   899→  if (keyLower.startsWith('sprite_') || keyLower.startsWith('expresion_') ||
+   900→      keyLower.startsWith('emotion_') || keyLower.startsWith('face_')) {
+   901→    return 'sprite';
+   902→  }
+   903→  
+   904→  // HUD patterns
+   905→  if (keyLower.startsWith('hud_') || keyLower.startsWith('ui_')) {
+   906→    return 'hud';
+   907→  }
+   908→  
+   909→  // Atmosphere patterns
+   910→  if (keyLower.startsWith('atmosphere_') || keyLower.startsWith('weather_') ||
+   911→      keyLower.startsWith('clima_') || keyLower.startsWith('ambiente_')) {
+   912→    return 'atmosphere';
+   913→  }
+   914→  
+   915→  return 'unknown';
+   916→}
+   917→
+   918→/**
+   919→ * Check if a key should be processed by a specific handler type
+   920→ */
+   921→export function isKeyForHandler(key: DetectedKey, handlerType: KeyCategory): boolean {
+   922→  const category = classifyKey(key);
+   923→  return category === handlerType || category === 'unknown';
+   924→}
+   925→

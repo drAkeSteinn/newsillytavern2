@@ -8,17 +8,19 @@
  * - Objective completed
  * - Quest completed
  * - Quest failed
+ * - Quest updated
  * - Rewards earned
  * 
  * Features:
  * - Animated slide-in/out notifications
- * - Auto-dismiss after configurable timeout
+ * - Auto-dismiss after configurable timeout (from questSettings)
  * - Click to dismiss
  * - Stack multiple notifications
  * - Priority-based coloring
+ * - Duplicate counter: merged notifications show count badge
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useTavernStore } from '@/store';
 import type { QuestNotification } from '@/types';
 import { cn } from '@/lib/utils';
@@ -29,6 +31,8 @@ import {
   Sparkles,
   Star,
   Check,
+  RefreshCw,
+  Layers,
 } from 'lucide-react';
 
 // ============================================
@@ -38,6 +42,7 @@ import {
 interface NotificationItemProps {
   notification: QuestNotification;
   onDismiss: (id: string) => void;
+  autoDismissMs: number;
 }
 
 // ============================================
@@ -49,6 +54,7 @@ const notificationIcons: Record<QuestNotification['type'], React.ReactNode> = {
   objective_complete: <Check className="w-5 h-5 text-green-400" />,
   quest_complete: <Star className="w-5 h-5 text-amber-400" />,
   quest_failed: <AlertTriangle className="w-5 h-5 text-red-400" />,
+  quest_updated: <RefreshCw className="w-5 h-5 text-cyan-400" />,
   reward_claimed: <Gift className="w-5 h-5 text-purple-400" />,
 };
 
@@ -77,6 +83,11 @@ const notificationColors: Record<QuestNotification['type'], { bg: string; border
     border: 'border-red-500/40',
     text: 'text-red-400',
   },
+  quest_updated: {
+    bg: 'bg-cyan-500/20',
+    border: 'border-cyan-500/40',
+    text: 'text-cyan-400',
+  },
   reward_claimed: {
     bg: 'bg-purple-500/20',
     border: 'border-purple-500/40',
@@ -93,6 +104,7 @@ const badgeLabels: Record<QuestNotification['type'], string> = {
   objective_complete: 'Progreso',
   quest_complete: 'Completada',
   quest_failed: 'Fallida',
+  quest_updated: 'Actualizada',
   reward_claimed: 'Recompensa',
 };
 
@@ -101,6 +113,7 @@ const badgeColors: Record<QuestNotification['type'], string> = {
   objective_complete: 'bg-green-500/30 text-green-300',
   quest_complete: 'bg-amber-500/30 text-amber-300',
   quest_failed: 'bg-red-500/30 text-red-300',
+  quest_updated: 'bg-cyan-500/30 text-cyan-300',
   reward_claimed: 'bg-purple-500/30 text-purple-300',
 };
 
@@ -112,24 +125,32 @@ export function QuestNotifications() {
   const questSettings = useTavernStore((state) => state.questSettings);
   const questNotifications = useTavernStore((state) => state.questNotifications);
   const markNotificationRead = useTavernStore((state) => state.markNotificationRead);
+  const dismissedIdsRef = useRef<Set<string>>(new Set());
   
+  // Get configurable auto-dismiss time (default 5000ms)
+  const autoDismissMs = questSettings.notificationAutoDismissMs ?? 5000;
+
   // Auto-dismiss notifications
   useEffect(() => {
     if (!questSettings.showNotifications) return;
     
     const unreadNotifications = questNotifications.filter(n => !n.read);
     
-    // Auto-mark as read after 5 seconds
+    // Auto-mark as read after configurable timeout
     const timers = unreadNotifications.map(notification => {
+      // If this notification has duplicates, extend the auto-dismiss time
+      const dupCount = notification.duplicateCount ?? 0;
+      const extendedMs = autoDismissMs + (dupCount * 2000); // +2s per duplicate
       return setTimeout(() => {
         markNotificationRead(notification.id);
-      }, 5000);
+        dismissedIdsRef.current.delete(notification.id);
+      }, extendedMs);
     });
     
     return () => {
       timers.forEach(timer => clearTimeout(timer));
     };
-  }, [questNotifications, questSettings.showNotifications, markNotificationRead]);
+  }, [questNotifications, questSettings.showNotifications, markNotificationRead, autoDismissMs]);
   
   // Don't render if notifications are disabled
   if (!questSettings.showNotifications) {
@@ -150,6 +171,7 @@ export function QuestNotifications() {
           key={notification.id}
           notification={notification}
           onDismiss={markNotificationRead}
+          autoDismissMs={autoDismissMs}
         />
       ))}
     </div>
@@ -160,13 +182,14 @@ export function QuestNotifications() {
 // Notification Item Component
 // ============================================
 
-function NotificationItem({ notification, onDismiss }: NotificationItemProps) {
+function NotificationItem({ notification, onDismiss, autoDismissMs }: NotificationItemProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   
   const colors = notificationColors[notification.type] || notificationColors.quest_activated;
   const icon = notificationIcons[notification.type] || notificationIcons.quest_activated;
-  
+  const duplicateCount = notification.duplicateCount ?? 0;
+
   // Animate in
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -193,22 +216,39 @@ function NotificationItem({ notification, onDismiss }: NotificationItemProps) {
         colors.border,
         isVisible && !isExiting
           ? 'translate-x-0 opacity-100'
-          : 'translate-x-full opacity-0'
+          : 'translate-x-full opacity-0',
+        // Pulse effect when there are duplicates
+        duplicateCount > 0 && 'animate-[pulse_0.5s_ease-in-out]'
       )}
+      key={`${notification.id}-d${duplicateCount}`}
     >
       {/* Icon */}
       <div className={cn(
-        'flex items-center justify-center w-10 h-10 rounded-lg shrink-0',
+        'flex items-center justify-center w-10 h-10 rounded-lg shrink-0 relative',
         colors.bg
       )}>
         {icon}
+        {/* Duplicate count badge */}
+        {duplicateCount > 0 && (
+          <span className={cn(
+            'absolute -top-1.5 -right-1.5',
+            'flex items-center justify-center',
+            'min-w-[18px] h-[18px] px-1',
+            'rounded-full text-[9px] font-bold',
+            'bg-orange-500 text-white',
+            'shadow-sm shadow-orange-500/50',
+            'animate-[bounce-in_0.3s_ease-out]'
+          )}>
+            {duplicateCount + 1}
+          </span>
+        )}
       </div>
       
       {/* Content */}
       <div className="flex-1 min-w-0 py-0.5">
         <div className="flex items-center gap-2">
           <span className={cn('text-xs font-medium', colors.text)}>
-            {notification.questName}
+            {notification.questName || 'Misión'}
           </span>
           <NotificationBadge type={notification.type} />
         </div>
@@ -220,6 +260,15 @@ function NotificationItem({ notification, onDismiss }: NotificationItemProps) {
             <Gift className="w-3 h-3 text-purple-400" />
             <span className="text-[10px] text-purple-400">
               +{notification.rewards.length} recompensa{notification.rewards.length > 1 ? 's' : ''}
+            </span>
+          </div>
+        )}
+        {/* Duplicate info line */}
+        {duplicateCount > 0 && (
+          <div className="flex items-center gap-1 mt-1">
+            <Layers className="w-3 h-3 text-orange-400/60" />
+            <span className="text-[10px] text-orange-400/60">
+              {duplicateCount + 1} notificaciones similares agrupadas
             </span>
           </div>
         )}
@@ -270,14 +319,16 @@ export function useQuestNotifications() {
   const notifyObjectiveComplete = useCallback((
     questName: string, 
     questId: string, 
-    objectiveDescription: string
+    objectiveDescription: string,
+    objectiveId?: string,
   ) => {
     addQuestNotification({
       questId,
       questName,
       type: 'objective_complete',
       message: `Objetivo completado: ${objectiveDescription}`,
-    });
+      objectiveId,
+    } as any);
   }, [addQuestNotification]);
   
   const notifyQuestCompleted = useCallback((
@@ -303,6 +354,15 @@ export function useQuestNotifications() {
     });
   }, [addQuestNotification]);
   
+  const notifyQuestUpdated = useCallback((questName: string, questId: string, message: string) => {
+    addQuestNotification({
+      questId,
+      questName,
+      type: 'quest_updated',
+      message,
+    });
+  }, [addQuestNotification]);
+  
   const notifyReward = useCallback((
     questName: string, 
     questId: string, 
@@ -323,6 +383,7 @@ export function useQuestNotifications() {
     notifyObjectiveComplete,
     notifyQuestCompleted,
     notifyQuestFailed,
+    notifyQuestUpdated,
     notifyReward,
   };
 }

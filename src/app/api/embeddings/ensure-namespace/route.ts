@@ -16,6 +16,20 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { characterId, characterName, groupId, groupName, memberIds, memberNames, sessionId } = body;
 
+    const { isLanceDBPermanentlyUnavailable } = await import('@/lib/embeddings/lancedb-db');
+
+    // If LanceDB is not available on this system, return gracefully
+    if (isLanceDBPermanentlyUnavailable()) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          namespaces: [],
+          unavailable: true,
+          message: 'LanceDB is not available on this system. Embeddings features are disabled.',
+        },
+      });
+    }
+
     const { getEmbeddingClient, resetEmbeddingClient } = await import('@/lib/embeddings/client');
     const { getConfig } = await import('@/lib/embeddings/config-persistence');
 

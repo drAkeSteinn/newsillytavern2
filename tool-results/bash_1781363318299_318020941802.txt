@@ -1,0 +1,577 @@
+[info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[log] [HMR] connected
+[log] [BgTriggers] 🔄 Loading background index from API...
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [BgTriggers] ✅ API returned 9 backgrounds
+[log] [Persistence] Loaded 13 quest templates
+[log] [Fast Refresh] rebuilding
+[warning] [Fast Refresh] performing full reload because your application had an unrecoverable error
+[log] [Fast Refresh] done in 210ms
+[info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[log] [HMR] connected
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [CharacterSprite] Sprite data: {characterId: "33bbd96a-3533-43b9-84b8-653f401db619", hasCharacter: true, spritePacksV2Count: "undefined", stateCollectionsV2Count: "undefined", currentSpriteUrl: "/uploads/avatar/1780667487184-xwvy10.png", ...}
+[log] [BgTriggers] 🔄 Loading background index from API...
+[log] [Timer] Started session timer for 2c8572cc-9d59-4a3c-b73a-c9228ee93dec (tick: 60s)
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [BgTriggers] ✅ API returned 9 backgrounds
+[log] [Persistence] Loaded 13 quest templates
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 197ms
+[info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[log] [HMR] connected
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [CharacterSprite] Sprite data: {characterId: "33bbd96a-3533-43b9-84b8-653f401db619", hasCharacter: true, spritePacksV2Count: "undefined", stateCollectionsV2Count: "undefined", currentSpriteUrl: "/uploads/avatar/1780667487184-xwvy10.png", ...}
+[log] [BgTriggers] 🔄 Loading background index from API...
+[log] [Timer] Started session timer for 2c8572cc-9d59-4a3c-b73a-c9228ee93dec (tick: 60s)
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [BgTriggers] ✅ API returned 9 backgrounds
+[log] [Persistence] Loaded 13 quest templates
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 171ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 192ms
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 209ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 191ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 212ms
+[log] Found Misiones button: <button class="relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all text-white shadow-sm" style="background-color: rgb(99, 102, 241);"><svg xmlns="http://www.w3
+[log] Found Misiones button: <button class="w-full flex items-center gap-3 rounded-md text-sm transition-all duration-150 px-0 md:px-3 py-2 justify-center md:justify-start text-muted-foreground hover:bg-accent/50 hover:text-foreg
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 210ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 205ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 182ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 213ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 185ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 193ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 160ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 169ms
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 195ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 191ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 116ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 188ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 205ms
+[log] [Fast Refresh] rebuilding
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [KWS] Stopping...
+[log] [CharacterSprite] Sprite data: {characterId: "33bbd96a-3533-43b9-84b8-653f401db619", hasCharacter: true, spritePacksV2Count: "undefined", stateCollectionsV2Count: "undefined", currentSpriteUrl: "/uploads/avatar/1780667487184-xwvy10.png", ...}
+[log] [Timer] Started session timer for 2c8572cc-9d59-4a3c-b73a-c9228ee93dec (tick: 60s)
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [KWS] Stopping...
+[log] [CharacterSprite] Sprite data: {characterId: "33bbd96a-3533-43b9-84b8-653f401db619", hasCharacter: true, spritePacksV2Count: "undefined", stateCollectionsV2Count: "undefined", currentSpriteUrl: "/uploads/avatar/1780667487184-xwvy10.png", ...}
+[log] [Timer] Started session timer for 2c8572cc-9d59-4a3c-b73a-c9228ee93dec (tick: 60s)
+[log] [Fast Refresh] done in 510ms
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 227ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 213ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 207ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 205ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 319ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 206ms
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 204ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 196ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 191ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 245ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 197ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 191ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 237ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 112ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 116ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 115ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 120ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 119ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 114ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 111ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 110ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 109ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 112ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 110ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 118ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 119ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 172ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 191ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 106ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 113ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 115ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 112ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 107ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 176ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 108ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 109ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 165ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 109ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 109ms
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 181ms
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 176ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 184ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 246ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 199ms
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 196ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 215ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 216ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 202ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 195ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 195ms
+[log] [Fast Refresh] rebuilding
+[log] [Timer] Timer already running for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec at 60s, requested 60s is slower or equal
+[log] [Fast Refresh] done in 170ms
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [Fast Refresh] rebuilding
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [KWS] Stopping...
+[log] [CharacterSprite] Sprite data: {characterId: "33bbd96a-3533-43b9-84b8-653f401db619", hasCharacter: true, spritePacksV2Count: "undefined", stateCollectionsV2Count: "undefined", currentSpriteUrl: "/uploads/avatar/1780667487184-xwvy10.png", ...}
+[log] [Timer] Started session timer for 2c8572cc-9d59-4a3c-b73a-c9228ee93dec (tick: 60s)
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [Fast Refresh] done in 218ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 242ms
+[log] [Fast Refresh] rebuilding
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [KWS] Stopping...
+[log] [CharacterSprite] Sprite data: {characterId: "33bbd96a-3533-43b9-84b8-653f401db619", hasCharacter: true, spritePacksV2Count: "undefined", stateCollectionsV2Count: "undefined", currentSpriteUrl: "/uploads/avatar/1780667487184-xwvy10.png", ...}
+[log] [Timer] Started session timer for 2c8572cc-9d59-4a3c-b73a-c9228ee93dec (tick: 60s)
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [Fast Refresh] done in 193ms
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 199ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 207ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 202ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 130ms
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 204ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 204ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 222ms
+[log] [Fast Refresh] rebuilding
+[log] [Timer] Timer already running for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec at 60s, requested 60s is slower or equal
+[log] [Fast Refresh] done in 181ms
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [Fast Refresh] rebuilding
+[log] [Timer] Timer already running for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec at 60s, requested 60s is slower or equal
+[log] [Fast Refresh] done in 193ms
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [Fast Refresh] rebuilding
+[log] [Timer] Timer already running for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec at 60s, requested 60s is slower or equal
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [Timer] Timer already running for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec at 60s, requested 60s is slower or equal
+[log] [Fast Refresh] done in 295ms
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [Fast Refresh] rebuilding
+[log] [Timer] Timer already running for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec at 60s, requested 60s is slower or equal
+[log] [Fast Refresh] done in 211ms
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [Fast Refresh] rebuilding
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [KWS] Stopping...
+[log] [CharacterSprite] Sprite data: {characterId: "33bbd96a-3533-43b9-84b8-653f401db619", hasCharacter: true, spritePacksV2Count: "undefined", stateCollectionsV2Count: "undefined", currentSpriteUrl: "/uploads/avatar/1780667487184-xwvy10.png", ...}
+[log] [BgTriggers] 🔄 Loading background index from API...
+[log] [Timer] Timer already running for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec at 60s, requested 60s is slower or equal
+[log] [Fast Refresh] done in 260ms
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [BgTriggers] ✅ API returned 9 backgrounds
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 205ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 192ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 203ms
+[log] [Fast Refresh] rebuilding
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [KWS] Stopping...
+[log] [CharacterSprite] Sprite data: {characterId: "33bbd96a-3533-43b9-84b8-653f401db619", hasCharacter: true, spritePacksV2Count: "undefined", stateCollectionsV2Count: "undefined", currentSpriteUrl: "/uploads/avatar/1780667487184-xwvy10.png", ...}
+[log] [Timer] Started session timer for 2c8572cc-9d59-4a3c-b73a-c9228ee93dec (tick: 60s)
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [KWS] Stopping...
+[log] [CharacterSprite] Sprite data: {characterId: "33bbd96a-3533-43b9-84b8-653f401db619", hasCharacter: true, spritePacksV2Count: "undefined", stateCollectionsV2Count: "undefined", currentSpriteUrl: "/uploads/avatar/1780667487184-xwvy10.png", ...}
+[log] [Timer] Started session timer for 2c8572cc-9d59-4a3c-b73a-c9228ee93dec (tick: 60s)
+[log] [Fast Refresh] done in 459ms
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [Fast Refresh] rebuilding
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [KWS] Stopping...
+[log] [CharacterSprite] Sprite data: {characterId: "33bbd96a-3533-43b9-84b8-653f401db619", hasCharacter: true, spritePacksV2Count: "undefined", stateCollectionsV2Count: "undefined", currentSpriteUrl: "/uploads/avatar/1780667487184-xwvy10.png", ...}
+[log] [Timer] Started session timer for 2c8572cc-9d59-4a3c-b73a-c9228ee93dec (tick: 60s)
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [KWS] Stopping...
+[log] [CharacterSprite] Sprite data: {characterId: "33bbd96a-3533-43b9-84b8-653f401db619", hasCharacter: true, spritePacksV2Count: "undefined", stateCollectionsV2Count: "undefined", currentSpriteUrl: "/uploads/avatar/1780667487184-xwvy10.png", ...}
+[log] [Timer] Started session timer for 2c8572cc-9d59-4a3c-b73a-c9228ee93dec (tick: 60s)
+[log] [Fast Refresh] done in 406ms
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 186ms
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [Fast Refresh] rebuilding
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [Timer] Timer already running for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec at 60s, requested 60s is slower or equal
+[log] [Fast Refresh] done in 184ms
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 209ms
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 196ms
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [QuestVisibility] Refreshing all objective visibility for session 2c8572cc-9d59-4a3c-b73a-c9228ee93dec. Stats targets: [33bbd96a-3533-43b9-84b8-653f401db619, __user__]
+[log] [Timer] Processed 5 timer updates for character 33bbd96a-3533-43b9-84b8-653f401db619:
+[log]   Lujuria: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Exigencia: 100 → 100 (add 5 × 1 ticks)
+[log]   Adicción a la penetración de pezones: 0 → 0 (subtract 0 × 1 ticks)
+[log]   Hentai Style: 0 → 0 (subtract 5 × 1 ticks)
+[log]   Sensibilidad de Pezones: 0 → 0 (subtract 5 × 1 ticks)
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 193ms
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 203ms
+[info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[log] [HMR] connected
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [CharacterSprite] Sprite data: {characterId: "33bbd96a-3533-43b9-84b8-653f401db619", hasCharacter: true, spritePacksV2Count: "undefined", stateCollectionsV2Count: "undefined", currentSpriteUrl: "/uploads/avatar/1780667487184-xwvy10.png", ...}
+[log] [BgTriggers] 🔄 Loading background index from API...
+[log] [Timer] Started session timer for 2c8572cc-9d59-4a3c-b73a-c9228ee93dec (tick: 60s)
+[log] [ChatPanel] Ensured memory namespaces for restored session 2c8572cc
+[log] [KWS] Single mode - wake words: ["Decemone"]
+[log] [BgTriggers] ✅ API returned 9 backgrounds
+[log] [Persistence] Loaded 13 quest templates
+[log] [Fast Refresh] rebuilding
+[log] [Fast Refresh] done in 233ms

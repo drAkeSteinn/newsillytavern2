@@ -1,0 +1,767 @@
+     1→     1→/**
+     2→     2→ * Sprite System Migration Utilities — Comprehensive Legacy → V2
+     3→     3→ * 
+     4→     4→ * This module provides utilities to migrate ALL legacy sprite data to the V2 system:
+     5→     5→ * 
+     6→     6→ * - CharacterSprite[] → SpritePackV2 (via migrateLegacySprites)
+     7→     7→ * - SpriteConfig.sprites → StateCollectionV2[] (via createStateCollectionsFromConfig)
+     8→     8→ * - SpriteConfig.stateCollections → StateCollectionV2[] (via migrateLegacyStateCollections)
+     9→     9→ * - CharacterSpriteTrigger[] → TriggerCollection[] (via migrateLegacySpriteTrigger)
+    10→    10→ * - Full character migration with report (via migrateCharacterSprites)
+    11→    11→ * 
+    12→    12→ * Key principles:
+    13→    13→ * - Idempotent: running twice produces the same result
+    14→    14→ * - Preserves existing V2 data (never overwrites)
+    15→    15→ * - Uses crypto.randomUUID() for IDs
+    16→    16→ * - Returns detailed migration reports with warnings
+    17→    17→ */
+    18→    18→
+    19→    19→import type {
+    20→    20→  CharacterCard,
+    21→    21→  CharacterSprite,
+    22→    22→  CharacterSpriteTrigger,
+    23→    23→  SpriteConfig,
+    24→    24→  StateSpriteCollection,
+    25→    25→  StateCollectionEntry,
+    26→    26→  SpriteState,
+    27→    27→  CollectionBehavior,
+    28→    28→  ReturnToMode,
+    29→    29→  // V2 Types
+    30→    30→  TriggerCollection,
+    31→    31→  SpritePackV2,
+    32→    32→  SpritePackEntryV2,
+    33→    33→  StateCollectionV2,
+    34→    34→  SpriteTriggerConfig,
+    35→    35→  TriggerFallbackMode,
+    36→    36→} from '@/types';
+    37→    37→import { getLogger } from '@/lib/logger';
+    38→    38→import { warnLegacyField, warnLegacyType } from './deprecation-warnings';
+    39→    39→
+    40→    40→// UUID generator using crypto.randomUUID
+    41→    41→const uuidv4 = () => crypto.randomUUID();
+    42→    42→
+    43→    43→const logger = getLogger('sprite-migration');
+    44→    44→
+    45→    45→// ============================================
+    46→    46→// Migration Result Types
+    47→    47→// ============================================
+    48→    48→
+    49→    49→export interface MigrationResult {
+    50→    50→  success: boolean;
+    51→    51→  /** Migrated trigger collections (existing + new) */
+    52→    52→  triggerCollections: TriggerCollection[];
+    53→    53→  /** Migrated sprite packs V2 (existing + new) */
+    54→    54→  spritePacksV2: SpritePackV2[];
+    55→    55→  /** Migrated state collections V2 (existing + new) */
+    56→    56→  stateCollectionsV2: StateCollectionV2[];
+    57→    57→  /** Warnings generated during migration */
+    58→    58→  warnings: string[];
+    59→    59→  /** Errors that prevented migration */
+    60→    60→  errors: string[];
+    61→    61→  /** Detailed report of what was migrated */
+    62→    62→  report: MigrationReport;
+    63→    63→}
+    64→    64→
+    65→    65→export interface MigrationReport {
+    66→    66→  /** Number of CharacterSprite entries migrated */
+    67→    67→  spritesMigrated: number;
+    68→    68→  /** Number of CharacterSpriteTrigger entries migrated */
+    69→    69→  triggersMigrated: number;
+    70→    70→  /** Number of StateSpriteCollection entries migrated */
+    71→    71→  stateCollectionsMigrated: number;
+    72→    72→  /** Number of SpriteConfig URL entries migrated */
+    73→    73→  configUrlsMigrated: number;
+    74→    74→  /** Number of SpritePackV2 created */
+    75→    75→  packsCreated: number;
+    76→    76→  /** Number of TriggerCollection created */
+    77→    77→  triggerCollectionsCreated: number;
+    78→    78→  /** Number of StateCollectionV2 created */
+    79→    79→  stateCollectionsCreated: number;
+    80→    80→  /** Whether any legacy data was found */
+    81→    81→  hasLegacyData: boolean;
+    82→    82→  /** Whether any V2 data already existed */
+    83→    83→  hasExistingV2Data: boolean;
+    84→    84→}
+    85→    85→
+    86→    86→export interface MigrationOptions {
+    87→    87→  /** Create default state collections from spriteConfig (default: true) */
+    88→    88→  createDefaultStateCollections?: boolean;
+    89→    89→  /** Default pack name for new packs (default: "Migrated Sprites") */
+    90→    90→  defaultPackName?: string;
+    91→    91→  /** Whether to skip migration if V2 data already exists for a category (default: true) */
+    92→    92→  skipIfV2Exists?: boolean;
+    93→    93→}
+    94→    94→
+    95→    95→// ============================================
+    96→    96→// Individual Migration Functions
+    97→    97→// ============================================
+    98→    98→
+    99→    99→/**
+   100→   100→ * Migrate CharacterSprite[] → SpritePackV2
+   101→   101→ * Creates a single "Legacy Sprites" pack containing all CharacterSprite entries.
+   102→   102→ * 
+   103→   103→ * Mapping:
+   104→   104→ *   CharacterSprite.imageUrl → SpritePackEntryV2.url
+   105→   105→ *   CharacterSprite.name/expression → SpritePackEntryV2.label
+   106→   106→ *   CharacterSprite.state → tag
+   107→   107→ */
+   108→   108→export function migrateLegacySprites(
+   109→   109→  sprites: CharacterSprite[],
+   110→   110→  packName?: string
+   111→   111→): { pack: SpritePackV2; warnings: string[] } {
+   112→   112→  const warnings: string[] = [];
+   113→   113→  const now = new Date().toISOString();
+   114→   114→
+   115→   115→  warnLegacyType('CharacterSprite', 'SpritePackEntryV2');
+   116→   116→
+   117→   117→  const packEntries: SpritePackEntryV2[] = sprites.map((sprite) => {
+   118→   118→    if (!sprite.imageUrl) {
+   119→   119→      warnings.push(`Sprite "${sprite.name || sprite.id}" has no imageUrl, skipping entry`);
+   120→   120→    }
+   121→   121→
+   122→   122→    const label = sprite.name || sprite.expression || `sprite_${sprite.id.slice(0, 8)}`;
+   123→   123→    const tags: string[] = [];
+   124→   124→    if (sprite.state) tags.push(sprite.state);
+   125→   125→    if (sprite.expression && sprite.expression !== label) tags.push(sprite.expression);
+   126→   126→
+   127→   127→    return {
+   128→   128→      id: uuidv4(),
+   129→   129→      label,
+   130→   130→      url: sprite.imageUrl || '',
+   131→   131→      tags: tags.length > 0 ? tags : undefined,
+   132→   132→      isAnimated: sprite.animations && sprite.animations.length > 0 ? true : undefined,
+   133→   133→    };
+   134→   134→  }).filter(entry => entry.url !== ''); // Remove entries with no URL
+   135→   135→
+   136→   136→  const pack: SpritePackV2 = {
+   137→   137→    id: uuidv4(),
+   138→   138→    name: packName || 'Migrated Sprites',
+   139→   139→    description: 'Auto-migrated from legacy CharacterSprite[] data',
+   140→   140→    sprites: packEntries,
+   141→   141→    createdAt: now,
+   142→   142→    updatedAt: now,
+   143→   143→  };
+   144→   144→
+   145→   145→  return { pack, warnings };
+   146→   146→}
+   147→   147→
+   148→   148→/**
+   149→   149→ * Migrate a single CharacterSpriteTrigger → TriggerCollection
+   150→   150→ * 
+   151→   151→ * Mapping:
+   152→   152→ *   trigger.key → collection.collectionKey
+   153→   153→ *   trigger.keys → collection.collectionKeys
+   154→   154→ *   trigger.requirePipes → collection.collectionKeyRequirePipes
+   155→   155→ *   trigger.caseSensitive → collection.collectionKeyCaseSensitive
+   156→   156→ *   trigger.returnToIdleMs → collection.fallbackDelayMs
+   157→   157→ *   trigger.returnToMode → collection.fallbackMode
+   158→   158→ *   trigger.returnToSpriteUrl → used to create fallback sprite
+   159→   159→ *   trigger.cooldownMs → collection.cooldownMs
+   160→   160→ *   trigger.priority → collection.priority
+   161→   161→ *   trigger.spriteUrl → creates a SpritePackEntryV2 in the pack
+   162→   162→ */
+   163→   163→export function migrateLegacySpriteTrigger(
+   164→   164→  trigger: CharacterSpriteTrigger,
+   165→   165→  pack: SpritePackV2
+   166→   166→): { collection: TriggerCollection; warnings: string[] } {
+   167→   167→  const warnings: string[] = [];
+   168→   168→  const now = new Date().toISOString();
+   169→   169→
+   170→   170→  warnLegacyType('CharacterSpriteTrigger', 'TriggerCollection');
+   171→   171→
+   172→   172→  // Find or create a sprite entry in the pack for the trigger's spriteUrl
+   173→   173→  let spriteEntry = pack.sprites.find(s => s.url === trigger.spriteUrl);
+   174→   174→  if (!spriteEntry && trigger.spriteUrl) {
+   175→   175→    spriteEntry = {
+   176→   176→      id: uuidv4(),
+   177→   177→      label: trigger.title || trigger.spriteState || `trigger_sprite_${trigger.id.slice(0, 8)}`,
+   178→   178→      url: trigger.spriteUrl,
+   179→   179→      tags: trigger.spriteState ? [trigger.spriteState] : undefined,
+   180→   180→    };
+   181→   181→    pack.sprites.push(spriteEntry);
+   182→   182→  }
+   183→   183→
+   184→   184→  // Handle fallback sprite (returnToSpriteUrl)
+   185→   185→  let fallbackSpriteId: string | undefined;
+   186→   186→  if (trigger.returnToSpriteUrl) {
+   187→   187→    let fallbackEntry = pack.sprites.find(s => s.url === trigger.returnToSpriteUrl);
+   188→   188→    if (!fallbackEntry) {
+   189→   189→      fallbackEntry = {
+   190→   190→        id: uuidv4(),
+   191→   191→        label: `fallback_${trigger.id.slice(0, 8)}`,
+   192→   192→        url: trigger.returnToSpriteUrl,
+   193→   193→      };
+   194→   194→      pack.sprites.push(fallbackEntry);
+   195→   195→    }
+   196→   196→    fallbackSpriteId = fallbackEntry.id;
+   197→   197→  }
+   198→   198→
+   199→   199→  // Map returnToMode to TriggerFallbackMode
+   200→   200→  const fallbackMode = mapReturnToMode(trigger.returnToMode, warnings);
+   201→   201→
+   202→   202→  // Build spriteConfigs - the primary sprite config
+   203→   203→  const spriteConfigs: Record<string, SpriteTriggerConfig> = {};
+   204→   204→  if (spriteEntry) {
+   205→   205→    // Get all keys (main key + alternative keys + legacy keywords)
+   206→   206→    const allKeys: string[] = [];
+   207→   207→    if (trigger.key) allKeys.push(trigger.key);
+   208→   208→    if (trigger.keys && trigger.keys.length > 0) allKeys.push(...trigger.keys);
+   209→   209→    if (allKeys.length === 0 && trigger.keywords && trigger.keywords.length > 0) {
+   210→   210→      allKeys.push(...trigger.keywords);
+   211→   211→    }
+   212→   212→
+   213→   213→    spriteConfigs[spriteEntry.id] = {
+   214→   214→      spriteId: spriteEntry.id,
+   215→   215→      key: allKeys[0] || '',
+   216→   216→      keys: allKeys.length > 1 ? allKeys.slice(1) : undefined,
+   217→   217→      requirePipes: trigger.requirePipes ?? true,
+   218→   218→      caseSensitive: trigger.caseSensitive ?? false,
+   219→   219→      fallbackMode,
+   220→   220→      fallbackSpriteId,
+   221→   221→      fallbackDelayMs: trigger.returnToIdleMs,
+   222→   222→      useTimelineSounds: false,
+   223→   223→      enabled: trigger.active !== false,
+   224→   224→    };
+   225→   225→  }
+   226→   226→
+   227→   227→  // Get the main collection key
+   228→   228→  const collectionKey = trigger.key || (trigger.keywords && trigger.keywords.length > 0 ? trigger.keywords[0] : '');
+   229→   229→  const collectionKeys = trigger.keys || (trigger.keywords && trigger.keywords.length > 1 ? trigger.keywords.slice(1) : undefined);
+   230→   230→
+   231→   231→  const collection: TriggerCollection = {
+   232→   232→    id: uuidv4(),
+   233→   233→    name: trigger.title || 'Migrated Trigger',
+   234→   234→    active: trigger.active !== false,
+   235→   235→    priority: trigger.priority ?? 1,
+   236→   236→    packId: pack.id,
+   237→   237→    collectionKey: collectionKey || '',
+   238→   238→    collectionKeys,
+   239→   239→    collectionKeyRequirePipes: trigger.requirePipes,
+   240→   240→    collectionKeyCaseSensitive: trigger.caseSensitive,
+   241→   241→    collectionBehavior: 'principal',
+   242→   242→    principalSpriteId: spriteEntry?.id,
+   243→   243→    fallbackMode,
+   244→   244→    fallbackSpriteId,
+   245→   245→    fallbackDelayMs: trigger.returnToIdleMs ?? 0,
+   246→   246→    useTimelineSounds: false,
+   247→   247→    cooldownMs: trigger.cooldownMs ?? 0,
+   248→   248→    spriteConfigs,
+   249→   249→    createdAt: now,
+   250→   250→    updatedAt: now,
+   251→   251→  };
+   252→   252→
+   253→   253→  return { collection, warnings };
+   254→   254→}
+   255→   255→
+   256→   256→/**
+   257→   257→ * Map legacy ReturnToMode to TriggerFallbackMode
+   258→   258→ */
+   259→   259→function mapReturnToMode(mode: ReturnToMode | undefined, warnings: string[]): TriggerFallbackMode {
+   260→   260→  if (!mode) return 'idle_collection';
+   261→   261→  
+   262→   262→  switch (mode) {
+   263→   263→    case 'idle_collection':
+   264→   264→      return 'idle_collection';
+   265→   265→    case 'custom_sprite':
+   266→   266→      return 'custom_sprite';
+   267→   267→    default:
+   268→   268→      warnings.push(`Unknown ReturnToMode "${mode}", defaulting to 'idle_collection'`);
+   269→   269→      return 'idle_collection';
+   270→   270→  }
+   271→   271→}
+   272→   272→
+   273→   273→/**
+   274→   274→ * Migrate SpriteConfig.stateCollections → StateCollectionV2[]
+   275→   275→ * 
+   276→   276→ * For each state in stateCollections:
+   277→   277→ *   - Creates a SpritePackV2 with the entries as sprites
+   278→   278→ *   - Creates a StateCollectionV2 referencing that pack
+   279→   279→ *   - Maps behavior: 'principal' | 'random' | 'list' (same in V2)
+   280→   280→ */
+   281→   281→export function migrateLegacyStateCollections(
+   282→   282→  stateCollections: { [key in SpriteState]?: StateSpriteCollection },
+   283→   283→  characterName?: string
+   284→   284→): { packs: SpritePackV2[]; stateCollectionsV2: StateCollectionV2[]; warnings: string[] } {
+   285→   285→  const warnings: string[] = [];
+   286→   286→  const packs: SpritePackV2[] = [];
+   287→   287→  const stateCollectionsV2: StateCollectionV2[] = [];
+   288→   288→  const now = new Date().toISOString();
+   289→   289→
+   290→   290→  warnLegacyType('StateSpriteCollection', 'StateCollectionV2');
+   291→   291→
+   292→   292→  const states: SpriteState[] = ['idle', 'talk', 'thinking'];
+   293→   293→
+   294→   294→  for (const state of states) {
+   295→   295→    const legacyCollection = stateCollections[state];
+   296→   296→    if (!legacyCollection) continue;
+   297→   297→
+   298→   298→    // Create pack entries from the legacy collection
+   299→   299→    const packEntries: SpritePackEntryV2[] = legacyCollection.entries.map((entry) => ({
+   300→   300→      id: uuidv4(),
+   301→   301→      label: entry.spriteLabel || `sprite_${entry.id.slice(0, 8)}`,
+   302→   302→      url: entry.spriteUrl,
+   303→   303→      tags: [state, entry.role],
+   304→   304→      isDefault: entry.role === 'principal',
+   305→   305→    }));
+   306→   306→
+   307→   307→    // Filter out entries with empty URLs
+   308→   308→    const validEntries = packEntries.filter(e => e.url);
+   309→   309→    if (validEntries.length === 0) {
+   310→   310→      warnings.push(`State "${state}" collection has no valid sprite URLs, skipping`);
+   311→   311→      continue;
+   312→   312→    }
+   313→   313→
+   314→   314→    const packName = characterName
+   315→   315→      ? `${characterName} - ${state.charAt(0).toUpperCase() + state.slice(1)} Pack`
+   316→   316→      : `${state.charAt(0).toUpperCase() + state.slice(1)} State Pack`;
+   317→   317→
+   318→   318→    const pack: SpritePackV2 = {
+   319→   319→      id: uuidv4(),
+   320→   320→      name: packName,
+   321→   321→      description: `Auto-migrated from legacy state collection for ${state}`,
+   322→   322→      sprites: validEntries,
+   323→   323→      createdAt: now,
+   324→   324→      updatedAt: now,
+   325→   325→    };
+   326→   326→    packs.push(pack);
+   327→   327→
+   328→   328→    // Find principal sprite (first principal role or first entry)
+   329→   329→    const principalEntry = validEntries.find(e => e.isDefault) || validEntries[0];
+   330→   330→
+   331→   331→    // Map behavior (same values in V2)
+   332→   332→    const behavior = mapBehavior(legacyCollection.behavior, warnings);
+   333→   333→
+   334→   334→    const stateCollection: StateCollectionV2 = {
+   335→   335→      state,
+   336→   336→      packId: pack.id,
+   337→   337→      behavior,
+   338→   338→      principalSpriteId: behavior === 'principal' ? principalEntry.id : undefined,
+   339→   339→      spriteOrder: behavior === 'list' ? validEntries.map(e => e.id) : undefined,
+   340→   340→      currentIndex: legacyCollection.currentIndex || 0,
+   341→   341→    };
+   342→   342→    stateCollectionsV2.push(stateCollection);
+   343→   343→  }
+   344→   344→
+   345→   345→  return { packs, stateCollectionsV2, warnings };
+   346→   346→}
+   347→   347→
+   348→   348→/**
+   349→   349→ * Map legacy CollectionBehavior to V2 behavior
+   350→   350→ */
+   351→   351→function mapBehavior(behavior: CollectionBehavior, _warnings: string[]): 'principal' | 'random' | 'list' {
+   352→   352→  // Same values in both systems
+   353→   353→  return behavior;
+   354→   354→}
+   355→   355→
+   356→   356→/**
+   357→   357→ * Create default State Collections V2 from SpriteConfig.sprites URL map
+   358→   358→ * (existing functionality, preserved)
+   359→   359→ */
+   360→   360→export function createStateCollectionsFromConfig(
+   361→   361→  character: CharacterCard,
+   362→   362→  packsV2: SpritePackV2[]
+   363→   363→): StateCollectionV2[] {
+   364→   364→  const stateCollections: StateCollectionV2[] = [];
+   365→   365→  const states: SpriteState[] = ['idle', 'talk', 'thinking'];
+   366→   366→
+   367→   367→  for (const state of states) {
+   368→   368→    // Check if state collection already exists
+   369→   369→    const existing = character.stateCollectionsV2?.find(c => c.state === state);
+   370→   370→    if (existing) {
+   371→   371→      stateCollections.push(existing);
+   372→   372→      continue;
+   373→   373→    }
+   374→   374→
+   375→   375→    // Try to create from sprite config
+   376→   376→    const legacyUrl = character.spriteConfig?.sprites?.[state];
+   377→   377→    if (!legacyUrl) continue;
+   378→   378→
+   379→   379→    // Find or create a pack for this sprite
+   380→   380→    let pack = packsV2.find(p => p.sprites.some(s => s.url === legacyUrl));
+   381→   381→    
+   382→   382→    if (!pack) {
+   383→   383→      // Create a new pack for this state
+   384→   384→      const now = new Date().toISOString();
+   385→   385→      pack = {
+   386→   386→        id: uuidv4(),
+   387→   387→        name: `${state.charAt(0).toUpperCase() + state.slice(1)} Sprites`,
+   388→   388→        description: `Auto-created for ${state} state`,
+   389→   389→        sprites: [{
+   390→   390→          id: uuidv4(),
+   391→   391→          label: `${state}_default`,
+   392→   392→          url: legacyUrl,
+   393→   393→          tags: [state],
+   394→   394→        }],
+   395→   395→        createdAt: now,
+   396→   396→        updatedAt: now,
+   397→   397→      };
+   398→   398→      packsV2.push(pack);
+   399→   399→    }
+   400→   400→
+   401→   401→    // Find the sprite in the pack
+   402→   402→    const sprite = pack.sprites.find(s => s.url === legacyUrl);
+   403→   403→
+   404→   404→    stateCollections.push({
+   405→   405→      state,
+   406→   406→      packId: pack.id,
+   407→   407→      behavior: 'principal',
+   408→   408→      principalSpriteId: sprite?.id,
+   409→   409→    });
+   410→   410→  }
+   411→   411→
+   412→   412→  return stateCollections;
+   413→   413→}
+   414→   414→
+   415→   415→// ============================================
+   416→   416→// Full Character Migration (Comprehensive)
+   417→   417→// ============================================
+   418→   418→
+   419→   419→/**
+   420→   420→ * Migrate ALL legacy sprite data for a character to V2.
+   421→   421→ * 
+   422→   422→ * This function:
+   423→   423→ * 1. Migrates CharacterSprite[] → SpritePackV2
+   424→   424→ * 2. Migrates SpriteConfig.sprites → StateCollectionV2[]
+   425→   425→ * 3. Migrates SpriteConfig.stateCollections → StateCollectionV2[] + SpritePackV2[]
+   426→   426→ * 4. Migrates CharacterSpriteTrigger[] → TriggerCollection[] + SpritePackV2[]
+   427→   427→ * 5. Preserves all existing V2 data
+   428→   428→ * 6. Returns detailed migration report
+   429→   429→ * 
+   430→   430→ * The migration is idempotent — running it twice produces the same result.
+   431→   431→ */
+   432→   432→export function migrateCharacterSprites(
+   433→   433→  character: CharacterCard,
+   434→   434→  options: MigrationOptions = {}
+   435→   435→): MigrationResult {
+   436→   436→  const {
+   437→   437→    createDefaultStateCollections = true,
+   438→   438→    defaultPackName = 'Migrated Sprites',
+   439→   439→    skipIfV2Exists = true,
+   440→   440→  } = options;
+   441→   441→
+   442→   442→  const result: MigrationResult = {
+   443→   443→    success: true,
+   444→   444→    triggerCollections: [...(character.triggerCollections || [])],
+   445→   445→    spritePacksV2: [...(character.spritePacksV2 || [])],
+   446→   446→    stateCollectionsV2: [...(character.stateCollectionsV2 || [])],
+   447→   447→    warnings: [],
+   448→   448→    errors: [],
+   449→   449→    report: {
+   450→   450→      spritesMigrated: 0,
+   451→   451→      triggersMigrated: 0,
+   452→   452→      stateCollectionsMigrated: 0,
+   453→   453→      configUrlsMigrated: 0,
+   454→   454→      packsCreated: 0,
+   455→   455→      triggerCollectionsCreated: 0,
+   456→   456→      stateCollectionsCreated: 0,
+   457→   457→      hasLegacyData: false,
+   458→   458→      hasExistingV2Data: false,
+   459→   459→    },
+   460→   460→  };
+   461→   461→
+   462→   462→  try {
+   463→   463→    const existingV2Packs = result.spritePacksV2.length;
+   464→   464→    const existingV2Collections = result.triggerCollections.length;
+   465→   465→    const existingV2StateCollections = result.stateCollectionsV2.length;
+   466→   466→    result.report.hasExistingV2Data = existingV2Packs > 0 || existingV2Collections > 0 || existingV2StateCollections > 0;
+   467→   467→
+   468→   468→    // ---- 1. Migrate CharacterSprite[] → SpritePackV2 ----
+   469→   469→    const hasLegacySprites = character.sprites && character.sprites.length > 0;
+   470→   470→    if (hasLegacySprites) {
+   471→   471→      result.report.hasLegacyData = true;
+   472→   472→      warnLegacyField('sprites', 'spritePacksV2');
+   473→   473→
+   474→   474→      // Only migrate if no existing V2 packs or skipIfV2Exists is false
+   475→   475→      if (!skipIfV2Exists || existingV2Packs === 0) {
+   476→   476→        const { pack, warnings } = migrateLegacySprites(character.sprites, defaultPackName);
+   477→   477→        result.warnings.push(...warnings);
+   478→   478→        result.spritePacksV2.push(pack);
+   479→   479→        result.report.spritesMigrated = character.sprites.length;
+   480→   480→        result.report.packsCreated++;
+   481→   481→      } else {
+   482→   482→        result.warnings.push('Skipped CharacterSprite[] migration: V2 sprite packs already exist');
+   483→   483→      }
+   484→   484→    }
+   485→   485→
+   486→   486→    // ---- 2. Migrate SpriteConfig.stateCollections → StateCollectionV2[] + SpritePackV2[] ----
+   487→   487→    const hasLegacyStateCollections = character.spriteConfig?.stateCollections &&
+   488→   488→      Object.keys(character.spriteConfig.stateCollections).length > 0;
+   489→   489→    if (hasLegacyStateCollections) {
+   490→   490→      result.report.hasLegacyData = true;
+   491→   491→      warnLegacyField('spriteConfig.stateCollections', 'stateCollectionsV2');
+   492→   492→
+   493→   493→      if (!skipIfV2Exists || existingV2StateCollections === 0) {
+   494→   494→        const { packs, stateCollectionsV2, warnings } = migrateLegacyStateCollections(
+   495→   495→          character.spriteConfig!.stateCollections!,
+   496→   496→          character.name
+   497→   497→        );
+   498→   498→        result.warnings.push(...warnings);
+   499→   499→        result.spritePacksV2.push(...packs);
+   500→   500→        
+   501→   501→        // Merge state collections (don't overwrite existing states)
+   502→   502→        for (const sc of stateCollectionsV2) {
+   503→   503→          const existingIdx = result.stateCollectionsV2.findIndex(c => c.state === sc.state);
+   504→   504→          if (existingIdx < 0) {
+   505→   505→            result.stateCollectionsV2.push(sc);
+   506→   506→            result.report.stateCollectionsCreated++;
+   507→   507→          }
+   508→   508→        }
+   509→   509→
+   510→   510→        result.report.stateCollectionsMigrated = stateCollectionsV2.length;
+   511→   511→        result.report.packsCreated += packs.length;
+   512→   512→      } else {
+   513→   513→        result.warnings.push('Skipped stateCollections migration: V2 state collections already exist');
+   514→   514→      }
+   515→   515→    }
+   516→   516→
+   517→   517→    // ---- 3. Migrate SpriteConfig.sprites URLs → StateCollectionV2[] ----
+   518→   518→    if (createDefaultStateCollections && character.spriteConfig?.sprites) {
+   519→   519→      const configUrls = Object.values(character.spriteConfig.sprites).filter(Boolean);
+   520→   520→      if (configUrls.length > 0) {
+   521→   521→        result.report.hasLegacyData = true;
+   522→   522→        warnLegacyField('spriteConfig.sprites', 'stateCollectionsV2');
+   523→   523→
+   524→   524→        const stateCollections = createStateCollectionsFromConfig(character, result.spritePacksV2);
+   525→   525→        
+   526→   526→        let urlsMigrated = 0;
+   527→   527→        for (const sc of stateCollections) {
+   528→   528→          const existingIdx = result.stateCollectionsV2.findIndex(c => c.state === sc.state);
+   529→   529→          if (existingIdx < 0) {
+   530→   530→            result.stateCollectionsV2.push(sc);
+   531→   531→            result.report.stateCollectionsCreated++;
+   532→   532→            urlsMigrated++;
+   533→   533→          }
+   534→   534→        }
+   535→   535→        result.report.configUrlsMigrated = urlsMigrated;
+   536→   536→
+   537→   537→        // Count new packs created by this step
+   538→   538→        result.report.packsCreated = result.spritePacksV2.length - existingV2Packs;
+   539→   539→      }
+   540→   540→    }
+   541→   541→
+   542→   542→    // ---- 4. Migrate CharacterSpriteTrigger[] → TriggerCollection[] ----
+   543→   543→    const hasLegacyTriggers = character.spriteTriggers && character.spriteTriggers.length > 0;
+   544→   544→    if (hasLegacyTriggers) {
+   545→   545→      result.report.hasLegacyData = true;
+   546→   546→      warnLegacyField('spriteTriggers', 'triggerCollections');
+   547→   547→
+   548→   548→      if (!skipIfV2Exists || existingV2Collections === 0) {
+   549→   549→        // Create a trigger migration pack if not already created from sprites
+   550→   550→        let triggerPack = result.spritePacksV2.find(p => p.name === `${defaultPackName} - Triggers`);
+   551→   551→        if (!triggerPack) {
+   552→   552→          triggerPack = {
+   553→   553→            id: uuidv4(),
+   554→   554→            name: `${defaultPackName} - Triggers`,
+   555→   555→            description: 'Auto-migrated from legacy CharacterSpriteTrigger[] data',
+   556→   556→            sprites: [],
+   557→   557→            createdAt: new Date().toISOString(),
+   558→   558→            updatedAt: new Date().toISOString(),
+   559→   559→          };
+   560→   560→          result.spritePacksV2.push(triggerPack);
+   561→   561→          result.report.packsCreated++;
+   562→   562→        }
+   563→   563→
+   564→   564→        for (const legacyTrigger of character.spriteTriggers!) {
+   565→   565→          const { collection, warnings } = migrateLegacySpriteTrigger(legacyTrigger, triggerPack);
+   566→   566→          result.warnings.push(...warnings);
+   567→   567→          result.triggerCollections.push(collection);
+   568→   568→          result.report.triggersMigrated++;
+   569→   569→          result.report.triggerCollectionsCreated++;
+   570→   570→        }
+   571→   571→      } else {
+   572→   572→        result.warnings.push('Skipped spriteTriggers migration: V2 trigger collections already exist');
+   573→   573→      }
+   574→   574→    }
+   575→   575→
+   576→   576→    // ---- Check for legacy sprite packs ----
+   577→   577→    const hasLegacyPacks = character.spritePacks && character.spritePacks.length > 0;
+   578→   578→    if (hasLegacyPacks) {
+   579→   579→      result.report.hasLegacyData = true;
+   580→   580→      warnLegacyField('spritePacks', 'spritePacksV2');
+   581→   581→      result.warnings.push(
+   582→   582→        `Found ${character.spritePacks!.length} legacy SpritePack(s). ` +
+   583→   583→        `These are used by the legacy trigger system and should be migrated manually ` +
+   584→   584→        `by recreating them as SpritePackV2 in the sprite editor.`
+   585→   585→      );
+   586→   586→    }
+   587→   587→
+   588→   588→    logger.info('Character sprite migration completed', {
+   589→   589→      characterId: character.id,
+   590→   590→      characterName: character.name,
+   591→   591→      report: result.report,
+   592→   592→      warningsCount: result.warnings.length,
+   593→   593→    });
+   594→   594→
+   595→   595→  } catch (error) {
+   596→   596→    result.success = false;
+   597→   597→    result.errors.push(error instanceof Error ? error.message : 'Unknown error during migration');
+   598→   598→    logger.error('Character sprite migration failed', {
+   599→   599→      characterId: character.id,
+   600→   600→      error,
+   601→   601→    });
+   602→   602→  }
+   603→   603→
+   604→   604→  return result;
+   605→   605→}
+   606→   606→
+   607→   607→// ============================================
+   608→   608→// Migration Status Check
+   609→   609→// ============================================
+   610→   610→
+   611→   611→export interface MigrationStatus {
+   612→   612→  /** Whether any legacy data exists on this character */
+   613→   613→  hasLegacyData: boolean;
+   614→   614→  /** Whether V2 data exists */
+   615→   615→  hasV2Data: boolean;
+   616→   616→  /** Number of legacy sprites */
+   617→   617→  legacySprites: number;
+   618→   618→  /** Number of legacy triggers */
+   619→   619→  legacyTriggers: number;
+   620→   620→  /** Number of legacy sprite packs */
+   621→   621→  legacyPacks: number;
+   622→   622→  /** Whether spriteConfig has URL map entries */
+   623→   623→  hasConfigUrls: boolean;
+   624→   624→  /** Whether spriteConfig has stateCollections */
+   625→   625→  hasConfigStateCollections: boolean;
+   626→   626→  /** Number of V2 trigger collections */
+   627→   627→  v2Collections: number;
+   628→   628→  /** Number of V2 packs */
+   629→   629→  v2Packs: number;
+   630→   630→  /** Number of V2 state collections */
+   631→   631→  v2StateCollections: number;
+   632→   632→  /** Whether migration is needed (has legacy data but incomplete V2 data) */
+   633→   633→  needsMigration: boolean;
+   634→   634→  /** Detailed breakdown of what needs migration */
+   635→   635→  migrationItems: MigrationItem[];
+   636→   636→}
+   637→   637→
+   638→   638→export interface MigrationItem {
+   639→   639→  type: 'sprites' | 'triggers' | 'stateCollections' | 'configUrls' | 'legacyPacks';
+   640→   640→  label: string;
+   641→   641→  count: number;
+   642→   642→  description: string;
+   643→   643→}
+   644→   644→
+   645→   645→/**
+   646→   646→ * Check migration status for a character
+   647→   647→ */
+   648→   648→export function getMigrationStatus(character: CharacterCard): MigrationStatus {
+   649→   649→  const legacySprites = character.sprites?.length || 0;
+   650→   650→  const legacyTriggers = character.spriteTriggers?.length || 0;
+   651→   651→  const legacyPacks = character.spritePacks?.length || 0;
+   652→   652→  const hasConfigUrls = !!(character.spriteConfig?.sprites &&
+   653→   653→    Object.values(character.spriteConfig.sprites).some(Boolean));
+   654→   654→  const hasConfigStateCollections = !!(character.spriteConfig?.stateCollections &&
+   655→   655→    Object.keys(character.spriteConfig.stateCollections).length > 0);
+   656→   656→
+   657→   657→  const v2Collections = character.triggerCollections?.length || 0;
+   658→   658→  const v2Packs = character.spritePacksV2?.length || 0;
+   659→   659→  const v2StateCollections = character.stateCollectionsV2?.length || 0;
+   660→   660→
+   661→   661→  const hasLegacyData = legacySprites > 0 || legacyTriggers > 0 || legacyPacks > 0 || hasConfigUrls || hasConfigStateCollections;
+   662→   662→  const hasV2Data = v2Collections > 0 || v2Packs > 0 || v2StateCollections > 0;
+   663→   663→
+   664→   664→  // Build migration items list
+   665→   665→  const migrationItems: MigrationItem[] = [];
+   666→   666→
+   667→   667→  if (legacySprites > 0) {
+   668→   668→    migrationItems.push({
+   669→   669→      type: 'sprites',
+   670→   670→      label: 'Sprites Legacy',
+   671→   671→      count: legacySprites,
+   672→   672→      description: `${legacySprites} sprite(s) en formato legacy → SpritePackV2`,
+   673→   673→    });
+   674→   674→  }
+   675→   675→
+   676→   676→  if (legacyTriggers > 0) {
+   677→   677→    migrationItems.push({
+   678→   678→      type: 'triggers',
+   679→   679→      label: 'Triggers Legacy',
+   680→   680→      count: legacyTriggers,
+   681→   681→      description: `${legacyTriggers} trigger(s) legacy → TriggerCollection`,
+   682→   682→    });
+   683→   683→  }
+   684→   684→
+   685→   685→  if (hasConfigStateCollections) {
+   686→   686→    const count = Object.keys(character.spriteConfig!.stateCollections!).filter(
+   687→   687→      k => character.spriteConfig!.stateCollections![k as SpriteState]
+   688→   688→    ).length;
+   689→   689→    migrationItems.push({
+   690→   690→      type: 'stateCollections',
+   691→   691→      label: 'Colecciones de Estado',
+   692→   692→      count,
+   693→   693→      description: `${count} colección(es) de estado → StateCollectionV2`,
+   694→   694→    });
+   695→   695→  }
+   696→   696→
+   697→   697→  if (hasConfigUrls) {
+   698→   698→    const count = Object.values(character.spriteConfig!.sprites).filter(Boolean).length;
+   699→   699→    migrationItems.push({
+   700→   700→      type: 'configUrls',
+   701→   701→      label: 'URLs de SpriteConfig',
+   702→   702→      count,
+   703→   703→      description: `${count} URL(s) de sprite → StateCollectionV2`,
+   704→   704→    });
+   705→   705→  }
+   706→   706→
+   707→   707→  if (legacyPacks > 0) {
+   708→   708→    migrationItems.push({
+   709→   709→      type: 'legacyPacks',
+   710→   710→      label: 'Sprite Packs Legacy',
+   711→   711→      count: legacyPacks,
+   712→   712→      description: `${legacyPacks} pack(s) legacy (migración manual recomendada)`,
+   713→   713→    });
+   714→   714→  }
+   715→   715→
+   716→   716→  return {
+   717→   717→    hasLegacyData,
+   718→   718→    hasV2Data,
+   719→   719→    legacySprites,
+   720→   720→    legacyTriggers,
+   721→   721→    legacyPacks,
+   722→   722→    hasConfigUrls,
+   723→   723→    hasConfigStateCollections,
+   724→   724→    v2Collections,
+   725→   725→    v2Packs,
+   726→   726→    v2StateCollections,
+   727→   727→    needsMigration: hasLegacyData,
+   728→   728→    migrationItems,
+   729→   729→  };
+   730→   730→}
+   731→   731→
+   732→   732→/**
+   733→   733→ * Check if a character needs migration (has legacy data)
+   734→   734→ */
+   735→   735→export function needsMigration(character: CharacterCard): boolean {
+   736→   736→  return getMigrationStatus(character).needsMigration;
+   737→   737→}
+   738→   738→
+   739→   739→/**
+   740→   740→ * Apply migration result to a character card, returning updated partial character
+   741→   741→ */
+   742→   742→export function applyMigrationResult(
+   743→   743→  character: CharacterCard,
+   744→   744→  result: MigrationResult
+   745→   745→): Partial<CharacterCard> {
+   746→   746→  return {
+   747→   747→    spritePacksV2: result.spritePacksV2,
+   748→   748→    stateCollectionsV2: result.stateCollectionsV2,
+   749→   749→    triggerCollections: result.triggerCollections,
+   750→   750→  };
+   751→   751→}
+   752→   752→
+   753→   753→// ============================================
+   754→   754→// Export utilities
+   755→   755→// ============================================
+   756→   756→
+   757→   757→export const migration = {
+   758→   758→  migrateCharacterSprites,
+   759→   759→  migrateLegacySprites,
+   760→   760→  migrateLegacySpriteTrigger,
+   761→   761→  migrateLegacyStateCollections,
+   762→   762→  createStateCollectionsFromConfig,
+   763→   763→  getMigrationStatus,
+   764→   764→  needsMigration,
+   765→   765→  applyMigrationResult,
+   766→   766→};
+   767→   767→

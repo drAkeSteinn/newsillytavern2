@@ -1,0 +1,1205 @@
+     1→// ============================================
+     2→// Unified Trigger Executor - Execute Triggers as Rewards
+     3→// ============================================
+     4→//
+     5→// Este módulo ejecuta triggers directamente, sin pasar por el TokenDetector.
+     6→// Se usa principalmente para ejecutar recompensas de quests.
+     7→//
+     8→// Flujo:
+     9→// 1. Recibe categoría (sprite/sound/background) y key
+    10→// 2. Crea un "trigger match" sintético
+    11→// 3. Llama directamente a las funciones de ejecución de los handlers
+    12→//
+    13→// Ventajas:
+    14→// - Reutiliza toda la infraestructura existente
+    15→// - No duplica lógica de ejecución
+    16→// - Soporta targetMode para grupos
+    17→
+    18→import type { CharacterCard, SoundCollection, SoundTrigger, BackgroundTriggerPack, BackgroundOverlay, BackgroundTransitionType, SoundSequenceTrigger } from '@/types';
+    19→import type { TriggerContext } from './trigger-bus';
+    20→import type { TriggerMatch } from './types';
+    21→import {
+    22→  executeSoundTrigger,
+    23→} from './handlers/sound-handler';
+    24→import {
+    25→  executeSpriteTrigger,
+    26→} from './handlers/sprite-handler';
+    27→import {
+    28→  executeBackgroundTrigger,
+    29→} from './handlers/background-handler';
+    30→
+    31→// ============================================
+    32→// Types
+    33→// ============================================
+    34→
+    35→export type TriggerCategory = 'sprite' | 'sound' | 'background' | 'soundSequence';
+    36→export type TriggerTargetMode = 'self' | 'all' | 'target';
+    37→
+    38→/**
+    39→ * Contexto para ejecución de triggers como recompensa
+    40→ */
+    41→export interface TriggerExecutionContext {
+    42→  sessionId: string;
+    43→  characterId: string;              // Quién completó el objetivo/misión
+    44→  character: CharacterCard;         // Personaje que recibe el trigger
+    45→  allCharacters?: CharacterCard[];  // Para grupos - todos los personajes
+    46→  targetCharacterId?: string;       // ID del personaje objetivo cuando targetMode es 'target'
+    47→  source: 'objective' | 'quest_completion' | 'manual';
+    48→  timestamp: number;
+    49→  
+    50→  // Store access
+    51→  storeActions: TriggerStoreActions;
+    52→  
+    53→  // Sound resources (for lookup)
+    54→  soundCollections?: SoundCollection[];
+    55→  soundTriggers?: SoundTrigger[];
+    56→  soundSequenceTriggers?: SoundSequenceTrigger[];
+    57→  
+    58→  // Background resources (for lookup)
+    59→  backgroundPacks?: BackgroundTriggerPack[];
+    60→  
+    61→  // Settings
+    62→  soundSettings?: {
+    63→    enabled: boolean;
+    64→    globalVolume: number;
+    65→  };
+    66→  backgroundSettings?: {
+    67→    transitionDuration: number;
+    68→    defaultTransitionType: BackgroundTransitionType;
+    69→  };
+    70→}
+    71→
+    72→/**
+    73→ * SpriteTriggerHit type for applyTriggerForCharacter
+    74→ */
+    75→export interface SpriteTriggerHit {
+    76→  spriteUrl: string;
+    77→  spriteLabel?: string | null;
+    78→  returnToIdleMs?: number;
+    79→}
+    80→
+    81→/**
+    82→ * Acciones del store necesarias para ejecutar triggers
+    83→ */
+    84→export interface TriggerStoreActions {
+    85→  // Sprite
+    86→  applyTriggerForCharacter: (
+    87→    characterId: string,
+    88→    hit: SpriteTriggerHit
+    89→  ) => void;
+    90→  scheduleReturnToIdleForCharacter: (
+    91→    characterId: string,
+    92→    triggerSpriteUrl: string,
+    93→    returnToMode: 'idle' | 'talk' | 'thinking' | 'clear',
+    94→    returnSpriteUrl: string,
+    95→    returnSpriteLabel: string | null,
+    96→    returnToIdleMs: number
+    97→  ) => void;
+    98→  isSpriteLocked?: () => boolean;
+    99→  
+   100→  // Sound
+   101→  playSound?: (collection: string, filename: string, volume?: number) => void;
+   102→  
+   103→  // Background
+   104→  setBackground?: (url: string) => void;
+   105→  setActiveOverlays?: (overlays: BackgroundOverlay[]) => void;
+   106→}
+   107→
+   108→/**
+   109→ * Resultado de ejecutar un trigger
+   110→ */
+   111→export interface TriggerExecutionResult {
+   112→  success: boolean;
+   113→  category: TriggerCategory;
+   114→  key: string;
+   115→  targetCharacterId: string;
+   116→  message?: string;
+   117→  error?: string;
+   118→}
+   119→
+   120→/**
+   121→ * Resultado de ejecutar múltiples triggers
+   122→ */
+   123→export interface TriggerBatchResult {
+   124→  results: TriggerExecutionResult[];
+   125→  successCount: number;
+   126→  failureCount: number;
+   127→}
+   128→
+   129→// ============================================
+   130→// Sprite Trigger Execution
+   131→// ============================================
+   132→
+   133→/**
+   134→ * Check if a key is a direct URL (can be used directly without lookup)
+   135→ */
+   136→function isDirectUrl(key: string): boolean {
+   137→  return key.startsWith('http://') || 
+   138→         key.startsWith('https://') || 
+   139→         key.startsWith('/') || 
+   140→         key.startsWith('data:');
+   141→}
+   142→
+   143→/**
+   144→ * Ejecuta un trigger de sprite para un personaje
+   145→ * Ahora maneja correctamente el fallback según la configuración del sprite
+   146→ */
+   147→function executeSpriteTriggerForCharacter(
+   148→  key: string,
+   149→  context: TriggerExecutionContext,
+   150→  character: CharacterCard,
+   151→  returnToIdleMs: number = 0
+   152→): TriggerExecutionResult {
+   153→  const { storeActions } = context;
+   154→  
+   155→  try {
+   156→    // Check if sprite is locked
+   157→    if (storeActions.isSpriteLocked?.()) {
+   158→      return {
+   159→        success: false,
+   160→        category: 'sprite',
+   161→        key,
+   162→        targetCharacterId: character.id,
+   163→        error: 'Sprite is locked',
+   164→      };
+   165→    }
+   166→    
+   167→    // Determine sprite URL - either direct URL or keyword lookup
+   168→    let spriteUrl: string;
+   169→    let spriteLabel: string | undefined;
+   170→    let fallbackMode: 'idle_collection' | 'custom_sprite' | 'collection_default' | undefined;
+   171→    let fallbackDelayMs: number | undefined;
+   172→    let fallbackSpriteId: string | undefined;
+   173→    let packId: string | undefined;
+   174→    let principalSpriteId: string | undefined;
+   175→    
+   176→    if (isDirectUrl(key)) {
+   177→      // Use key directly as URL
+   178→      spriteUrl = key;
+   179→      spriteLabel = key.split('/').pop()?.split('?')[0] || key;
+   180→      // Use provided returnToIdleMs for direct URLs
+   181→      fallbackDelayMs = returnToIdleMs > 0 ? returnToIdleMs : undefined;
+   182→      console.log(`[UnifiedTriggerExecutor] Using direct URL for sprite: ${key}`);
+   183→    } else {
+   184→      // Find matching sprite in character's sprite packs or triggers
+   185→      const spriteMatch = findSpriteMatch(key, character);
+   186→      
+   187→      if (!spriteMatch) {
+   188→        console.log(`[UnifiedTriggerExecutor] No sprite found for key "${key}" in character "${character.name}"`);
+   189→        return {
+   190→          success: false,
+   191→          category: 'sprite',
+   192→          key,
+   193→          targetCharacterId: character.id,
+   194→          error: `No sprite found for key "${key}"`,
+   195→        };
+   196→      }
+   197→      
+   198→      spriteUrl = spriteMatch.url;
+   199→      spriteLabel = spriteMatch.label;
+   200→      // Get fallback config from sprite match
+   201→      fallbackMode = spriteMatch.fallbackMode;
+   202→      // Use sprite's fallbackDelayMs if defined, otherwise use provided returnToIdleMs
+   203→      fallbackDelayMs = spriteMatch.fallbackDelayMs ?? (returnToIdleMs > 0 ? returnToIdleMs : undefined);
+   204→      fallbackSpriteId = spriteMatch.fallbackSpriteId;
+   205→      packId = spriteMatch.packId;
+   206→      principalSpriteId = spriteMatch.principalSpriteId;
+   207→    }
+   208→    
+   209→    // Create synthetic trigger match
+   210→    const match: TriggerMatch = {
+   211→      triggerId: `reward-sprite-${Date.now()}`,
+   212→      triggerType: 'sprite',
+   213→      keyword: key,
+   214→      data: {
+   215→        spriteUrl,
+   216→        spriteLabel,
+   217→        returnToIdleMs: fallbackDelayMs ?? 0,
+   218→        characterId: character.id,
+   219→      },
+   220→    };
+   221→    
+   222→    // Create trigger context
+   223→    const triggerContext: TriggerContext = {
+   224→      character,
+   225→      fullText: `[REWARD:sprite:${key}]`,
+   226→      messageKey: `reward-${Date.now()}`,
+   227→      isStreaming: false,
+   228→      timestamp: Date.now(),
+   229→    };
+   230→    
+   231→    // Get idle sprite URL helper
+   232→    const getIdleSpriteUrl = (): string | null => {
+   233→      // Try V2 state collections first
+   234→      const idleCollectionV2 = character.stateCollectionsV2?.find(c => c.state === 'idle');
+   235→      if (idleCollectionV2) {
+   236→        const pack = character.spritePacksV2?.find(p => p.id === idleCollectionV2.packId);
+   237→        if (pack && idleCollectionV2.principalSpriteId) {
+   238→          const sprite = pack.sprites.find(s => s.id === idleCollectionV2.principalSpriteId);
+   239→          if (sprite) return sprite.url;
+   240→        }
+   241→        if (pack && pack.sprites.length > 0) {
+   242→          return pack.sprites[0].url;
+   243→        }
+   244→      }
+   245→      
+   246→      // Fall back to legacy state collections
+   247→      const idleCollection = character.spriteConfig?.stateCollections?.['idle'];
+   248→      if (idleCollection?.entries.length) {
+   249→        const entry = idleCollection.entries.find(e => e.role === 'principal') || idleCollection.entries[0];
+   250→        if (entry?.spriteUrl) return entry.spriteUrl;
+   251→      }
+   252→      if (character.spriteConfig?.sprites?.['idle']) {
+   253→        return character.spriteConfig.sprites['idle'];
+   254→      }
+   255→      if (character.avatar) {
+   256→        return character.avatar;
+   257→      }
+   258→      return null;
+   259→    };
+   260→    
+   261→    // Execute sprite trigger - apply the sprite
+   262→    executeSpriteTrigger(match, triggerContext, {
+   263→      applyTriggerForCharacter: storeActions.applyTriggerForCharacter,
+   264→      scheduleReturnToIdleForCharacter: storeActions.scheduleReturnToIdleForCharacter,
+   265→    }, getIdleSpriteUrl);
+   266→    
+   267→    // Handle fallback scheduling if fallbackDelayMs > 0
+   268→    if (fallbackDelayMs && fallbackDelayMs > 0) {
+   269→      let returnSpriteUrl: string | null = null;
+   270→      let returnSpriteLabel: string | null = null;
+   271→      let returnToMode: 'idle' | 'talk' | 'thinking' | 'clear' = 'idle';
+   272→
+   273→      if (fallbackMode === 'custom_sprite' && fallbackSpriteId && packId) {
+   274→        // Find fallback sprite in pack
+   275→        const pack = character.spritePacksV2?.find(p => p.id === packId);
+   276→        const fallbackSprite = pack?.sprites.find(s => s.id === fallbackSpriteId);
+   277→        if (fallbackSprite) {
+   278→          returnSpriteUrl = fallbackSprite.url;
+   279→          returnSpriteLabel = fallbackSprite.label;
+   280→          returnToMode = 'idle'; // Apply the custom sprite
+   281→        }
+   282→      } else if (fallbackMode === 'idle_collection') {
+   283→        // For 'idle_collection', use 'clear' mode to let the normal state logic
+   284→        // (idle state from State Collections V2) determine what to show
+   285→        returnToMode = 'clear';
+   286→        returnSpriteUrl = ''; // Empty is fine for 'clear' mode
+   287→        returnSpriteLabel = null;
+   288→      } else if (fallbackMode === 'collection_default' && packId) {
+   289→        // Use collection's principal sprite or first sprite
+   290→        const pack = character.spritePacksV2?.find(p => p.id === packId);
+   291→        if (pack && pack.sprites.length > 0) {
+   292→          const principalSprite = principalSpriteId
+   293→            ? pack.sprites.find(s => s.id === principalSpriteId)
+   294→            : pack.sprites[0];
+   295→          if (principalSprite) {
+   296→            returnSpriteUrl = principalSprite.url;
+   297→            returnSpriteLabel = principalSprite.label;
+   298→            returnToMode = 'idle'; // Apply the collection default sprite
+   299→          }
+   300→        }
+   301→        if (!returnSpriteUrl) {
+   302→          // Fallback to 'clear' mode if no sprite found
+   303→          returnToMode = 'clear';
+   304→          returnSpriteUrl = '';
+   305→          returnSpriteLabel = null;
+   306→        }
+   307→      } else {
+   308→        // Default fallback: use 'clear' mode
+   309→        returnToMode = 'clear';
+   310→        returnSpriteUrl = '';
+   311→        returnSpriteLabel = null;
+   312→      }
+   313→
+   314→      console.log(`[UnifiedTriggerExecutor] Scheduling fallback for sprite:`, {
+   315→        characterId: character.id,
+   316→        fallbackMode,
+   317→        fallbackDelayMs,
+   318→        returnToMode,
+   319→        returnSpriteUrl: returnSpriteUrl || '(clear mode)',
+   320→        returnSpriteLabel,
+   321→      });
+   322→
+   323→      // Always schedule fallback when delay > 0
+   324→      storeActions.scheduleReturnToIdleForCharacter(
+   325→        character.id,
+   326→        spriteUrl,
+   327→        returnToMode,
+   328→        returnSpriteUrl || '',
+   329→        returnSpriteLabel,
+   330→        fallbackDelayMs
+   331→      );
+   332→    }
+   333→    
+   334→    return {
+   335→      success: true,
+   336→      category: 'sprite',
+   337→      key,
+   338→      targetCharacterId: character.id,
+   339→      message: `Sprite "${spriteLabel || spriteUrl}" applied to ${character.name}${fallbackDelayMs ? ` (fallback in ${fallbackDelayMs}ms)` : ''}`,
+   340→    };
+   341→  } catch (error) {
+   342→    return {
+   343→      success: false,
+   344→      category: 'sprite',
+   345→      key,
+   346→      targetCharacterId: character.id,
+   347→      error: error instanceof Error ? error.message : 'Unknown error',
+   348→    };
+   349→  }
+   350→}
+   351→
+   352→/**
+   353→ * Resultado de búsqueda de sprite
+   354→ */
+   355→interface SpriteMatchResult {
+   356→  url: string;
+   357→  label?: string;
+   358→  // Fallback configuration
+   359→  fallbackMode?: 'idle_collection' | 'custom_sprite' | 'collection_default';
+   360→  fallbackDelayMs?: number;
+   361→  fallbackSpriteId?: string;
+   362→  // For finding fallback sprite
+   363→  packId?: string;
+   364→  collectionId?: string;
+   365→  principalSpriteId?: string;
+   366→}
+   367→
+   368→/**
+   369→ * Busca un sprite que coincida con la key en el personaje
+   370→ * Soporta tanto el sistema legacy como V2 (spritePacksV2, triggerCollections)
+   371→ * Ahora devuelve también la configuración de fallback
+   372→ */
+   373→function findSpriteMatch(
+   374→  key: string,
+   375→  character: CharacterCard
+   376→): SpriteMatchResult | null {
+   377→  const normalizedKey = key.toLowerCase();
+   378→  
+   379→  // 0. Si es una URL directa, usarla
+   380→  if (isDirectUrl(key)) {
+   381→    return { url: key, label: key.split('/').pop()?.split('?')[0] || key };
+   382→  }
+   383→  
+   384→  // 1. Search in V2 Trigger Collections (highest priority)
+   385→  if (character.triggerCollections && character.triggerCollections.length > 0) {
+   386→    // Sort by priority (higher first)
+   387→    const sortedCollections = [...character.triggerCollections]
+   388→      .filter(c => c.active)
+   389→      .sort((a, b) => b.priority - a.priority);
+   390→    
+   391→    for (const collection of sortedCollections) {
+   392→      // Check collection key
+   393→      if (collection.collectionKey && collection.collectionKey.toLowerCase() === normalizedKey) {
+   394→        // Find the sprite pack
+   395→        const pack = character.spritePacksV2?.find(p => p.id === collection.packId);
+   396→        if (pack && pack.sprites.length > 0) {
+   397→          // Get principal sprite or first one
+   398→          const sprite = collection.principalSpriteId
+   399→            ? pack.sprites.find(s => s.id === collection.principalSpriteId)
+   400→            : pack.sprites[0];
+   401→          if (sprite) {
+   402→            console.log(`[UnifiedTriggerExecutor] Found sprite in V2 collection "${collection.name}": ${sprite.url}`);
+   403→            return { 
+   404→              url: sprite.url, 
+   405→              label: sprite.label,
+   406→              fallbackMode: collection.fallbackMode,
+   407→              fallbackDelayMs: collection.fallbackDelayMs,
+   408→              fallbackSpriteId: collection.fallbackSpriteId,
+   409→              packId: collection.packId,
+   410→              collectionId: collection.id,
+   411→              principalSpriteId: collection.principalSpriteId,
+   412→            };
+   413→          }
+   414→        }
+   415→      }
+   416→      
+   417→      // Check individual sprite configs
+   418→      for (const [spriteId, config] of Object.entries(collection.spriteConfigs)) {
+   419→        if (!config.enabled) continue;
+   420→        
+   421→        // Check main key
+   422→        if (config.key && config.key.toLowerCase() === normalizedKey) {
+   423→          const pack = character.spritePacksV2?.find(p => p.id === collection.packId);
+   424→          const sprite = pack?.sprites.find(s => s.id === spriteId);
+   425→          if (sprite) {
+   426→            console.log(`[UnifiedTriggerExecutor] Found sprite via V2 config key "${config.key}": ${sprite.url}`);
+   427→            return { 
+   428→              url: sprite.url, 
+   429→              label: sprite.label,
+   430→              fallbackMode: config.fallbackMode ?? collection.fallbackMode,
+   431→              fallbackDelayMs: config.fallbackDelayMs ?? collection.fallbackDelayMs,
+   432→              fallbackSpriteId: config.fallbackSpriteId ?? collection.fallbackSpriteId,
+   433→              packId: collection.packId,
+   434→              collectionId: collection.id,
+   435→              principalSpriteId: collection.principalSpriteId,
+   436→            };
+   437→          }
+   438→        }
+   439→        
+   440→        // Check alternative keys
+   441→        if (config.keys && config.keys.some(k => k.toLowerCase() === normalizedKey)) {
+   442→          const pack = character.spritePacksV2?.find(p => p.id === collection.packId);
+   443→          const sprite = pack?.sprites.find(s => s.id === spriteId);
+   444→          if (sprite) {
+   445→            console.log(`[UnifiedTriggerExecutor] Found sprite via V2 config alt key: ${sprite.url}`);
+   446→            return { 
+   447→              url: sprite.url, 
+   448→              label: sprite.label,
+   449→              fallbackMode: config.fallbackMode ?? collection.fallbackMode,
+   450→              fallbackDelayMs: config.fallbackDelayMs ?? collection.fallbackDelayMs,
+   451→              fallbackSpriteId: config.fallbackSpriteId ?? collection.fallbackSpriteId,
+   452→              packId: collection.packId,
+   453→              collectionId: collection.id,
+   454→              principalSpriteId: collection.principalSpriteId,
+   455→            };
+   456→          }
+   457→        }
+   458→      }
+   459→    }
+   460→  }
+   461→  
+   462→  // 2. Search in V2 Sprite Packs directly
+   463→  if (character.spritePacksV2 && character.spritePacksV2.length > 0) {
+   464→    for (const pack of character.spritePacksV2) {
+   465→      // Check if pack name matches
+   466→      if (pack.name.toLowerCase() === normalizedKey && pack.sprites.length > 0) {
+   467→        const sprite = pack.sprites[0];
+   468→        console.log(`[UnifiedTriggerExecutor] Found sprite in V2 pack "${pack.name}": ${sprite.url}`);
+   469→        return { url: sprite.url, label: sprite.label, packId: pack.id };
+   470→      }
+   471→      
+   472→      // Check sprite labels
+   473→      const spriteByLabel = pack.sprites.find(s => s.label?.toLowerCase() === normalizedKey);
+   474→      if (spriteByLabel) {
+   475→        console.log(`[UnifiedTriggerExecutor] Found sprite by label "${spriteByLabel.label}": ${spriteByLabel.url}`);
+   476→        return { url: spriteByLabel.url, label: spriteByLabel.label, packId: pack.id };
+   477→      }
+   478→    }
+   479→  }
+   480→  
+   481→  // 3. Search in legacy sprite packs
+   482→  if (character.spritePacks) {
+   483→    for (const pack of character.spritePacks) {
+   484→      if (!pack.active) continue;
+   485→      
+   486→      // Check pack keywords
+   487→      const packMatches = pack.keywords.some(kw => kw.toLowerCase() === normalizedKey);
+   488→      
+   489→      if (packMatches && pack.items && pack.items.length > 0) {
+   490→        // Find an item that matches
+   491→        const item = pack.items.find(i => i.enabled !== false);
+   492→        if (item?.spriteUrl) {
+   493→          console.log(`[UnifiedTriggerExecutor] Found sprite in legacy pack "${pack.name}": ${item.spriteUrl}`);
+   494→          return { 
+   495→            url: item.spriteUrl, 
+   496→            label: item.spriteLabel,
+   497→            fallbackDelayMs: item.returnToIdleMs,
+   498→          };
+   499→        }
+   500→      }
+   501→    }
+   502→  }
+   503→  
+   504→  // 4. Search in simple sprite triggers
+   505→  if (character.spriteTriggers) {
+   506→    const trigger = character.spriteTriggers.find(t => 
+   507→      t.active && t.keywords.some(kw => kw.toLowerCase() === normalizedKey)
+   508→    );
+   509→    
+   510→    if (trigger?.spriteUrl) {
+   511→      console.log(`[UnifiedTriggerExecutor] Found sprite in legacy trigger "${trigger.name}": ${trigger.spriteUrl}`);
+   512→      return { 
+   513→        url: trigger.spriteUrl, 
+   514→        label: trigger.spriteState,
+   515→        fallbackDelayMs: trigger.returnToIdleMs,
+   516→      };
+   517→    }
+   518→  }
+   519→  
+   520→  // 5. Search in sprite config state collections
+   521→  if (character.spriteConfig?.stateCollections) {
+   522→    // Check if key matches a state name
+   523→    for (const [stateName, collection] of Object.entries(character.spriteConfig.stateCollections)) {
+   524→      if (stateName.toLowerCase() === normalizedKey && collection.entries.length > 0) {
+   525→        const entry = collection.entries.find(e => e.role === 'principal') || collection.entries[0];
+   526→        if (entry?.spriteUrl) {
+   527→          console.log(`[UnifiedTriggerExecutor] Found sprite in state collection "${stateName}": ${entry.spriteUrl}`);
+   528→          return { url: entry.spriteUrl, label: entry.spriteLabel };
+   529→        }
+   530→      }
+   531→    }
+   532→  }
+   533→  
+   534→  console.log(`[UnifiedTriggerExecutor] No sprite found for key "${key}" in character "${character.name}"`);
+   535→  return null;
+   536→}
+   537→
+   538→// ============================================
+   539→// Sound Trigger Execution
+   540→// ============================================
+   541→
+   542→/**
+   543→ * Busca un sonido que coincida con la key en las colecciones y triggers
+   544→ * 
+   545→ * IMPORTANTE: Los archivos en collection.files ya contienen URLs completas
+   546→ * (ej: "/sounds/glohg/glohg46.wav"), por lo que NO se debe añadir el path.
+   547→ */
+   548→function findSoundMatch(
+   549→  key: string,
+   550→  context: TriggerExecutionContext
+   551→): { url: string; name: string } | null {
+   552→  const { soundCollections, soundTriggers } = context;
+   553→  const normalizedKey = key.toLowerCase();
+   554→  
+   555→  // 1. Si la key es una URL directa, usarla
+   556→  if (isDirectUrl(key)) {
+   557→    return { url: key, name: key.split('/').pop() || key };
+   558→  }
+   559→  
+   560→  // 2. Buscar en sound triggers (por keywords o nombre)
+   561→  if (soundTriggers && soundTriggers.length > 0) {
+   562→    for (const trigger of soundTriggers) {
+   563→      if (!trigger.active) continue;
+   564→      
+   565→      // Buscar por keywords
+   566→      const keywordMatch = trigger.keywords.some(kw => kw.toLowerCase() === normalizedKey);
+   567→      // O por nombre del trigger
+   568→      const nameMatch = trigger.name.toLowerCase() === normalizedKey;
+   569→      
+   570→      if (keywordMatch || nameMatch) {
+   571→        // Encontrar la colección
+   572→        const collection = soundCollections?.find(c => c.name === trigger.collection);
+   573→        if (collection && collection.files.length > 0) {
+   574→          // Seleccionar archivo (random o cycle)
+   575→          let fileIndex = 0;
+   576→          if (trigger.playMode === 'random') {
+   577→            fileIndex = Math.floor(Math.random() * collection.files.length);
+   578→          }
+   579→          // Los archivos ya contienen la URL completa
+   580→          const file = collection.files[fileIndex];
+   581→          // Si el archivo ya es una URL completa, usarla directamente
+   582→          const url = file.startsWith('/') ? file : `${collection.path}/${file}`;
+   583→          console.log(`[UnifiedTriggerExecutor] Found sound match: trigger "${trigger.name}" -> ${url}`);
+   584→          return { url, name: trigger.name };
+   585→        }
+   586→      }
+   587→    }
+   588→  }
+   589→  
+   590→  // 3. Formato "collection/filename"
+   591→  if (key.includes('/')) {
+   592→    const [collectionName, filename] = key.split('/');
+   593→    const collection = soundCollections?.find(c => c.name.toLowerCase() === collectionName.toLowerCase());
+   594→    if (collection) {
+   595→      // Buscar el archivo en la colección
+   596→      const file = collection.files.find(f => f.toLowerCase().includes(filename.toLowerCase()));
+   597→      if (file) {
+   598→        // Los archivos ya contienen la URL completa
+   599→        const url = file.startsWith('/') ? file : `${collection.path}/${file}`;
+   600→        return { url, name: `${collectionName}/${file}` };
+   601→      }
+   602→      // Si no encuentra el archivo específico, usar el primero
+   603→      if (collection.files.length > 0) {
+   604→        const firstFile = collection.files[0];
+   605→        const url = firstFile.startsWith('/') ? firstFile : `${collection.path}/${firstFile}`;
+   606→        return { url, name: `${collectionName}/${firstFile}` };
+   607→      }
+   608→    }
+   609→  }
+   610→  
+   611→  // 4. Buscar por nombre de colección
+   612→  if (soundCollections && soundCollections.length > 0) {
+   613→    for (const collection of soundCollections) {
+   614→      if (collection.name.toLowerCase() === normalizedKey && collection.files.length > 0) {
+   615→        // Usar un archivo random de la colección
+   616→        const fileIndex = Math.floor(Math.random() * collection.files.length);
+   617→        const file = collection.files[fileIndex];
+   618→        // Los archivos ya contienen la URL completa
+   619→        const url = file.startsWith('/') ? file : `${collection.path}/${file}`;
+   620→        return { url, name: `${collection.name}/${file}` };
+   621→      }
+   622→    }
+   623→  }
+   624→  
+   625→  return null;
+   626→}
+   627→
+   628→/**
+   629→ * Ejecuta un trigger de sonido
+   630→ */
+   631→function executeSoundTriggerForCharacter(
+   632→  key: string,
+   633→  context: TriggerExecutionContext,
+   634→  _character: CharacterCard,
+   635→  volume: number = 0.8
+   636→): TriggerExecutionResult {
+   637→  const { storeActions, soundSettings } = context;
+   638→  
+   639→  try {
+   640→    // Determine sound URL
+   641→    let soundUrl: string;
+   642→    let soundName: string;
+   643→    
+   644→    // Buscar el sonido en las colecciones y triggers
+   645→    const soundMatch = findSoundMatch(key, context);
+   646→    
+   647→    if (soundMatch) {
+   648→      soundUrl = soundMatch.url;
+   649→      soundName = soundMatch.name;
+   650→      console.log(`[UnifiedTriggerExecutor] Found sound match: ${soundName} -> ${soundUrl}`);
+   651→    } else if (isDirectUrl(key)) {
+   652→      // Use key directly as URL
+   653→      soundUrl = key;
+   654→      soundName = key.split('/').pop() || key;
+   655→      console.log(`[UnifiedTriggerExecutor] Using direct URL for sound: ${key}`);
+   656→    } else {
+   657→      // No se encontró el sonido
+   658→      console.log(`[UnifiedTriggerExecutor] No sound found for key "${key}"`);
+   659→      return {
+   660→        success: false,
+   661→        category: 'sound',
+   662→        key,
+   663→        targetCharacterId: context.characterId,
+   664→        error: `No sound found for key "${key}"`,
+   665→      };
+   666→    }
+   667→    
+   668→    const finalVolume = volume * (soundSettings?.globalVolume ?? 1);
+   669→    
+   670→    console.log(`[UnifiedTriggerExecutor] Executing sound trigger: ${soundUrl} at volume ${finalVolume}`);
+   671→    
+   672→    // Create synthetic trigger match
+   673→    const match: TriggerMatch = {
+   674→      triggerId: `reward-sound-${Date.now()}`,
+   675→      triggerType: 'sound',
+   676→      keyword: key,
+   677→      data: {
+   678→        soundUrl,
+   679→        volume: finalVolume,
+   680→        triggerName: `Reward: ${soundName}`,
+   681→      },
+   682→    };
+   683→    
+   684→    // Create trigger context
+   685→    const triggerContext: TriggerContext = {
+   686→      character: context.character,
+   687→      fullText: `[REWARD:sound:${key}]`,
+   688→      messageKey: `reward-${Date.now()}`,
+   689→      isStreaming: false,
+   690→      timestamp: Date.now(),
+   691→    };
+   692→    
+   693→    // Execute sound trigger (this adds to audio queue)
+   694→    executeSoundTrigger(match, triggerContext);
+   695→    
+   696→    return {
+   697→      success: true,
+   698→      category: 'sound',
+   699→      key,
+   700→      targetCharacterId: context.characterId,
+   701→      message: `Sound "${soundName}" queued for playback`,
+   702→    };
+   703→  } catch (error) {
+   704→    return {
+   705→      success: false,
+   706→      category: 'sound',
+   707→      key,
+   708→      targetCharacterId: context.characterId,
+   709→      error: error instanceof Error ? error.message : 'Unknown error',
+   710→    };
+   711→  }
+   712→}
+   713→
+   714→// ============================================
+   715→// Background Trigger Execution
+   716→// ============================================
+   717→
+   718→/**
+   719→ * Busca un fondo que coincida con la key en los background packs
+   720→ */
+   721→function findBackgroundMatch(
+   722→  key: string,
+   723→  context: TriggerExecutionContext
+   724→): { url: string; name: string; overlays?: BackgroundOverlay[] } | null {
+   725→  const { backgroundPacks } = context;
+   726→  const normalizedKey = key.toLowerCase();
+   727→  
+   728→  // 1. Si la key es una URL directa, usarla
+   729→  if (isDirectUrl(key)) {
+   730→    return { url: key, name: key.split('/').pop() || key };
+   731→  }
+   732→  
+   733→  // 2. Buscar en background packs
+   734→  if (backgroundPacks && backgroundPacks.length > 0) {
+   735→    // Ordenar por prioridad (mayor primero)
+   736→    const sortedPacks = [...backgroundPacks]
+   737→      .filter(p => p.active)
+   738→      .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+   739→    
+   740→    for (const pack of sortedPacks) {
+   741→      // Buscar en los items del pack
+   742→      for (const item of pack.items) {
+   743→        if (!item.enabled) continue;
+   744→        
+   745→        // Buscar por triggerKeys
+   746→        const keyMatch = item.triggerKeys.some(tk => tk.toLowerCase() === normalizedKey);
+   747→        // Buscar por backgroundName
+   748→        const nameMatch = item.backgroundName.toLowerCase() === normalizedKey;
+   749→        
+   750→        if (keyMatch || nameMatch) {
+   751→          console.log(`[UnifiedTriggerExecutor] Found background match: "${item.backgroundName}" in pack "${pack.name}"`);
+   752→          return {
+   753→            url: item.backgroundUrl,
+   754→            name: item.backgroundName,
+   755→            overlays: item.overlays ?? pack.defaultOverlays ?? [],
+   756→          };
+   757→        }
+   758→      }
+   759→      
+   760→      // También buscar por nombre del pack
+   761→      if (pack.name.toLowerCase() === normalizedKey) {
+   762→        // Usar el defaultBackground del pack o el primer item
+   763→        if (pack.defaultBackground) {
+   764→          return {
+   765→            url: pack.defaultBackground,
+   766→            name: pack.name,
+   767→            overlays: pack.defaultOverlays ?? [],
+   768→          };
+   769→        }
+   770→        if (pack.items.length > 0) {
+   771→          const firstItem = pack.items.find(i => i.enabled);
+   772→          if (firstItem) {
+   773→            return {
+   774→              url: firstItem.backgroundUrl,
+   775→              name: firstItem.backgroundName,
+   776→              overlays: firstItem.overlays ?? pack.defaultOverlays ?? [],
+   777→            };
+   778→          }
+   779→        }
+   780→      }
+   781→    }
+   782→  }
+   783→  
+   784→  return null;
+   785→}
+   786→
+   787→/**
+   788→ * Ejecuta un trigger de fondo
+   789→ */
+   790→function executeBackgroundTriggerForCharacter(
+   791→  key: string,
+   792→  context: TriggerExecutionContext,
+   793→  _character: CharacterCard,
+   794→  transitionDuration?: number
+   795→): TriggerExecutionResult {
+   796→  const { storeActions, backgroundSettings } = context;
+   797→  
+   798→  try {
+   799→    if (!storeActions.setBackground) {
+   800→      return {
+   801→        success: false,
+   802→        category: 'background',
+   803→        key,
+   804→        targetCharacterId: context.characterId,
+   805→        error: 'Background change not available',
+   806→      };
+   807→    }
+   808→    
+   809→    // Buscar el fondo en los background packs
+   810→    let backgroundUrl: string;
+   811→    let backgroundName: string;
+   812→    let overlays: BackgroundOverlay[] = [];
+   813→    
+   814→    const bgMatch = findBackgroundMatch(key, context);
+   815→    
+   816→    if (bgMatch) {
+   817→      backgroundUrl = bgMatch.url;
+   818→      backgroundName = bgMatch.name;
+   819→      overlays = bgMatch.overlays ?? [];
+   820→      console.log(`[UnifiedTriggerExecutor] Found background match: ${backgroundName} -> ${backgroundUrl}`);
+   821→    } else if (isDirectUrl(key)) {
+   822→      // Direct URL
+   823→      backgroundUrl = key;
+   824→      backgroundName = key.split('/').pop() || key;
+   825→    } else {
+   826→      // No se encontró el fondo
+   827→      console.log(`[UnifiedTriggerExecutor] No background found for key "${key}"`);
+   828→      return {
+   829→        success: false,
+   830→        category: 'background',
+   831→        key,
+   832→        targetCharacterId: context.characterId,
+   833→        error: `No background found for key "${key}"`,
+   834→      };
+   835→    }
+   836→    
+   837→    // Create synthetic trigger match
+   838→    const match: TriggerMatch = {
+   839→      triggerId: `reward-background-${Date.now()}`,
+   840→      triggerType: 'background',
+   841→      keyword: key,
+   842→      data: {
+   843→        backgroundUrl,
+   844→        backgroundName,
+   845→        transitionDuration: transitionDuration ?? backgroundSettings?.transitionDuration ?? 500,
+   846→        transitionType: backgroundSettings?.defaultTransitionType ?? 'fade',
+   847→        overlays,
+   848→      },
+   849→    };
+   850→    
+   851→    // Create trigger context
+   852→    const triggerContext: TriggerContext = {
+   853→      character: context.character,
+   854→      fullText: `[REWARD:background:${key}]`,
+   855→      messageKey: `reward-${Date.now()}`,
+   856→      isStreaming: false,
+   857→      timestamp: Date.now(),
+   858→    };
+   859→    
+   860→    // Execute background trigger
+   861→    executeBackgroundTrigger(match, triggerContext, {
+   862→      setBackground: storeActions.setBackground,
+   863→      setOverlays: storeActions.setActiveOverlays,
+   864→    });
+   865→    
+   866→    return {
+   867→      success: true,
+   868→      category: 'background',
+   869→      key,
+   870→      targetCharacterId: context.characterId,
+   871→      message: `Background changed to "${backgroundName}"`,
+   872→    };
+   873→  } catch (error) {
+   874→    return {
+   875→      success: false,
+   876→      category: 'background',
+   877→      key,
+   878→      targetCharacterId: context.characterId,
+   879→      error: error instanceof Error ? error.message : 'Unknown error',
+   880→    };
+   881→  }
+   882→}
+   883→
+   884→// ============================================
+   885→// Sound Sequence Trigger Execution
+   886→// ============================================
+   887→
+   888→/**
+   889→ * Ejecuta un trigger de secuencia de sonido
+   890→ * Busca la secuencia por su key (activationKey o nombre) y reproduce todos los sonidos en orden
+   891→ */
+   892→function executeSoundSequenceTriggerForCharacter(
+   893→  key: string,
+   894→  context: TriggerExecutionContext,
+   895→  _character: CharacterCard,
+   896→  volume: number = 0.8
+   897→): TriggerExecutionResult {
+   898→  const { soundSequenceTriggers, soundTriggers, soundCollections, soundSettings } = context;
+   899→
+   900→  try {
+   901→    // Check if we have the required resources
+   902→    if (!soundSequenceTriggers || soundSequenceTriggers.length === 0) {
+   903→      return {
+   904→        success: false,
+   905→        category: 'soundSequence',
+   906→        key,
+   907→        targetCharacterId: context.characterId,
+   908→        error: 'No sound sequence triggers configured',
+   909→      };
+   910→    }
+   911→
+   912→    const normalizedKey = key.toLowerCase();
+   913→
+   914→    // Find the sequence by activationKey or name
+   915→    const sequence = soundSequenceTriggers.find(s =>
+   916→      s.active && (
+   917→        (s.activationKey && s.activationKey.toLowerCase() === normalizedKey) ||
+   918→        s.name.toLowerCase() === normalizedKey
+   919→      )
+   920→    );
+   921→
+   922→    if (!sequence) {
+   923→      return {
+   924→        success: false,
+   925→        category: 'soundSequence',
+   926→        key,
+   927→        targetCharacterId: context.characterId,
+   928→        error: `No sound sequence found for key "${key}"`,
+   929→      };
+   930→    }
+   931→
+   932→    console.log(`[UnifiedTriggerExecutor] Executing sound sequence "${sequence.name}" with ${sequence.sequence.length} sounds`);
+   933→
+   934→    // Track cyclic indexes per trigger
+   935→    const cycleIndexes = new Map<string, number>();
+   936→    const globalVolume = soundSettings?.globalVolume ?? 1;
+   937→    const sequenceVolume = sequence.volume ?? 1;
+   938→
+   939→    // Process each sound in the sequence
+   940→    for (const keyword of sequence.sequence) {
+   941→      // Find the sound trigger for this keyword
+   942→      const trigger = soundTriggers?.find(t =>
+   943→        t.active && t.keywords.includes(keyword) && t.keywordsEnabled?.[keyword] !== false
+   944→      );
+   945→
+   946→      if (!trigger) {
+   947→        console.warn(`[UnifiedTriggerExecutor] Sound sequence: No trigger found for keyword "${keyword}"`);
+   948→        continue;
+   949→      }
+   950→
+   951→      // Find the collection
+   952→      const collection = soundCollections?.find(c => c.name === trigger.collection);
+   953→      if (!collection || collection.files.length === 0) {
+   954→        console.warn(`[UnifiedTriggerExecutor] Sound sequence: No collection "${trigger.collection}" for trigger "${trigger.name}"`);
+   955→        continue;
+   956→      }
+   957→
+   958→      // Get sound file based on trigger's play mode
+   959→      let soundFile: string;
+   960→      if (trigger.playMode === 'random') {
+   961→        const randomIndex = Math.floor(Math.random() * collection.files.length);
+   962→        soundFile = collection.files[randomIndex];
+   963→      } else {
+   964→        // Cyclic mode - track index per trigger
+   965→        const currentIdx = cycleIndexes.get(trigger.id) ?? trigger.currentIndex ?? 0;
+   966→        soundFile = collection.files[currentIdx];
+   967→        cycleIndexes.set(trigger.id, (currentIdx + 1) % collection.files.length);
+   968→      }
+   969→
+   970→      if (!soundFile) continue;
+   971→
+   972→      // Calculate volume: sequence volume * trigger volume * reward volume * global volume
+   973→      const triggerVolume = trigger.volume ?? 1;
+   974→      const finalVolume = sequenceVolume * triggerVolume * volume * globalVolume;
+   975→
+   976→      // Build sound URL
+   977→      const soundUrl = soundFile.startsWith('/') ? soundFile : `${collection.path}/${soundFile}`;
+   978→
+   979→      // Create synthetic trigger match for each sound in sequence
+   980→      const match: TriggerMatch = {
+   981→        triggerId: `reward-sound-sequence-${Date.now()}-${keyword}`,
+   982→        triggerType: 'sound',
+   983→        keyword: keyword,
+   984→        data: {
+   985→          soundUrl,
+   986→          volume: Math.min(1, Math.max(0, finalVolume)),
+   987→          triggerName: `${sequence.name} → ${trigger.name}`,
+   988→        },
+   989→      };
+   990→
+   991→      // Create trigger context
+   992→      const triggerContext: TriggerContext = {
+   993→        character: context.character,
+   994→        fullText: `[REWARD:soundSequence:${key}:${keyword}]`,
+   995→        messageKey: `reward-${Date.now()}`,
+   996→        isStreaming: false,
+   997→        timestamp: Date.now(),
+   998→      };
+   999→
+  1000→      // Execute sound trigger (adds to audio queue)
+  1001→      executeSoundTrigger(match, triggerContext);
+  1002→
+  1003→      console.log(`[UnifiedTriggerExecutor] Sound sequence: Queued "${trigger.name}" (${keyword})`);
+  1004→    }
+  1005→
+  1006→    return {
+  1007→      success: true,
+  1008→      category: 'soundSequence',
+  1009→      key,
+  1010→      targetCharacterId: context.characterId,
+  1011→      message: `Sound sequence "${sequence.name}" queued (${sequence.sequence.length} sounds)`,
+  1012→    };
+  1013→  } catch (error) {
+  1014→    return {
+  1015→      success: false,
+  1016→      category: 'soundSequence',
+  1017→      key,
+  1018→      targetCharacterId: context.characterId,
+  1019→      error: error instanceof Error ? error.message : 'Unknown error',
+  1020→    };
+  1021→  }
+  1022→}
+  1023→
+  1024→// ============================================
+  1025→// Main Execution Functions
+  1026→// ============================================
+  1027→
+  1028→/**
+  1029→ * Ejecuta un trigger de recompensa para un personaje específico
+  1030→ */
+  1031→export function executeTriggerForCharacter(
+  1032→  category: TriggerCategory,
+  1033→  key: string,
+  1034→  character: CharacterCard,
+  1035→  context: TriggerExecutionContext,
+  1036→  options?: {
+  1037→    returnToIdleMs?: number;
+  1038→    volume?: number;
+  1039→    transitionDuration?: number;
+  1040→  }
+  1041→): TriggerExecutionResult {
+  1042→  switch (category) {
+  1043→    case 'sprite':
+  1044→      return executeSpriteTriggerForCharacter(key, context, character, options?.returnToIdleMs ?? 0);
+  1045→    case 'sound':
+  1046→      return executeSoundTriggerForCharacter(key, context, character, options?.volume ?? 0.8);
+  1047→    case 'background':
+  1048→      return executeBackgroundTriggerForCharacter(key, context, character, options?.transitionDuration);
+  1049→    case 'soundSequence':
+  1050→      return executeSoundSequenceTriggerForCharacter(key, context, character, options?.volume ?? 0.8);
+  1051→    default:
+  1052→      return {
+  1053→        success: false,
+  1054→        category: category as TriggerCategory,
+  1055→        key,
+  1056→        targetCharacterId: character.id,
+  1057→        error: `Unknown trigger category: ${category}`,
+  1058→      };
+  1059→  }
+  1060→}
+  1061→
+  1062→/**
+  1063→ * Ejecuta un trigger de recompensa con soporte para targetMode
+  1064→ * 
+  1065→ * @param category - Categoría del trigger (sprite, sound, background)
+  1066→ * @param key - Key del trigger
+  1067→ * @param context - Contexto de ejecución
+  1068→ * @param targetMode - Quién recibe el trigger
+  1069→ * @param options - Opciones específicas por categoría
+  1070→ */
+  1071→export function executeTriggerReward(
+  1072→  category: TriggerCategory,
+  1073→  key: string,
+  1074→  context: TriggerExecutionContext,
+  1075→  targetMode: TriggerTargetMode = 'self',
+  1076→  options?: {
+  1077→    returnToIdleMs?: number;
+  1078→    volume?: number;
+  1079→    transitionDuration?: number;
+  1080→  }
+  1081→): TriggerExecutionResult[] {
+  1082→  // Determine target characters based on targetMode
+  1083→  const targetCharacters = getTargetCharacters(targetMode, context);
+  1084→  
+  1085→  if (targetCharacters.length === 0) {
+  1086→    return [{
+  1087→      success: false,
+  1088→      category,
+  1089→      key,
+  1090→      targetCharacterId: context.characterId,
+  1091→      error: 'No target characters found',
+  1092→    }];
+  1093→  }
+  1094→  
+  1095→  // Execute trigger for each target
+  1096→  const results: TriggerExecutionResult[] = [];
+  1097→  
+  1098→  for (const targetChar of targetCharacters) {
+  1099→    const result = executeTriggerForCharacter(category, key, targetChar, context, options);
+  1100→    results.push(result);
+  1101→  }
+  1102→  
+  1103→  return results;
+  1104→}
+  1105→
+  1106→/**
+  1107→ * Ejecuta múltiples triggers de recompensa
+  1108→ */
+  1109→export function executeTriggerRewards(
+  1110→  triggers: Array<{
+  1111→    category: TriggerCategory;
+  1112→    key: string;
+  1113→    targetMode: TriggerTargetMode;
+  1114→    returnToIdleMs?: number;
+  1115→    volume?: number;
+  1116→    transitionDuration?: number;
+  1117→  }>,
+  1118→  context: TriggerExecutionContext
+  1119→): TriggerBatchResult {
+  1120→  const results: TriggerExecutionResult[] = [];
+  1121→  let successCount = 0;
+  1122→  let failureCount = 0;
+  1123→  
+  1124→  for (const trigger of triggers) {
+  1125→    const triggerResults = executeTriggerReward(
+  1126→      trigger.category,
+  1127→      trigger.key,
+  1128→      context,
+  1129→      trigger.targetMode,
+  1130→      {
+  1131→        returnToIdleMs: trigger.returnToIdleMs,
+  1132→        volume: trigger.volume,
+  1133→        transitionDuration: trigger.transitionDuration,
+  1134→      }
+  1135→    );
+  1136→    
+  1137→    for (const result of triggerResults) {
+  1138→      results.push(result);
+  1139→      if (result.success) {
+  1140→        successCount++;
+  1141→      } else {
+  1142→        failureCount++;
+  1143→      }
+  1144→    }
+  1145→  }
+  1146→  
+  1147→  return {
+  1148→    results,
+  1149→    successCount,
+  1150→    failureCount,
+  1151→  };
+  1152→}
+  1153→
+  1154→// ============================================
+  1155→// Helper Functions
+  1156→// ============================================
+  1157→
+  1158→/**
+  1159→ * Determina los personajes objetivo según targetMode
+  1160→ */
+  1161→function getTargetCharacters(
+  1162→  targetMode: TriggerTargetMode,
+  1163→  context: TriggerExecutionContext
+  1164→): CharacterCard[] {
+  1165→  switch (targetMode) {
+  1166→    case 'self':
+  1167→      return context.character ? [context.character] : [];
+  1168→      
+  1169→    case 'all':
+  1170→      // For group chats, return all characters
+  1171→      if (context.allCharacters && context.allCharacters.length > 0) {
+  1172→        return context.allCharacters;
+  1173→      }
+  1174→      // Fallback to self if no group
+  1175→      return context.character ? [context.character] : [];
+  1176→      
+  1177→    case 'target':
+  1178→      // Specific target character
+  1179→      if (context.targetCharacterId && context.allCharacters) {
+  1180→        const targetChar = context.allCharacters.find(
+  1181→          (c: CharacterCard) => c.id === context.targetCharacterId
+  1182→        );
+  1183→        if (targetChar) {
+  1184→          return [targetChar];
+  1185→        }
+  1186→      }
+  1187→      // Fallback to self if target not found
+  1188→      return context.character ? [context.character] : [];
+  1189→      
+  1190→    default:
+  1191→      return context.character ? [context.character] : [];
+  1192→  }
+  1193→}
+  1194→
+  1195→// ============================================
+  1196→// Export Index
+  1197→// ============================================
+  1198→
+  1199→export type {
+  1200→  TriggerExecutionContext,
+  1201→  TriggerStoreActions,
+  1202→  TriggerExecutionResult,
+  1203→  TriggerBatchResult,
+  1204→};
+  1205→

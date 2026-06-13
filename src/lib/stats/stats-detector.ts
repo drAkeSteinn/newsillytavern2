@@ -415,6 +415,8 @@ export interface StatsTriggerContext {
   // For solicitud processing
   sessionId: string;
   allCharacters: CharacterCard[];
+  // Turn tracking for solicitud expiration
+  currentTurn?: number;
 }
 
 /**
@@ -493,6 +495,7 @@ export function checkStatsTriggers(
         statsConfig,
         sessionStats,
         allCharacters: context.allCharacters,
+        currentTurn: context.currentTurn,
       },
       storeActions
     );

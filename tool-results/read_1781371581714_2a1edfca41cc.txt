@@ -1,0 +1,738 @@
+     1→/**
+     2→ * Character Card Import/Export Utilities
+     3→ * Handles parsing PNG files with embedded character data (TavernCard format)
+     4→ * Extended to support TavernFlow-specific data (sprites, stats, etc.)
+     5→ */
+     6→
+     7→import type { CharacterCard, CharacterCardV2 } from '@/types';
+     8→import { migrateCharacterSprites, needsMigration, applyMigrationResult } from '@/lib/migration/sprite-migration';
+     9→
+    10→// PNG tEXt chunk header for character cards
+    11→const PNG_CHUNK_HEADER = 'tEXt';
+    12→const TAVERN_CHAR_KEY = 'chara';
+    13→
+    14→/**
+    15→ * Parse a PNG file to extract embedded character card data
+    16→ * Character cards are stored in tEXt chunks with key "chara"
+    17→ * The value is Base64 encoded JSON
+    18→ */
+    19→export async function parseCharacterCardFromPng(file: File): Promise<{
+    20→  character: Partial<CharacterCard>;
+    21→  avatar: string;
+    22→} | null> {
+    23→  try {
+    24→    // Read the file as ArrayBuffer
+    25→    const buffer = await file.arrayBuffer();
+    26→    const view = new DataView(buffer);
+    27→    
+    28→    // Verify PNG signature
+    29→    const pngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    30→    for (let i = 0; i < 8; i++) {
+    31→      if (view.getUint8(i) !== pngSignature[i]) {
+    32→        console.error('Invalid PNG file');
+    33→        return null;
+    34→      }
+    35→    }
+    36→    
+    37→    // Parse PNG chunks
+    38→    let offset = 8; // Skip PNG signature
+    39→    let characterData: string | null = null;
+    40→    
+    41→    while (offset < buffer.byteLength) {
+    42→      const chunkLength = view.getUint32(offset);
+    43→      offset += 4;
+    44→      
+    45→      const chunkType = String.fromCharCode(
+    46→        view.getUint8(offset),
+    47→        view.getUint8(offset + 1),
+    48→        view.getUint8(offset + 2),
+    49→        view.getUint8(offset + 3)
+    50→      );
+    51→      offset += 4;
+    52→      
+    53→      if (chunkType === PNG_CHUNK_HEADER) {
+    54→        // Read chunk data
+    55→        const chunkData = new Uint8Array(buffer, offset, chunkLength);
+    56→        
+    57→        // Find the null separator between key and value
+    58→        let separatorIndex = -1;
+    59→        for (let i = 0; i < chunkData.length; i++) {
+    60→          if (chunkData[i] === 0) {
+    61→            separatorIndex = i;
+    62→            break;
+    63→          }
+    64→        }
+    65→        
+    66→        if (separatorIndex > 0) {
+    67→          const key = new TextDecoder().decode(chunkData.slice(0, separatorIndex));
+    68→          
+    69→          if (key === TAVERN_CHAR_KEY) {
+    70→            const value = new TextDecoder().decode(chunkData.slice(separatorIndex + 1));
+    71→            characterData = value;
+    72→          }
+    73→        }
+    74→      }
+    75→      
+    76→      // Skip chunk data and CRC
+    77→      offset += chunkLength + 4;
+    78→      
+    79→      // Stop at IEND chunk
+    80→      if (chunkType === 'IEND') break;
+    81→    }
+    82→    
+    83→    if (!characterData) {
+    84→      console.log('No character data found in PNG');
+    85→      return null;
+    86→    }
+    87→    
+    88→    // Decode Base64 and parse JSON (UTF-8 safe)
+    89→    const binaryStr = atob(characterData);
+    90→    const bytes = Uint8Array.from(binaryStr, c => c.charCodeAt(0));
+    91→    const jsonStr = new TextDecoder().decode(bytes);
+    92→    const jsonData = JSON.parse(jsonStr);
+    93→    
+    94→    // Parse the character data
+    95→    const character = parseCharacterData(jsonData);
+    96→    
+    97→    // Create avatar data URL from the PNG
+    98→    const avatar = await fileToDataUrl(file);
+    99→    
+   100→    return { character, avatar };
+   101→  } catch (error) {
+   102→    console.error('Error parsing character card:', error);
+   103→    return null;
+   104→  }
+   105→}
+   106→
+   107→/**
+   108→ * Parse character data from various formats (V1, V2, TavernFlow extended)
+   109→ */
+   110→function parseCharacterData(data: unknown): Partial<CharacterCard> {
+   111→  // Handle V2 format (including TavernFlow extended)
+   112→  if (typeof data === 'object' && data !== null && 'spec' in data && (data as Record<string, unknown>).spec === 'chara_card_v2') {
+   113→    const v2Data = data as CharacterCardV2;
+   114→    const extensions = v2Data.data.extensions as Record<string, unknown> | undefined;
+   115→    
+   116→    return {
+   117→      name: v2Data.data.name || '',
+   118→      description: v2Data.data.description || '',
+   119→      personality: v2Data.data.personality || '',
+   120→      scenario: v2Data.data.scenario || '',
+   121→      firstMes: v2Data.data.first_mes || '',
+   122→      mesExample: v2Data.data.mes_example || '',
+   123→      creatorNotes: v2Data.data.creator_notes || '',
+   124→      characterNote: v2Data.data.character_note || '',
+   125→      systemPrompt: v2Data.data.system_prompt || '',
+   126→      postHistoryInstructions: v2Data.data.post_history_instructions || '',
+   127→      authorNote: (v2Data.data as Record<string, unknown>).author_note as string || '',
+   128→      alternateGreetings: v2Data.data.alternate_greetings || [],
+   129→      tags: v2Data.data.tags || [],
+   130→      // TavernFlow extended fields from extensions
+   131→      avatar: (extensions?.avatar as string) || '',
+   132→      /** @deprecated Legacy sprites - preserved for migration */
+   133→      sprites: (extensions?.sprites as CharacterCard['sprites']) || [],
+   134→      // V2 Sprite System
+   135→      spritePacksV2: extensions?.spritePacksV2 as CharacterCard['spritePacksV2'],
+   136→      stateCollectionsV2: extensions?.stateCollectionsV2 as CharacterCard['stateCollectionsV2'],
+   137→      triggerCollections: extensions?.triggerCollections as CharacterCard['triggerCollections'],
+   138→      spriteLibraries: extensions?.spriteLibraries as CharacterCard['spriteLibraries'],
+   139→      spriteIndex: extensions?.spriteIndex as CharacterCard['spriteIndex'],
+   140→      /** @deprecated Legacy sprite system - preserved for migration */
+   141→      spriteConfig: extensions?.spriteConfig as CharacterCard['spriteConfig'],
+   142→      /** @deprecated Legacy sprite triggers - preserved for migration */
+   143→      spriteTriggers: extensions?.spriteTriggers as CharacterCard['spriteTriggers'],
+   144→      /** @deprecated Legacy sprite packs - preserved for migration */
+   145→      spritePacks: extensions?.spritePacks as CharacterCard['spritePacks'],
+   146→      // Other extensions
+   147→      voice: extensions?.voice as CharacterCard['voice'],
+   148→      hudTemplateId: extensions?.hudTemplateId as string | null,
+   149→      statsConfig: extensions?.statsConfig as CharacterCard['statsConfig'],
+   150→      lorebookIds: extensions?.lorebookIds as string[],
+   151→      questTemplateIds: extensions?.questTemplateIds as string[],
+   152→      // Embeddings
+   153→      embeddingNamespaces: extensions?.embeddingNamespaces as string[],
+   154→      memory: extensions?.memory as CharacterCard['memory'],
+   155→      chatStats: extensions?.chatStats as CharacterCard['chatStats'],
+   156→      // Quick Replies & Proactive Messages
+   157→      quickReplies: extensions?.quickReplies as CharacterCard['quickReplies'],
+   158→      proactiveMessages: extensions?.proactiveMessages as CharacterCard['proactiveMessages'],
+   159→      // Micro Reactions, Emotional Config, Default Transition
+   160→      microReactionConfig: extensions?.microReactionConfig as CharacterCard['microReactionConfig'],
+   161→      emotionalConfig: extensions?.emotionalConfig as CharacterCard['emotionalConfig'],
+   162→      defaultTransition: extensions?.defaultTransition as CharacterCard['defaultTransition'],
+   163→    };
+   164→  }
+   165→  
+   166→  // Handle V1 format (flat object with snake_case keys)
+   167→  if (typeof data === 'object' && data !== null) {
+   168→    const v1Data = data as Record<string, unknown>;
+   169→    return {
+   170→      name: (v1Data.name as string) || (v1Data.char_name as string) || '',
+   171→      description: (v1Data.description as string) || (v1Data.char_persona as string) || '',
+   172→      personality: (v1Data.personality as string) || '',
+   173→      scenario: (v1Data.scenario as string) || (v1Data.world_scenario as string) || '',
+   174→      firstMes: (v1Data.first_mes as string) || (v1Data.char_greeting as string) || '',
+   175→      mesExample: (v1Data.mes_example as string) || '',
+   176→      creatorNotes: (v1Data.creator_notes as string) || '',
+   177→      characterNote: (v1Data.character_note as string) || '',
+   178→      systemPrompt: (v1Data.system_prompt as string) || '',
+   179→      postHistoryInstructions: (v1Data.post_history_instructions as string) || '',
+   180→      authorNote: (v1Data.author_note as string) || '',
+   181→      alternateGreetings: (v1Data.alternate_greetings as string[]) || [],
+   182→      tags: (v1Data.tags as string[]) || [],
+   183→      // Extended fields
+   184→      avatar: (v1Data.avatar as string) || '',
+   185→      /** @deprecated Legacy sprites - preserved for migration */
+   186→      sprites: (v1Data.sprites as CharacterCard['sprites']) || [],
+   187→      // V2 Sprite System
+   188→      spritePacksV2: v1Data.spritePacksV2 as CharacterCard['spritePacksV2'],
+   189→      stateCollectionsV2: v1Data.stateCollectionsV2 as CharacterCard['stateCollectionsV2'],
+   190→      triggerCollections: v1Data.triggerCollections as CharacterCard['triggerCollections'],
+   191→      spriteLibraries: v1Data.spriteLibraries as CharacterCard['spriteLibraries'],
+   192→      spriteIndex: v1Data.spriteIndex as CharacterCard['spriteIndex'],
+   193→      /** @deprecated Legacy sprite system - preserved for migration */
+   194→      spriteConfig: v1Data.spriteConfig as CharacterCard['spriteConfig'],
+   195→      /** @deprecated Legacy sprite triggers - preserved for migration */
+   196→      spriteTriggers: v1Data.spriteTriggers as CharacterCard['spriteTriggers'],
+   197→      /** @deprecated Legacy sprite packs - preserved for migration */
+   198→      spritePacks: v1Data.spritePacks as CharacterCard['spritePacks'],
+   199→      // Other extensions
+   200→      voice: v1Data.voice as CharacterCard['voice'],
+   201→      hudTemplateId: v1Data.hudTemplateId as string | null,
+   202→      statsConfig: v1Data.statsConfig as CharacterCard['statsConfig'],
+   203→      lorebookIds: v1Data.lorebookIds as string[],
+   204→      questTemplateIds: v1Data.questTemplateIds as string[],
+   205→      memory: v1Data.memory as CharacterCard['memory'],
+   206→      chatStats: v1Data.chatStats as CharacterCard['chatStats'],
+   207→      // Embeddings
+   208→      embeddingNamespaces: v1Data.embeddingNamespaces as string[],
+   209→      // Quick Replies & Proactive Messages
+   210→      quickReplies: v1Data.quickReplies as CharacterCard['quickReplies'],
+   211→      proactiveMessages: v1Data.proactiveMessages as CharacterCard['proactiveMessages'],
+   212→      // Micro Reactions, Emotional Config, Default Transition
+   213→      microReactionConfig: v1Data.microReactionConfig as CharacterCard['microReactionConfig'],
+   214→      emotionalConfig: v1Data.emotionalConfig as CharacterCard['emotionalConfig'],
+   215→      defaultTransition: v1Data.defaultTransition as CharacterCard['defaultTransition'],
+   216→    };
+   217→  }
+   218→  
+   219→  return {};
+   220→}
+   221→
+   222→/**
+   223→ * Convert File to Data URL (for importing)
+   224→ */
+   225→async function fileToDataUrl(file: File): Promise<string> {
+   226→  return new Promise((resolve, reject) => {
+   227→    const reader = new FileReader();
+   228→    reader.onload = () => resolve(reader.result as string);
+   229→    reader.onerror = reject;
+   230→    reader.readAsDataURL(file);
+   231→  });
+   232→}
+   233→
+   234→/**
+   235→ * Upload an image to the server and return the URL
+   236→ */
+   237→async function uploadImage(file: File, type: string = 'avatar'): Promise<string> {
+   238→  const formData = new FormData();
+   239→  formData.append('file', file);
+   240→  formData.append('type', type);
+   241→
+   242→  const response = await fetch('/api/upload', {
+   243→    method: 'POST',
+   244→    body: formData
+   245→  });
+   246→
+   247→  if (!response.ok) {
+   248→    const error = await response.json();
+   249→    throw new Error(error.error || 'Failed to upload image');
+   250→  }
+   251→
+   252→  const { url } = await response.json();
+   253→  return url;
+   254→}
+   255→
+   256→/**
+   257→ * Upload a data URL to the server and return the URL
+   258→ */
+   259→async function uploadDataUrl(dataUrl: string, type: string = 'avatar'): Promise<string> {
+   260→  // Convert data URL to Blob
+   261→  const response = await fetch(dataUrl);
+   262→  const blob = await response.blob();
+   263→  
+   264→  // Create a File object
+   265→  const file = new File([blob], `imported-${Date.now()}.png`, { type: blob.type || 'image/png' });
+   266→  
+   267→  return uploadImage(file, type);
+   268→}
+   269→
+   270→/**
+   271→ * Parse JSON character card file
+   272→ */
+   273→export async function parseCharacterCardFromJson(file: File): Promise<{
+   274→  character: Partial<CharacterCard>;
+   275→  avatar?: string;
+   276→} | null> {
+   277→  try {
+   278→    const text = await file.text();
+   279→    const data = JSON.parse(text);
+   280→    const character = parseCharacterData(data);
+   281→    
+   282→    // Check if avatar is included in the JSON
+   283→    let avatar: string | undefined;
+   284→    if (data.avatar && typeof data.avatar === 'string') {
+   285→      avatar = data.avatar;
+   286→    }
+   287→    
+   288→    return { character, avatar };
+   289→  } catch (error) {
+   290→    console.error('Error parsing JSON character card:', error);
+   291→    return null;
+   292→  }
+   293→}
+   294→
+   295→/**
+   296→ * Import a character card from file (PNG or JSON)
+   297→ * 
+   298→ * After import, automatically migrates legacy sprite data to V2 if:
+   299→ * - The character has legacy sprite data (sprites[], spriteConfig, spriteTriggers)
+   300→ * - No V2 data exists yet (spritePacksV2, stateCollectionsV2, triggerCollections)
+   301→ */
+   302→export async function importCharacterCard(file: File): Promise<{
+   303→  character: Partial<CharacterCard>;
+   304→  avatar: string;
+   305→} | null> {
+   306→  const extension = file.name.split('.').pop()?.toLowerCase();
+   307→  
+   308→  try {
+   309→    let importResult: { character: Partial<CharacterCard>; avatar: string } | null = null;
+   310→
+   311→    if (extension === 'png' || file.type === 'image/png') {
+   312→      const result = await parseCharacterCardFromPng(file);
+   313→      if (result) {
+   314→        // Upload the avatar to the server instead of storing base64
+   315→        const avatarUrl = await uploadDataUrl(result.avatar, 'avatar');
+   316→        importResult = {
+   317→          character: result.character,
+   318→          avatar: avatarUrl
+   319→        };
+   320→      }
+   321→    } else if (extension === 'json' || file.type === 'application/json') {
+   322→      const result = await parseCharacterCardFromJson(file);
+   323→      if (result) {
+   324→        let avatarUrl = '';
+   325→        if (result.avatar) {
+   326→          // If avatar is a data URL, upload it
+   327→          if (result.avatar.startsWith('data:')) {
+   328→            avatarUrl = await uploadDataUrl(result.avatar, 'avatar');
+   329→          } else {
+   330→            avatarUrl = result.avatar;
+   331→          }
+   332→        }
+   333→        importResult = {
+   334→          character: result.character,
+   335→          avatar: avatarUrl
+   336→        };
+   337→      }
+   338→    }
+   339→
+   340→    // Auto-migrate legacy sprite data after import
+   341→    if (importResult?.character) {
+   342→      importResult.character = autoMigrateOnImport(importResult.character);
+   343→    }
+   344→
+   345→    return importResult;
+   346→  } catch (error) {
+   347→    console.error('Error importing character card:', error);
+   348→    return null;
+   349→  }
+   350→}
+   351→
+   352→/**
+   353→ * Auto-migrate legacy sprite data to V2 on import.
+   354→ * Only runs if legacy data exists and V2 data doesn't.
+   355→ * Preserves all existing V2 data.
+   356→ * 
+   357→ * @deprecated This auto-migration is temporary during the deprecation period.
+   358→ * Eventually, legacy fields will be removed and this won't be needed.
+   359→ */
+   360→function autoMigrateOnImport(character: Partial<CharacterCard>): Partial<CharacterCard> {
+   361→  // We need enough data to check for migration
+   362→  const minimalCard = character as CharacterCard;
+   363→  
+   364→  if (!needsMigration(minimalCard)) {
+   365→    return character;
+   366→  }
+   367→
+   368→  try {
+   369→    const result = migrateCharacterSprites(minimalCard, {
+   370→      defaultPackName: `${character.name || 'Character'} - Migrated`,
+   371→      createDefaultStateCollections: true,
+   372→      skipIfV2Exists: true, // Don't overwrite any V2 data that might have been imported
+   373→    });
+   374→
+   375→    if (result.success && (result.report.packsCreated > 0 || result.report.triggerCollectionsCreated > 0 || result.report.stateCollectionsCreated > 0)) {
+   376→      const migrationUpdates = applyMigrationResult(minimalCard, result);
+   377→      return {
+   378→        ...character,
+   379→        ...migrationUpdates,
+   380→      };
+   381→    }
+   382→  } catch (error) {
+   383→    // Silently fail - migration is best-effort on import
+   384→    console.warn('[TavernFlow] Auto-migration on import failed:', error);
+   385→  }
+   386→
+   387→  return character;
+   388→}
+   389→
+   390→/**
+   391→ * Create a PNG with embedded character data (includes all TavernFlow extensions)
+   392→ */
+   393→export async function exportCharacterCardAsPng(
+   394→  character: CharacterCard
+   395→): Promise<Blob> {
+   396→  // Create character data object (V2 format with TavernFlow extensions)
+   397→  const characterData: CharacterCardV2 = {
+   398→    spec: 'chara_card_v2',
+   399→    spec_version: '2.0',
+   400→    data: {
+   401→      name: character.name,
+   402→      description: character.description,
+   403→      personality: character.personality,
+   404→      scenario: character.scenario,
+   405→      first_mes: character.firstMes,
+   406→      mes_example: character.mesExample,
+   407→      creator_notes: character.creatorNotes,
+   408→      character_note: character.characterNote,
+   409→      system_prompt: character.systemPrompt,
+   410→      post_history_instructions: character.postHistoryInstructions,
+   411→      author_note: character.authorNote,
+   412→      alternate_greetings: character.alternateGreetings,
+   413→      tags: character.tags,
+   414→      creator: '',
+   415→      character_version: '1.0',
+   416→      extensions: {
+   417→        // TavernFlow extended data - Core fields
+   418→        avatar: character.avatar,
+   419→        /** @deprecated Legacy sprites - preserved for backward compatibility */
+   420→        sprites: character.sprites,
+   421→        // V2 Sprite System (NEW)
+   422→        spritePacksV2: character.spritePacksV2,
+   423→        stateCollectionsV2: character.stateCollectionsV2,
+   424→        triggerCollections: character.triggerCollections,
+   425→        spriteIndex: character.spriteIndex,
+   426→        /** @deprecated Legacy sprite system - preserved for backward compatibility */
+   427→        spriteConfig: character.spriteConfig,
+   428→        spriteTriggers: character.spriteTriggers,
+   429→        spritePacks: character.spritePacks,
+   430→        spriteLibraries: character.spriteLibraries,
+   431→        // Voice
+   432→        voice: character.voice,
+   433→        // HUD
+   434→        hudTemplateId: character.hudTemplateId,
+   435→        // Stats system
+   436→        statsConfig: character.statsConfig,
+   437→        // Lorebooks
+   438→        lorebookIds: character.lorebookIds,
+   439→        // Quests
+   440→        questTemplateIds: character.questTemplateIds,
+   441→        // Embeddings
+   442→        embeddingNamespaces: character.embeddingNamespaces,
+   443→        // Quick Replies & Proactive Messages
+   444→        quickReplies: character.quickReplies,
+   445→        proactiveMessages: character.proactiveMessages,
+   446→        // Micro Reactions, Emotional Config, Default Transition
+   447→        microReactionConfig: character.microReactionConfig,
+   448→        emotionalConfig: character.emotionalConfig,
+   449→        defaultTransition: character.defaultTransition,
+   450→        // Character-level memory & stats
+   451→        memory: character.memory,
+   452→        chatStats: character.chatStats,
+   453→      }
+   454→    }
+   455→  };
+   456→  
+   457→  // If no avatar, create a placeholder
+   458→  if (!character.avatar) {
+   459→    return createPngWithCharacterData(characterData, null);
+   460→  }
+   461→  
+   462→  // Fetch the avatar image
+   463→  try {
+   464→    const response = await fetch(character.avatar);
+   465→    const imageBlob = await response.blob();
+   466→    return createPngWithCharacterData(characterData, imageBlob);
+   467→  } catch {
+   468→    return createPngWithCharacterData(characterData, null);
+   469→  }
+   470→}
+   471→
+   472→/**
+   473→ * Create a PNG blob with embedded character data
+   474→ */
+   475→async function createPngWithCharacterData(
+   476→  data: CharacterCardV2,
+   477→  imageBlob: Blob | null
+   478→): Promise<Blob> {
+   479→  // If we have an image, inject the character data
+   480→  if (imageBlob) {
+   481→    const buffer = await imageBlob.arrayBuffer();
+   482→    return injectCharacterDataIntoPng(buffer, data);
+   483→  }
+   484→  
+   485→  // Create a minimal 1x1 PNG with the character data
+   486→  const width = 1;
+   487→  const height = 1;
+   488→  
+   489→  // Create PNG chunks
+   490→  const signature = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+   491→  
+   492→  // IHDR chunk
+   493→  const ihdrData = new Uint8Array(13);
+   494→  const ihdrView = new DataView(ihdrData.buffer);
+   495→  ihdrView.setUint32(0, width);
+   496→  ihdrView.setUint32(4, height);
+   497→  ihdrView.setUint8(8, 8);  // bit depth
+   498→  ihdrView.setUint8(9, 6);  // color type (RGBA)
+   499→  ihdrView.setUint8(10, 0); // compression
+   500→  ihdrView.setUint8(11, 0); // filter
+   501→  ihdrView.setUint8(12, 0); // interlace
+   502→  const ihdrChunk = createPngChunk('IHDR', ihdrData);
+   503→  
+   504→  // tEXt chunk with character data (UTF-8 safe Base64)
+   505→  const jsonStr = JSON.stringify(data);
+   506→  const jsonBytes = new TextEncoder().encode(jsonStr);
+   507→  const binaryStr = String.fromCharCode(...jsonBytes);
+   508→  const base64Str = btoa(binaryStr);
+   509→  const textData = new TextEncoder().encode(`${TAVERN_CHAR_KEY}\x00${base64Str}`);
+   510→  const textChunk = createPngChunk('tEXt', textData);
+   511→  
+   512→  // IDAT chunk (minimal compressed RGBA data)
+   513→  const idatData = new Uint8Array([0x78, 0x9C, 0x62, 0x60, 0x60, 0x60, 0x00, 0x00, 0x00, 0x04, 0x00, 0x01]);
+   514→  const idatChunk = createPngChunk('IDAT', idatData);
+   515→  
+   516→  // IEND chunk
+   517→  const iendChunk = createPngChunk('IEND', new Uint8Array(0));
+   518→  
+   519→  // Combine all chunks
+   520→  const totalLength = signature.length + ihdrChunk.length + textChunk.length + idatChunk.length + iendChunk.length;
+   521→  const pngBuffer = new Uint8Array(totalLength);
+   522→  let offset = 0;
+   523→  
+   524→  pngBuffer.set(signature, offset);
+   525→  offset += signature.length;
+   526→  pngBuffer.set(ihdrChunk, offset);
+   527→  offset += ihdrChunk.length;
+   528→  pngBuffer.set(textChunk, offset);
+   529→  offset += textChunk.length;
+   530→  pngBuffer.set(idatChunk, offset);
+   531→  offset += idatChunk.length;
+   532→  pngBuffer.set(iendChunk, offset);
+   533→  
+   534→  return new Blob([pngBuffer], { type: 'image/png' });
+   535→}
+   536→
+   537→/**
+   538→ * Inject character data into an existing PNG
+   539→ */
+   540→async function injectCharacterDataIntoPng(
+   541→  buffer: ArrayBuffer,
+   542→  data: CharacterCardV2
+   543→): Promise<Blob> {
+   544→  const view = new DataView(buffer);
+   545→  const pngChunks: { type: string; data: Uint8Array }[] = [];
+   546→  
+   547→  // Parse existing chunks
+   548→  let offset = 8; // Skip signature
+   549→  
+   550→  while (offset < buffer.byteLength) {
+   551→    const chunkLength = view.getUint32(offset);
+   552→    const chunkType = String.fromCharCode(
+   553→      view.getUint8(offset + 4),
+   554→      view.getUint8(offset + 5),
+   555→      view.getUint8(offset + 6),
+   556→      view.getUint8(offset + 7)
+   557→    );
+   558→    
+   559→    const chunkData = new Uint8Array(buffer, offset + 8, chunkLength);
+   560→    pngChunks.push({ type: chunkType, data: chunkData });
+   561→    
+   562→    offset += 12 + chunkLength; // length + type + data + CRC
+   563→    
+   564→    if (chunkType === 'IEND') break;
+   565→  }
+   566→  
+   567→  // Remove existing tEXt chara chunks
+   568→  const filteredChunks = pngChunks.filter(c => 
+   569→    !(c.type === 'tEXt' && isCharaChunk(c.data))
+   570→  );
+   571→  
+   572→  // Create new tEXt chunk with character data (UTF-8 safe Base64)
+   573→  const jsonStr = JSON.stringify(data);
+   574→  const jsonBytes = new TextEncoder().encode(jsonStr);
+   575→  const binaryStr = String.fromCharCode(...jsonBytes);
+   576→  const base64Str = btoa(binaryStr);
+   577→  const textData = new TextEncoder().encode(`${TAVERN_CHAR_KEY}\x00${base64Str}`);
+   578→  
+   579→  // Insert before IEND
+   580→  const iendIndex = filteredChunks.findIndex(c => c.type === 'IEND');
+   581→  const newChunks = [
+   582→    ...filteredChunks.slice(0, iendIndex),
+   583→    { type: 'tEXt', data: textData },
+   584→    ...filteredChunks.slice(iendIndex)
+   585→  ];
+   586→  
+   587→  // Rebuild PNG
+   588→  const signature = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+   589→  const chunksData = newChunks.map(c => createPngChunk(c.type, c.data));
+   590→  
+   591→  const totalLength = signature.length + chunksData.reduce((sum, c) => sum + c.length, 0);
+   592→  const pngBuffer = new Uint8Array(totalLength);
+   593→  
+   594→  pngBuffer.set(signature, 0);
+   595→  let pos = signature.length;
+   596→  for (const chunk of chunksData) {
+   597→    pngBuffer.set(chunk, pos);
+   598→    pos += chunk.length;
+   599→  }
+   600→  
+   601→  return new Blob([pngBuffer], { type: 'image/png' });
+   602→}
+   603→
+   604→/**
+   605→ * Check if a tEXt chunk is a chara chunk
+   606→ */
+   607→function isCharaChunk(data: Uint8Array): boolean {
+   608→  for (let i = 0; i < data.length; i++) {
+   609→    if (data[i] === 0) {
+   610→      const key = new TextDecoder().decode(data.slice(0, i));
+   611→      return key === TAVERN_CHAR_KEY;
+   612→    }
+   613→  }
+   614→  return false;
+   615→}
+   616→
+   617→/**
+   618→ * Create a PNG chunk with CRC
+   619→ */
+   620→function createPngChunk(type: string, data: Uint8Array): Uint8Array {
+   621→  const typeBytes = new TextEncoder().encode(type);
+   622→  const chunk = new Uint8Array(12 + data.length);
+   623→  const view = new DataView(chunk.buffer);
+   624→  
+   625→  // Length (4 bytes, big-endian)
+   626→  view.setUint32(0, data.length);
+   627→  
+   628→  // Type (4 bytes)
+   629→  chunk.set(typeBytes, 4);
+   630→  
+   631→  // Data
+   632→  chunk.set(data, 8);
+   633→  
+   634→  // CRC (4 bytes) - calculated over type + data
+   635→  const crc = crc32(new Uint8Array([...typeBytes, ...data]));
+   636→  view.setUint32(8 + data.length, crc);
+   637→  
+   638→  return chunk;
+   639→}
+   640→
+   641→/**
+   642→ * CRC32 calculation for PNG chunks
+   643→ */
+   644→function crc32(data: Uint8Array): number {
+   645→  let crc = 0xFFFFFFFF;
+   646→  const table = getCrc32Table();
+   647→  
+   648→  for (let i = 0; i < data.length; i++) {
+   649→    crc = (crc >>> 8) ^ table[(crc ^ data[i]) & 0xFF];
+   650→  }
+   651→  
+   652→  return (crc ^ 0xFFFFFFFF) >>> 0;
+   653→}
+   654→
+   655→let crc32Table: Uint32Array | null = null;
+   656→
+   657→function getCrc32Table(): Uint32Array {
+   658→  if (crc32Table) return crc32Table;
+   659→  
+   660→  crc32Table = new Uint32Array(256);
+   661→  for (let i = 0; i < 256; i++) {
+   662→    let c = i;
+   663→    for (let j = 0; j < 8; j++) {
+   664→      c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+   665→    }
+   666→    crc32Table[i] = c;
+   667→  }
+   668→  
+   669→  return crc32Table;
+   670→}
+   671→
+   672→/**
+   673→ * Export character as JSON (includes all TavernFlow extensions)
+   674→ */
+   675→export function exportCharacterCardAsJson(character: CharacterCard): string {
+   676→  const data: CharacterCardV2 = {
+   677→    spec: 'chara_card_v2',
+   678→    spec_version: '2.0',
+   679→    data: {
+   680→      name: character.name,
+   681→      description: character.description,
+   682→      personality: character.personality,
+   683→      scenario: character.scenario,
+   684→      first_mes: character.firstMes,
+   685→      mes_example: character.mesExample,
+   686→      creator_notes: character.creatorNotes,
+   687→      character_note: character.characterNote,
+   688→      system_prompt: character.systemPrompt,
+   689→      post_history_instructions: character.postHistoryInstructions,
+   690→      author_note: character.authorNote,
+   691→      alternate_greetings: character.alternateGreetings,
+   692→      tags: character.tags,
+   693→      creator: '',
+   694→      character_version: '1.0',
+   695→      extensions: {
+   696→        // TavernFlow extended data - Core fields
+   697→        avatar: character.avatar,
+   698→        /** @deprecated Legacy sprites - preserved for backward compatibility */
+   699→        sprites: character.sprites,
+   700→        // V2 Sprite System (NEW)
+   701→        spritePacksV2: character.spritePacksV2,
+   702→        stateCollectionsV2: character.stateCollectionsV2,
+   703→        triggerCollections: character.triggerCollections,
+   704→        spriteIndex: character.spriteIndex,
+   705→        /** @deprecated Legacy sprite system - preserved for backward compatibility */
+   706→        spriteConfig: character.spriteConfig,
+   707→        spriteTriggers: character.spriteTriggers,
+   708→        spritePacks: character.spritePacks,
+   709→        spriteLibraries: character.spriteLibraries,
+   710→        // Voice
+   711→        voice: character.voice,
+   712→        // HUD
+   713→        hudTemplateId: character.hudTemplateId,
+   714→        // Stats system
+   715→        statsConfig: character.statsConfig,
+   716→        // Lorebooks
+   717→        lorebookIds: character.lorebookIds,
+   718→        // Quests
+   719→        questTemplateIds: character.questTemplateIds,
+   720→        // Embeddings
+   721→        embeddingNamespaces: character.embeddingNamespaces,
+   722→        // Quick Replies & Proactive Messages
+   723→        quickReplies: character.quickReplies,
+   724→        proactiveMessages: character.proactiveMessages,
+   725→        // Micro Reactions, Emotional Config, Default Transition
+   726→        microReactionConfig: character.microReactionConfig,
+   727→        emotionalConfig: character.emotionalConfig,
+   728→        defaultTransition: character.defaultTransition,
+   729→        // Character-level memory & stats
+   730→        memory: character.memory,
+   731→        chatStats: character.chatStats,
+   732→      }
+   733→    }
+   734→  };
+   735→  
+   736→  return JSON.stringify(data, null, 2);
+   737→}
+   738→

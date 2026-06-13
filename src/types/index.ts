@@ -140,6 +140,7 @@ export interface SpriteTriggerHit {
   cooldownMs?: number;
   score?: number;
   useTimelineSounds?: boolean;  // Whether to play timeline sounds for this sprite
+  transition?: SpriteTransitionConfig;  // FASE 7: Transition config from the trigger collection
 }
 
 // ============================================
@@ -162,6 +163,7 @@ export interface SpritePackEntryV2 {
   conditionalEnabled?: boolean;      // Whether this sprite has conditions
   priority?: number;                 // Priority for condition evaluation (higher = wins)
   conditions?: StatRequirement[];    // Conditions for when this sprite should show
+  conditionOperator?: 'AND' | 'OR'; // Logic operator for conditions (default: 'AND')
   isDefault?: boolean;              // This sprite is the fallback when no conditions match
 
   // Timeline data for sounds (optional)
@@ -253,11 +255,12 @@ export interface ConditionalStateVariant {
   // Priority - Higher number = higher priority (wins when multiple match)
   priority: number;                    // Default: 0
 
-  // Conditions - ALL must match (AND logic)
+  // Conditions - evaluated with AND or OR logic (controlled by conditionOperator)
   // Reuses StatRequirement which supports:
   //   - Operators: <, <=, >, >=, ==, !=, between, contains, not_contains
   //   - Cross-character: targetCharacterId for other characters' or persona's attributes
   conditions: StatRequirement[];
+  conditionOperator?: 'AND' | 'OR'; // Logic operator for conditions (default: 'AND')
 
   // Which pack to use when this variant is active
   packId: string;                      // References SpritePackV2.id
@@ -281,6 +284,39 @@ export interface SpriteChainStep {
   durationMs: number;              // How long to show (0 = wait forever)
   transition?: 'none' | 'fade' | 'slide';
 }
+
+// ============================================
+// SPRITE TRANSITION SYSTEM (FASE 7)
+// ============================================
+
+/** Sprite transition effect types */
+export type SpriteTransition = 'fade' | 'slide' | 'zoom' | 'bounce' | 'none';
+
+/** Direction for directional transitions (slide) */
+export type SpriteTransitionDirection = 'left' | 'right' | 'up' | 'down';
+
+/** Easing function for transitions */
+export type SpriteTransitionEasing = 'ease' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'linear';
+
+/** Configuration for sprite transitions */
+export interface SpriteTransitionConfig {
+  /** Type of transition effect */
+  type: SpriteTransition;
+  /** Duration in milliseconds (default: 300) */
+  duration: number;
+  /** Easing function (default: 'ease-in-out') */
+  easing: SpriteTransitionEasing;
+  /** Direction for slide transition (default: 'left') */
+  direction?: SpriteTransitionDirection;
+}
+
+/** Default transition config */
+export const createDefaultSpriteTransitionConfig = (): SpriteTransitionConfig => ({
+  type: 'fade',
+  duration: 300,
+  easing: 'ease-in-out',
+  direction: 'left',
+});
 
 /**
  * Sprite Chain - Sequence of sprites to play
@@ -374,9 +410,10 @@ export interface ConditionalSpriteEntry {
   // Priority - Higher number = higher priority (wins when multiple match)
   priority: number;                    // Default: 0
 
-  // Conditions - ALL must match (AND logic)
+  // Conditions - evaluated with AND or OR logic (controlled by conditionOperator)
   // Reuses StatRequirement for cross-character and all operator support
   conditions: StatRequirement[];
+  conditionOperator?: 'AND' | 'OR'; // Logic operator for conditions (default: 'AND')
 
   // Which sprite from the pack to show when this entry matches
   spriteId: string;                    // References SpritePackEntryV2.id
@@ -411,6 +448,9 @@ export interface TriggerCollection {
 
   // Sprite chain for animation sequences
   spriteChain?: SpriteChain;
+
+  // FASE 7: Transition config for this trigger's sprite changes
+  transition?: SpriteTransitionConfig;
 
   // Timeline sounds - When enabled, plays sounds configured in sprite's timeline
   // This is the default for the collection, individual sprite configs can override
@@ -510,7 +550,9 @@ export interface CharacterCard {
   alternateGreetings: string[];
   tags: string[];
   avatar: string;
+  /** @deprecated Use spritePacksV2 + stateCollectionsV2 instead. Legacy sprite list. */
   sprites: CharacterSprite[];
+  /** @deprecated Use spritePacksV2 + stateCollectionsV2 instead. Legacy sprite configuration. */
   spriteConfig?: SpriteConfig;  // Sprite configuration for this character
   
   // SPRITE SYSTEM V2
@@ -518,6 +560,11 @@ export interface CharacterCard {
   stateCollectionsV2?: StateCollectionV2[];  // State collections (idle/talk/thinking)
   triggerCollections?: TriggerCollection[];  // Trigger collections
   spriteIndex?: SpriteIndex;                 // Cached sprite file index
+
+  /** @deprecated Use triggerCollections instead. Legacy sprite triggers. */
+  spriteTriggers?: CharacterSpriteTrigger[];
+  /** @deprecated Use spritePacksV2 instead. Legacy sprite packs. */
+  spritePacks?: SpritePack[];
   
   voice: CharacterVoiceSettings | null;
   hudTemplateId?: string | null;  // HUD template to use for this character
@@ -526,7 +573,10 @@ export interface CharacterCard {
   embeddingNamespaces?: string[];   // Embedding namespaces to search during chat (overrides strategy)
   statsConfig?: CharacterStatsConfig;  // Stats system configuration (attributes, skills, etc.)
   proactiveMessages?: ProactiveMessagesConfig;  // Proactive message configuration
+  microReactionConfig?: MicroReactionConfig;     // FASE 4: Micro-reaction configuration for group chats
+  emotionalConfig?: EmotionalStateConfig;        // FASE 5: Autonomous emotional state system
   quickReplies?: CharacterQuickReply[];          // Character-specific quick replies with optional attribute modifiers
+  defaultTransition?: SpriteTransitionConfig;    // FASE 7: Default transition for state-based sprite changes
   // Import/Export extended fields (preserved through character-card.ts parse/serialize)
   spriteLibraries?: unknown;       // Sprite library collections (legacy import support)
   chatStats?: unknown;             // Character-level chat stats (legacy import support)
@@ -547,7 +597,10 @@ export type SpriteRole = 'principal' | 'alternate';
 // Collection behavior mode
 export type CollectionBehavior = 'principal' | 'random' | 'list';
 
-// Sprite collection entry (sprite with role in a state collection)
+/**
+ * @deprecated Use StateCollectionV2 instead. This legacy state collection entry
+ * is kept for backward compatibility but will be removed in a future version.
+ */
 export interface StateCollectionEntry {
   id: string;
   spriteLabel: string;       // Label from custom sprites
@@ -556,14 +609,22 @@ export interface StateCollectionEntry {
   order: number;             // For list mode ordering
 }
 
-// State sprite collection (for idle, talk, thinking)
+/**
+ * @deprecated Use StateCollectionV2 instead. This legacy state sprite collection
+ * is kept for backward compatibility but will be removed in a future version.
+ * Migration: StateSpriteCollection → StateCollectionV2 (via migrateLegacyStateCollections)
+ */
 export interface StateSpriteCollection {
   entries: StateCollectionEntry[];  // Sprites in this collection
   behavior: CollectionBehavior;     // How to select sprite
   currentIndex: number;             // Current index for list mode rotation
 }
 
-// Single sprite with state mapping
+/**
+ * @deprecated Use SpritePackEntryV2 instead. This legacy sprite type is kept
+ * for backward compatibility but will be removed in a future version.
+ * Migration: CharacterSprite → SpritePackEntryV2 (within a SpritePackV2)
+ */
 export interface CharacterSprite {
   id: string;
   name: string;
@@ -573,7 +634,12 @@ export interface CharacterSprite {
   animations?: SpriteAnimation[];
 }
 
-// Sprite configuration for a character
+/**
+ * @deprecated Use spritePacksV2 + stateCollectionsV2 instead. This legacy
+ * sprite configuration type is kept for backward compatibility but will be
+ * removed in a future version.
+ * Migration: SpriteConfig.sprites → StateCollectionV2[], SpriteConfig.stateCollections → StateCollectionV2[]
+ */
 export interface SpriteConfig {
   enabled: boolean;
   collection?: string;  // Selected collection name
@@ -584,6 +650,77 @@ export interface SpriteConfig {
   stateCollections?: {
     [key in SpriteState]?: StateSpriteCollection;
   };
+}
+
+/**
+ * Return-to-idle mode for legacy sprite triggers.
+ * @deprecated Use TriggerFallbackMode instead. Migrated as:
+ *   'idle_collection' → 'idle_collection' (unchanged)
+ *   'custom_sprite' → 'custom_sprite' (unchanged)
+ */
+export type ReturnToMode = 'idle_collection' | 'custom_sprite';
+
+/**
+ * @deprecated Use TriggerCollection instead. This legacy trigger type is kept
+ * for backward compatibility but will be removed in a future version.
+ * Migration: CharacterSpriteTrigger → TriggerCollection (via migrateLegacySpriteTrigger)
+ */
+export interface CharacterSpriteTrigger {
+  id: string;
+  title: string;
+  active: boolean;
+  key: string;
+  keys?: string[];
+  requirePipes: boolean;
+  caseSensitive: boolean;
+  spriteUrl: string;
+  spriteState?: string;
+  returnToIdleMs?: number;
+  returnToMode?: ReturnToMode;
+  returnToSpriteUrl?: string;
+  cooldownMs?: number;
+  priority?: number;
+  keywords?: string[];  // Legacy: pre-key-system keywords
+}
+
+/**
+ * @deprecated Legacy SpritePack system. Use SpritePackV2 instead.
+ * This type is kept for backward compatibility during the deprecation period.
+ * Migration: SpritePack → SpritePackV2 (via migrateLegacySprites)
+ */
+export interface SpritePack {
+  id: string;
+  name: string;
+  active: boolean;
+  keywords: string[];
+  items: SpritePackItem[];
+  caseSensitive?: boolean;
+  requirePipes?: boolean;
+}
+
+/**
+ * @deprecated Legacy SpritePackItem. Use SpritePackEntryV2 instead.
+ * This type is kept for backward compatibility during the deprecation period.
+ */
+export interface SpritePackItem {
+  spriteUrl?: string;
+  spriteLabel?: string;
+  enabled: boolean;
+  keys?: string;
+  actionId?: string;
+  poseId?: string;
+  clothesId?: string;
+  returnToIdleMs?: number;
+}
+
+/**
+ * @deprecated Legacy SpriteLibraryEntry. Use V2 sprite system instead.
+ * This type is kept for backward compatibility during the deprecation period.
+ */
+export interface SpriteLibraryEntry {
+  id: string;
+  name: string;
+  prefix: string;
 }
 
 export interface SpriteAnimation {
@@ -651,6 +788,9 @@ export interface MessageMetadata {
   promptData?: PromptSection[];  // Store the prompt sent to LLM
   toolsUsed?: ToolUsedInfo[];    // Tools used to generate this message
   proactiveInfo?: ProactiveMessageInfo;  // Proactive message metadata
+  interruptInfo?: InterruptInfo;  // FASE 4: Interruption metadata
+  microReactions?: MicroReaction[];  // FASE 4: Micro-reactions from other characters
+  isPartial?: boolean;  // FASE 4: Message was interrupted (partial content)
 }
 
 export interface ToolUsedInfo {
@@ -659,6 +799,75 @@ export interface ToolUsedInfo {
   icon?: string;
   success?: boolean;
 }
+
+// ============================================
+// FASE 4: INTERRUPTIONS & MICRO-REACTIONS
+// ============================================
+
+/** Metadata for an interrupted message */
+export interface InterruptInfo {
+  interruptedAt: string;          // ISO timestamp of the interruption
+  partialContentLength: number;   // How many characters were generated before interruption
+  reactionGenerated: boolean;    // Whether a character reaction was generated
+}
+
+/** A micro-reaction from a character (short, non-verbal reaction) */
+export interface MicroReaction {
+  characterId: string;
+  characterName: string;
+  reaction: string;              // Short reaction text (*suspira*, *sonríe*, etc.)
+  trigger: 'mention' | 'emotional' | 'interruption' | 'topic';
+  timestamp: string;
+}
+
+/** Configuration for micro-reactions in group chats */
+export interface MicroReactionConfig {
+  enabled: boolean;
+  maxReactionsPerMessage: number;  // Limit reactions per message (default: 2)
+  reactionChance: number;         // 0-1 probability of reacting (default: 0.3)
+  triggers: ('mention' | 'emotional' | 'topic')[];  // What triggers reactions
+}
+
+export const DEFAULT_MICRO_REACTION_CONFIG: MicroReactionConfig = {
+  enabled: false,
+  maxReactionsPerMessage: 2,
+  reactionChance: 0.3,
+  triggers: ['mention', 'emotional'],
+};
+
+// ============================================
+// FASE 5: EMOTIONAL STATES SYSTEM
+// ============================================
+
+/** Configuration for the autonomous emotional state system */
+export interface EmotionalStateConfig {
+  enabled: boolean;                          // Master switch for emotional evaluation
+  states: string[];                          // List of possible emotional states (e.g., ['feliz', 'triste', 'enojado', 'asustado', 'neutral'])
+  initialState: string;                      // Default emotional state when session starts
+  evaluationInterval: number;                // Evaluate every N turns (1 = every turn, 2 = every other turn, etc.)
+  contextMessagesCount: number;              // How many recent messages to include as context for evaluation (default: 6)
+  includeInPrompt: boolean;                  // Whether to include {{emocion}} in the prompt automatically (default: true)
+  promptInjectionFormat?: string;            // Custom format for prompt injection. Use {estado} as placeholder. Default: "Estado emocional actual: {estado}"
+}
+
+/** Result of an emotional state evaluation */
+export interface EmotionalEvaluation {
+  previousState: string;                     // The emotional state before evaluation
+  newState: string;                          // The evaluated emotional state
+  confidence: number;                        // 0-1 confidence score
+  reasoning?: string;                        // Brief explanation of why the state changed
+  timestamp: number;                         // When the evaluation happened
+}
+
+export const DEFAULT_EMOTIONAL_CONFIG: EmotionalStateConfig = {
+  enabled: false,
+  states: ['feliz', 'triste', 'enojado', 'asustado', 'sorprendido', 'neutral'],
+  initialState: 'neutral',
+  evaluationInterval: 1,
+  contextMessagesCount: 6,
+  includeInPrompt: true,
+  promptInjectionFormat: 'Estado emocional actual: {estado}',
+};
 
 // Prompt section for displaying in prompt viewer
 export interface PromptSection {
@@ -763,6 +972,8 @@ export interface CharacterGroup {
   questTemplateIds?: string[];       // Quest templates to use for this group
   embeddingNamespaces?: string[];   // Embedding namespaces to search during chat (overrides strategy)
   narratorSettings?: NarratorSettings;  // Narrator behavior configuration
+  firstMes?: string;            // First message for group chat
+  alternateGreetings?: string[]; // Alternative first messages
   createdAt: string;
   updatedAt: string;
 }
@@ -1070,6 +1281,34 @@ export interface ProactiveMessagesConfig {
   customPrompt?: string;              // Optional custom instruction for proactive message generation
   nudgeTemplate?: string;             // Optional nudge message template (replaces default "[La escena continúa] {{user}} parece distraído...")
   allowedStates: ('idle' | 'user_away')[];  // When to trigger (idle = no user activity, user_away = tab not focused)
+
+  // ─── FASE 3: Proactividad Inteligente ───
+  /** Pool of alternative nudge templates that rotate to add variety */
+  nudgeTemplates?: string[];
+  /** Number of recent messages to include as context in the nudge (0 = disabled, default 3) */
+  contextMessagesCount?: number;
+  /** Minutes before the character can repeat a similar topic (0 = disabled) */
+  thematicCooldownMinutes?: number;
+  /** Enable proactivity in group chats */
+  groupChatEnabled?: boolean;
+  /** Strategy for group chat proactive messages */
+  groupChatStrategy?: 'any_speaker' | 'mentioned_only' | 'emotional_reaction';
+
+  // ─── FASE 9: Contexto para Proactividad ───
+  /** Include emotional state context in proactive system prompt */
+  includeEmotionalContext?: boolean;
+  /** Include relationship context in proactive system prompt */
+  includeRelationshipContext?: boolean;
+  /** Include active quests context in proactive system prompt */
+  includeQuestContext?: boolean;
+  /** Max characters per context message (0 = no limit, default 300) */
+  contextMessageMaxChars?: number;
+  /** Inject context into system prompt (true) instead of only the nudge (false) */
+  contextInSystemPrompt?: boolean;
+  /** Detect and retomar abandoned conversation topics */
+  retomarAbandonedTopics?: boolean;
+  /** Number of turns of silence before a topic is considered "abandoned" (default 10) */
+  abandonedTopicThreshold?: number;
 }
 
 export const DEFAULT_PROACTIVE_MESSAGES_CONFIG: ProactiveMessagesConfig = {
@@ -1080,6 +1319,20 @@ export const DEFAULT_PROACTIVE_MESSAGES_CONFIG: ProactiveMessagesConfig = {
   customPrompt: '',
   nudgeTemplate: '',
   allowedStates: ['idle'],
+  // FASE 3 defaults
+  nudgeTemplates: [],
+  contextMessagesCount: 3,
+  thematicCooldownMinutes: 0,
+  groupChatEnabled: false,
+  groupChatStrategy: 'any_speaker',
+  // FASE 9 defaults
+  includeEmotionalContext: true,
+  includeRelationshipContext: true,
+  includeQuestContext: true,
+  contextMessageMaxChars: 300,
+  contextInSystemPrompt: true,
+  retomarAbandonedTopics: false,
+  abandonedTopicThreshold: 10,
 };
 
 // Metadata for proactive messages (stored in ChatMessage.metadata)
@@ -1088,6 +1341,10 @@ export interface ProactiveMessageInfo {
   triggeredAt: string;
   reason: 'timer_idle' | 'timer_away';
   characterName: string;
+  /** Index of the nudge template used (for rotation tracking) */
+  nudgeIndex?: number;
+  /** Brief topic/theme of the proactive message (for cooldown tracking) */
+  topic?: string;
 }
 
 // ASR (Speech-to-Text) configuration
@@ -1852,7 +2109,27 @@ export interface QuickReplyAttributeModifier {
   value: number | string;
 }
 
-/** Character-specific quick reply with optional attribute modifiers */
+/** Fallback mode for sprite activation after the action sprite expires */
+export type QuickReplySpriteFallbackMode = 'idle_collection' | 'custom_sprite' | 'collection_default';
+
+/** Sprite activation configuration for quick replies */
+export interface QuickReplySpriteActivation {
+  /** Activation mode:
+   * - 'trigger_collection': Use an existing TriggerCollection by ID (full support: chains, sounds, cooldowns)
+   * - 'sprite_pack': Evaluate a SpritePackV2's conditional sprites directly (simpler, no trigger overhead)
+   */
+  mode: 'trigger_collection' | 'sprite_pack';
+  /** ID of the target TriggerCollection or SpritePackV2 (depending on mode) */
+  targetId: string;
+  /** What happens after the action sprite expires */
+  fallbackMode: QuickReplySpriteFallbackMode;
+  /** Time in ms before the action sprite reverts to fallback (0 = persist until next change) */
+  fallbackDelayMs: number;
+  /** Optional: Custom sprite ID for 'custom_sprite' fallback mode */
+  fallbackSpriteId?: string;
+}
+
+/** Character-specific quick reply with optional attribute modifiers and sprite activation */
 export interface CharacterQuickReply {
   /** Unique ID for this quick reply */
   id: string;
@@ -1862,6 +2139,8 @@ export interface CharacterQuickReply {
   response: string;
   /** Optional attribute modifiers applied when this quick reply is used */
   modifiers?: QuickReplyAttributeModifier[];
+  /** Optional sprite activation - triggers a sprite animation when this quick reply is used */
+  spriteActivation?: QuickReplySpriteActivation;
 }
 
 export interface HandySettings {
@@ -3066,6 +3345,11 @@ export interface QuestSettings {
   questActivationPrefix?: string;      // Prefijo para activar misiones (ej: "Misión")
   questCompletionPrefix?: string;      // Prefijo para completar misiones (ej: "Completado")
   objectiveCompletionPrefix?: string;  // Prefijo para completar objetivos (ej: "Objetivo")
+
+  // Notification Deduplication
+  notificationDedupEnabled: boolean;  // Enable deduplication of quest notifications
+  notificationDedupWindowMs: number;  // Time window in ms to consider notifications as duplicates (default: 30000 = 30s)
+  notificationAutoDismissMs: number;  // Auto-dismiss time in ms (default: 5000 = 5s)
 }
 
 export const DEFAULT_QUEST_SETTINGS: QuestSettings = {
@@ -3088,6 +3372,10 @@ Instrucciones: Usa la información de las misiones activas para contextualizar t
   questActivationPrefix: '',
   questCompletionPrefix: '',
   objectiveCompletionPrefix: '',
+  // Notification Deduplication defaults
+  notificationDedupEnabled: true,
+  notificationDedupWindowMs: 30000,  // 30 seconds
+  notificationAutoDismissMs: 5000,   // 5 seconds
 };
 
 // ============================================
@@ -3116,6 +3404,7 @@ export type QuestNotificationType =
   | 'objective_complete' 
   | 'quest_complete' 
   | 'quest_failed'
+  | 'quest_updated'
   | 'reward_claimed';
 
 export interface QuestNotification {
@@ -3127,6 +3416,12 @@ export interface QuestNotification {
   rewards?: QuestReward[];
   timestamp: string;
   read: boolean;
+  /** Deduplication hash: hash of (questId + objectiveId + type) */
+  dedupHash?: string;
+  /** How many duplicate notifications were merged into this one */
+  duplicateCount?: number;
+  /** Optional objective ID for deduplication granularity */
+  objectiveId?: string;
 }
 
 // ============================================
@@ -3856,6 +4151,7 @@ export interface ThresholdEffect {
   enabled: boolean;          // Whether this threshold effect is active
   priority: number;          // Higher = wins when multiple thresholds match (default: 0)
   conditions: StatRequirement[];  // Flexible conditions: >=, >, <=, <, ==, !=, between, etc.
+  conditionOperator?: 'AND' | 'OR'; // Logic operator for conditions (default: 'AND')
   rewards: QuestReward[];    // Full reward support including sprite packs, attributes, triggers, etc.
 }
 
@@ -3926,6 +4222,7 @@ export interface AttributeDefinition {
 
     // Conditions (optional) - timer only applies when these requirements are met
     condition?: StatRequirement[];        // Uses existing StatRequirement system
+    conditionOperator?: 'AND' | 'OR';    // Logic operator for conditions (default: 'AND')
   };
 }
 
@@ -3941,6 +4238,7 @@ export interface SkillDefinition {
   key: string;               // Template key: "golpe_furioso" → {{golpe_furioso}}
   type?: ActionType;         // "preparacion" | "ejecucion" - determines action type
   requirements: StatRequirement[];
+  requirementOperator?: 'AND' | 'OR'; // Logic operator for requirements (default: 'AND')
   category?: string;         // "combate", "magia", "social"
 
   // Activation costs - modify attributes when skill is used
@@ -3972,6 +4270,7 @@ export interface IntentionDefinition {
   description: string;
   key: string;               // Template key
   requirements: StatRequirement[];
+  requirementOperator?: 'AND' | 'OR'; // Logic operator for requirements (default: 'AND')
   examples?: string[];       // Examples of how to manifest this intention
 
   // Formato de inyección personalizado
@@ -3989,6 +4288,11 @@ export interface SolicitudDefinition {
   solicitudDescription: string;    // Descripción que ve quien recibe la solicitud
   completionDescription?: string;  // Descripción que se guarda en ultima_solicitud_completada al completar
   requirements: StatRequirement[]; // Requisitos para que la solicitud esté disponible
+  requirementOperator?: 'AND' | 'OR'; // Logic operator for requirements (default: 'AND')
+
+  // Expiration - solicitudes can expire after a certain time
+  expirationTurns?: number;        // Número de turnos hasta expirar (0 = sin expiración)
+  expirationMinutes?: number;      // Minutos hasta expirar (0 = sin expiración)
 
   // Activation keys for Peticion (alternative keys for detection)
   peticionActivationKeys?: string[];     // Alternative keys that also trigger this peticion
@@ -4006,6 +4310,7 @@ export interface InvitationDefinition {
   id: string;
   name: string;              // Nombre interno para identificar esta petición
   requirements: StatRequirement[];  // Requisitos para que esta petición esté disponible
+  requirementOperator?: 'AND' | 'OR'; // Logic operator for requirements (default: 'AND')
 
   // Objetivo - which character to send the petition to
   objetivo?: {
@@ -4027,9 +4332,11 @@ export interface SolicitudInstance {
   fromCharacterName: string; // Display name of sender
   description: string;       // What is being requested
   completionDescription?: string;  // Description of completion (what happened)
-  status: 'pending' | 'completed';  // Current status
+  status: 'pending' | 'completed' | 'expired';  // Current status
   createdAt: number;         // Timestamp when created
   completedAt?: number;      // Timestamp when completed
+  expiresAt?: number;        // Timestamp when this solicitud expires (if expiration configured)
+  expiresAtTurn?: number;    // Turn number when this solicitud expires (if turn-based expiration)
 }
 
 // Session state for active solicitudes
@@ -4088,6 +4395,11 @@ export interface CharacterSessionStats {
   
   // Change history (optional, for debug/undo)
   changeLog?: StatChangeLogEntry[];
+
+  // FASE 5: Current emotional state
+  emotionalState?: string;                // Current emotional state label (e.g., 'feliz', 'triste')
+  emotionalStateLastEval?: number;        // Timestamp of last emotional evaluation
+  emotionalStateTurnCount?: number;       // Turn counter for evaluation interval
 }
 
 // Session stats state (stored in ChatSession.sessionStats)

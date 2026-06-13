@@ -1,0 +1,650 @@
+     1→'use client';
+     2→
+     3→import { useTavernStore } from '@/store/tavern-store';
+     4→import { Button } from '@/components/ui/button';
+     5→import { Label } from '@/components/ui/label';
+     6→import { Switch } from '@/components/ui/switch';
+     7→import { Slider } from '@/components/ui/slider';
+     8→import { Textarea } from '@/components/ui/textarea';
+     9→import { Input } from '@/components/ui/input';
+    10→import { Card, CardContent } from '@/components/ui/card';
+    11→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    12→import {
+    13→  Collapsible,
+    14→  CollapsibleContent,
+    15→  CollapsibleTrigger,
+    16→} from '@/components/ui/collapsible';
+    17→import {
+    18→  AlertDialog,
+    19→  AlertDialogAction,
+    20→  AlertDialogCancel,
+    21→  AlertDialogContent,
+    22→  AlertDialogDescription,
+    23→  AlertDialogFooter,
+    24→  AlertDialogHeader,
+    25→  AlertDialogTitle,
+    26→  AlertDialogTrigger,
+    27→} from '@/components/ui/alert-dialog';
+    28→import { Badge } from '@/components/ui/badge';
+    29→import { Separator } from '@/components/ui/separator';
+    30→import {
+    31→  Target,
+    32→  Settings2,
+    33→  RotateCcw,
+    34→  ChevronDown,
+    35→  Save,
+    36→  Bell,
+    37→  Sparkles,
+    38→  Info,
+    39→  List,
+    40→  Cog,
+    41→  ScrollText,
+    42→  Zap,
+    43→  Eye,
+    44→  FileText,
+    45→  HelpCircle,
+    46→  Key,
+    47→} from 'lucide-react';
+    48→import { useState, useCallback } from 'react';
+    49→import { cn } from '@/lib/utils';
+    50→import { DEFAULT_QUEST_SETTINGS } from '@/types';
+    51→import { QuestLogPanel } from './quest-log-panel';
+    52→import { QuestTemplateManager } from '@/components/settings/quest-template-manager';
+    53→
+    54→export function QuestSettingsPanel() {
+    55→  const { questSettings, setQuestSettings, activeSessionId } = useTavernStore();
+    56→  const [promptEditorOpen, setPromptEditorOpen] = useState(false);
+    57→  
+    58→  // Ensure promptTemplate exists with default fallback
+    59→  const promptTemplate = questSettings.promptTemplate ?? DEFAULT_QUEST_SETTINGS.promptTemplate ?? '';
+    60→  const [localPrompt, setLocalPrompt] = useState(promptTemplate);
+    61→
+    62→  const handlePromptSave = useCallback(() => {
+    63→    setQuestSettings({ promptTemplate: localPrompt });
+    64→    setPromptEditorOpen(false);
+    65→  }, [localPrompt, setQuestSettings]);
+    66→
+    67→  const handleResetPrompt = useCallback(() => {
+    68→    const defaultPrompt = DEFAULT_QUEST_SETTINGS.promptTemplate ?? '';
+    69→    setLocalPrompt(defaultPrompt);
+    70→    setQuestSettings({ promptTemplate: defaultPrompt });
+    71→  }, [setQuestSettings]);
+    72→
+    73→  return (
+    74→    <div className="h-full flex flex-col p-6">
+    75→      {/* Header */}
+    76→      <div className="flex items-center justify-between shrink-0">
+    77→        <div className="space-y-1">
+    78→          <h2 className="text-2xl font-bold flex items-center gap-2.5">
+    79→            <div className="p-2 rounded-lg bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30">
+    80→              <Target className="w-5 h-5 text-amber-500" />
+    81→            </div>
+    82→            Sistema de Misiones
+    83→          </h2>
+    84→          <p className="text-muted-foreground text-sm ml-12">
+    85→            Configura el seguimiento de objetivos y recompensas en tus sesiones de rol
+    86→          </p>
+    87→        </div>
+    88→        <Badge 
+    89→          variant="outline" 
+    90→          className={cn(
+    91→            "px-3 py-1.5 text-sm font-medium transition-all",
+    92→            questSettings.enabled 
+    93→              ? "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/30" 
+    94→              : "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30"
+    95→          )}
+    96→        >
+    97→          {questSettings.enabled ? (
+    98→            <>
+    99→              <Zap className="w-3.5 h-3.5 mr-1.5" />
+   100→              Activo
+   101→            </>
+   102→          ) : (
+   103→            <>
+   104→              <Eye className="w-3.5 h-3.5 mr-1.5" />
+   105→              Inactivo
+   106→            </>
+   107→          )}
+   108→        </Badge>
+   109→      </div>
+   110→
+   111→      <Tabs defaultValue="templates" className="flex-1 flex flex-col min-h-0">
+   112→        <TabsList className="grid w-full grid-cols-3">
+   113→          <TabsTrigger value="templates" className="gap-2">
+   114→            <ScrollText className="w-4 h-4" />
+   115→            Templates
+   116→          </TabsTrigger>
+   117→          <TabsTrigger value="quests" className="gap-2">
+   118→            <List className="w-4 h-4" />
+   119→            Misiones
+   120→          </TabsTrigger>
+   121→          <TabsTrigger value="settings" className="gap-2">
+   122→            <Cog className="w-4 h-4" />
+   123→            Config
+   124→          </TabsTrigger>
+   125→        </TabsList>
+   126→
+   127→        {/* Templates Tab - Quest Template Manager */}
+   128→        <TabsContent value="templates" className="flex-1 overflow-hidden m-0 mt-4">
+   129→          <QuestTemplateManager />
+   130→        </TabsContent>
+   131→
+   132→        {/* Quest Management Tab */}
+   133→        <TabsContent value="quests" className="flex-1 overflow-hidden m-0 mt-4">
+   134→          {activeSessionId ? (
+   135→            <QuestLogPanel 
+   136→              sessionId={activeSessionId} 
+   137→              className="h-full"
+   138→            />
+   139→          ) : (
+   140→            <Card className="border-dashed border-2 bg-gradient-to-br from-muted/50 to-muted/30 h-full">
+   141→              <CardContent className="flex flex-col items-center justify-center h-full py-16">
+   142→                <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-500/10 to-orange-500/10 mb-4">
+   143→                  <Target className="w-12 h-12 text-amber-400" />
+   144→                </div>
+   145→                <h3 className="text-lg font-medium mb-2">Sin sesión activa</h3>
+   146→                <p className="text-sm text-muted-foreground text-center max-w-md">
+   147→                  Selecciona o crea una sesión de chat para gestionar las misiones.
+   148→                </p>
+   149→              </CardContent>
+   150→            </Card>
+   151→          )}
+   152→        </TabsContent>
+   153→
+   154→        {/* Settings Tab */}
+   155→        <TabsContent value="settings" className="flex-1 overflow-y-auto m-0 mt-4">
+   156→          <div className="space-y-6 pr-2">
+   157→            {/* Banner informativo */}
+   158→            <div className="rounded-xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-500/20 p-4">
+   159→              <div className="flex items-start gap-3">
+   160→                <div className="p-2 rounded-lg bg-amber-500/20">
+   161→                  <Info className="w-4 h-4 text-amber-500" />
+   162→                </div>
+   163→                <div className="space-y-1">
+   164→                  <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+   165→                    Sistema de Misiones
+   166→                  </p>
+   167→                  <p className="text-xs text-muted-foreground">
+   168→                    Las misiones pueden activarse automáticamente por palabras clave, turnos, o manualmente.
+   169→                    Los objetivos se detectan en el chat y otorgan recompensas al completarse.
+   170→                  </p>
+   171→                </div>
+   172→              </div>
+   173→            </div>
+   174→
+   175→            {/* Main Enable/Disable */}
+   176→            <div className="space-y-4">
+   177→              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+   178→                <div className="p-1.5 rounded-md bg-amber-500/10">
+   179→                  <Target className="w-4 h-4 text-amber-500" />
+   180→                </div>
+   181→                Estado del Sistema
+   182→              </div>
+   183→              
+   184→              <div className="pl-8">
+   185→                <Card className={cn(
+   186→                  "transition-all duration-300 overflow-hidden",
+   187→                  questSettings.enabled 
+   188→                    ? "border-green-500/30 bg-gradient-to-br from-green-500/5 to-emerald-500/5" 
+   189→                    : "border-border/60 bg-gradient-to-br from-card to-muted/30"
+   190→                )}>
+   191→                  <CardContent className="p-4">
+   192→                    <div className="flex items-center justify-between">
+   193→                      <div className="space-y-1">
+   194→                        <div className="flex items-center gap-2">
+   195→                          <Label className="text-base font-medium">Activar Sistema</Label>
+   196→                          {questSettings.enabled && (
+   197→                            <Badge className="bg-green-500/20 text-green-600 dark:text-green-400 border-green-500/30">
+   198→                              <Zap className="w-3 h-3 mr-1" />
+   199→                              Activo
+   200→                            </Badge>
+   201→                          )}
+   202→                        </div>
+   203→                        <p className="text-sm text-muted-foreground">
+   204→                          Habilita el seguimiento de misiones en todas las sesiones.
+   205→                        </p>
+   206→                      </div>
+   207→                      <Switch
+   208→                        checked={questSettings.enabled}
+   209→                        onCheckedChange={(enabled) => setQuestSettings({ enabled })}
+   210→                      />
+   211→                    </div>
+   212→                  </CardContent>
+   213→                </Card>
+   214→              </div>
+   215→            </div>
+   216→
+   217→            <Separator className="bg-border/50" />
+   218→
+   219→            {/* Detection Settings */}
+   220→            <div className="space-y-4">
+   221→              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+   222→                <div className="p-1.5 rounded-md bg-purple-500/10">
+   223→                  <Sparkles className="w-4 h-4 text-purple-500" />
+   224→                </div>
+   225→                Detección Automática
+   226→                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 ml-auto">
+   227→                  IA
+   228→                </Badge>
+   229→              </div>
+   230→              
+   231→              <div className="pl-8 space-y-3">
+   232→                <label className={cn(
+   233→                  "flex items-center justify-between p-4 rounded-lg border cursor-pointer transition-all",
+   234→                  questSettings.enabled 
+   235→                    ? "border-border/60 bg-gradient-to-r from-background to-muted/30 hover:border-purple-500/30 hover:bg-purple-500/5" 
+   236→                    : "border-border/40 bg-muted/30 opacity-50 cursor-not-allowed"
+   237→                )}>
+   238→                  <div className="flex items-center gap-3">
+   239→                    <div className="p-2 rounded-lg bg-purple-500/10">
+   240→                      <Sparkles className="w-4 h-4 text-purple-500" />
+   241→                    </div>
+   242→                    <div className="space-y-0.5">
+   243→                      <Label className="text-sm font-medium">Auto-detectar</Label>
+   244→                      <p className="text-xs text-muted-foreground">
+   245→                        Detectar automáticamente misiones en los mensajes del chat.
+   246→                      </p>
+   247→                    </div>
+   248→                  </div>
+   249→                  <Switch
+   250→                    checked={questSettings.autoDetect}
+   251→                    onCheckedChange={(autoDetect) => setQuestSettings({ autoDetect })}
+   252→                    disabled={!questSettings.enabled}
+   253→                  />
+   254→                </label>
+   255→
+   256→                <label className={cn(
+   257→                  "flex items-center justify-between p-4 rounded-lg border cursor-pointer transition-all",
+   258→                  questSettings.enabled 
+   259→                    ? "border-border/60 bg-gradient-to-r from-background to-muted/30 hover:border-purple-500/30 hover:bg-purple-500/5" 
+   260→                    : "border-border/40 bg-muted/30 opacity-50 cursor-not-allowed"
+   261→                )}>
+   262→                  <div className="flex items-center gap-3">
+   263→                    <div className="p-2 rounded-lg bg-cyan-500/10">
+   264→                      <Zap className="w-4 h-4 text-cyan-500" />
+   265→                    </div>
+   266→                    <div className="space-y-0.5">
+   267→                      <Label className="text-sm font-medium">Detección en tiempo real</Label>
+   268→                      <p className="text-xs text-muted-foreground">
+   269→                        Detectar durante el streaming de mensajes para respuestas más rápidas.
+   270→                      </p>
+   271→                    </div>
+   272→                  </div>
+   273→                  <Switch
+   274→                    checked={questSettings.realtimeEnabled}
+   275→                    onCheckedChange={(realtimeEnabled) => setQuestSettings({ realtimeEnabled })}
+   276→                    disabled={!questSettings.enabled}
+   277→                  />
+   278→                </label>
+   279→              </div>
+   280→            </div>
+   281→
+   282→            <Separator className="bg-border/50" />
+   283→
+   284→            {/* Key Prefixes Settings */}
+   285→            <div className="space-y-4">
+   286→              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+   287→                <div className="p-1.5 rounded-md bg-emerald-500/10">
+   288→                  <Key className="w-4 h-4 text-emerald-500" />
+   289→                </div>
+   290→                Prefijos de Keys
+   291→                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 ml-auto">
+   292→                  Opcional
+   293→                </Badge>
+   294→              </div>
+   295→              
+   296→              <div className="pl-8 space-y-3">
+   297→                <div className="p-4 rounded-lg border border-border/60 bg-gradient-to-r from-background to-muted/30">
+   298→                  <div className="flex items-start gap-3 mb-4">
+   299→                    <div className="p-2 rounded-lg bg-emerald-500/10">
+   300→                      <Info className="w-4 h-4 text-emerald-500" />
+   301→                    </div>
+   302→                    <div className="text-xs space-y-1">
+   303→                      <p className="font-medium text-emerald-600 dark:text-emerald-400">
+   304→                        ¿Qué son los prefijos?
+   305→                      </p>
+   306→                      <p className="text-muted-foreground">
+   307→                        Los prefijos se combinan con las keys de detección para mayor flexibilidad.
+   308→                        El sistema detecta automáticamente múltiples variantes.
+   309→                      </p>
+   310→                      <div className="mt-2 p-2 rounded bg-muted/50 font-mono text-[10px]">
+   311→                        <span className="text-muted-foreground">Ejemplo:</span>
+   312→                        <br />
+   313→                        <span className="text-emerald-500">Prefijo:</span> "Objetivo" + <span className="text-amber-500">Key:</span> "conseguir_madera"
+   314→                        <br />
+   315→                        <span className="text-muted-foreground">= Detecta:</span> "Objetivo:conseguir_madera", "Objetivo: conseguir madera", "Objetivo=conseguir_madera", etc.
+   316→                      </div>
+   317→                    </div>
+   318→                  </div>
+   319→                </div>
+   320→
+   321→                {/* Quest Activation Prefix */}
+   322→                <div className="p-4 rounded-lg border border-border/60 bg-gradient-to-r from-background to-muted/30">
+   323→                  <div className="flex items-center gap-3 mb-2">
+   324→                    <div className="p-2 rounded-lg bg-amber-500/10">
+   325→                      <Zap className="w-4 h-4 text-amber-500" />
+   326→                    </div>
+   327→                    <div className="flex-1">
+   328→                      <Label className="text-sm font-medium">Prefijo de Activación</Label>
+   329→                      <p className="text-xs text-muted-foreground">
+   330→                        Para activar misiones. Ej: "Misión:rescate"
+   331→                      </p>
+   332→                    </div>
+   333→                  </div>
+   334→                  <Input
+   335→                    value={questSettings.questActivationPrefix || ''}
+   336→                    onChange={(e) => setQuestSettings({ questActivationPrefix: e.target.value })}
+   337→                    disabled={!questSettings.enabled}
+   338→                    placeholder="Misión (opcional)"
+   339→                    className="font-mono text-sm"
+   340→                  />
+   341→                </div>
+   342→
+   343→                {/* Quest Completion Prefix */}
+   344→                <div className="p-4 rounded-lg border border-border/60 bg-gradient-to-r from-background to-muted/30">
+   345→                  <div className="flex items-center gap-3 mb-2">
+   346→                    <div className="p-2 rounded-lg bg-green-500/10">
+   347→                      <Target className="w-4 h-4 text-green-500" />
+   348→                    </div>
+   349→                    <div className="flex-1">
+   350→                      <Label className="text-sm font-medium">Prefijo de Completado</Label>
+   351→                      <p className="text-xs text-muted-foreground">
+   352→                        Para completar misiones enteras. Ej: "Completado:rescate"
+   353→                      </p>
+   354→                    </div>
+   355→                  </div>
+   356→                  <Input
+   357→                    value={questSettings.questCompletionPrefix || ''}
+   358→                    onChange={(e) => setQuestSettings({ questCompletionPrefix: e.target.value })}
+   359→                    disabled={!questSettings.enabled}
+   360→                    placeholder="Completado (opcional)"
+   361→                    className="font-mono text-sm"
+   362→                  />
+   363→                </div>
+   364→
+   365→                {/* Objective Completion Prefix */}
+   366→                <div className="p-4 rounded-lg border border-border/60 bg-gradient-to-r from-background to-muted/30">
+   367→                  <div className="flex items-center gap-3 mb-2">
+   368→                    <div className="p-2 rounded-lg bg-blue-500/10">
+   369→                      <List className="w-4 h-4 text-blue-500" />
+   370→                    </div>
+   371→                    <div className="flex-1">
+   372→                      <Label className="text-sm font-medium">Prefijo de Objetivos</Label>
+   373→                      <p className="text-xs text-muted-foreground">
+   374→                        Para completar objetivos. Ej: "Objetivo:conseguir_madera"
+   375→                      </p>
+   376→                    </div>
+   377→                  </div>
+   378→                  <Input
+   379→                    value={questSettings.objectiveCompletionPrefix || ''}
+   380→                    onChange={(e) => setQuestSettings({ objectiveCompletionPrefix: e.target.value })}
+   381→                    disabled={!questSettings.enabled}
+   382→                    placeholder="Objetivo (opcional)"
+   383→                    className="font-mono text-sm"
+   384→                  />
+   385→                </div>
+   386→              </div>
+   387→            </div>
+   388→
+   389→            <Separator className="bg-border/50" />
+   390→
+   391→            {/* Display Settings */}
+   392→            <div className="space-y-4">
+   393→              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+   394→                <div className="p-1.5 rounded-md bg-blue-500/10">
+   395→                  <Bell className="w-4 h-4 text-blue-500" />
+   396→                </div>
+   397→                Visualización
+   398→              </div>
+   399→              
+   400→              <div className="pl-8 space-y-3">
+   401→                <label className={cn(
+   402→                  "flex items-center justify-between p-4 rounded-lg border cursor-pointer transition-all",
+   403→                  questSettings.enabled 
+   404→                    ? "border-border/60 bg-gradient-to-r from-background to-muted/30 hover:border-blue-500/30 hover:bg-blue-500/5" 
+   405→                    : "border-border/40 bg-muted/30 opacity-50 cursor-not-allowed"
+   406→                )}>
+   407→                  <div className="flex items-center gap-3">
+   408→                    <div className="p-2 rounded-lg bg-blue-500/10">
+   409→                      <Bell className="w-4 h-4 text-blue-500" />
+   410→                    </div>
+   411→                    <div className="space-y-0.5">
+   412→                      <Label className="text-sm font-medium">Mostrar notificaciones</Label>
+   413→                      <p className="text-xs text-muted-foreground">
+   414→                        Mostrar alertas cuando se actualice o complete una misión.
+   415→                      </p>
+   416→                    </div>
+   417→                  </div>
+   418→                  <Switch
+   419→                    checked={questSettings.showNotifications}
+   420→                    onCheckedChange={(showNotifications) => setQuestSettings({ showNotifications })}
+   421→                    disabled={!questSettings.enabled}
+   422→                  />
+   423→                </label>
+   424→
+   425→                <label className={cn(
+   426→                  "flex items-center justify-between p-4 rounded-lg border cursor-pointer transition-all",
+   427→                  questSettings.enabled 
+   428→                    ? "border-border/60 bg-gradient-to-r from-background to-muted/30 hover:border-blue-500/30 hover:bg-blue-500/5" 
+   429→                    : "border-border/40 bg-muted/30 opacity-50 cursor-not-allowed"
+   430→                )}>
+   431→                  <div className="flex items-center gap-3">
+   432→                    <div className="p-2 rounded-lg bg-emerald-500/10">
+   433→                      <List className="w-4 h-4 text-emerald-500" />
+   434→                    </div>
+   435→                    <div className="space-y-0.5">
+   436→                      <Label className="text-sm font-medium">Mostrar completadas</Label>
+   437→                      <p className="text-xs text-muted-foreground">
+   438→                        Mantener misiones completadas en el registro histórico.
+   439→                      </p>
+   440→                    </div>
+   441→                  </div>
+   442→                  <Switch
+   443→                    checked={questSettings.showCompletedInLog}
+   444→                    onCheckedChange={(showCompletedInLog) => setQuestSettings({ showCompletedInLog })}
+   445→                    disabled={!questSettings.enabled}
+   446→                  />
+   447→                </label>
+   448→
+   449→                <div className={cn(
+   450→                  "p-4 rounded-lg border transition-all",
+   451→                  questSettings.enabled 
+   452→                    ? "border-border/60 bg-gradient-to-r from-background to-muted/30" 
+   453→                    : "border-border/40 bg-muted/30 opacity-50"
+   454→                )}>
+   455→                  <div className="flex items-center gap-3 mb-3">
+   456→                    <div className="p-2 rounded-lg bg-amber-500/10">
+   457→                      <Target className="w-4 h-4 text-amber-500" />
+   458→                    </div>
+   459→                    <div className="flex-1">
+   460→                      <div className="flex items-center justify-between">
+   461→                        <Label className="text-sm font-medium">Máximo de misiones activas</Label>
+   462→                        <Badge variant="secondary" className="font-mono bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20">
+   463→                          {questSettings.maxActiveQuests}
+   464→                        </Badge>
+   465→                      </div>
+   466→                      <p className="text-xs text-muted-foreground mt-0.5">
+   467→                        Límite de misiones que pueden estar activas simultáneamente.
+   468→                      </p>
+   469→                    </div>
+   470→                  </div>
+   471→                  <Slider
+   472→                    value={[questSettings.maxActiveQuests]}
+   473→                    min={1}
+   474→                    max={20}
+   475→                    step={1}
+   476→                    disabled={!questSettings.enabled}
+   477→                    onValueChange={([maxActiveQuests]) => 
+   478→                      setQuestSettings({ maxActiveQuests })
+   479→                    }
+   480→                    className="py-2"
+   481→                  />
+   482→                  <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+   483→                    <span>1 misión</span>
+   484→                    <span>20 misiones</span>
+   485→                  </div>
+   486→                </div>
+   487→              </div>
+   488→            </div>
+   489→
+   490→            <Separator className="bg-border/50" />
+   491→
+   492→            {/* Prompt Settings */}
+   493→            <div className="space-y-4">
+   494→              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+   495→                <div className="p-1.5 rounded-md bg-green-500/10">
+   496→                  <FileText className="w-4 h-4 text-green-500" />
+   497→                </div>
+   498→                Integración con Prompt
+   499→                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20 ml-auto">
+   500→                  LLM
+   501→                </Badge>
+   502→              </div>
+   503→              
+   504→              <div className="pl-8 space-y-3">
+   505→                <label className={cn(
+   506→                  "flex items-center justify-between p-4 rounded-lg border cursor-pointer transition-all",
+   507→                  questSettings.enabled 
+   508→                    ? "border-border/60 bg-gradient-to-r from-background to-muted/30 hover:border-green-500/30 hover:bg-green-500/5" 
+   509→                    : "border-border/40 bg-muted/30 opacity-50 cursor-not-allowed"
+   510→                )}>
+   511→                  <div className="flex items-center gap-3">
+   512→                    <div className="p-2 rounded-lg bg-green-500/10">
+   513→                      <FileText className="w-4 h-4 text-green-500" />
+   514→                    </div>
+   515→                    <div className="space-y-0.5">
+   516→                      <Label className="text-sm font-medium">Incluir en prompt</Label>
+   517→                      <p className="text-xs text-muted-foreground">
+   518→                        Añadir misiones activas al prompt enviado al LLM.
+   519→                      </p>
+   520→                    </div>
+   521→                  </div>
+   522→                  <Switch
+   523→                    checked={questSettings.promptInclude}
+   524→                    onCheckedChange={(promptInclude) => setQuestSettings({ promptInclude })}
+   525→                    disabled={!questSettings.enabled}
+   526→                  />
+   527→                </label>
+   528→
+   529→                <Collapsible open={promptEditorOpen} onOpenChange={setPromptEditorOpen}>
+   530→                  <CollapsibleTrigger asChild>
+   531→                    <Button 
+   532→                      variant="outline" 
+   533→                      className={cn(
+   534→                        "w-full justify-between transition-all",
+   535→                        questSettings.enabled 
+   536→                          ? "hover:border-green-500/30 hover:bg-green-500/5" 
+   537→                          : "opacity-50 cursor-not-allowed"
+   538→                      )}
+   539→                      disabled={!questSettings.enabled}
+   540→                    >
+   541→                      <span className="flex items-center gap-2">
+   542→                        <Settings2 className="w-4 h-4 text-green-500" />
+   543→                        Editar Template de Prompt
+   544→                      </span>
+   545→                      <ChevronDown className={cn(
+   546→                        "w-4 h-4 transition-transform",
+   547→                        promptEditorOpen && "rotate-180"
+   548→                      )} />
+   549→                    </Button>
+   550→                  </CollapsibleTrigger>
+   551→                  <CollapsibleContent className="mt-4 space-y-4">
+   552→                    <div className="p-4 rounded-xl bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/20">
+   553→                      <div className="flex items-start gap-3">
+   554→                        <div className="p-2 rounded-lg bg-green-500/20">
+   555→                          <HelpCircle className="w-4 h-4 text-green-500" />
+   556→                        </div>
+   557→                        <div className="text-xs space-y-2">
+   558→                          <p className="font-medium text-green-600 dark:text-green-400">
+   559→                            Variables disponibles:
+   560→                          </p>
+   561→                          <div className="flex flex-wrap gap-2">
+   562→                            <Badge variant="outline" className="font-mono text-[10px] bg-green-500/10 border-green-500/20">
+   563→                              {'{{activeQuests}}'}
+   564→                            </Badge>
+   565→                            <Badge variant="outline" className="font-mono text-[10px] bg-green-500/10 border-green-500/20">
+   566→                              {'{{questCount}}'}
+   567→                            </Badge>
+   568→                          </div>
+   569→                          <p className="text-muted-foreground">
+   570→                            Lista de misiones activas formateada para el LLM.
+   571→                          </p>
+   572→                        </div>
+   573→                      </div>
+   574→                    </div>
+   575→                    
+   576→                    <Textarea
+   577→                      value={localPrompt}
+   578→                      onChange={(e) => setLocalPrompt(e.target.value)}
+   579→                      disabled={!questSettings.enabled}
+   580→                      placeholder="Template para incluir misiones en el prompt..."
+   581→                      className="min-h-[150px] font-mono text-sm bg-background"
+   582→                    />
+   583→                    
+   584→                    <div className="flex items-center justify-between">
+   585→                      <AlertDialog>
+   586→                        <AlertDialogTrigger asChild>
+   587→                          <Button 
+   588→                            variant="outline" 
+   589→                            size="sm"
+   590→                            disabled={!questSettings.enabled}
+   591→                            className="hover:border-amber-500/30 hover:bg-amber-500/5"
+   592→                          >
+   593→                            <RotateCcw className="w-4 h-4 mr-2" />
+   594→                            Restaurar
+   595→                          </Button>
+   596→                        </AlertDialogTrigger>
+   597→                        <AlertDialogContent>
+   598→                          <AlertDialogHeader>
+   599→                            <AlertDialogTitle>¿Restaurar template por defecto?</AlertDialogTitle>
+   600→                            <AlertDialogDescription>
+   601→                              Esto reemplazará tu template personalizado con el valor predeterminado.
+   602→                            </AlertDialogDescription>
+   603→                          </AlertDialogHeader>
+   604→                          <AlertDialogFooter>
+   605→                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+   606→                            <AlertDialogAction onClick={handleResetPrompt}>
+   607→                              Restaurar
+   608→                            </AlertDialogAction>
+   609→                          </AlertDialogFooter>
+   610→                        </AlertDialogContent>
+   611→                      </AlertDialog>
+   612→
+   613→                      <Button 
+   614→                        size="sm"
+   615→                        onClick={handlePromptSave}
+   616→                        disabled={!questSettings.enabled || localPrompt === promptTemplate}
+   617→                        className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+   618→                      >
+   619→                        <Save className="w-4 h-4 mr-2" />
+   620→                        Guardar
+   621→                      </Button>
+   622→                    </div>
+   623→                  </CollapsibleContent>
+   624→                </Collapsible>
+   625→
+   626→                {!promptEditorOpen && (
+   627→                  <div className="p-4 rounded-lg border border-border/60 bg-muted/30">
+   628→                    <div className="flex items-center gap-2 mb-2">
+   629→                      <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+   630→                      <Label className="text-xs text-muted-foreground">Vista previa del template:</Label>
+   631→                    </div>
+   632→                    <div className="p-3 rounded-lg bg-background text-xs font-mono max-h-[80px] overflow-y-auto text-muted-foreground border border-border/50">
+   633→                      {promptTemplate.length > 200 
+   634→                        ? `${promptTemplate.slice(0, 200)}...`
+   635→                        : promptTemplate || 'Sin template configurado'
+   636→                      }
+   637→                    </div>
+   638→                  </div>
+   639→                )}
+   640→              </div>
+   641→            </div>
+   642→          </div>
+   643→        </TabsContent>
+   644→      </Tabs>
+   645→    </div>
+   646→  );
+   647→}
+   648→
+   649→export default QuestSettingsPanel;
+   650→

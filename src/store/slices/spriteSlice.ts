@@ -44,11 +44,14 @@ import type {
   ActiveTrigger,
   SpriteChain,
   SoundChain,
+  // FASE 7: Transition types
+  SpriteTransitionConfig,
 } from '@/types';
 import { 
   createDefaultSpritePackV2,
   createDefaultTriggerCollection,
   createDefaultTriggerQueueState,
+  createDefaultSpriteTransitionConfig,
 } from '@/types';
 import type { SoundChainStep, SoundTrigger, SoundCollection } from '@/types';
 
@@ -205,6 +208,12 @@ export interface CharacterSpriteState {
   triggerPackId: string | null;  // ID of the sprite pack
   useTimelineSounds: boolean;  // Whether to play timeline sounds for this sprite
 
+  // FASE 7: Transition config from the active trigger (for rendering transition)
+  triggerTransition: SpriteTransitionConfig | null;
+
+  // FASE 7: Default transition for state-based changes (idle/talk/thinking)
+  defaultTransition: SpriteTransitionConfig | null;
+
   // Return to idle state for this character
   returnToIdle: {
     active: boolean;
@@ -243,6 +252,8 @@ export const createDefaultCharacterState = (): CharacterSpriteState => ({
   triggerCollectionId: null,
   triggerPackId: null,
   useTimelineSounds: true,  // Enable timeline sounds by default
+  triggerTransition: null,
+  defaultTransition: null,
   returnToIdle: {
     active: false,
     scheduledAt: 0,
@@ -325,6 +336,9 @@ export interface SpriteSlice {
   
   // Set sprite state for a character
   setSpriteStateForCharacter: (characterId: string, state: SpriteState) => void;
+
+  // FASE 7: Set a field on the character sprite state
+  setCharacterSpriteStateField: (characterId: string, field: string, value: unknown) => void;
 
   // ============================================
   // NEW V2 ACTIONS - Trigger Queue System
@@ -557,6 +571,7 @@ export const createSpriteSlice = (set: any, get: any): SpriteSlice => ({
             triggerCollectionId: hit.collectionId || null,
             triggerPackId: hit.packId || null,
             useTimelineSounds: hit.useTimelineSounds ?? true,  // Enable timeline sounds by default
+            triggerTransition: hit.transition || null,  // FASE 7: Store transition from trigger
             triggerActivatedDuringGeneration: true,
             spriteState: 'idle', // Triggers set state to idle
             returnToIdle: {
@@ -908,6 +923,23 @@ export const createSpriteSlice = (set: any, get: any): SpriteSlice => ({
           [characterId]: {
             ...currentCharState,
             spriteState,
+          },
+        },
+      };
+    });
+  },
+
+  // FASE 7: Set a field on the character sprite state
+  setCharacterSpriteStateField: (characterId: string, field: string, value: unknown) => {
+    set((state: any) => {
+      const currentCharState = state.characterSpriteStates[characterId] || createDefaultCharacterState();
+      
+      return {
+        characterSpriteStates: {
+          ...state.characterSpriteStates,
+          [characterId]: {
+            ...currentCharState,
+            [field]: value,
           },
         },
       };

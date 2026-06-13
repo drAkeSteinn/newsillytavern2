@@ -1,0 +1,1471 @@
+     1→'use client';
+     2→
+     3→import { useTavernStore } from '@/store/tavern-store';
+     4→import { Button } from '@/components/ui/button';
+     5→import { Input } from '@/components/ui/input';
+     6→import { Label } from '@/components/ui/label';
+     7→import { Textarea } from '@/components/ui/textarea';
+     8→import { Switch } from '@/components/ui/switch';
+     9→import {
+    10→  Select,
+    11→  SelectContent,
+    12→  SelectItem,
+    13→  SelectTrigger,
+    14→  SelectValue,
+    15→} from '@/components/ui/select';
+    16→import {
+    17→  Tooltip,
+    18→  TooltipContent,
+    19→  TooltipProvider,
+    20→  TooltipTrigger,
+    21→} from '@/components/ui/tooltip';
+    22→import { Badge } from '@/components/ui/badge';
+    23→import { ScrollArea } from '@/components/ui/scroll-area';
+    24→import { cn } from '@/lib/utils';
+    25→import {
+    26→  AnimatePresence,
+    27→  motion,
+    28→} from 'framer-motion';
+    29→import {
+    30→  Plus,
+    31→  Trash2,
+    32→  Users,
+    33→  UserCheck,
+    34→  UserX,
+    35→  MessageSquare,
+    36→  HelpCircle,
+    37→  Sparkles,
+    38→  RefreshCw,
+    39→  Shuffle,
+    40→  Zap,
+    41→  Brain,
+    42→  Settings,
+    43→  Layers,
+    44→  BookOpen,
+    45→  ScrollText,
+    46→  Package,
+    47→  Palette,
+    48→  Ghost,
+    49→  X,
+    50→  Search,
+    51→  FileText,
+    52→  Database,
+    53→  Camera,
+    54→  Loader2,
+    55→} from 'lucide-react';
+    56→import { useState, useRef, useMemo, useEffect } from 'react';
+    57→import type { GroupMember, GroupActivationStrategy, NarratorResponseMode, NarratorSettings } from '@/types';
+    58→import { HUDSelector } from './hud-selector';
+    59→import { LorebookSelector } from './lorebook-selector';
+    60→import { QuestSelector } from './quest-selector';
+    61→import { NamespaceSelector } from './namespace-selector';
+    62→import { useToast } from '@/hooks/use-toast';
+    63→
+    64→// Strategy color helper
+    65→const getStrategyColorClasses = (color: string) => {
+    66→  const colorMap: Record<string, { bg: string; border: string; text: string; bgLight: string; bgSelected: string }> = {
+    67→    emerald: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-600', bgLight: 'bg-emerald-500/5', bgSelected: 'bg-emerald-500/20' },
+    68→    blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/20', text: 'text-blue-600', bgLight: 'bg-blue-500/5', bgSelected: 'bg-blue-500/20' },
+    69→    purple: { bg: 'bg-purple-500/10', border: 'border-purple-500/20', text: 'text-purple-600', bgLight: 'bg-purple-500/5', bgSelected: 'bg-purple-500/20' },
+    70→    amber: { bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-600', bgLight: 'bg-amber-500/5', bgSelected: 'bg-amber-500/20' },
+    71→    cyan: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/20', text: 'text-cyan-600', bgLight: 'bg-cyan-500/5', bgSelected: 'bg-cyan-500/20' },
+    72→  };
+    73→  return colorMap[color] || colorMap.emerald;
+    74→};
+    75→
+    76→// Default narrator settings
+    77→const DEFAULT_NARRATOR_SETTINGS: NarratorSettings = {
+    78→  responseMode: 'turn_end',
+    79→  conditional: {
+    80→    minTurnInterval: 0,
+    81→    onlyWhenNoActiveQuests: false
+    82→  },
+    83→  hiddenFromChat: false,
+    84→  showSprite: false
+    85→};
+    86→
+    87→// Narrator response mode info
+    88→const narratorModeInfo: Record<NarratorResponseMode, {
+    89→  name: string;
+    90→  description: string;
+    91→  icon: React.ReactNode;
+    92→}> = {
+    93→  turn_start: {
+    94→    name: 'Inicio del Turno',
+    95→    description: 'El narrador habla primero, antes que cualquier personaje',
+    96→    icon: <RefreshCw className="w-3.5 h-3.5" />
+    97→  },
+    98→  turn_end: {
+    99→    name: 'Final del Turno',
+   100→    description: 'El narrador habla último, después de todos los personajes',
+   101→    icon: <RefreshCw className="w-3.5 h-3.5" />
+   102→  },
+   103→  before_each: {
+   104→    name: 'Antes de Cada Personaje',
+   105→    description: 'El narrador habla antes de cada respuesta de personaje',
+   106→    icon: <Users className="w-3.5 h-3.5" />
+   107→  },
+   108→  after_each: {
+   109→    name: 'Después de Cada Personaje',
+   110→    description: 'El narrador habla después de cada respuesta de personaje',
+   111→    icon: <Users className="w-3.5 h-3.5" />
+   112→  }
+   113→};
+   114→
+   115→interface GroupEditorProps {
+   116→  groupId: string | null;
+   117→  open: boolean;
+   118→  onClose: () => void;
+   119→}
+   120→
+   121→const strategyInfo: Record<GroupActivationStrategy, { 
+   122→  name: string; 
+   123→  description: string; 
+   124→  icon: React.ReactNode;
+   125→  tip: string;
+   126→  color: string;
+   127→}> = {
+   128→  all: { 
+   129→    name: 'Todos Responden', 
+   130→    description: 'Todos los miembros activos responden',
+   131→    icon: <Users className="w-3.5 h-3.5" />,
+   132→    tip: 'Ideal para conversaciones grupales animadas.',
+   133→    color: 'emerald'
+   134→  },
+   135→  round_robin: { 
+   136→    name: 'Por Turno', 
+   137→    description: 'Los miembros responden en orden',
+   138→    icon: <RefreshCw className="w-3.5 h-3.5" />,
+   139→    tip: 'Útil para mantener un flujo ordenado.',
+   140→    color: 'blue'
+   141→  },
+   142→  random: { 
+   143→    name: 'Aleatorio', 
+   144→    description: 'Miembro(s) aleatorio(s) responden',
+   145→    icon: <Shuffle className="w-3.5 h-3.5" />,
+   146→    tip: 'Crea dinamismo y sorpresa.',
+   147→    color: 'purple'
+   148→  },
+   149→  reactive: { 
+   150→    name: 'Reactivo', 
+   151→    description: 'Menciones + Solicitudes',
+   152→    icon: <Zap className="w-3.5 h-3.5" />,
+   153→    tip: 'Responden los mencionados, personajes con solicitudes pendientes, o se detiene si hay petición al usuario.',
+   154→    color: 'amber'
+   155→  },
+   156→  smart: { 
+   157→    name: 'Inteligente', 
+   158→    description: 'La IA decide quién responde',
+   159→    icon: <Brain className="w-3.5 h-3.5" />,
+   160→    tip: 'El modelo elige el personaje más apropiado.',
+   161→    color: 'cyan'
+   162→  }
+   163→};
+   164→
+   165→const groupEditorTabs = [
+   166→  { value: 'info', label: 'Información', icon: Palette },
+   167→  { value: 'members', label: 'Miembros', icon: Users },
+   168→  { value: 'strategy', label: 'Estrategia', icon: Settings },
+   169→  { value: 'prompts', label: 'Prompts', icon: FileText },
+   170→];
+   171→
+   172→export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
+   173→  const {
+   174→    characters,
+   175→    groups,
+   176→    addGroup,
+   177→    updateGroup,
+   178→    deleteGroup,
+   179→    addGroupMember,
+   180→    removeGroupMember,
+   181→    toggleGroupMemberActive,
+   182→    toggleGroupMemberPresent,
+   183→    toggleGroupMemberNarrator,
+   184→    updateGroupMember
+   185→  } = useTavernStore();
+   186→
+   187→  const { toast } = useToast();
+   188→
+   189→  const [activeTab, setActiveTab] = useState('info');
+   190→  const isNewGroup = !groupId;
+   191→  const existingGroup = groups.find(g => g.id === groupId);
+   192→
+   193→  // Escape key handler
+   194→  useEffect(() => {
+   195→    const handleKeyDown = (e: KeyboardEvent) => {
+   196→      if (e.key === 'Escape') onClose();
+   197→    };
+   198→    if (open) {
+   199→      document.addEventListener('keydown', handleKeyDown);
+   200→      return () => document.removeEventListener('keydown', handleKeyDown);
+   201→    }
+   202→  }, [open, onClose]);
+   203→
+   204→  // Get initial values from existing group or defaults
+   205→  const initialValues = useMemo(() => {
+   206→    if (existingGroup) {
+   207→      return {
+   208→        name: existingGroup.name || '',
+   209→        description: existingGroup.description || '',
+   210→        avatar: existingGroup.avatar || '',
+   211→        systemPrompt: existingGroup.systemPrompt || '',
+   212→        activationStrategy: existingGroup.activationStrategy || 'all' as GroupActivationStrategy,
+   213→        minResponsesPerTurn: existingGroup.minResponsesPerTurn ?? 1,
+   214→        maxResponsesPerTurn: existingGroup.maxResponsesPerTurn ?? 3,
+   215→        allowMentions: existingGroup.allowMentions ?? true,
+   216→        mentionTriggers: existingGroup.mentionTriggers || [],
+   217→        conversationStyle: existingGroup.conversationStyle || 'sequential' as 'sequential' | 'parallel',
+   218→        hudTemplateId: existingGroup?.hudTemplateId || null,
+   219→        lorebookIds: existingGroup?.lorebookIds || [],
+   220→        questTemplateIds: existingGroup?.questTemplateIds || [],
+   221→        embeddingNamespaces: existingGroup?.embeddingNamespaces || [],
+   222→        narratorSettings: existingGroup?.narratorSettings || DEFAULT_NARRATOR_SETTINGS
+   223→      };
+   224→    }
+   225→    return {
+   226→      name: '',
+   227→      description: '',
+   228→      avatar: '',
+   229→      systemPrompt: '',
+   230→      activationStrategy: 'all' as GroupActivationStrategy,
+   231→      minResponsesPerTurn: 1,
+   232→      maxResponsesPerTurn: 3,
+   233→      allowMentions: true,
+   234→      mentionTriggers: [],
+   235→      conversationStyle: 'sequential' as 'sequential' | 'parallel',
+   236→      hudTemplateId: null,
+   237→      lorebookIds: [],
+   238→      questTemplateIds: [],
+   239→      embeddingNamespaces: [],
+   240→      narratorSettings: DEFAULT_NARRATOR_SETTINGS
+   241→    };
+   242→  }, [existingGroup]);
+   243→
+   244→  // Local state for new group members (before saving)
+   245→  const [localMembers, setLocalMembers] = useState<GroupMember[]>([]);
+   246→
+   247→  // Initialize state from existing group or defaults
+   248→  const [name, setName] = useState(initialValues.name);
+   249→  const [description, setDescription] = useState(initialValues.description);
+   250→  const [systemPrompt, setSystemPrompt] = useState(initialValues.systemPrompt);
+   251→  const [activationStrategy, setActivationStrategy] = useState<GroupActivationStrategy>(initialValues.activationStrategy);
+   252→  const [minResponsesPerTurn, setMinResponsesPerTurn] = useState(initialValues.minResponsesPerTurn);
+   253→  const [maxResponsesPerTurn, setMaxResponsesPerTurn] = useState(initialValues.maxResponsesPerTurn);
+   254→  const [allowMentions, setAllowMentions] = useState(initialValues.allowMentions);
+   255→  const [conversationStyle, setConversationStyle] = useState<'sequential' | 'parallel'>(initialValues.conversationStyle);
+   256→  const [hudTemplateId, setHudTemplateId] = useState<string | null>(initialValues.hudTemplateId);
+   257→  const [lorebookIds, setLorebookIds] = useState<string[]>(initialValues.lorebookIds);
+   258→  const [questTemplateIds, setQuestTemplateIds] = useState<string[]>(initialValues.questTemplateIds);
+   259→  const [embeddingNamespaces, setEmbeddingNamespaces] = useState<string[]>(initialValues.embeddingNamespaces);
+   260→  const [narratorSettings, setNarratorSettings] = useState<NarratorSettings>(initialValues.narratorSettings);
+   261→  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+   262→  const [avatarUploading, setAvatarUploading] = useState(false);
+   263→  const [avatarUrl, setAvatarUrl] = useState(initialValues.avatar);
+   264→  const avatarFileInputRef = useRef<HTMLInputElement>(null);
+   265→  const [availableSearchQuery, setAvailableSearchQuery] = useState('');
+   266→
+   267→  // Get members - either from existing group or local state
+   268→  const members = useMemo(() => {
+   269→    if (isNewGroup) {
+   270→      return localMembers;
+   271→    }
+   272→    return existingGroup?.members || [];
+   273→  }, [isNewGroup, localMembers, existingGroup?.members]);
+   274→
+   275→  // Member characters with character data
+   276→  const memberCharacters = useMemo(() => {
+   277→    return members
+   278→      .map(m => ({
+   279→        ...m,
+   280→        character: characters.find(c => c.id === m.characterId)
+   281→      }))
+   282→      .filter(m => m.character);
+   283→  }, [members, characters]);
+   284→
+   285→  // Get available characters (not in group)
+   286→  const memberIds = useMemo(() => members.map(m => m.characterId), [members]);
+   287→  const availableCharacters = useMemo(() => 
+   288→    characters.filter(c => !memberIds.includes(c.id)),
+   289→    [characters, memberIds]
+   290→  );
+   291→
+   292→  // Filtered lists for search
+   293→  const filteredAvailable = useMemo(() =>
+   294→    availableCharacters.filter(c =>
+   295→      c.name.toLowerCase().includes(availableSearchQuery.toLowerCase()) ||
+   296→      c.tags.some(t => t.toLowerCase().includes(availableSearchQuery.toLowerCase()))
+   297→    ),
+   298→    [availableCharacters, availableSearchQuery]
+   299→  );
+   300→
+   301→  const filteredMembers = useMemo(() =>
+   302→    memberCharacters.filter(m =>
+   303→      m.character!.name.toLowerCase().includes(memberSearchQuery.toLowerCase())
+   304→    ),
+   305→    [memberCharacters, memberSearchQuery]
+   306→  );
+   307→
+   308→  // Local handlers for new groups
+   309→  const handleLocalAddMember = (characterId: string) => {
+   310→    const newMember: GroupMember = {
+   311→      characterId,
+   312→      isActive: true,
+   313→      isPresent: true,
+   314→      isNarrator: false,
+   315→      joinOrder: localMembers.length
+   316→    };
+   317→    setLocalMembers([...localMembers, newMember]);
+   318→  };
+   319→
+   320→  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+   321→    const file = e.target.files?.[0];
+   322→    if (!file) return;
+   323→
+   324→    if (file.size > 5 * 1024 * 1024) {
+   325→      toast({
+   326→        title: 'Imagen muy grande',
+   327→        description: 'El tamaño máximo es 5MB.',
+   328→        variant: 'destructive'
+   329→      });
+   330→      return;
+   331→    }
+   332→
+   333→    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+   334→    if (!allowedTypes.includes(file.type)) {
+   335→      toast({
+   336→        title: 'Formato no soportado',
+   337→        description: 'Usa JPEG, PNG, GIF o WebP.',
+   338→        variant: 'destructive'
+   339→      });
+   340→      return;
+   341→    }
+   342→
+   343→    setAvatarUploading(true);
+   344→
+   345→    try {
+   346→      const formData = new FormData();
+   347→      formData.append('file', file);
+   348→      formData.append('type', 'group-avatar');
+   349→
+   350→      const res = await fetch('/api/upload', {
+   351→        method: 'POST',
+   352→        body: formData,
+   353→      });
+   354→
+   355→      const data = await res.json();
+   356→
+   357→      if (res.ok && data.success) {
+   358→        setAvatarUrl(data.url);
+   359→      } else {
+   360→        toast({
+   361→          title: 'Error al subir la imagen',
+   362→          description: data.error || 'Error al subir la imagen',
+   363→          variant: 'destructive'
+   364→        });
+   365→      }
+   366→    } catch {
+   367→      toast({
+   368→        title: 'Error de conexión',
+   369→        description: 'Error de conexión al subir la imagen',
+   370→        variant: 'destructive'
+   371→      });
+   372→    } finally {
+   373→      setAvatarUploading(false);
+   374→      if (avatarFileInputRef.current) {
+   375→        avatarFileInputRef.current.value = '';
+   376→      }
+   377→    }
+   378→  };
+   379→
+   380→  const handleLocalRemoveMember = (characterId: string) => {
+   381→    setLocalMembers(localMembers.filter(m => m.characterId !== characterId));
+   382→  };
+   383→
+   384→  const handleLocalToggleActive = (characterId: string) => {
+   385→    setLocalMembers(localMembers.map(m => 
+   386→      m.characterId === characterId ? { ...m, isActive: !m.isActive } : m
+   387→    ));
+   388→  };
+   389→
+   390→  const handleLocalTogglePresent = (characterId: string) => {
+   391→    setLocalMembers(localMembers.map(m =>
+   392→      m.characterId === characterId ? { ...m, isPresent: !m.isPresent } : m
+   393→    ));
+   394→  };
+   395→
+   396→  const handleLocalToggleNarrator = (characterId: string) => {
+   397→    setLocalMembers(localMembers.map(m =>
+   398→      m.characterId === characterId ? { ...m, isNarrator: !m.isNarrator } : m
+   399→    ));
+   400→  };
+   401→
+   402→  const handleSave = () => {
+   403→    if (!name.trim()) {
+   404→      toast({
+   405→        title: 'Nombre requerido',
+   406→        description: 'El nombre del grupo es requerido.',
+   407→        variant: 'destructive'
+   408→      });
+   409→      return;
+   410→    }
+   411→
+   412→    if (memberCharacters.length === 0) {
+   413→      toast({
+   414→        title: 'Sin miembros',
+   415→        description: 'Agrega al menos un personaje al grupo.',
+   416→        variant: 'destructive'
+   417→      });
+   418→      return;
+   419→    }
+   420→
+   421→    // Check if there's a narrator in the group
+   422→    const hasNarrator = members.some(m => m.isNarrator);
+   423→
+   424→    const groupData = {
+   425→      name: name.trim(),
+   426→      description,
+   427→      systemPrompt,
+   428→      activationStrategy,
+   429→      minResponsesPerTurn,
+   430→      maxResponsesPerTurn,
+   431→      allowMentions,
+   432→      mentionTriggers: [],
+   433→      conversationStyle,
+   434→      characterIds: memberIds,
+   435→      members,
+   436→      avatar: avatarUrl,
+   437→      hudTemplateId,
+   438→      lorebookIds,
+   439→      questTemplateIds,
+   440→      embeddingNamespaces,
+   441→      // Always include narratorSettings to preserve config even if narrator is temporarily removed
+   442→      narratorSettings
+   443→    };
+   444→
+   445→    if (isNewGroup) {
+   446→      addGroup(groupData);
+   447→    } else {
+   448→      updateGroup(groupId, groupData);
+   449→    }
+   450→
+   451→    onClose();
+   452→  };
+   453→
+   454→  const handleDelete = () => {
+   455→    if (!isNewGroup && confirm('¿Estás seguro de que quieres eliminar este grupo?')) {
+   456→      deleteGroup(groupId);
+   457→      onClose();
+   458→    }
+   459→  };
+   460→
+   461→  const handleRemoveMember = (characterId: string) => {
+   462→    if (isNewGroup) {
+   463→      handleLocalRemoveMember(characterId);
+   464→    } else {
+   465→      removeGroupMember(groupId, characterId);
+   466→    }
+   467→  };
+   468→
+   469→  const handleToggleActive = (characterId: string) => {
+   470→    if (isNewGroup) {
+   471→      handleLocalToggleActive(characterId);
+   472→    } else {
+   473→      toggleGroupMemberActive(groupId, characterId);
+   474→    }
+   475→  };
+   476→
+   477→  const handleTogglePresent = (characterId: string) => {
+   478→    if (isNewGroup) {
+   479→      handleLocalTogglePresent(characterId);
+   480→    } else {
+   481→      toggleGroupMemberPresent(groupId, characterId);
+   482→    }
+   483→  };
+   484→
+   485→  const handleToggleNarrator = (characterId: string) => {
+   486→    if (isNewGroup) {
+   487→      handleLocalToggleNarrator(characterId);
+   488→    } else {
+   489→      toggleGroupMemberNarrator(groupId, characterId);
+   490→    }
+   491→  };
+   492→
+   493→  // ==========================================
+   494→  // Character Avatar helper
+   495→  // ==========================================
+   496→  const CharacterAvatar = ({ character, size = 'md' }: { character: { name: string; avatar?: string }; size?: 'sm' | 'md' | 'lg' }) => {
+   497→    const sizeClasses = {
+   498→      sm: 'w-8 h-8 text-xs',
+   499→      md: 'w-10 h-10 text-sm',
+   500→      lg: 'w-14 h-14 text-lg',
+   501→    };
+   502→    return (
+   503→      <div className={cn(sizeClasses[size], 'rounded-lg overflow-hidden bg-muted flex-shrink-0')}>
+   504→        {character.avatar ? (
+   505→          <img src={character.avatar} alt={character.name} className="w-full h-full object-cover" />
+   506→        ) : (
+   507→          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-amber-400 to-orange-600">
+   508→            <span className="text-white font-bold">
+   509→              {character.name?.[0]?.toUpperCase() || '?'}
+   510→            </span>
+   511→          </div>
+   512→        )}
+   513→      </div>
+   514→    );
+   515→  };
+   516→
+   517→  // ==========================================
+   518→  // Tab content renderers
+   519→  // ==========================================
+   520→
+   521→  const renderInfoTab = () => (
+   522→    <div className="space-y-6">
+   523→      <div>
+   524→        <h3 className="text-lg font-semibold mb-1">Información del Grupo</h3>
+   525→        <p className="text-sm text-muted-foreground">
+   526→          {isNewGroup
+   527→            ? 'Configura los detalles básicos del nuevo grupo.'
+   528→            : 'Edita los detalles del grupo.'}
+   529→        </p>
+   530→      </div>
+   531→
+   532→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+   533→        {/* Left column: Name + Description */}
+   534→        <div className="space-y-4">
+   535→          <div>
+   536→            <div className="flex items-center gap-1.5 mb-1.5">
+   537→              <Label htmlFor="name" className="text-sm font-medium">Nombre del Grupo *</Label>
+   538→              <Tooltip>
+   539→                <TooltipTrigger asChild>
+   540→                  <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+   541→                </TooltipTrigger>
+   542→                <TooltipContent className="max-w-xs">
+   543→                  <p>Un nombre descriptivo para identificar el grupo.</p>
+   544→                </TooltipContent>
+   545→              </Tooltip>
+   546→            </div>
+   547→            <Input
+   548→              id="name"
+   549→              value={name}
+   550→              onChange={(e) => setName(e.target.value)}
+   551→              placeholder="Nombre del grupo..."
+   552→              className="h-9"
+   553→            />
+   554→          </div>
+   555→
+   556→          {/* Description */}
+   557→          <div>
+   558→            <div className="flex items-center gap-1.5 mb-1.5">
+   559→              <Label htmlFor="description" className="text-sm font-medium">Descripción / Escenario</Label>
+   560→              <Tooltip>
+   561→                <TooltipTrigger asChild>
+   562→                  <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+   563→                </TooltipTrigger>
+   564→                <TooltipContent className="max-w-xs">
+   565→                  <p>Describe el escenario o contexto del grupo.</p>
+   566→                </TooltipContent>
+   567→              </Tooltip>
+   568→            </div>
+   569→            <Textarea
+   570→              id="description"
+   571→              value={description}
+   572→              onChange={(e) => setDescription(e.target.value)}
+   573→              placeholder="Describe el escenario del grupo..."
+   574→              rows={4}
+   575→              className="text-sm"
+   576→            />
+   577→          </div>
+   578→        </div>
+   579→
+   580→        {/* Right column: Avatar + Assignments */}
+   581→        <div className="space-y-4">
+   582→          {/* Avatar */}
+   583→          <div className="flex items-center gap-6">
+   584→            <div
+   585→              className={cn(
+   586→                'relative group/avatar-wrapper flex-shrink-0',
+   587→                !avatarUploading && 'cursor-pointer'
+   588→              )}
+   589→              onClick={() => !avatarUploading && avatarFileInputRef.current?.click()}
+   590→            >
+   591→              <div className="w-20 h-20 rounded-xl overflow-hidden bg-muted">
+   592→                {avatarUploading ? (
+   593→                  <div className="w-full h-full flex items-center justify-center">
+   594→                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+   595→                  </div>
+   596→                ) : avatarUrl ? (
+   597→                  <img src={avatarUrl} alt={name} className="w-full h-full object-cover" />
+   598→                ) : (
+   599→                  <div className="w-full h-full bg-gradient-to-br from-violet-400 to-purple-600 flex items-center justify-center">
+   600→                    <Users className="w-8 h-8 text-white" />
+   601→                  </div>
+   602→                )}
+   603→              </div>
+   604→              <div className="absolute inset-0 rounded-xl bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+   605→                <Camera className="w-5 h-5 text-white" />
+   606→              </div>
+   607→            </div>
+   608→            <input
+   609→              type="file"
+   610→              ref={avatarFileInputRef}
+   611→              className="hidden"
+   612→              accept="image/*"
+   613→              onChange={handleAvatarUpload}
+   614→              disabled={avatarUploading}
+   615→            />
+   616→            <div>
+   617→              <p className="text-xs text-muted-foreground">
+   618→                {avatarUrl ? 'Avatar del grupo (clic para cambiar)' : 'Clic para subir avatar'}
+   619→              </p>
+   620→              <p className="text-[10px] text-muted-foreground mt-1">
+   621→                Sin avatar se usará el icono del grupo
+   622→              </p>
+   623→            </div>
+   624→          </div>
+   625→
+   626→          {/* Assignments: HUD, Lorebooks, Quests */}
+   627→          <div className="space-y-4">
+   628→            <div className="flex items-center gap-2 text-sm font-medium mb-2">
+   629→              <Package className="w-4 h-4 text-muted-foreground" />
+   630→              <span>Asignaciones</span>
+   631→            </div>
+   632→
+   633→            {/* HUD Selector */}
+   634→            <div>
+   635→              <div className="flex items-center gap-2 mb-1.5">
+   636→                <Layers className="w-3.5 h-3.5 text-cyan-500" />
+   637→                <Label className="text-sm">Plantilla HUD</Label>
+   638→                <Tooltip>
+   639→                  <TooltipTrigger asChild>
+   640→                    <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+   641→                  </TooltipTrigger>
+   642→                  <TooltipContent className="max-w-xs">
+   643→                    <p>Plantilla HUD para mostrar estadísticas del grupo.</p>
+   644→                  </TooltipContent>
+   645→                </Tooltip>
+   646→              </div>
+   647→              <HUDSelector
+   648→                value={hudTemplateId}
+   649→                onChange={setHudTemplateId}
+   650→                placeholder="Sin HUD asignado"
+   651→              />
+   652→            </div>
+   653→
+   654→            {/* Lorebook Selector */}
+   655→            <div>
+   656→              <div className="flex items-center gap-2 mb-1.5">
+   657→                <BookOpen className="w-3.5 h-3.5 text-amber-500" />
+   658→                <Label className="text-sm">Lorebooks</Label>
+   659→                <Tooltip>
+   660→                  <TooltipTrigger asChild>
+   661→                    <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+   662→                  </TooltipTrigger>
+   663→                  <TooltipContent className="max-w-xs">
+   664→                    <p>Lorebooks compartidos por todos los miembros del grupo.</p>
+   665→                  </TooltipContent>
+   666→                </Tooltip>
+   667→              </div>
+   668→              <LorebookSelector
+   669→                value={lorebookIds}
+   670→                onChange={setLorebookIds}
+   671→                placeholder="Sin lorebooks asignados"
+   672→              />
+   673→            </div>
+   674→
+   675→            {/* Quest Templates Selector */}
+   676→            <div>
+   677→              <div className="flex items-center gap-2 mb-1.5">
+   678→                <ScrollText className="w-3.5 h-3.5 text-purple-500" />
+   679→                <Label className="text-sm">Misiones</Label>
+   680→                <Tooltip>
+   681→                  <TooltipTrigger asChild>
+   682→                    <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+   683→                  </TooltipTrigger>
+   684→                  <TooltipContent className="max-w-xs">
+   685→                    <p>Misiones disponibles para el grupo.</p>
+   686→                  </TooltipContent>
+   687→                </Tooltip>
+   688→              </div>
+   689→              <QuestSelector
+   690→                value={questTemplateIds}
+   691→                onChange={setQuestTemplateIds}
+   692→                placeholder="Sin misiones asignadas"
+   693→              />
+   694→            </div>
+   695→
+   696→            {/* Embedding Namespaces Selector */}
+   697→            <div>
+   698→              <div className="flex items-center gap-2 mb-1.5">
+   699→                <Database className="w-3.5 h-3.5 text-violet-500" />
+   700→                <Label className="text-sm">Namespaces de Embeddings</Label>
+   701→                <Tooltip>
+   702→                  <TooltipTrigger asChild>
+   703→                    <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   704→                  </TooltipTrigger>
+   705→                  <TooltipContent className="max-w-xs">
+   706→                    <p>Namespaces adicionales de contexto para el chat grupal. Se añaden a los namespaces automáticos de la sesión y de cada personaje.</p>
+   707→                  </TooltipContent>
+   708→                </Tooltip>
+   709→              </div>
+   710→              <NamespaceSelector
+   711→                value={embeddingNamespaces}
+   712→                onChange={setEmbeddingNamespaces}
+   713→                placeholder="Solo namespaces automáticos"
+   714→              />
+   715→            </div>
+   716→          </div>
+   717→        </div>
+   718→      </div>
+   719→    </div>
+   720→  );
+   721→
+   722→  const renderMembersTab = () => (
+   723→    <div className="space-y-6">
+   724→      <div>
+   725→        <h3 className="text-lg font-semibold mb-1">Miembros del Grupo</h3>
+   726→        <p className="text-sm text-muted-foreground">
+   727→          Gestiona los personajes que participan en este grupo. Usa los controles para agregar, quitar y configurar cada miembro.
+   728→        </p>
+   729→      </div>
+   730→
+   731→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+   732→        {/* Available Characters (2/3 width) */}
+   733→        <div className="lg:col-span-2 space-y-3">
+   734→          <div className="flex items-center justify-between">
+   735→            <div className="flex items-center gap-2">
+   736→              <UserX className="w-4 h-4 text-muted-foreground" />
+   737→              <span className="text-sm font-medium">Personajes Disponibles</span>
+   738→              <Badge variant="secondary" className="text-xs">{filteredAvailable.length}</Badge>
+   739→            </div>
+   740→          </div>
+   741→
+   742→          {/* Search */}
+   743→          <div className="relative">
+   744→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   745→            <Input
+   746→              placeholder="Buscar personajes..."
+   747→              className="pl-9 h-9"
+   748→              value={availableSearchQuery}
+   749→              onChange={(e) => setAvailableSearchQuery(e.target.value)}
+   750→            />
+   751→          </div>
+   752→
+   753→          {/* Available characters list */}
+   754→          <div className="max-h-[60vh] overflow-y-auto space-y-1.5 pr-1">
+   755→            {filteredAvailable.length === 0 ? (
+   756→              <div className="text-sm text-muted-foreground text-center py-10 border-2 border-dashed rounded-lg">
+   757→                <UserX className="w-8 h-8 mx-auto mb-2 opacity-40" />
+   758→                <p>{availableSearchQuery ? 'No se encontraron personajes' : 'No hay personajes disponibles'}</p>
+   759→                <p className="text-xs mt-1">Todos los personajes ya están en el grupo</p>
+   760→              </div>
+   761→            ) : (
+   762→              filteredAvailable.map((char) => (
+   763→                <div
+   764→                  key={char.id}
+   765→                  className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors"
+   766→                >
+   767→                  <CharacterAvatar character={char} size="sm" />
+   768→                  <div className="flex-1 min-w-0">
+   769→                    <p className="font-medium text-sm truncate">{char.name}</p>
+   770→                    {char.tags.length > 0 && (
+   771→                      <p className="text-xs text-muted-foreground truncate">
+   772→                        {char.tags.slice(0, 3).join(', ')}
+   773→                      </p>
+   774→                    )}
+   775→                  </div>
+   776→                  <Button
+   777→                    variant="outline"
+   778→                    size="sm"
+   779→                    className="h-8"
+   780→                    onClick={() => {
+   781→                      if (isNewGroup) {
+   782→                        handleLocalAddMember(char.id);
+   783→                      } else {
+   784→                        addGroupMember(groupId, char.id);
+   785→                      }
+   786→                    }}
+   787→                  >
+   788→                    <Plus className="w-4 h-4 mr-1" />
+   789→                    Agregar
+   790→                  </Button>
+   791→                </div>
+   792→              ))
+   793→            )}
+   794→          </div>
+   795→        </div>
+   796→
+   797→        {/* Assigned Members (1/3 width) */}
+   798→        <div className="space-y-3">
+   799→          <div className="flex items-center justify-between">
+   800→            <div className="flex items-center gap-2">
+   801→              <UserCheck className="w-4 h-4 text-muted-foreground" />
+   802→              <span className="text-sm font-medium">Miembros</span>
+   803→              <Badge variant="secondary" className="text-xs">{memberCharacters.length}</Badge>
+   804→            </div>
+   805→          </div>
+   806→
+   807→          {/* Search */}
+   808→          <div className="relative">
+   809→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   810→            <Input
+   811→              placeholder="Filtrar miembros..."
+   812→              className="pl-9 h-9"
+   813→              value={memberSearchQuery}
+   814→              onChange={(e) => setMemberSearchQuery(e.target.value)}
+   815→            />
+   816→          </div>
+   817→
+   818→          {/* Member list */}
+   819→          <div className="max-h-[60vh] overflow-y-auto space-y-1.5 pr-1">
+   820→            {filteredMembers.length === 0 ? (
+   821→              <div className="text-sm text-muted-foreground text-center py-10 border-2 border-dashed rounded-lg">
+   822→                <Users className="w-8 h-8 mx-auto mb-2 opacity-40" />
+   823→                <p>Sin miembros aún</p>
+   824→                <p className="text-xs mt-1">Agrega personajes desde la lista</p>
+   825→              </div>
+   826→            ) : (
+   827→              filteredMembers.map((member) => (
+   828→                <div
+   829→                  key={member.characterId}
+   830→                  className="p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors space-y-2"
+   831→                >
+   832→                  {/* Top row: Avatar + Name + Remove */}
+   833→                  <div className="flex items-center gap-2.5">
+   834→                    <CharacterAvatar character={member.character!} size="sm" />
+   835→                    <p className="font-medium text-sm truncate flex-1">{member.character?.name}</p>
+   836→                    <Button
+   837→                      variant="ghost"
+   838→                      size="icon"
+   839→                      className="h-7 w-7 text-muted-foreground hover:text-destructive flex-shrink-0"
+   840→                      onClick={() => handleRemoveMember(member.characterId)}
+   841→                    >
+   842→                      <Trash2 className="w-3.5 h-3.5" />
+   843→                    </Button>
+   844→                  </div>
+   845→
+   846→                  {/* Status badges */}
+   847→                  <div className="flex items-center gap-1.5 flex-wrap pl-1">
+   848→                    <Badge
+   849→                      variant={member.isActive ? 'default' : 'secondary'}
+   850→                      className={cn(
+   851→                        "text-[10px] cursor-pointer py-0 px-1.5",
+   852→                        member.isActive && "bg-emerald-500/20 text-emerald-600 hover:bg-emerald-500/30"
+   853→                      )}
+   854→                      onClick={() => handleToggleActive(member.characterId)}
+   855→                    >
+   856→                      {member.isActive ? 'Activo' : 'Inactivo'}
+   857→                    </Badge>
+   858→                    <Badge
+   859→                      variant={member.isPresent ? 'outline' : 'secondary'}
+   860→                      className={cn(
+   861→                        "text-[10px] cursor-pointer py-0 px-1.5",
+   862→                        member.isPresent && "border-blue-500/30 text-blue-600"
+   863→                      )}
+   864→                      onClick={() => handleTogglePresent(member.characterId)}
+   865→                    >
+   866→                      {member.isPresent ? 'Presente' : 'Ausente'}
+   867→                    </Badge>
+   868→                    <Tooltip>
+   869→                      <TooltipTrigger asChild>
+   870→                        <Badge
+   871→                          variant={member.isNarrator ? 'default' : 'secondary'}
+   872→                          className={cn(
+   873→                            "text-[10px] cursor-pointer py-0 px-1.5",
+   874→                            member.isNarrator && "bg-violet-500/20 text-violet-600 hover:bg-violet-500/30"
+   875→                          )}
+   876→                          onClick={() => handleToggleNarrator(member.characterId)}
+   877→                        >
+   878→                          <Ghost className="w-2.5 h-2.5 mr-0.5" />
+   879→                          {member.isNarrator ? 'Narrador' : 'Normal'}
+   880→                        </Badge>
+   881→                      </TooltipTrigger>
+   882→                      <TooltipContent className="max-w-xs">
+   883→                        <p><strong>Narrador:</strong> Un personaje narrador es un "fantasma" que puede dirigir la escena. Sus mensajes no aparecen en el historial para otros personajes, pero pueden activar triggers.</p>
+   884→                      </TooltipContent>
+   885→                    </Tooltip>
+   886→                  </div>
+   887→                </div>
+   888→              ))
+   889→            )}
+   890→          </div>
+   891→        </div>
+   892→      </div>
+   893→    </div>
+   894→  );
+   895→
+   896→  const renderStrategyTab = () => {
+   897→    const currentColorClasses = getStrategyColorClasses(strategyInfo[activationStrategy].color);
+   898→
+   899→    return (
+   900→      <div className="space-y-6">
+   901→        <div>
+   902→          <h3 className="text-lg font-semibold mb-1">Estrategia de Respuesta</h3>
+   903→          <p className="text-sm text-muted-foreground">
+   904→            Define cómo y cuándo los personajes del grupo responden en la conversación.
+   905→          </p>
+   906→        </div>
+   907→
+   908→        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+   909→          {/* Left: Strategy selector + Conversation style */}
+   910→          <div className="space-y-6">
+   911→            {/* Strategy Selector */}
+   912→            <div className="p-4 bg-muted/30 rounded-lg border border-border/40 space-y-4">
+   913→              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+   914→                <MessageSquare className="w-4 h-4" />
+   915→                <span className="font-medium">Modo de Activación</span>
+   916→              </div>
+   917→
+   918→              <div className="grid grid-cols-1 gap-2">
+   919→                {Object.entries(strategyInfo).map(([key, info]) => {
+   920→                  const isSelected = activationStrategy === key;
+   921→                  const colors = getStrategyColorClasses(info.color);
+   922→                  return (
+   923→                    <button
+   924→                      key={key}
+   925→                      onClick={() => setActivationStrategy(key as GroupActivationStrategy)}
+   926→                      className={cn(
+   927→                        "p-3 rounded-lg border text-left transition-colors",
+   928→                        isSelected
+   929→                          ? cn("border-primary bg-primary/10")
+   930→                          : "hover:bg-muted/50 border-border/40"
+   931→                      )}
+   932→                    >
+   933→                      <div className="flex items-center gap-2 mb-1">
+   934→                        <span className={isSelected ? colors.text : ''}>
+   935→                          {info.icon}
+   936→                        </span>
+   937→                        <span className="text-sm font-medium">{info.name}</span>
+   938→                      </div>
+   939→                      <p className="text-xs text-muted-foreground">{info.description}</p>
+   940→                    </button>
+   941→                  );
+   942→                })}
+   943→              </div>
+   944→
+   945→              <div className={cn(
+   946→                "p-3 rounded-lg border",
+   947→                currentColorClasses.bg,
+   948→                currentColorClasses.border
+   949→              )}>
+   950→                <p className={cn(
+   951→                  "text-sm",
+   952→                  currentColorClasses.text
+   953→                )}>
+   954→                  💡 {strategyInfo[activationStrategy].tip}
+   955→                </p>
+   956→              </div>
+   957→            </div>
+   958→
+   959→            {/* Conversation Style */}
+   960→            <div className="p-4 bg-muted/30 rounded-lg border border-border/40 space-y-3">
+   961→              <div className="flex items-center gap-1.5 mb-1">
+   962→                <Label className="text-sm font-medium">Estilo de Conversación</Label>
+   963→                <Tooltip>
+   964→                  <TooltipTrigger asChild>
+   965→                    <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+   966→                  </TooltipTrigger>
+   967→                  <TooltipContent className="max-w-xs">
+   968→                    <p><strong>Secuencial:</strong> Un personaje a la vez. <strong>Paralelo:</strong> Todos responden simultáneamente.</p>
+   969→                  </TooltipContent>
+   970→                </Tooltip>
+   971→              </div>
+   972→              <Select
+   973→                value={conversationStyle}
+   974→                onValueChange={(v) => setConversationStyle(v as 'sequential' | 'parallel')}
+   975→              >
+   976→                <SelectTrigger className="h-9">
+   977→                  <SelectValue />
+   978→                </SelectTrigger>
+   979→                <SelectContent>
+   980→                  <SelectItem value="sequential">
+   981→                    <div className="flex items-center gap-2">
+   982→                      <RefreshCw className="w-4 h-4 text-blue-500" />
+   983→                      <div>
+   984→                        <span className="text-sm">Secuencial</span>
+   985→                        <p className="text-[10px] text-muted-foreground">Un personaje responde a la vez</p>
+   986→                      </div>
+   987→                    </div>
+   988→                  </SelectItem>
+   989→                  <SelectItem value="parallel">
+   990→                    <div className="flex items-center gap-2">
+   991→                      <Sparkles className="w-4 h-4 text-purple-500" />
+   992→                      <div>
+   993→                        <span className="text-sm">Paralelo</span>
+   994→                        <p className="text-[10px] text-muted-foreground">Todos responden simultáneamente</p>
+   995→                      </div>
+   996→                    </div>
+   997→                  </SelectItem>
+   998→                </SelectContent>
+   999→              </Select>
+  1000→            </div>
+  1001→          </div>
+  1002→
+  1003→          {/* Right: Min/Max responses + Mentions */}
+  1004→          <div className="space-y-6">
+  1005→            {/* Response limits */}
+  1006→            {activationStrategy !== 'all' && (
+  1007→              <div className="p-4 bg-muted/30 rounded-lg border border-border/40 space-y-4">
+  1008→                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+  1009→                  <Settings className="w-4 h-4" />
+  1010→                  <span className="font-medium">Límites de Respuesta</span>
+  1011→                </div>
+  1012→
+  1013→                <div className="grid grid-cols-2 gap-4">
+  1014→                  <div>
+  1015→                    <div className="flex items-center gap-1.5 mb-1.5">
+  1016→                      <Label htmlFor="minResponses" className="text-sm">Mín. Respuestas</Label>
+  1017→                      <Tooltip>
+  1018→                        <TooltipTrigger asChild>
+  1019→                          <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+  1020→                        </TooltipTrigger>
+  1021→                        <TooltipContent className="max-w-xs">
+  1022→                          <p>Número mínimo de personajes que responderán por turno. Si hay menciones o solicitudes pendientes, se pueden agregar más.</p>
+  1023→                        </TooltipContent>
+  1024→                      </Tooltip>
+  1025→                    </div>
+  1026→                    <Input
+  1027→                      id="minResponses"
+  1028→                      type="number"
+  1029→                      min={1}
+  1030→                      max={maxResponsesPerTurn}
+  1031→                      value={minResponsesPerTurn}
+  1032→                      onChange={(e) => setMinResponsesPerTurn(Math.min(parseInt(e.target.value) || 1, maxResponsesPerTurn))}
+  1033→                      className="h-9"
+  1034→                    />
+  1035→                  </div>
+  1036→                  <div>
+  1037→                    <div className="flex items-center gap-1.5 mb-1.5">
+  1038→                      <Label htmlFor="maxResponses" className="text-sm">Máx. Respuestas</Label>
+  1039→                      <Tooltip>
+  1040→                        <TooltipTrigger asChild>
+  1041→                          <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+  1042→                        </TooltipTrigger>
+  1043→                        <TooltipContent className="max-w-xs">
+  1044→                          <p>Número máximo de personajes que responderán por turno.</p>
+  1045→                        </TooltipContent>
+  1046→                      </Tooltip>
+  1047→                    </div>
+  1048→                    <Input
+  1049→                      id="maxResponses"
+  1050→                      type="number"
+  1051→                      min={minResponsesPerTurn}
+  1052→                      max={10}
+  1053→                      value={maxResponsesPerTurn}
+  1054→                      onChange={(e) => setMaxResponsesPerTurn(Math.max(parseInt(e.target.value) || 1, minResponsesPerTurn))}
+  1055→                      className="h-9"
+  1056→                    />
+  1057→                  </div>
+  1058→                </div>
+  1059→              </div>
+  1060→            )}
+  1061→
+  1062→            {/* Mentions */}
+  1063→            <div className="p-4 bg-muted/30 rounded-lg border border-border/40 space-y-3">
+  1064→              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+  1065→                <Zap className="w-4 h-4" />
+  1066→                <span className="font-medium">Menciones</span>
+  1067→              </div>
+  1068→
+  1069→              <div className="flex items-center justify-between">
+  1070→                <div>
+  1071→                  <div className="flex items-center gap-1.5">
+  1072→                    <Label className="text-sm font-medium">Detección de Menciones</Label>
+  1073→                    <Tooltip>
+  1074→                      <TooltipTrigger asChild>
+  1075→                        <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+  1076→                      </TooltipTrigger>
+  1077→                      <TooltipContent className="max-w-xs">
+  1078→                        <p>Cuando está activo, los personajes responderán cuando sean mencionados por nombre.</p>
+  1079→                      </TooltipContent>
+  1080→                    </Tooltip>
+  1081→                  </div>
+  1082→                  <p className="text-xs text-muted-foreground mt-0.5">Detectar nombres en mensajes</p>
+  1083→                </div>
+  1084→                <Switch
+  1085→                  checked={allowMentions}
+  1086→                  onCheckedChange={setAllowMentions}
+  1087→                />
+  1088→              </div>
+  1089→            </div>
+  1090→
+  1091→            {/* Info card about current strategy */}
+  1092→            <div className={cn(
+  1093→              "p-4 rounded-lg border",
+  1094→              currentColorClasses.bgLight,
+  1095→              currentColorClasses.border
+  1096→            )}>
+  1097→              <div className="flex items-start gap-3">
+  1098→                <div className={cn(
+  1099→                  "p-2 rounded-lg",
+  1100→                  currentColorClasses.bgSelected
+  1101→                )}>
+  1102→                  {strategyInfo[activationStrategy].icon}
+  1103→                </div>
+  1104→                <div>
+  1105→                  <p className="text-sm font-medium">Estrategia: {strategyInfo[activationStrategy].name}</p>
+  1106→                  <p className="text-xs text-muted-foreground mt-1">
+  1107→                    {strategyInfo[activationStrategy].description}. {strategyInfo[activationStrategy].tip}
+  1108→                  </p>
+  1109→                </div>
+  1110→              </div>
+  1111→            </div>
+  1112→          </div>
+  1113→        </div>
+  1114→      </div>
+  1115→    );
+  1116→  };
+  1117→
+  1118→  const renderPromptsTab = () => (
+  1119→    <div className="space-y-6">
+  1120→      <div>
+  1121→        <h3 className="text-lg font-semibold mb-1">Prompts y Narrador</h3>
+  1122→        <p className="text-sm text-muted-foreground">
+  1123→          Configura las instrucciones del sistema y los ajustes del narrador para este grupo.
+  1124→        </p>
+  1125→      </div>
+  1126→
+  1127→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  1128→        {/* Left: System Prompt */}
+  1129→        <div className="space-y-3">
+  1130→          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+  1131→            <Sparkles className="w-4 h-4 text-amber-500" />
+  1132→            <span className="font-medium">Prompt de Sistema</span>
+  1133→          </div>
+  1134→
+  1135→          <div className="p-4 bg-muted/30 rounded-lg border border-border/40 space-y-3">
+  1136→            <div className="flex items-center gap-2 mb-2">
+  1137→              <span className="text-sm font-medium">Prompt de Sistema Personalizado</span>
+  1138→              <Tooltip>
+  1139→                <TooltipTrigger asChild>
+  1140→                  <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+  1141→                </TooltipTrigger>
+  1142→                <TooltipContent className="max-w-xs">
+  1143→                  <p>Instrucciones adicionales para todos los personajes del grupo.</p>
+  1144→                </TooltipContent>
+  1145→              </Tooltip>
+  1146→            </div>
+  1147→            <Textarea
+  1148→              id="systemPrompt"
+  1149→              value={systemPrompt}
+  1150→              onChange={(e) => setSystemPrompt(e.target.value)}
+  1151→              placeholder="Instrucciones adicionales para el grupo..."
+  1152→              rows={12}
+  1153→              className="text-sm font-mono"
+  1154→            />
+  1155→            <p className="text-xs text-muted-foreground">
+  1156→              Este prompt se añadirá a las instrucciones de cada personaje del grupo.
+  1157→            </p>
+  1158→          </div>
+  1159→        </div>
+  1160→
+  1161→        {/* Right: Narrator Settings */}
+  1162→        <div className="space-y-3">
+  1163→          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+  1164→            <Ghost className="w-4 h-4 text-violet-500" />
+  1165→            <span className="font-medium">Narrador</span>
+  1166→          </div>
+  1167→
+  1168→          {members.some(m => m.isNarrator) ? (
+  1169→            <div className="p-4 bg-violet-500/10 rounded-lg border border-violet-500/20 space-y-4">
+  1170→              <div className="flex items-center gap-2 mb-2">
+  1171→                <span className="text-sm font-medium text-violet-600">Configuración del Narrador</span>
+  1172→                <Tooltip>
+  1173→                  <TooltipTrigger asChild>
+  1174→                    <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+  1175→                  </TooltipTrigger>
+  1176→                  <TooltipContent className="max-w-xs">
+  1177→                    <p>Configura cómo y cuándo el narrador interviene en la conversación.</p>
+  1178→                  </TooltipContent>
+  1179→                </Tooltip>
+  1180→              </div>
+  1181→
+  1182→              {/* Response Mode */}
+  1183→              <div>
+  1184→                <Label className="text-sm mb-2 block">Método de Respuesta</Label>
+  1185→                <div className="grid grid-cols-2 gap-2">
+  1186→                  {(Object.entries(narratorModeInfo) as [NarratorResponseMode, typeof narratorModeInfo.turn_start][]).map(([mode, info]) => (
+  1187→                    <button
+  1188→                      key={mode}
+  1189→                      onClick={() => setNarratorSettings(prev => ({ ...prev, responseMode: mode }))}
+  1190→                      className={cn(
+  1191→                        "p-2.5 rounded-lg border text-left transition-colors",
+  1192→                        narratorSettings.responseMode === mode
+  1193→                          ? "border-violet-500 bg-violet-500/20"
+  1194→                          : "hover:bg-muted/50 border-border/40"
+  1195→                      )}
+  1196→                    >
+  1197→                      <div className="flex items-center gap-1 mb-0.5">
+  1198→                        <span className="text-violet-500">{info.icon}</span>
+  1199→                        <span className="text-xs font-medium">{info.name}</span>
+  1200→                      </div>
+  1201→                      <p className="text-[10px] text-muted-foreground leading-tight">{info.description}</p>
+  1202→                    </button>
+  1203→                  ))}
+  1204→                </div>
+  1205→              </div>
+  1206→
+  1207→              {/* Custom Narrator Prompt */}
+  1208→              <div>
+  1209→                <div className="flex items-center gap-1.5 mb-1.5">
+  1210→                  <Label className="text-sm">Prompt del Narrador</Label>
+  1211→                  <Tooltip>
+  1212→                    <TooltipTrigger asChild>
+  1213→                      <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+  1214→                    </TooltipTrigger>
+  1215→                    <TooltipContent className="max-w-xs">
+  1216→                      <p>Instrucciones específicas para el narrador. Si está vacío, usa el prompt del grupo.</p>
+  1217→                    </TooltipContent>
+  1218→                  </Tooltip>
+  1219→                </div>
+  1220→                <Textarea
+  1221→                  value={narratorSettings.customPrompt || ''}
+  1222→                  onChange={(e) => setNarratorSettings(prev => ({ ...prev, customPrompt: e.target.value }))}
+  1223→                  placeholder="Eres un narrador omnisciente que describe la escena, ambiente y transiciones..."
+  1224→                  rows={4}
+  1225→                  className="text-sm font-mono"
+  1226→                />
+  1227→              </div>
+  1228→
+  1229→              {/* Conditional Settings */}
+  1230→              <div className="space-y-3">
+  1231→                <Label className="text-sm font-medium">Intervención Condicional</Label>
+  1232→
+  1233→                {/* Min Turn Interval */}
+  1234→                <div className="flex items-center justify-between">
+  1235→                  <div className="flex items-center gap-1.5">
+  1236→                    <span className="text-xs text-muted-foreground">Turnos mínimos entre intervenciones</span>
+  1237→                    <Tooltip>
+  1238→                      <TooltipTrigger asChild>
+  1239→                        <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+  1240→                      </TooltipTrigger>
+  1241→                      <TooltipContent className="max-w-xs">
+  1242→                        <p>0 = siempre interviene. 1 = cada turno, 2 = cada 2 turnos, etc.</p>
+  1243→                      </TooltipContent>
+  1244→                    </Tooltip>
+  1245→                  </div>
+  1246→                  <Input
+  1247→                    type="number"
+  1248→                    min={0}
+  1249→                    max={10}
+  1250→                    value={narratorSettings.conditional.minTurnInterval}
+  1251→                    onChange={(e) => setNarratorSettings(prev => ({
+  1252→                      ...prev,
+  1253→                      conditional: { ...prev.conditional, minTurnInterval: parseInt(e.target.value) || 0 }
+  1254→                    }))}
+  1255→                    className="w-16 h-8 text-xs"
+  1256→                  />
+  1257→                </div>
+  1258→
+  1259→                {/* Only when no active quests */}
+  1260→                <div className="flex items-center justify-between">
+  1261→                  <div className="flex items-center gap-1.5">
+  1262→                    <span className="text-xs text-muted-foreground">Solo cuando no hay misiones activas</span>
+  1263→                    <Tooltip>
+  1264→                      <TooltipTrigger asChild>
+  1265→                        <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+  1266→                      </TooltipTrigger>
+  1267→                      <TooltipContent className="max-w-xs">
+  1268→                        <p>El narrador solo interviene cuando no hay misiones en curso.</p>
+  1269→                      </TooltipContent>
+  1270→                    </Tooltip>
+  1271→                  </div>
+  1272→                  <Switch
+  1273→                    checked={narratorSettings.conditional.onlyWhenNoActiveQuests}
+  1274→                    onCheckedChange={(checked) => setNarratorSettings(prev => ({
+  1275→                      ...prev,
+  1276→                      conditional: { ...prev.conditional, onlyWhenNoActiveQuests: checked }
+  1277→                    }))}
+  1278→                  />
+  1279→                </div>
+  1280→              </div>
+  1281→
+  1282→              {/* Hidden from Chat */}
+  1283→              <div className="flex items-center justify-between pt-3 border-t border-violet-500/20">
+  1284→                <div>
+  1285→                  <div className="flex items-center gap-1.5">
+  1286→                    <span className="text-xs font-medium">Ocultar mensajes del narrador</span>
+  1287→                    <Tooltip>
+  1288→                      <TooltipTrigger asChild>
+  1289→                        <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+  1290→                      </TooltipTrigger>
+  1291→                      <TooltipContent className="max-w-xs">
+  1292→                        <p>Los mensajes del narrador no se mostrarán en el chat (pero siguen activando triggers).</p>
+  1293→                      </TooltipContent>
+  1294→                    </Tooltip>
+  1295→                  </div>
+  1296→                  <p className="text-[10px] text-muted-foreground">Solo funcionan en segundo plano</p>
+  1297→                </div>
+  1298→                <Switch
+  1299→                  checked={narratorSettings.hiddenFromChat}
+  1300→                  onCheckedChange={(checked) => setNarratorSettings(prev => ({ ...prev, hiddenFromChat: checked }))}
+  1301→                />
+  1302→              </div>
+  1303→
+  1304→              {/* Show Sprite */}
+  1305→              <div className="flex items-center justify-between">
+  1306→                <div>
+  1307→                  <div className="flex items-center gap-1.5">
+  1308→                    <span className="text-xs font-medium">Mostrar sprite del narrador</span>
+  1309→                    <Tooltip>
+  1310→                      <TooltipTrigger asChild>
+  1311→                        <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+  1312→                      </TooltipTrigger>
+  1313→                      <TooltipContent className="max-w-xs">
+  1314→                        <p>Muestra el sprite del personaje narrador en pantalla.</p>
+  1315→                      </TooltipContent>
+  1316→                    </Tooltip>
+  1317→                  </div>
+  1318→                  <p className="text-[10px] text-muted-foreground">El narrador suele ser invisible</p>
+  1319→                </div>
+  1320→                <Switch
+  1321→                  checked={narratorSettings.showSprite}
+  1322→                  onCheckedChange={(checked) => setNarratorSettings(prev => ({ ...prev, showSprite: checked }))}
+  1323→                />
+  1324→              </div>
+  1325→            </div>
+  1326→          ) : (
+  1327→            <div className="p-8 bg-muted/30 rounded-lg border border-border/40 text-center">
+  1328→              <Ghost className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-40" />
+  1329→              <p className="text-sm text-muted-foreground">Sin narrador configurado</p>
+  1330→              <p className="text-xs text-muted-foreground mt-1">
+  1331→                Ve a la pestaña <strong>Miembros</strong> y asigna el rol de Narrador a un personaje para ver estas opciones.
+  1332→              </p>
+  1333→            </div>
+  1334→          )}
+  1335→        </div>
+  1336→      </div>
+  1337→    </div>
+  1338→  );
+  1339→
+  1340→  const renderTabContent = () => {
+  1341→    switch (activeTab) {
+  1342→      case 'info': return renderInfoTab();
+  1343→      case 'members': return renderMembersTab();
+  1344→      case 'strategy': return renderStrategyTab();
+  1345→      case 'prompts': return renderPromptsTab();
+  1346→      default: return renderInfoTab();
+  1347→    }
+  1348→  };
+  1349→
+  1350→  return (
+  1351→    <AnimatePresence mode="wait">
+  1352→      {open && (
+  1353→        <motion.div
+  1354→          key="group-editor-overlay"
+  1355→          initial={{ opacity: 0 }}
+  1356→          animate={{ opacity: 1 }}
+  1357→          exit={{ opacity: 0 }}
+  1358→          transition={{ duration: 0.2, ease: 'easeInOut' }}
+  1359→          className="fixed inset-0 z-50 bg-background"
+  1360→        >
+  1361→          <div className="h-full flex">
+  1362→            {/* SIDEBAR */}
+  1363→            <motion.aside
+  1364→              initial={{ x: -16, opacity: 0 }}
+  1365→              animate={{ x: 0, opacity: 1 }}
+  1366→              transition={{ duration: 0.25, delay: 0.05, ease: 'easeOut' }}
+  1367→              className="w-14 md:w-60 border-r bg-muted/30 flex flex-col flex-shrink-0"
+  1368→            >
+  1369→              {/* Sidebar header */}
+  1370→              <div className="flex items-center justify-between px-2 py-3 md:px-4 border-b">
+  1371→                <div className="flex items-center gap-2 min-w-0">
+  1372→                  <Users className="w-5 h-5 shrink-0 text-muted-foreground" />
+  1373→                  <span className="hidden md:inline font-semibold text-sm truncate">
+  1374→                    {name || 'Nuevo Grupo'}
+  1375→                  </span>
+  1376→                </div>
+  1377→                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
+  1378→                  <X className="w-4 h-4" />
+  1379→                </Button>
+  1380→              </div>
+  1381→
+  1382→              {/* Navigation */}
+  1383→              <ScrollArea className="flex-1">
+  1384→                <TooltipProvider delayDuration={400}>
+  1385→                  <nav className="p-1.5 md:p-2 space-y-0.5">
+  1386→                    {groupEditorTabs.map(tab => (
+  1387→                      <Tooltip key={tab.value}>
+  1388→                        <TooltipTrigger asChild>
+  1389→                          <button
+  1390→                            onClick={() => setActiveTab(tab.value)}
+  1391→                            className={cn(
+  1392→                              "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
+  1393→                              activeTab === tab.value
+  1394→                                ? "bg-primary/10 text-primary font-medium"
+  1395→                                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+  1396→                            )}
+  1397→                          >
+  1398→                            <tab.icon className="w-4 h-4 shrink-0" />
+  1399→                            <span className="hidden md:inline truncate">{tab.label}</span>
+  1400→                          </button>
+  1401→                        </TooltipTrigger>
+  1402→                        <TooltipContent side="right">
+  1403→                          <p>{tab.label}</p>
+  1404→                        </TooltipContent>
+  1405→                      </Tooltip>
+  1406→                    ))}
+  1407→                  </nav>
+  1408→                </TooltipProvider>
+  1409→              </ScrollArea>
+  1410→
+  1411→              {/* Footer with action buttons */}
+  1412→              <div className="p-3 md:p-4 border-t space-y-2">
+  1413→                <div className="hidden md:block text-xs text-muted-foreground mb-2">
+  1414→                  {isNewGroup ? 'Creando grupo' : 'Editando grupo'}
+  1415→                </div>
+  1416→                <Button size="sm" onClick={handleSave} disabled={!name.trim()} className="w-full">
+  1417→                  {isNewGroup ? 'Crear Grupo' : 'Guardar Cambios'}
+  1418→                </Button>
+  1419→                <Button variant="outline" size="sm" onClick={onClose} className="w-full">
+  1420→                  Cancelar
+  1421→                </Button>
+  1422→                {!isNewGroup && (
+  1423→                  <Button variant="destructive" size="sm" onClick={handleDelete} className="w-full mt-2">
+  1424→                    <Trash2 className="w-4 h-4 mr-1" /> Eliminar Grupo
+  1425→                  </Button>
+  1426→                )}
+  1427→              </div>
+  1428→            </motion.aside>
+  1429→
+  1430→            {/* MAIN CONTENT */}
+  1431→            <motion.main
+  1432→              initial={{ opacity: 0, y: 6 }}
+  1433→              animate={{ opacity: 1, y: 0 }}
+  1434→              transition={{ duration: 0.25, delay: 0.1, ease: 'easeOut' }}
+  1435→              className="flex-1 overflow-hidden min-w-0"
+  1436→            >
+  1437→              <div className="h-full overflow-y-auto">
+  1438→                <div className="max-w-5xl mx-auto p-6">
+  1439→                <TooltipProvider>
+  1440→                  {renderTabContent()}
+  1441→                </TooltipProvider>
+  1442→                </div>
+  1443→              </div>
+  1444→            </motion.main>
+  1445→          </div>
+  1446→        </motion.div>
+  1447→      )}
+  1448→    </AnimatePresence>
+  1449→  );
+  1450→}
+  1451→
+  1452→// Button component to open group editor
+  1453→export function CreateGroupButton() {
+  1454→  const [editorOpen, setEditorOpen] = useState(false);
+  1455→
+  1456→  return (
+  1457→    <>
+  1458→      <Button
+  1459→        variant="outline"
+  1460→        className="w-full justify-start gap-2"
+  1461→        onClick={() => setEditorOpen(true)}
+  1462→      >
+  1463→        <Users className="w-4 h-4" />
+  1464→        Crear Grupo
+  1465→      </Button>
+  1466→
+  1467→      <GroupEditor groupId={null} open={editorOpen} onClose={() => setEditorOpen(false)} />
+  1468→    </>
+  1469→  );
+  1470→}
+  1471→

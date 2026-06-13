@@ -304,6 +304,10 @@ export async function POST(request: NextRequest) {
       proactiveConfig,
       reason = 'timer_idle',
       lastActivityAt,
+      // FASE 3: Proactividad Inteligente
+      usedNudgeIndices: clientUsedNudgeIndices = [],
+      recentTopics: clientRecentTopics = [],
+      isGroupChat = false,
     } = body;
 
     // Validate required fields
@@ -713,13 +717,221 @@ export async function POST(request: NextRequest) {
 
 Mantén tu mensaje breve y natural (1-3 párrafos máximo). NO menciones que estás siendo proactivo o que {{user}} no ha hablado. Mantente en personaje en todo momento.`;
 
+    // Group chat proactive instruction variants by strategy (FASE 3)
+    const groupChatStrategy = proactiveConfig.groupChatStrategy || 'any_speaker';
+
+    const groupChatInstructions: Record<string, string> = {
+      any_speaker: `Estás en una conversación grupal. Alguien ha hablado recientemente y decides reaccionar o intervenir de forma natural. Puedes:
+- Reaccionar a lo que alguien dijo
+- Añadir tu perspectiva al tema actual
+- Expresar un pensamiento o sentimiento sobre la situación
+- Interactuar con otro personaje presente
+- Realizar una acción que encaje naturalmente en la escena
+
+Mantén tu mensaje breve y natural (1-3 párrafos máximo). NO menciones que estás siendo proactivo. Mantente en personaje en todo momento. Sé selectivo: no reacciones a TODO, solo cuando tengas algo significativo que aportar.`,
+
+      mentioned_only: `Estás en una conversación grupal y alguien te ha mencionado directamente por nombre. Debes responder a lo que te han dicho. Puedes:
+- Responder directamente a quien te mencionó
+- Reaccionar a lo que se te pidió o preguntó
+- Expresar tu opinión sobre el tema del que te hablaron
+- Interactuar con quien te mencionó de forma natural
+
+Mantén tu mensaje breve y natural (1-3 párrafos máximo). NO menciones que estás siendo proactivo. Mantente en personaje en todo momento. Solo responde cuando te mencionen explícitamente.`,
+
+      emotional_reaction: `Estás en una conversación grupal y algo que se ha dicho te afecta emocionalmente de forma significativa. Reacciona de manera coherente con tu estado emocional. Puedes:
+- Expresar una reacción emocional intensa (alegría, enojo, sorpresa, tristeza)
+- Realizar una acción que refleje tu estado emocional (*se levanta*, *aprieta los puños*, *sonríe ampliamente*)
+- Intervenir cuando algo te afecte profundamente
+- Mostrar una reacción visible que otros personajes podrían notar
+
+Mantén tu mensaje breve y natural (1-3 párrafos máximo). NO menciones que estás siendo proactivo. Mantente en personaje en todo momento. Solo reacciones emocionales fuertes, no intervengas en todo.`
+    };
+
+    const groupChatInstruction = groupChatInstructions[groupChatStrategy] || groupChatInstructions.any_speaker;
+
     // Resolve template variables in custom prompt OR default instruction
-    const rawProactiveInstruction = proactiveConfig.customPrompt?.trim() || defaultInstruction;
+    const rawProactiveInstruction = proactiveConfig.customPrompt?.trim()
+      || (isGroupChat ? groupChatInstruction : defaultInstruction);
     const proactiveInstruction = resolveAllKeys(rawProactiveInstruction, keyContext);
 
     // Build the final system prompt
     let finalSystemPrompt = systemPrompt;
     finalSystemPrompt += `\n\n[Proactive Message Instruction]\n${proactiveInstruction}`;
+
+    // ─── FASE 9: Contexto para Proactividad ───
+    // Inject deep conversation context into the system prompt for more coherent proactive messages.
+    // This goes beyond FASE 3's nudge-level context by adding emotional, relationship,
+    // quest, and abandoned topic context directly into the system prompt.
+    const contextInSystemPrompt = proactiveConfig.contextInSystemPrompt ?? true;
+    const contextMsgMaxChars = proactiveConfig.contextMessageMaxChars ?? 300;
+    const contextMsgCount = proactiveConfig.contextMessagesCount ?? 3;
+
+    // Build enriched context sections
+    const proactiveContextSections: string[] = [];
+
+    // 1. Emotional state context (if enabled and available)
+    if (proactiveConfig.includeEmotionalContext !== false) {
+      const charStats = sessionStats?.characterStats?.[effectiveCharacter.id];
+      const emotionalState = charStats?.emotionalState;
+      const emotionalConfig = effectiveCharacter.emotionalConfig;
+      if (emotionalState && emotionalConfig?.enabled) {
+        proactiveContextSections.push(
+          `[Estado Emocional Actual]\n` +
+          `Actualmente te encuentras: ${emotionalState}\n` +
+          `Esto debe influir en cómo decides iniciar la conversación. ` +
+          `Si estás triste, quizás busques consuelo. Si estás enojado, podrías ser más directo. ` +
+          `Si estás feliz, compartirás tu entusiasmo.`
+        );
+      }
+    }
+
+    // 2. Relationship context (if enabled and available)
+    if (proactiveConfig.includeRelationshipContext !== false && characterMemory?.relationships) {
+      const relationships = characterMemory.relationships;
+      if (relationships.length > 0) {
+        const relLines = relationships
+          .filter(r => r.targetName === effectiveUserName || r.targetId === '__user__')
+          .slice(0, 3)
+          .map(r => {
+            const parts = [`Con ${r.targetName}: `];
+            if (r.relationship) parts.push(r.relationship);
+            if (r.sentiment) parts.push(`(sentimiento: ${r.sentiment})`);
+            if (r.notes) parts.push(`— ${r.notes}`);
+            return parts.join(' ');
+          });
+        if (relLines.length > 0) {
+          proactiveContextSections.push(
+            `[Relación con ${effectiveUserName}]\n` +
+            relLines.join('\n') +
+            `\nConsidera esta relación al decidir qué decir. Tu mensaje debe ser consistente con tu historia juntos.`
+          );
+        }
+      }
+    }
+
+    // 3. Active quests context (if enabled and available)
+    if (proactiveConfig.includeQuestContext !== false && sessionQuests && sessionQuests.length > 0) {
+      const activeQuests = sessionQuests.filter(q => q.status === 'active');
+      if (activeQuests.length > 0) {
+        const questLines = activeQuests.slice(0, 3).map(q => {
+          const template = questTemplates.find(t => t.id === q.templateId);
+          const name = template?.name || q.templateId;
+          const objProgress = q.objectives
+            ?.filter(o => o.isVisible)
+            .map(o => o.isCompleted ? '✅' : '⬜')
+            .join(' ') || '';
+          return `- ${name} ${objProgress}`;
+        });
+        proactiveContextSections.push(
+          `[Misiones Activas]\n` +
+          questLines.join('\n') +
+          `\nPuedes hacer referencia sutil a estas misiones o avanzar en ellas si es natural en la conversación.`
+        );
+      }
+    }
+
+    // 4. Recent conversation context (improved format)
+    if (contextMsgCount > 0) {
+      const recentMsgs = messages
+        .filter((m: any) => !m.isDeleted && m.content?.trim())
+        .slice(-(contextMsgCount * 2)); // *2 for both user and assistant messages
+      if (recentMsgs.length > 0) {
+        const contextLines = recentMsgs.map((m: any) => {
+          const speaker = m.role === 'user' ? effectiveUserName : (effectiveCharacter?.name || 'Personaje');
+          const maxChars = contextMsgMaxChars > 0 ? contextMsgMaxChars : 9999;
+          const content = m.content.trim();
+          const truncated = content.length > maxChars
+            ? content.slice(0, maxChars) + '...'
+            : content;
+          return `${speaker}: ${truncated}`;
+        });
+        const contextSection = `[Contexto reciente de la conversación]\n` +
+          `Esto es lo que se ha hablado últimamente:\n` +
+          contextLines.join('\n') + '\n' +
+          `Usa este contexto para que tu mensaje sea coherente con la conversación actual. ` +
+          `No repitas lo que ya se dijo; en su lugar, continúa naturalmente desde aquí.`;
+        proactiveContextSections.push(contextSection);
+      }
+    }
+
+    // 5. Abandoned topic detection (if enabled)
+    if (proactiveConfig.retomarAbandonedTopics) {
+      const threshold = proactiveConfig.abandonedTopicThreshold ?? 10;
+      const nonDeletedMessages = messages.filter((m: any) => !m.isDeleted);
+      const totalMessages = nonDeletedMessages.length;
+      
+      if (totalMessages > threshold) {
+        // Look at messages from the "mid-conversation" range (not too recent, not too old)
+        // to find topics that were discussed but then abandoned
+        const olderMessages = nonDeletedMessages.slice(
+          Math.max(0, totalMessages - threshold * 3),
+          Math.max(0, totalMessages - threshold)
+        );
+        const recentMessages = nonDeletedMessages.slice(Math.max(0, totalMessages - threshold));
+        
+        // Extract key phrases from older messages (simple heuristic)
+        const olderContent = olderMessages
+          .map((m: any) => m.content?.trim())
+          .filter(Boolean)
+          .join(' ');
+        
+        // Check if any recent proactive messages already covered older topics
+        const recentProactiveTopics = recentMessages
+          .filter((m: any) => m.metadata?.proactiveInfo?.topic)
+          .map((m: any) => m.metadata.proactiveInfo.topic.toLowerCase());
+        
+        // Extract potential topics from older messages (nouns/key phrases)
+        const topicIndicators = [
+          'hablar de', 'mencionar', 'conversar sobre', 'discutir', 'hablar sobre',
+          'tratar de', 'tocar el tema', 'mencionaste', 'dijiste que', 'mencionó',
+          'preguntar por', 'interesarse en', 'curioso sobre',
+        ];
+        
+        const abandonedTopics: string[] = [];
+        for (const indicator of topicIndicators) {
+          const idx = olderContent.toLowerCase().indexOf(indicator);
+          if (idx !== -1) {
+            // Extract the topic following the indicator
+            const afterIndicator = olderContent.slice(idx + indicator.length).trim();
+            const topicMatch = afterIndicator.match(/^(.{5,60}?)[.,;!?]/);
+            if (topicMatch) {
+              const topic = topicMatch[1].trim();
+              // Check if this topic was NOT recently covered
+              const wasCovered = recentProactiveTopics.some(t => 
+                t.includes(topic.toLowerCase().slice(0, 10)) || 
+                topic.toLowerCase().slice(0, 10).includes(t)
+              );
+              if (!wasCovered && !abandonedTopics.includes(topic)) {
+                abandonedTopics.push(topic);
+              }
+            }
+          }
+        }
+        
+        if (abandonedTopics.length > 0) {
+          proactiveContextSections.push(
+            `[Temas abandonados que puedes retomar]\n` +
+            `Se habló recientemente de: ${abandonedTopics.slice(0, 3).join(', ')}\n` +
+            `Pero el tema parece haberse abandonado. Si es natural, puedes retomar alguno de estos temas ` +
+            `en tu mensaje proactivo. No es obligatorio — solo si encaja con la conversación.`
+          );
+        }
+      }
+    }
+
+    // 6. Thematic cooldown instruction (moved from nudge to system prompt when contextInSystemPrompt)
+    const cooldownMinutes = proactiveConfig.thematicCooldownMinutes ?? 0;
+    if (cooldownMinutes > 0 && clientRecentTopics.length > 0) {
+      const topicList = clientRecentTopics.slice(0, 5).join(', ');
+      proactiveContextSections.push(
+        `[Evita repetir estos temas recientes: ${topicList}]`
+      );
+    }
+
+    // Inject all context sections into system prompt (FASE 9)
+    if (contextInSystemPrompt && proactiveContextSections.length > 0) {
+      finalSystemPrompt += '\n\n' + proactiveContextSections.join('\n\n');
+    }
 
     // ===== TOOL/ACTION SYSTEM (Native + Prompt-Based Tool Calling) =====
     const characterToolConfig = toolsSettings.characterConfigs.find(
@@ -775,13 +987,87 @@ Mantén tu mensaje breve y natural (1-3 párrafos máximo). NO menciones que est
       },
     };
 
+    // ─── FASE 3: Proactividad Inteligente ───
     // Build nudge message with template variables resolved
-    // Use configurable nudge template from proactiveConfig, or fall back to default
-    const defaultNudgeMessage = `[La escena continúa] {{user}} parece distraído así que {{char}} decide hacer o decir algo para que todo continúe.`;
-    const rawNudgeMessage = proactiveConfig.nudgeTemplate?.trim() || defaultNudgeMessage;
-    const nudgeContent = resolveAllKeys(rawNudgeMessage, keyContext);
+    // Support: nudge template rotation, context injection, thematic cooldown
 
-    // Add proactive instruction and nudge sections to prompt viewer
+    // 1. Select nudge template (with rotation if pool exists)
+    const defaultNudgeMessage = `[La escena continúa] {{user}} parece distraído así que {{char}} decide hacer o decir algo para que todo continúe.`;
+
+    // Build the full pool: primary nudgeTemplate + alternative nudgeTemplates
+    const nudgePool: string[] = [];
+    if (proactiveConfig.nudgeTemplate?.trim()) {
+      nudgePool.push(proactiveConfig.nudgeTemplate.trim());
+    }
+    if (proactiveConfig.nudgeTemplates && proactiveConfig.nudgeTemplates.length > 0) {
+      for (const tmpl of proactiveConfig.nudgeTemplates) {
+        if (tmpl.trim() && !nudgePool.includes(tmpl.trim())) {
+          nudgePool.push(tmpl.trim());
+        }
+      }
+    }
+    // If pool is empty, add default
+    if (nudgePool.length === 0) {
+      nudgePool.push(defaultNudgeMessage);
+    }
+
+    // Select nudge template with rotation (avoid repeating recently used)
+    let selectedNudgeIndex = 0;
+    if (nudgePool.length > 1) {
+      // Find indices not recently used
+      const unusedIndices = nudgePool.map((_, i) => i).filter(i => !clientUsedNudgeIndices.includes(i));
+      if (unusedIndices.length > 0) {
+        // Pick a random one from unused
+        selectedNudgeIndex = unusedIndices[Math.floor(Math.random() * unusedIndices.length)];
+      } else {
+        // All recently used, reset rotation - pick random
+        selectedNudgeIndex = Math.floor(Math.random() * nudgePool.length);
+      }
+    }
+    const rawNudgeMessage = nudgePool[selectedNudgeIndex];
+
+    // 2. Build context snippet from recent messages (if enabled)
+    // FASE 9: Only append to nudge if contextInSystemPrompt is false
+    // (if true, context was already injected into the system prompt above)
+    let contextSnippet = '';
+    if (!contextInSystemPrompt && contextMsgCount > 0) {
+      const recentMsgs = messages
+        .filter((m: any) => !m.isDeleted && m.content?.trim())
+        .slice(-(contextMsgCount * 2)); // *2 because we include both user and assistant messages
+      if (recentMsgs.length > 0) {
+        const contextLines = recentMsgs.map((m: any) => {
+          const speaker = m.role === 'user' ? effectiveUserName : (effectiveCharacter?.name || 'Personaje');
+          const maxChars = contextMsgMaxChars > 0 ? contextMsgMaxChars : 9999;
+          const content = m.content.trim();
+          const truncated = content.length > maxChars
+            ? content.slice(0, maxChars) + '...'
+            : content;
+          return `${speaker}: ${truncated}`;
+        });
+        contextSnippet = `\n\n[Contexto reciente de la conversación]\n${contextLines.join('\n')}`;
+      }
+    }
+
+    // 3. Build thematic cooldown instruction (if enabled)
+    // FASE 9: Only append to nudge if contextInSystemPrompt is false
+    let cooldownInstruction = '';
+    if (!contextInSystemPrompt && cooldownMinutes > 0 && clientRecentTopics.length > 0) {
+      const topicList = clientRecentTopics.slice(0, 5).join(', ');
+      cooldownInstruction = `\n\n[Evita repetir estos temas recientes: ${topicList}. Elige un tema diferente o enfoque nuevo para tu mensaje.]`;
+    }
+
+    // 4. Resolve all keys in the nudge
+    let nudgeContent = resolveAllKeys(rawNudgeMessage, keyContext);
+
+    // 5. Append context and cooldown to the nudge content (only if not already in system prompt)
+    if (contextSnippet) {
+      nudgeContent += contextSnippet;
+    }
+    if (cooldownInstruction) {
+      nudgeContent += cooldownInstruction;
+    }
+
+    // Add proactive instruction, context, and nudge sections to prompt viewer
     allPromptSections.push(
       {
         type: 'instructions',
@@ -789,6 +1075,17 @@ Mantén tu mensaje breve y natural (1-3 párrafos máximo). NO menciones que est
         content: proactiveInstruction,
         color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
       },
+    );
+    // Add FASE 9 context sections to prompt viewer
+    if (proactiveContextSections.length > 0) {
+      allPromptSections.push({
+        type: 'system',
+        label: '🧠 Contexto para Proactividad (FASE 9)',
+        content: proactiveContextSections.join('\n\n'),
+        color: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300',
+      });
+    }
+    allPromptSections.push(
       {
         type: 'user',
         label: '✨ Nudge (Proactive User Message)',
@@ -828,6 +1125,7 @@ Mantén tu mensaje breve y natural (1-3 párrafos máximo). NO menciones que est
             characterId: effectiveCharacter.id,
             characterName: effectiveCharacter.name,
             reason,
+            nudgeIndex: selectedNudgeIndex,
           }));
 
           // Send prompt data
@@ -1374,7 +1672,8 @@ Mantén tu mensaje breve y natural (1-3 párrafos máximo). NO menciones que est
                     userName: effectiveUserName,
                     postHistoryInstructions: effectiveCharacter.postHistoryInstructions?.trim(),
                     embeddingsContext: embeddingsContext,
-                    exampleMessages: exampleMessages
+                    exampleMessages: exampleMessages,
+                    allCharacters: allCharacters  // Pass all characters for proper speaker attribution
                   });
                   generator = streamOllama(prompt, proactiveLLMConfig);
                 }
@@ -1572,7 +1871,8 @@ Mantén tu mensaje breve y natural (1-3 párrafos máximo). NO menciones que est
                     userName: effectiveUserName,
                     postHistoryInstructions: effectiveCharacter.postHistoryInstructions?.trim(),
                     embeddingsContext: embeddingsContext,
-                    exampleMessages: exampleMessages
+                    exampleMessages: exampleMessages,
+                    allCharacters: allCharacters  // Pass all characters for proper speaker attribution
                   });
                   generator = streamTextGenerationWebUI(prompt, proactiveLLMConfig);
                 }
@@ -1587,7 +1887,8 @@ Mantén tu mensaje breve y natural (1-3 párrafos máximo). NO menciones que est
                   userName: effectiveUserName,
                   postHistoryInstructions: effectiveCharacter.postHistoryInstructions?.trim(),
                   embeddingsContext: embeddingsContext,
-                  exampleMessages: exampleMessages
+                  exampleMessages: exampleMessages,
+                  allCharacters: allCharacters  // Pass all characters for proper speaker attribution
                 });
                 generator = streamTextGenerationWebUI(prompt, proactiveLLMConfig);
                 break;

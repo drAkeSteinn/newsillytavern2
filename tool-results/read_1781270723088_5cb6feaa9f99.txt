@@ -1,0 +1,1818 @@
+     1→// ============================================
+     2→// Quest Reward Executor - Unified Reward Execution
+     3→// ============================================
+     4→//
+     5→// Este módulo ejecuta recompensas de quests usando el sistema unificado:
+     6→// - attribute: Modifica stats del personaje (HP, MP, gold, etc.)
+     7→// - trigger: Activa triggers existentes (sprite, sound, background)
+     8→//
+     9→// Las recompensas se ejecutan SILENTLY - actualizan estado sin mensajes en chat.
+    10→//
+    11→// Para triggers, delega a unified-trigger-executor.ts que reutiliza
+    12→// toda la infraestructura de TokenDetector/TriggerBus.
+    13→
+    14→import type {
+    15→  QuestReward,
+    16→  QuestRewardCondition,
+    17→  QuestTemplate,
+    18→  SessionStats,
+    19→  CharacterCard,
+    20→  AttributeAction,
+    21→  TriggerFallbackMode,
+    22→  QuestRewardActivateSpritePack,
+    23→  SpritePackV2,
+    24→} from '@/types';
+    25→import {
+    26→  normalizeReward,
+    27→  validateReward,
+    28→} from './quest-reward-utils';
+    29→import {
+    30→  executeTriggerReward,
+    31→  type TriggerExecutionContext,
+    32→  type TriggerExecutionResult,
+    33→  type TriggerStoreActions,
+    34→  type TriggerCategory,
+    35→  type TriggerTargetMode,
+    36→  type SpriteTriggerHit,
+    37→} from '@/lib/triggers/unified-trigger-executor';
+    38→import {
+    39→  evaluateConditionalEntries,
+    40→  evaluatePackConditionalSprites,
+    41→} from '@/lib/sprites/condition-evaluator';
+    42→
+    43→// ============================================
+    44→// Types
+    45→// ============================================
+    46→
+    47→export interface RewardExecutionContext {
+    48→  sessionId: string;
+    49→  characterId: string;
+    50→  character?: CharacterCard | null;
+    51→  sessionStats?: SessionStats;
+    52→  allCharacters?: CharacterCard[];  // Para group chats
+    53→  targetCharacterId?: string;       // ID del personaje objetivo cuando targetMode es 'target'
+    54→  timestamp: number;
+    55→  
+    56→  // Resources for trigger lookup
+    57→  soundCollections?: Array<{ name: string; path: string; files: string[] }>;
+    58→  soundTriggers?: Array<{ id: string; name: string; keywords: string[]; collection: string; active: boolean; playMode?: string }>;
+    59→  soundSequenceTriggers?: Array<{ id: string; name: string; active: boolean; activationKey?: string; sequence: string[]; volume?: number }>;
+    60→  backgroundPacks?: Array<{ id: string; name: string; active: boolean; priority: number; items: Array<{ backgroundUrl: string; backgroundName: string; triggerKeys: string[]; enabled: boolean; overlays?: unknown[] }>; defaultOverlays?: unknown[]; defaultBackground?: string }>;
+    61→  
+    62→  // Settings
+    63→  soundSettings?: { enabled: boolean; globalVolume: number };
+    64→  backgroundSettings?: { transitionDuration: number; defaultTransitionType: string };
+    65→}
+    66→
+    67→export interface RewardExecutionResult {
+    68→  rewardId: string;
+    69→  type: 'attribute' | 'trigger' | 'objective' | 'solicitud' | 'target_attribute' | 'currency' | 'conditional_sprite_collection' | 'activate_sprite_pack';
+    70→  success: boolean;
+    71→  key: string;
+    72→  value?: string | number;
+    73→  message?: string;
+    74→  error?: string;
+    75→  // Para triggers, información adicional
+    76→  triggerResults?: TriggerExecutionResult[];
+    77→  // Para objectives, información del objetivo completado
+    78→  objectiveKey?: string;
+    79→  questId?: string;
+    80→  // Para conditional_sprite_collection, nombre de la entry que coincidió
+    81→  conditionalEntryName?: string;
+    82→}
+    83→
+    84→export interface RewardBatchResult {
+    85→  results: RewardExecutionResult[];
+    86→  successCount: number;
+    87→  failureCount: number;
+    88→  attributeUpdates: Map<string, number | string>; // key -> new value
+    89→  triggerResults: TriggerExecutionResult[];
+    90→}
+    91→
+    92→// ============================================
+    93→// Store Action Interface
+    94→// ============================================
+    95→
+    96→/**
+    97→ * Interface for store actions needed to execute rewards
+    98→ * Combines attribute actions and trigger actions
+    99→ */
+   100→export interface RewardStoreActions {
+   101→  // Attribute updates
+   102→  updateCharacterStat: (
+   103→    sessionId: string,
+   104→    characterId: string,
+   105→    attributeKey: string,
+   106→    value: number | string,
+   107→    reason?: 'llm_detection' | 'manual' | 'trigger' | 'initialization'
+   108→  ) => void;
+   109→
+   110→  // Progress quest objective — same path quest-detector uses for key-based completion
+   111→  progressQuestObjective?: (
+   112→    sessionId: string,
+   113→    questTemplateId: string,
+   114→    objectiveId: string,
+   115→    amount?: number,
+   116→    characterId?: string
+   117→  ) => void;
+   118→
+   119→  // Get session quest data for validation (checks session.sessionQuests)
+   120→  getSessionQuests?: (sessionId: string) => Array<{
+   121→    templateId: string;
+   122→    status: string;
+   123→    objectives: Array<{
+   124→      templateId: string;
+   125→      isCompleted: boolean;
+   126→    }>;
+   127→  }>;
+   128→
+   129→  // Quest objective completion by key search (fallback for objective rewards)
+   130→  completeQuestObjective?: (
+   131→    sessionId: string,
+   132→    questId: string,
+   133→    objectiveKey: string,
+   134→    characterId?: string
+   135→  ) => boolean;
+   136→
+   137→  // Solicitud completion (for solicitud rewards)
+   138→  completeSolicitud?: (
+   139→    sessionId: string,
+   140→    characterId: string,
+   141→    solicitudKey: string
+   142→  ) => { key: string; status: string } | null;
+   143→
+   144→  // Trigger actions (delegated to unified-trigger-executor)
+   145→  applyTriggerForCharacter: (
+   146→    characterId: string,
+   147→    hit: SpriteTriggerHit
+   148→  ) => void;
+   149→  scheduleReturnToIdleForCharacter: (
+   150→    characterId: string,
+   151→    triggerSpriteUrl: string,
+   152→    returnToMode: 'idle' | 'talk' | 'thinking' | 'clear',
+   153→    returnSpriteUrl: string,
+   154→    returnSpriteLabel: string | null,
+   155→    returnToIdleMs: number
+   156→  ) => void;
+   157→  isSpriteLocked?: () => boolean;
+   158→  
+   159→  // Sound
+   160→  playSound?: (collection: string, filename: string, volume?: number) => void;
+   161→  
+   162→  // Background
+   163→  setBackground?: (url: string) => void;
+   164→  setActiveOverlays?: (overlays: Array<{ url: string; position: string; opacity: number }>) => void;
+   165→}
+   166→
+   167→// ============================================
+   168→// Condition Evaluation
+   169→// ============================================
+   170→
+   171→/**
+   172→ * Evaluate a reward condition
+   173→ * Returns true if the condition is met, false otherwise
+   174→ */
+   175→export function evaluateRewardCondition(
+   176→  condition: QuestRewardCondition | undefined,
+   177→  sessionStats: SessionStats | undefined,
+   178→  characterId: string
+   179→): boolean {
+   180→  // No condition = always execute
+   181→  if (!condition) return true;
+   182→  
+   183→  // Currently only support attribute conditions
+   184→  if (condition.type !== 'attribute') return true;
+   185→  
+   186→  if (!sessionStats?.characterStats?.[characterId]) {
+   187→    return false;
+   188→  }
+   189→  
+   190→  const currentValue = sessionStats.characterStats[characterId].attributeValues?.[condition.key];
+   191→  
+   192→  if (currentValue === undefined) {
+   193→    return false;
+   194→  }
+   195→  
+   196→  const numValue = typeof currentValue === 'number' ? currentValue : parseFloat(currentValue);
+   197→  const conditionValue = typeof condition.value === 'number' ? condition.value : parseFloat(condition.value);
+   198→  
+   199→  if (isNaN(numValue) || isNaN(conditionValue)) {
+   200→    // String comparison for non-numeric values
+   201→    const strValue = String(currentValue);
+   202→    const strCondition = String(condition.value);
+   203→    
+   204→    switch (condition.operator) {
+   205→      case '==': return strValue === strCondition;
+   206→      case '!=': return strValue !== strCondition;
+   207→      default: return true;
+   208→    }
+   209→  }
+   210→  
+   211→  // Numeric comparison
+   212→  switch (condition.operator) {
+   213→    case '<': return numValue < conditionValue;
+   214→    case '>': return numValue > conditionValue;
+   215→    case '<=': return numValue <= conditionValue;
+   216→    case '>=': return numValue >= conditionValue;
+   217→    case '==': return numValue === conditionValue;
+   218→    case '!=': return numValue !== conditionValue;
+   219→    default: return true;
+   220→  }
+   221→}
+   222→
+   223→// ============================================
+   224→// Attribute Reward Execution
+   225→// ============================================
+   226→
+   227→/**
+   228→ * Calculate new attribute value based on action
+   229→ */
+   230→export function calculateNewAttributeValue(
+   231→  currentValue: number | string | undefined,
+   232→  rewardValue: number | string,
+   233→  action: AttributeAction = 'set'
+   234→): number | string {
+   235→  if (action === 'set') {
+   236→    return rewardValue;
+   237→  }
+   238→  
+   239→  const currentNum = typeof currentValue === 'number' 
+   240→    ? currentValue 
+   241→    : parseFloat(String(currentValue)) || 0;
+   242→  const rewardNum = typeof rewardValue === 'number' 
+   243→    ? rewardValue 
+   244→    : parseFloat(String(rewardValue)) || 0;
+   245→  
+   246→  switch (action) {
+   247→    case 'add':
+   248→      return currentNum + rewardNum;
+   249→    case 'subtract':
+   250→      return currentNum - rewardNum;
+   251→    case 'multiply':
+   252→      return currentNum * rewardNum;
+   253→    case 'divide':
+   254→      return rewardNum !== 0 ? currentNum / rewardNum : currentNum;
+   255→    case 'percent':
+   256→      // Add/subtract percentage of current value
+   257→      return currentNum + (currentNum * rewardNum / 100);
+   258→    default:
+   259→      return rewardValue;
+   260→  }
+   261→}
+   262→
+   263→/**
+   264→ * Execute an attribute reward
+   265→ * Supports both new format (reward.attribute) and legacy format (reward.key/value/action)
+   266→ */
+   267→export function executeAttributeReward(
+   268→  reward: QuestReward,
+   269→  context: RewardExecutionContext,
+   270→  storeActions: RewardStoreActions
+   271→): RewardExecutionResult {
+   272→  const { sessionId, characterId, sessionStats } = context;
+   273→  
+   274→  try {
+   275→    // Normalize to get attribute config (handles both new and legacy format)
+   276→    const normalized = normalizeReward(reward);
+   277→    const attr = normalized.attribute;
+   278→    
+   279→    if (!attr) {
+   280→      return {
+   281→        rewardId: reward.id,
+   282→        type: 'attribute',
+   283→        key: reward.key || 'unknown',
+   284→        success: false,
+   285→        error: 'Invalid attribute reward structure',
+   286→      };
+   287→    }
+   288→    
+   289→    // Get current value
+   290→    const currentValue = sessionStats?.characterStats?.[characterId]?.attributeValues?.[attr.key];
+   291→    
+   292→    // Calculate new value
+   293→    const newValue = calculateNewAttributeValue(currentValue, attr.value, attr.action);
+   294→    
+   295→    // Execute update with 'trigger' reason since this is from a quest reward
+   296→    storeActions.updateCharacterStat(
+   297→      sessionId,
+   298→      characterId,
+   299→      attr.key,
+   300→      newValue,
+   301→      'trigger'
+   302→    );
+   303→    
+   304→    return {
+   305→      rewardId: reward.id,
+   306→      type: 'attribute',
+   307→      key: attr.key,
+   308→      value: newValue,
+   309→      success: true,
+   310→      message: `${attr.key}: ${currentValue ?? 0} → ${newValue}`,
+   311→    };
+   312→  } catch (error) {
+   313→    return {
+   314→      rewardId: reward.id,
+   315→      type: 'attribute',
+   316→      key: reward.key || 'unknown',
+   317→      success: false,
+   318→      error: error instanceof Error ? error.message : 'Unknown error',
+   319→    };
+   320→  }
+   321→}
+   322→
+   323→// ============================================
+   324→// Target Attribute Reward Execution
+   325→// ============================================
+   326→
+   327→/**
+   328→ * Execute a target_attribute reward — modifies an attribute of ANOTHER character or the persona.
+   329→ * Uses the same updateCharacterStat store action but with the target's characterId.
+   330→ */
+   331→export function executeTargetAttributeReward(
+   332→  reward: QuestReward,
+   333→  context: RewardExecutionContext,
+   334→  storeActions: RewardStoreActions
+   335→): RewardExecutionResult {
+   336→  const { sessionId, sessionStats } = context;
+   337→
+   338→  try {
+   339→    const normalized = normalizeReward(reward);
+   340→    const ta = normalized.target_attribute;
+   341→
+   342→    if (!ta) {
+   343→      return {
+   344→        rewardId: reward.id,
+   345→        type: 'target_attribute',
+   346→        key: 'unknown',
+   347→        success: false,
+   348→        error: 'Invalid target_attribute reward structure',
+   349→      };
+   350→    }
+   351→
+   352→    const targetId = ta.targetCharacterId;
+   353→    const targetLabel = targetId === '__user__' ? 'Persona' : targetId;
+   354→
+   355→    // Get current value of the target's attribute
+   356→    const currentValue = sessionStats?.characterStats?.[targetId]?.attributeValues?.[ta.key];
+   357→
+   358→    // Calculate new value
+   359→    const newValue = calculateNewAttributeValue(currentValue, ta.value, ta.action);
+   360→
+   361→    // Execute update on the TARGET character/persona
+   362→    storeActions.updateCharacterStat(
+   363→      sessionId,
+   364→      targetId,
+   365→      ta.key,
+   366→      newValue,
+   367→      'trigger'
+   368→    );
+   369→
+   370→    return {
+   371→      rewardId: reward.id,
+   372→      type: 'target_attribute',
+   373→      key: ta.key,
+   374→      value: newValue,
+   375→      success: true,
+   376→      message: `[${targetLabel}] ${ta.key}: ${currentValue ?? 0} → ${newValue}`,
+   377→    };
+   378→  } catch (error) {
+   379→    return {
+   380→      rewardId: reward.id,
+   381→      type: 'target_attribute',
+   382→      key: 'unknown',
+   383→      success: false,
+   384→      error: error instanceof Error ? error.message : 'Unknown error',
+   385→    };
+   386→  }
+   387→}
+   388→
+   389→// ============================================
+   390→// Trigger Reward Execution
+   391→// ============================================
+   392→
+   393→/**
+   394→ * Execute a trigger reward by delegating to unified-trigger-executor
+   395→ * 
+   396→ * This creates a synthetic token detection and executes the trigger
+   397→ * using the existing infrastructure (SpriteHandler, SoundHandler, BackgroundHandler)
+   398→ */
+   399→export function executeTriggerRewardFromQuest(
+   400→  reward: QuestReward,
+   401→  context: RewardExecutionContext,
+   402→  storeActions: RewardStoreActions
+   403→): RewardExecutionResult {
+   404→  const { characterId, character, allCharacters, sessionId } = context;
+   405→  
+   406→  try {
+   407→    // Normalize to get trigger config
+   408→    const normalized = normalizeReward(reward);
+   409→    const trig = normalized.trigger;
+   410→    
+   411→    if (!trig) {
+   412→      return {
+   413→        rewardId: reward.id,
+   414→        type: 'trigger',
+   415→        key: reward.key || 'unknown',
+   416→        success: false,
+   417→        error: 'Invalid trigger reward structure',
+   418→      };
+   419→    }
+   420→    
+   421→    if (!character) {
+   422→      return {
+   423→        rewardId: reward.id,
+   424→        type: 'trigger',
+   425→        key: trig.key,
+   426→        success: false,
+   427→        error: 'Character not available for trigger execution',
+   428→      };
+   429→    }
+   430→    
+   431→    // Build trigger context
+   432→    const triggerContext: TriggerExecutionContext = {
+   433→      sessionId,
+   434→      characterId,
+   435→      character,
+   436→      allCharacters,
+   437→      targetCharacterId: trig.targetCharacterId, // Pass target character ID for 'target' mode
+   438→      source: 'quest_completion',
+   439→      timestamp: Date.now(),
+   440→      storeActions: {
+   441→        applyTriggerForCharacter: storeActions.applyTriggerForCharacter,
+   442→        scheduleReturnToIdleForCharacter: storeActions.scheduleReturnToIdleForCharacter,
+   443→        isSpriteLocked: storeActions.isSpriteLocked,
+   444→        playSound: storeActions.playSound,
+   445→        setBackground: storeActions.setBackground,
+   446→        setActiveOverlays: storeActions.setActiveOverlays,
+   447→      },
+   448→      // Pass resources for lookup
+   449→      soundCollections: context.soundCollections as any,
+   450→      soundTriggers: context.soundTriggers as any,
+   451→      soundSequenceTriggers: context.soundSequenceTriggers as any,
+   452→      backgroundPacks: context.backgroundPacks as any,
+   453→      // Pass settings
+   454→      soundSettings: context.soundSettings as any,
+   455→      backgroundSettings: context.backgroundSettings as any,
+   456→    };
+   457→    
+   458→    // Execute trigger via unified executor
+   459→    const results = executeTriggerReward(
+   460→      trig.category as TriggerCategory,
+   461→      trig.key,
+   462→      triggerContext,
+   463→      trig.targetMode as TriggerTargetMode,
+   464→      {
+   465→        returnToIdleMs: trig.returnToIdleMs,
+   466→        volume: trig.volume,
+   467→        transitionDuration: trig.transitionDuration,
+   468→      }
+   469→    );
+   470→    
+   471→    // Check if all trigger executions succeeded
+   472→    const allSucceeded = results.every(r => r.success);
+   473→    const anySucceeded = results.some(r => r.success);
+   474→    
+   475→    // Build summary message
+   476→    const successMessages = results
+   477→      .filter(r => r.success)
+   478→      .map(r => r.message)
+   479→      .filter(Boolean);
+   480→    const errorMessages = results
+   481→      .filter(r => !r.success)
+   482→      .map(r => r.error)
+   483→      .filter(Boolean);
+   484→    
+   485→    return {
+   486→      rewardId: reward.id,
+   487→      type: 'trigger',
+   488→      key: trig.key,
+   489→      success: allSucceeded,
+   490→      message: allSucceeded 
+   491→        ? successMessages.join('; ')
+   492→        : anySucceeded 
+   493→          ? `Partial success: ${successMessages.length}/${results.length}`
+   494→          : undefined,
+   495→      error: errorMessages.length > 0 ? errorMessages.join('; ') : undefined,
+   496→      triggerResults: results,
+   497→    };
+   498→  } catch (error) {
+   499→    return {
+   500→      rewardId: reward.id,
+   501→      type: 'trigger',
+   502→      key: reward.key || 'unknown',
+   503→      success: false,
+   504→      error: error instanceof Error ? error.message : 'Unknown error',
+   505→    };
+   506→  }
+   507→}
+   508→
+   509→// ============================================
+   510→// Objective Reward Execution (Action → Quest Objective)
+   511→// ============================================
+   512→
+   513→/**
+   514→ * Execute an objective reward from an Action
+   515→ *
+   516→ * This completes a quest objective when an action is activated.
+   517→ * Strategy:
+   518→ * 1. If objectiveId + questId are available → call progressQuestObjective
+   519→ *    (SAME function the quest-detector uses when an objective key is detected in text)
+   520→ * 2. Fallback → search by objectiveKey via completeQuestObjective
+   521→ */
+   522→export function executeObjectiveRewardFromAction(
+   523→  reward: QuestReward,
+   524→  context: RewardExecutionContext,
+   525→  storeActions: RewardStoreActions
+   526→): RewardExecutionResult {
+   527→  const { sessionId, characterId } = context;
+   528→
+   529→  try {
+   530→    const normalized = normalizeReward(reward);
+   531→    const obj = normalized.objective;
+   532→
+   533→    console.log(`[executeObjectiveRewardFromAction] Attempting to complete objective:`, {
+   534→      rewardId: reward.id,
+   535→      objectiveKey: obj?.objectiveKey,
+   536→      objectiveId: obj?.objectiveId,
+   537→      questId: obj?.questId,
+   538→      sessionId,
+   539→      characterId,
+   540→    });
+   541→
+   542→    if (!obj || !obj.objectiveKey) {
+   543→      return {
+   544→        rewardId: reward.id,
+   545→        type: 'objective',
+   546→        key: reward.key || 'unknown',
+   547→        success: false,
+   548→        error: 'Invalid objective reward structure - missing objectiveKey',
+   549→      };
+   550→    }
+   551→
+   552→    // ========================================
+   553→    // Validate: quest must be active and objective must be incomplete
+   554→    // ========================================
+   555→    if (storeActions.getSessionQuests && (obj.questId || obj.objectiveId)) {
+   556→      const sessionQuests = storeActions.getSessionQuests(sessionId);
+   557→      const quest = sessionQuests.find(q => q.templateId === obj.questId);
+   558→
+   559→      if (!quest) {
+   560→        console.log(`[executeObjectiveRewardFromAction] Quest "${obj.questId}" not found in session ${sessionId}. Skipping.`);
+   561→        return {
+   562→          rewardId: reward.id,
+   563→          type: 'objective',
+   564→          key: obj.objectiveKey,
+   565→          success: false,
+   566→          message: `Misión "${obj.questId}" no encontrada en la sesión actual`,
+   567→        };
+   568→      }
+   569→
+   570→      if (quest.status !== 'active') {
+   571→        console.log(`[executeObjectiveRewardFromAction] Quest "${obj.questId}" is "${quest.status}", not active. Skipping.`);
+   572→        return {
+   573→          rewardId: reward.id,
+   574→          type: 'objective',
+   575→          key: obj.objectiveKey,
+   576→          success: false,
+   577→          message: `Misión "${obj.questId}" no está activa (estado: ${quest.status})`,
+   578→        };
+   579→      }
+   580→
+   581→      const objective = quest.objectives.find(o => o.templateId === obj.objectiveId);
+   582→      if (objective?.isCompleted) {
+   583→        console.log(`[executeObjectiveRewardFromAction] Objective "${obj.objectiveId}" is already completed. Skipping.`);
+   584→        return {
+   585→          rewardId: reward.id,
+   586→          type: 'objective',
+   587→          key: obj.objectiveKey,
+   588→          success: false,
+   589→          message: `Objetivo "${obj.objectiveKey}" ya estaba completado`,
+   590→        };
+   591→      }
+   592→    }
+   593→
+   594→    if (!storeActions.completeQuestObjective && !storeActions.progressQuestObjective) {
+   595→      return {
+   596→        rewardId: reward.id,
+   597→        type: 'objective',
+   598→        key: obj.objectiveKey,
+   599→        success: false,
+   600→        error: 'Quest objective completion not available in this context',
+   601→      };
+   602→    }
+   603→
+   604→    // Strategy 1: Use progressQuestObjective (same path as quest-detector when key is detected in text)
+   605→    // This is the same path the quest-detector uses for key-based objective completion
+   606→    if (obj.objectiveId && obj.questId && storeActions.progressQuestObjective) {
+   607→      console.log(`[executeObjectiveRewardFromAction] Using progressQuestObjective: store.progressQuestObjective(${sessionId}, ${obj.questId}, ${obj.objectiveId}, 999, ${characterId})`);
+   608→      try {
+   609→        // Use a large amount (999) to ensure the objective is completed in one go
+   610→        storeActions.progressQuestObjective(sessionId, obj.questId, obj.objectiveId, 999, characterId);
+   611→        console.log(`[executeObjectiveRewardFromAction] progressQuestObjective executed successfully`);
+   612→        return {
+   613→          rewardId: reward.id,
+   614→          type: 'objective',
+   615→          key: obj.objectiveKey,
+   616→          success: true,
+   617→          message: `Objetivo completado: ${obj.objectiveKey}`,
+   618→          objectiveKey: obj.objectiveKey,
+   619→          questId: obj.questId,
+   620→        };
+   621→      } catch (directErr) {
+   622→        console.warn(`[executeObjectiveRewardFromAction] progressQuestObjective failed, falling back to key search:`, directErr);
+   623→      }
+   624→    }
+   625→
+   626→    // Strategy 2: Fallback — search by objectiveKey via completeQuestObjective
+   627→    console.log(`[executeObjectiveRewardFromAction] Using KEY SEARCH path with objectiveKey: "${obj.objectiveKey}"`);
+   628→    const completed = storeActions.completeQuestObjective(
+   629→      sessionId,
+   630→      obj.questId || '',  // May be empty - will search all active quests
+   631→      obj.objectiveKey,
+   632→      characterId
+   633→    );
+   634→    console.log(`[executeObjectiveRewardFromAction] completeQuestObjective result: ${completed}`);
+   635→
+   636→    if (completed) {
+   637→      return {
+   638→        rewardId: reward.id,
+   639→        type: 'objective',
+   640→        key: obj.objectiveKey,
+   641→        success: true,
+   642→        message: `Objetivo completado: ${obj.objectiveKey}`,
+   643→        objectiveKey: obj.objectiveKey,
+   644→        questId: obj.questId,
+   645→      };
+   646→    } else {
+   647→      return {
+   648→        rewardId: reward.id,
+   649→        type: 'objective',
+   650→        key: obj.objectiveKey,
+   651→        success: false,
+   652→        message: `No se encontró un objetivo activo con la key: ${obj.objectiveKey}`,
+   653→      };
+   654→    }
+   655→  } catch (error) {
+   656→    return {
+   657→      rewardId: reward.id,
+   658→      type: 'objective',
+   659→      key: reward.key || 'unknown',
+   660→      success: false,
+   661→      error: error instanceof Error ? error.message : 'Unknown error',
+   662→    };
+   663→  }
+   664→}
+   665→
+   666→// ============================================
+   667→// Solicitud Reward Execution (Action → Character Solicitud)
+   668→// ============================================
+   669→
+   670→/**
+   671→ * Execute a solicitud reward from an Action
+   672→ *
+   673→ * This completes a character solicitud when an action is activated.
+   674→ * The solicitudKey should match the key of a pending solicitud.
+   675→ */
+   676→export function executeSolicitudRewardFromAction(
+   677→  reward: QuestReward,
+   678→  context: RewardExecutionContext,
+   679→  storeActions: RewardStoreActions
+   680→): RewardExecutionResult {
+   681→  const { sessionId, characterId } = context;
+   682→
+   683→  try {
+   684→    const normalized = normalizeReward(reward);
+   685→    const sol = normalized.solicitud;
+   686→
+   687→    if (!sol || !sol.solicitudKey) {
+   688→      return {
+   689→        rewardId: reward.id,
+   690→        type: 'solicitud',
+   691→        key: reward.key || 'unknown',
+   692→        success: false,
+   693→        error: 'Invalid solicitud reward structure - missing solicitudKey',
+   694→      };
+   695→    }
+   696→
+   697→    if (!storeActions.completeSolicitud) {
+   698→      return {
+   699→        rewardId: reward.id,
+   700→        type: 'solicitud',
+   701→        key: sol.solicitudKey,
+   702→        success: false,
+   703→        error: 'Solicitud completion not available in this context',
+   704→      };
+   705→    }
+   706→
+   707→    const completed = storeActions.completeSolicitud(
+   708→      sessionId,
+   709→      characterId,
+   710→      sol.solicitudKey
+   711→    );
+   712→
+   713→    if (completed) {
+   714→      return {
+   715→        rewardId: reward.id,
+   716→        type: 'solicitud',
+   717→        key: sol.solicitudKey,
+   718→        success: true,
+   719→        message: `Solicitud completada: ${sol.solicitudName || sol.solicitudKey}`,
+   720→      };
+   721→    } else {
+   722→      return {
+   723→        rewardId: reward.id,
+   724→        type: 'solicitud',
+   725→        key: sol.solicitudKey,
+   726→        success: false,
+   727→        message: `No se encontró una solicitud pendiente con la key: ${sol.solicitudKey}`,
+   728→      };
+   729→    }
+   730→  } catch (error) {
+   731→    return {
+   732→      rewardId: reward.id,
+   733→      type: 'solicitud',
+   734→      key: reward.key || 'unknown',
+   735→      success: false,
+   736→      error: error instanceof Error ? error.message : 'Unknown error',
+   737→    };
+   738→  }
+   739→}
+   740→
+   741→// ============================================
+   742→// Conditional Sprite Collection Reward Execution
+   743→// ============================================
+   744→
+   745→/**
+   746→ * Execute a conditional_sprite_collection reward
+   747→ *
+   748→ * Activates a TriggerCollection that is in conditional mode.
+   749→ * Instead of a simple key-based trigger, this reward evaluates
+   750→ * the collection's ConditionalSpriteEntries against current attribute values,
+   751→ * selecting the sprite based on priority and conditions.
+   752→ *
+   753→ * Flow:
+   754→ * 1. Find TriggerCollection by collectionId from character's triggerCollections
+   755→ * 2. If collection.conditionalMode = true:
+   756→ *    a. Sort conditionalEntries by priority (DESC)
+   757→ *    b. Evaluate each entry's conditions against sessionStats
+   758→ *    c. First matching entry → use its spriteId
+   759→ *    d. No match → use defaultSpriteId or principalSpriteId
+   760→ * 3. Apply sprite as trigger for target character(s)
+   761→ * 4. Schedule return to idle if returnToIdleMs > 0
+   762→ */
+   763→export function executeConditionalSpriteCollectionReward(
+   764→  reward: QuestReward,
+   765→  context: RewardExecutionContext,
+   766→  storeActions: RewardStoreActions
+   767→): RewardExecutionResult {
+   768→  const { characterId, character, allCharacters, sessionStats } = context;
+   769→
+   770→  try {
+   771→    const config = reward.conditional_sprite_collection;
+   772→
+   773→    if (!config) {
+   774→      return {
+   775→        rewardId: reward.id,
+   776→        type: 'conditional_sprite_collection',
+   777→        key: reward.key || 'unknown',
+   778→        success: false,
+   779→        error: 'Invalid conditional_sprite_collection reward structure - missing config',
+   780→      };
+   781→    }
+   782→
+   783→    if (!character) {
+   784→      return {
+   785→        rewardId: reward.id,
+   786→        type: 'conditional_sprite_collection',
+   787→        key: config.collectionId,
+   788→        success: false,
+   789→        error: 'Character not available for conditional sprite execution',
+   790→      };
+   791→    }
+   792→
+   793→    // 1. Find the TriggerCollection by collectionId
+   794→    const collection = character.triggerCollections?.find(
+   795→      c => c.id === config.collectionId
+   796→    );
+   797→
+   798→    if (!collection) {
+   799→      return {
+   800→        rewardId: reward.id,
+   801→        type: 'conditional_sprite_collection',
+   802→        key: config.collectionId,
+   803→        success: false,
+   804→        error: `TriggerCollection "${config.collectionId}" not found in character "${character.name}"`,
+   805→      };
+   806→    }
+   807→
+   808→    // 2. Check that conditionalMode is enabled
+   809→    if (!collection.conditionalMode) {
+   810→      console.warn(
+   811→        `[ConditionalSpriteCollection] Collection "${collection.name}" (${collection.id}) does not have conditionalMode enabled. Falling back to principal sprite.`
+   812→      );
+   813→      // Still proceed but use the principal sprite as fallback
+   814→    }
+   815→
+   816→    // 3. Find the sprite pack
+   817→    const pack = character.spritePacksV2?.find(p => p.id === collection.packId);
+   818→    if (!pack) {
+   819→      return {
+   820→        rewardId: reward.id,
+   821→        type: 'conditional_sprite_collection',
+   822→        key: config.collectionId,
+   823→        success: false,
+   824→        error: `SpritePack "${collection.packId}" not found for collection "${collection.name}"`,
+   825→      };
+   826→    }
+   827→
+   828→    // 4. Evaluate conditional entries to determine which sprite to show
+   829→    const matchedEntry = evaluateConditionalEntries(
+   830→      collection.conditionalEntries,
+   831→      sessionStats ?? null,
+   832→      characterId
+   833→    );
+   834→
+   835→    // Determine which sprite ID to use: matched entry or fallback
+   836→    let spriteId: string;
+   837→    let entryName: string | undefined;
+   838→    let usedFallback = false;
+   839→
+   840→    if (matchedEntry) {
+   841→      spriteId = matchedEntry.spriteId;
+   842→      entryName = matchedEntry.name;
+   843→    } else {
+   844→      // No entry matched - use defaultSpriteId or principalSpriteId
+   845→      spriteId = collection.defaultSpriteId || collection.principalSpriteId || '';
+   846→      usedFallback = true;
+   847→    }
+   848→
+   849→    if (!spriteId) {
+   850→      return {
+   851→        rewardId: reward.id,
+   852→        type: 'conditional_sprite_collection',
+   853→        key: config.collectionId,
+   854→        success: false,
+   855→        error: `No sprite determined for collection "${collection.name}" (no matching entry and no default sprite)`,
+   856→      };
+   857→    }
+   858→
+   859→    // 5. Find the sprite URL from the pack
+   860→    const spriteEntry = pack.sprites.find(s => s.id === spriteId);
+   861→    if (!spriteEntry) {
+   862→      return {
+   863→        rewardId: reward.id,
+   864→        type: 'conditional_sprite_collection',
+   865→        key: config.collectionId,
+   866→        success: false,
+   867→        error: `Sprite "${spriteId}" not found in pack "${pack.name}"`,
+   868→      };
+   869→    }
+   870→
+   871→    const spriteUrl = spriteEntry.url;
+   872→    const spriteLabel = spriteEntry.label;
+   873→
+   874→    console.log(
+   875→      `[ConditionalSpriteCollection] Collection "${collection.name}": ` +
+   876→      `entry="${entryName || '(fallback)'}", ` +
+   877→      `sprite="${spriteLabel}" (${spriteUrl})` +
+   878→      `${usedFallback ? ' [FALLBACK]' : ''}`
+   879→    );
+   880→
+   881→    // 6. Determine target characters based on targetMode
+   882→    const targetCharacters = getTargetCharactersForConditional(
+   883→      config.targetMode,
+   884→      character,
+   885→      allCharacters,
+   886→      config.targetCharacterId
+   887→    );
+   888→
+   889→    if (targetCharacters.length === 0) {
+   890→      return {
+   891→        rewardId: reward.id,
+   892→        type: 'conditional_sprite_collection',
+   893→        key: config.collectionId,
+   894→        success: false,
+   895→        error: 'No target characters found',
+   896→      };
+   897→    }
+   898→
+   899→    // 7. Apply sprite as trigger for each target character
+   900→    const returnToIdleMs = config.returnToIdleMs ?? collection.fallbackDelayMs ?? 0;
+   901→    const fallbackMode: TriggerFallbackMode = config.fallbackMode ?? collection.fallbackMode ?? 'idle_collection';
+   902→
+   903→    for (const targetChar of targetCharacters) {
+   904→      // Apply the sprite
+   905→      storeActions.applyTriggerForCharacter(targetChar.id, {
+   906→        spriteUrl,
+   907→        spriteLabel,
+   908→        returnToIdleMs,
+   909→      });
+   910→
+   911→      // Schedule return to idle if returnToIdleMs > 0
+   912→      if (returnToIdleMs > 0) {
+   913→        let returnSpriteUrl = '';
+   914→        let returnSpriteLabel: string | null = null;
+   915→        let returnToMode: 'idle' | 'talk' | 'thinking' | 'clear' = 'idle';
+   916→
+   917→        if (fallbackMode === 'idle_collection') {
+   918→          // Clear mode lets normal state logic determine what to show
+   919→          returnToMode = 'clear';
+   920→          returnSpriteUrl = '';
+   921→          returnSpriteLabel = null;
+   922→        } else if (fallbackMode === 'collection_default') {
+   923→          // Use the collection's principal sprite or first sprite
+   924→          const principalSprite = collection.principalSpriteId
+   925→            ? pack.sprites.find(s => s.id === collection.principalSpriteId)
+   926→            : pack.sprites[0];
+   927→          if (principalSprite) {
+   928→            returnSpriteUrl = principalSprite.url;
+   929→            returnSpriteLabel = principalSprite.label;
+   930→            returnToMode = 'idle';
+   931→          } else {
+   932→            returnToMode = 'clear';
+   933→            returnSpriteUrl = '';
+   934→            returnSpriteLabel = null;
+   935→          }
+   936→        } else if (fallbackMode === 'custom_sprite' && collection.fallbackSpriteId) {
+   937→          const fallbackSprite = pack.sprites.find(s => s.id === collection.fallbackSpriteId);
+   938→          if (fallbackSprite) {
+   939→            returnSpriteUrl = fallbackSprite.url;
+   940→            returnSpriteLabel = fallbackSprite.label;
+   941→            returnToMode = 'idle';
+   942→          } else {
+   943→            returnToMode = 'clear';
+   944→            returnSpriteUrl = '';
+   945→            returnSpriteLabel = null;
+   946→          }
+   947→        } else {
+   948→          // Default: clear mode
+   949→          returnToMode = 'clear';
+   950→          returnSpriteUrl = '';
+   951→          returnSpriteLabel = null;
+   952→        }
+   953→
+   954→        storeActions.scheduleReturnToIdleForCharacter(
+   955→          targetChar.id,
+   956→          spriteUrl,
+   957→          returnToMode,
+   958→          returnSpriteUrl,
+   959→          returnSpriteLabel,
+   960→          returnToIdleMs
+   961→        );
+   962→      }
+   963→    }
+   964→
+   965→    const targetNames = targetCharacters.map(c => c.name).join(', ');
+   966→    const entryInfo = usedFallback
+   967→      ? 'fallback'
+   968→      : `"${entryName}"`;
+   969→
+   970→    return {
+   971→      rewardId: reward.id,
+   972→      type: 'conditional_sprite_collection',
+   973→      key: config.collectionId,
+   974→      success: true,
+   975→      message: `Sprite "${spriteLabel}" applied to ${targetNames} (entry: ${entryInfo})${returnToIdleMs > 0 ? ` [fallback in ${returnToIdleMs}ms]` : ' [persist]'}`,
+   976→      conditionalEntryName: entryName,
+   977→    };
+   978→  } catch (error) {
+   979→    return {
+   980→      rewardId: reward.id,
+   981→      type: 'conditional_sprite_collection',
+   982→      key: reward.key || 'unknown',
+   983→      success: false,
+   984→      error: error instanceof Error ? error.message : 'Unknown error',
+   985→    };
+   986→  }
+   987→}
+   988→
+   989→/**
+   990→ * Helper: Get target characters for conditional sprite collection reward
+   991→ */
+   992→function getTargetCharactersForConditional(
+   993→  targetMode: string,
+   994→  character: CharacterCard,
+   995→  allCharacters?: CharacterCard[],
+   996→  targetCharacterId?: string
+   997→): CharacterCard[] {
+   998→  switch (targetMode) {
+   999→    case 'self':
+  1000→      return [character];
+  1001→
+  1002→    case 'all':
+  1003→      if (allCharacters && allCharacters.length > 0) {
+  1004→        return allCharacters;
+  1005→      }
+  1006→      return [character];
+  1007→
+  1008→    case 'target':
+  1009→      if (targetCharacterId && allCharacters) {
+  1010→        const target = allCharacters.find(c => c.id === targetCharacterId);
+  1011→        if (target) return [target];
+  1012→      }
+  1013→      // If target not found, fall back to self
+  1014→      console.warn(`[ConditionalSpriteCollection] Target character "${targetCharacterId}" not found, falling back to self`);
+  1015→      return [character];
+  1016→
+  1017→    default:
+  1018→      return [character];
+  1019→  }
+  1020→}
+  1021→
+  1022→// ============================================
+  1023→// Activate Sprite Pack Reward Execution
+  1024→// ============================================
+  1025→
+  1026→/**
+  1027→ * Execute an activate_sprite_pack reward
+  1028→ * Activates a SpritePackV2, evaluating conditions if the pack has conditionalMode.
+  1029→ *
+  1030→ * Flow:
+  1031→ * 1. Find SpritePackV2 by packId from character's spritePacksV2
+  1032→ * 2. If pack.conditionalMode = true:
+  1033→ *    a. Evaluate each sprite's conditions against sessionStats (by priority DESC)
+  1034→ *    b. First matching sprite → use it
+  1035→ *    c. No match → use defaultSpriteId or isDefault sprite
+  1036→ * 3. If pack.conditionalMode = false:
+  1037→ *    a. Use behavior-based resolution (principal/random/list)
+  1038→ * 4. Apply sprite as trigger for the target character(s)
+  1039→ * 5. Schedule return to idle if returnToIdleMs > 0
+  1040→ */
+  1041→async function executeActivateSpritePackReward(
+  1042→  reward: QuestReward,
+  1043→  context: RewardExecutionContext,
+  1044→  storeActions: RewardStoreActions
+  1045→): Promise<RewardExecutionResult> {
+  1046→  const config = reward.activate_sprite_pack;
+  1047→  if (!config) {
+  1048→    return {
+  1049→      rewardId: reward.id,
+  1050→      type: 'activate_sprite_pack',
+  1051→      success: false,
+  1052→      key: '',
+  1053→      error: 'Invalid activate_sprite_pack reward structure - missing config',
+  1054→    };
+  1055→  }
+  1056→
+  1057→  if (!config.packId) {
+  1058→    return {
+  1059→      rewardId: reward.id,
+  1060→      type: 'activate_sprite_pack',
+  1061→      success: false,
+  1062→      key: '',
+  1063→      error: 'Missing packId in activate_sprite_pack reward',
+  1064→    };
+  1065→  }
+  1066→
+  1067→  // Find the sprite pack from the character's spritePacksV2
+  1068→  const character = context.character;
+  1069→  if (!character?.spritePacksV2) {
+  1070→    return {
+  1071→      rewardId: reward.id,
+  1072→      type: 'activate_sprite_pack',
+  1073→      success: false,
+  1074→      key: config.packId,
+  1075→      error: 'Character has no sprite packs',
+  1076→    };
+  1077→  }
+  1078→
+  1079→  const pack = character.spritePacksV2.find((p: SpritePackV2) => p.id === config.packId);
+  1080→  if (!pack) {
+  1081→    return {
+  1082→      rewardId: reward.id,
+  1083→      type: 'activate_sprite_pack',
+  1084→      success: false,
+  1085→      key: config.packId,
+  1086→      error: `Sprite pack "${config.packId}" not found`,
+  1087→    };
+  1088→  }
+  1089→
+  1090→  if (pack.sprites.length === 0) {
+  1091→    return {
+  1092→      rewardId: reward.id,
+  1093→      type: 'activate_sprite_pack',
+  1094→      success: false,
+  1095→      key: config.packId,
+  1096→      error: `Sprite pack "${pack.name}" has no sprites`,
+  1097→    };
+  1098→  }
+  1099→
+  1100→  // Resolve which sprite to show
+  1101→  let spriteUrl: string | null = null;
+  1102→  let spriteLabel: string | null = null;
+  1103→  let usedConditional = false;
+  1104→
+  1105→  if (pack.conditionalMode) {
+  1106→    // Evaluate conditions at the pack level
+  1107→    const winningSprite = evaluatePackConditionalSprites(
+  1108→      pack.sprites,
+  1109→      context.sessionStats ?? null,
+  1110→      context.characterId
+  1111→    );
+  1112→
+  1113→    if (winningSprite) {
+  1114→      spriteUrl = winningSprite.url;
+  1115→      spriteLabel = winningSprite.label;
+  1116→      usedConditional = true;
+  1117→    } else {
+  1118→      // Try defaultSpriteId
+  1119→      if (pack.defaultSpriteId) {
+  1120→        const defaultSprite = pack.sprites.find(s => s.id === pack.defaultSpriteId);
+  1121→        if (defaultSprite) {
+  1122→          spriteUrl = defaultSprite.url;
+  1123→          spriteLabel = defaultSprite.label;
+  1124→        }
+  1125→      }
+  1126→      // Try isDefault
+  1127→      if (!spriteUrl) {
+  1128→        const markedDefault = pack.sprites.find(s => s.isDefault);
+  1129→        if (markedDefault) {
+  1130→          spriteUrl = markedDefault.url;
+  1131→          spriteLabel = markedDefault.label;
+  1132→        }
+  1133→      }
+  1134→    }
+  1135→  }
+  1136→
+  1137→  // If no conditional match, use behavior-based resolution
+  1138→  if (!spriteUrl) {
+  1139→    const behavior = config.behavior || 'principal';
+  1140→    const principalSpriteId = config.principalSpriteId;
+  1141→
+  1142→    switch (behavior) {
+  1143→      case 'principal':
+  1144→        if (principalSpriteId) {
+  1145→          const principal = pack.sprites.find(s => s.id === principalSpriteId);
+  1146→          if (principal) {
+  1147→            spriteUrl = principal.url;
+  1148→            spriteLabel = principal.label;
+  1149→          }
+  1150→        }
+  1151→        if (!spriteUrl) {
+  1152→          spriteUrl = pack.sprites[0].url;
+  1153→          spriteLabel = pack.sprites[0].label;
+  1154→        }
+  1155→        break;
+  1156→      case 'random': {
+  1157→        const randomIndex = Math.floor(Math.random() * pack.sprites.length);
+  1158→        spriteUrl = pack.sprites[randomIndex].url;
+  1159→        spriteLabel = pack.sprites[randomIndex].label;
+  1160→        break;
+  1161→      }
+  1162→      case 'list': {
+  1163→        // Use first sprite for now (rotation is handled at render time)
+  1164→        spriteUrl = pack.sprites[0].url;
+  1165→        spriteLabel = pack.sprites[0].label;
+  1166→        break;
+  1167→      }
+  1168→    }
+  1169→  }
+  1170→
+  1171→  if (!spriteUrl) {
+  1172→    return {
+  1173→      rewardId: reward.id,
+  1174→      type: 'activate_sprite_pack',
+  1175→      success: false,
+  1176→      key: config.packId,
+  1177→      error: 'Could not resolve any sprite from pack',
+  1178→    };
+  1179→  }
+  1180→
+  1181→  // Determine target characters
+  1182→  const targetCharacters = getTargetCharactersForConditional(
+  1183→    config.targetMode,
+  1184→    character,
+  1185→    context.allCharacters,
+  1186→    config.targetCharacterId
+  1187→  );
+  1188→
+  1189→  // Apply sprite to each target
+  1190→  const results: TriggerExecutionResult[] = [];
+  1191→  for (const targetChar of targetCharacters) {
+  1192→    storeActions.applyTriggerForCharacter(targetChar.id, {
+  1193→      spriteUrl,
+  1194→      spriteLabel,
+  1195→      returnToIdleMs: config.returnToIdleMs,
+  1196→    });
+  1197→
+  1198→    results.push({
+  1199→      characterId: targetChar.id,
+  1200→      success: true,
+  1201→      triggerKey: `activate_sprite_pack:${pack.name}`,
+  1202→      category: 'sprite',
+  1203→    });
+  1204→
+  1205→    // Schedule return to idle if specified
+  1206→    if (config.returnToIdleMs && config.returnToIdleMs > 0) {
+  1207→      const fallbackMode: TriggerFallbackMode = config.fallbackMode || 'idle_collection';
+  1208→      let returnSpriteUrl = '';
+  1209→      let returnSpriteLabel: string | null = null;
+  1210→      let returnToMode: 'idle' | 'talk' | 'thinking' | 'clear' = 'idle';
+  1211→
+  1212→      if (fallbackMode === 'idle_collection') {
+  1213→        returnToMode = 'clear';
+  1214→        returnSpriteUrl = '';
+  1215→        returnSpriteLabel = null;
+  1216→      } else if (fallbackMode === 'collection_default') {
+  1217→        // Use the pack's default sprite or first sprite
+  1218→        const defaultSprite = pack.defaultSpriteId
+  1219→          ? pack.sprites.find(s => s.id === pack.defaultSpriteId)
+  1220→          : pack.sprites[0];
+  1221→        if (defaultSprite) {
+  1222→          returnSpriteUrl = defaultSprite.url;
+  1223→          returnSpriteLabel = defaultSprite.label;
+  1224→          returnToMode = 'idle';
+  1225→        } else {
+  1226→          returnToMode = 'clear';
+  1227→        }
+  1228→      } else if (fallbackMode === 'custom_sprite') {
+  1229→        // For custom_sprite fallback without a specific sprite ID, use clear
+  1230→        returnToMode = 'clear';
+  1231→      } else {
+  1232→        returnToMode = 'clear';
+  1233→      }
+  1234→
+  1235→      storeActions.scheduleReturnToIdleForCharacter(
+  1236→        targetChar.id,
+  1237→        spriteUrl,
+  1238→        returnToMode,
+  1239→        returnSpriteUrl,
+  1240→        returnSpriteLabel,
+  1241→        config.returnToIdleMs
+  1242→      );
+  1243→    }
+  1244→  }
+  1245→
+  1246→  const targetNames = targetCharacters.map(c => c.name).join(', ');
+  1247→
+  1248→  return {
+  1249→    rewardId: reward.id,
+  1250→    type: 'activate_sprite_pack',
+  1251→    success: true,
+  1252→    key: config.packId,
+  1253→    value: spriteUrl,
+  1254→    message: `Activated sprite pack "${pack.name}"${usedConditional ? ' (conditional)' : ''} → ${spriteLabel || 'sprite'} for ${targetNames}`,
+  1255→    triggerResults: results,
+  1256→    conditionalEntryName: usedConditional ? spriteLabel || undefined : undefined,
+  1257→  };
+  1258→}
+  1259→
+  1260→// ============================================
+  1261→// Main Execution Functions
+  1262→// ============================================
+  1263→
+  1264→/**
+  1265→ * Execute a single reward
+  1266→ * 
+  1267→ * Handles both new unified types (attribute, trigger) and legacy types
+  1268→ * (sprite, sound, background) which are normalized to trigger type.
+  1269→ */
+  1270→export function executeReward(
+  1271→  reward: QuestReward,
+  1272→  context: RewardExecutionContext,
+  1273→  storeActions: RewardStoreActions
+  1274→): RewardExecutionResult {
+  1275→  // Check condition first
+  1276→  if (reward.condition) {
+  1277→    const conditionMet = evaluateRewardCondition(reward.condition, context.sessionStats, context.characterId);
+  1278→    if (!conditionMet) {
+  1279→      console.log(`[executeReward] Reward "${reward.id}" (type: ${reward.type}) condition NOT met:`, reward.condition);
+  1280→      return {
+  1281→        rewardId: reward.id,
+  1282→        type: reward.type,
+  1283→        key: reward.key || '',
+  1284→        success: false,
+  1285→        message: 'Condition not met',
+  1286→      };
+  1287→    }
+  1288→  }
+  1289→  
+  1290→  // Normalize reward to handle legacy formats
+  1291→  const normalized = normalizeReward(reward);
+  1292→  
+  1293→  // Validate
+  1294→  const validation = validateReward(normalized);
+  1295→  if (!validation.valid) {
+  1296→    console.warn(`[executeReward] Reward "${reward.id}" (type: ${normalized.type}) validation FAILED:`, validation.errors);
+  1297→    return {
+  1298→      rewardId: reward.id,
+  1299→      type: normalized.type,
+  1300→      key: normalized.key || '',
+  1301→      success: false,
+  1302→      error: `Invalid reward: ${validation.errors.join(', ')}`,
+  1303→    };
+  1304→  }
+  1305→  
+  1306→  // Execute based on unified type
+  1307→  switch (normalized.type) {
+  1308→    case 'attribute':
+  1309→      return executeAttributeReward(normalized, context, storeActions);
+  1310→
+  1311→    case 'trigger':
+  1312→      return executeTriggerRewardFromQuest(normalized, context, storeActions);
+  1313→
+  1314→    case 'objective':
+  1315→      return executeObjectiveRewardFromAction(normalized, context, storeActions);
+  1316→
+  1317→    case 'solicitud':
+  1318→      return executeSolicitudRewardFromAction(normalized, context, storeActions);
+  1319→
+  1320→    case 'target_attribute':
+  1321→      return executeTargetAttributeReward(normalized, context, storeActions);
+  1322→
+  1323→    case 'currency': {
+  1324→      // Currency reward - adds/subtracts persona currency via inventory V2 system
+  1325→      const curr = normalized.currency;
+  1326→      if (!curr) {
+  1327→        return {
+  1328→          rewardId: reward.id,
+  1329→          type: 'currency',
+  1330→          key: 'currency',
+  1331→          success: false,
+  1332→          error: 'Invalid currency reward structure - missing currency config',
+  1333→        };
+  1334→      }
+  1335→
+  1336→      // Currency rewards always target the persona (__user__)
+  1337→      // We use updateCharacterStat with the persona's special ID
+  1338→      // The 'currency' key is handled specially by the stats system
+  1339→      // For now, we store it as a regular attribute on __user__
+  1340→      // The inventory system will also track it via persona.currency
+  1341→      const personaId = '__user__';
+  1342→      const currentCurrency = context.sessionStats?.characterStats?.[personaId]?.attributeValues?.['currency'];
+  1343→      const currentNum = typeof currentCurrency === 'number' ? currentCurrency : (parseFloat(String(currentCurrency)) || 0);
+  1344→      const newCurrency = Math.max(0, currentNum + curr.amount);
+  1345→
+  1346→      // Update via character stat (persona currency is synced)
+  1347→      storeActions.updateCharacterStat(
+  1348→        context.sessionId,
+  1349→        personaId,
+  1350→        'currency',
+  1351→        newCurrency,
+  1352→        'trigger'
+  1353→      );
+  1354→
+  1355→      const change = curr.amount >= 0 ? `+${curr.amount}` : `${curr.amount}`;
+  1356→      return {
+  1357→        rewardId: reward.id,
+  1358→        type: 'currency',
+  1359→        key: 'currency',
+  1360→        value: newCurrency,
+  1361→        success: true,
+  1362→        message: `Divisa: ${change} (Total: ${newCurrency})`,
+  1363→      };
+  1364→    }
+  1365→
+  1366→    case 'conditional_sprite_collection':
+  1367→      return executeConditionalSpriteCollectionReward(normalized, context, storeActions);
+  1368→
+  1369→    case 'activate_sprite_pack':
+  1370→      return executeActivateSpritePackReward(normalized, context, storeActions);
+  1371→
+  1372→    default:
+  1373→      return {
+  1374→        rewardId: reward.id,
+  1375→        type: normalized.type,
+  1376→        key: normalized.key || '',
+  1377→        success: false,
+  1378→        error: `Unknown reward type: ${normalized.type}`,
+  1379→      };
+  1380→  }
+  1381→}
+  1382→
+  1383→/**
+  1384→ * Execute all rewards for a quest
+  1385→ * 
+  1386→ * This is the main entry point for executing quest rewards.
+  1387→ * Rewards are executed in order, and all are attempted
+  1388→ * regardless of individual failures.
+  1389→ */
+  1390→export function executeAllRewards(
+  1391→  rewards: QuestReward[],
+  1392→  context: RewardExecutionContext,
+  1393→  storeActions: RewardStoreActions
+  1394→): RewardBatchResult {
+  1395→  const results: RewardExecutionResult[] = [];
+  1396→  const attributeUpdates = new Map<string, number | string>();
+  1397→  const triggerResults: TriggerExecutionResult[] = [];
+  1398→  
+  1399→  let successCount = 0;
+  1400→  let failureCount = 0;
+  1401→  
+  1402→  for (const reward of rewards) {
+  1403→    const result = executeReward(reward, context, storeActions);
+  1404→    results.push(result);
+  1405→    
+  1406→    if (result.success) {
+  1407→      successCount++;
+  1408→      
+  1409→      // Track attribute updates
+  1410→      if (result.type === 'attribute' && result.value !== undefined) {
+  1411→        attributeUpdates.set(result.key, result.value as number | string);
+  1412→      }
+  1413→      
+  1414→      // Collect trigger results
+  1415→      if (result.triggerResults) {
+  1416→        triggerResults.push(...result.triggerResults);
+  1417→      }
+  1418→    } else {
+  1419→      failureCount++;
+  1420→    }
+  1421→  }
+  1422→  
+  1423→  return {
+  1424→    results,
+  1425→    successCount,
+  1426→    failureCount,
+  1427→    attributeUpdates,
+  1428→    triggerResults,
+  1429→  };
+  1430→}
+  1431→
+  1432→/**
+  1433→ * Execute quest completion rewards
+  1434→ * This is called when a quest is completed
+  1435→ */
+  1436→export function executeQuestCompletionRewards(
+  1437→  template: QuestTemplate,
+  1438→  context: RewardExecutionContext,
+  1439→  storeActions: RewardStoreActions
+  1440→): RewardBatchResult {
+  1441→  if (!template.rewards || template.rewards.length === 0) {
+  1442→    return {
+  1443→      results: [],
+  1444→      successCount: 0,
+  1445→      failureCount: 0,
+  1446→      attributeUpdates: new Map(),
+  1447→      triggerResults: [],
+  1448→    };
+  1449→  }
+  1450→  
+  1451→  console.log(`[QuestReward] Executing ${template.rewards.length} quest completion rewards for character ${context.characterId}`);
+  1452→  
+  1453→  return executeAllRewards(template.rewards, context, storeActions);
+  1454→}
+  1455→
+  1456→/**
+  1457→ * Execute objective completion rewards
+  1458→ * This is called when an objective is completed (not just progressed)
+  1459→ * 
+  1460→ * @param objectiveRewards - Rewards defined in the objective template
+  1461→ * @param context - Execution context with character/session info
+  1462→ * @param storeActions - Store actions to execute rewards
+  1463→ */
+  1464→export function executeObjectiveRewards(
+  1465→  objectiveRewards: QuestReward[],
+  1466→  context: RewardExecutionContext,
+  1467→  storeActions: RewardStoreActions
+  1468→): RewardBatchResult {
+  1469→  if (!objectiveRewards || objectiveRewards.length === 0) {
+  1470→    return {
+  1471→      results: [],
+  1472→      successCount: 0,
+  1473→      failureCount: 0,
+  1474→      attributeUpdates: new Map(),
+  1475→      triggerResults: [],
+  1476→    };
+  1477→  }
+  1478→  
+  1479→  console.log(`[QuestReward] Executing ${objectiveRewards.length} objective rewards for character ${context.characterId}`);
+  1480→  
+  1481→  return executeAllRewards(objectiveRewards, context, storeActions);
+  1482→}
+  1483→
+  1484→// ============================================
+  1485→// Reward Preview (For UI)
+  1486→// ============================================
+  1487→
+  1488→/**
+  1489→ * Generate a human-readable description of a reward
+  1490→ */
+  1491→export function describeReward(reward: QuestReward): string {
+  1492→  const normalized = normalizeReward(reward);
+  1493→  
+  1494→  if (normalized.type === 'attribute' && normalized.attribute) {
+  1495→    const attr = normalized.attribute;
+  1496→    const actionSymbols: Record<AttributeAction, string> = {
+  1497→      'set': '=',
+  1498→      'add': '+',
+  1499→      'subtract': '-',
+  1500→      'multiply': '×',
+  1501→      'divide': '÷',
+  1502→      'percent': '%+',
+  1503→    };
+  1504→    const symbol = actionSymbols[attr.action as AttributeAction] || '=';
+  1505→    return `${attr.key} ${symbol} ${attr.value}`;
+  1506→  }
+  1507→  
+  1508→  if (normalized.type === 'trigger' && normalized.trigger) {
+  1509→    const trig = normalized.trigger;
+  1510→    const categoryIcons: Record<string, string> = {
+  1511→      sprite: '🖼️',
+  1512→      sound: '🔊',
+  1513→      background: '🌄',
+  1514→      soundSequence: '🎵',
+  1515→    };
+  1516→    const icon = categoryIcons[trig.category] || '⚡';
+  1517→    const targetLabels: Record<string, string> = {
+  1518→      self: '',
+  1519→      all: ' (todos)',
+  1520→      target: ' (objetivo)',
+  1521→    };
+  1522→    const targetLabel = targetLabels[trig.targetMode] || '';
+  1523→    return `${icon} ${trig.key}${targetLabel}`;
+  1524→  }
+  1525→
+  1526→  if (normalized.type === 'solicitud' && normalized.solicitud) {
+  1527→    return `📋 ${normalized.solicitud.solicitudName || normalized.solicitud.solicitudKey}`;
+  1528→  }
+  1529→
+  1530→  if (normalized.type === 'currency' && normalized.currency) {
+  1531→    const amount = normalized.currency.amount;
+  1532→    const sign = amount >= 0 ? '+' : '';
+  1533→    return `💰 Divisa ${sign}${amount}`;
+  1534→  }
+  1535→
+  1536→  if (normalized.type === 'conditional_sprite_collection' && normalized.conditional_sprite_collection) {
+  1537→    const csc = normalized.conditional_sprite_collection;
+  1538→    const targetLabels: Record<string, string> = {
+  1539→      self: '',
+  1540→      all: ' (todos)',
+  1541→      target: ' (objetivo)',
+  1542→    };
+  1543→    const targetLabel = targetLabels[csc.targetMode] || '';
+  1544→    const fallback = csc.returnToIdleMs && csc.returnToIdleMs > 0
+  1545→      ? ` [${csc.returnToIdleMs}ms]`
+  1546→      : ' [persist]';
+  1547→    return `🎨 Cond. Sprite: ${csc.collectionId}${targetLabel}${fallback}`;
+  1548→  }
+  1549→  
+  1550→  // Fallback for unknown format
+  1551→  return `${normalized.type}: ${normalized.key || '?'}`;
+  1552→}
+  1553→
+  1554→/**
+  1555→ * Generate a summary of all rewards
+  1556→ */
+  1557→export function describeRewards(rewards: QuestReward[]): string {
+  1558→  return rewards.map(describeReward).join(', ');
+  1559→}
+  1560→
+  1561→// ============================================
+  1562→// Export Index
+  1563→// ============================================
+  1564→
+  1565→export type {
+  1566→  RewardExecutionContext,
+  1567→  RewardExecutionResult,
+  1568→  RewardBatchResult,
+  1569→  RewardStoreActions,
+  1570→};
+  1571→
+  1572→// ============================================
+  1573→// Direct Objective Activation (for Tools)
+  1574→// ============================================
+  1575→
+  1576→export interface DirectObjectiveActivationResult {
+  1577→  success: boolean;
+  1578→  objectiveCompleted: boolean;
+  1579→  objectiveKey: string;
+  1580→  questId?: string;
+  1581→  questCompleted: boolean;
+  1582→  objectiveRewardsExecuted: boolean;
+  1583→  questRewardsExecuted: boolean;
+  1584→  messages: string[];
+  1585→  errors: string[];
+  1586→}
+  1587→
+  1588→/**
+  1589→ * Interface for accessing quest data from store
+  1590→ */
+  1591→export interface QuestStoreAccessor {
+  1592→  getSessionQuests: (sessionId: string) => Array<{
+  1593→    templateId: string;
+  1594→    status: string;
+  1595→    objectives: Array<{
+  1596→      templateId: string;
+  1597→      currentCount: number;
+  1598→      isCompleted: boolean;
+  1599→    }>;
+  1600→  }>;
+  1601→  getTemplates: () => QuestTemplate[];
+  1602→  // Use progressQuestObjective (same path quest-detector uses for key-based completion)
+  1603→  progressQuestObjective: (
+  1604→    sessionId: string,
+  1605→    questTemplateId: string,
+  1606→    objectiveId: string,
+  1607→    amount?: number,
+  1608→    characterId?: string
+  1609→  ) => void;
+  1610→  addQuestNotification?: (notification: {
+  1611→    questId: string;
+  1612→    questTitle: string;
+  1613→    type: string;
+  1614→    message: string;
+  1615→  }) => void;
+  1616→}
+  1617→
+  1618→/**
+  1619→ * Activate an objective directly from a tool call.
+  1620→ * This executes the complete quest system flow:
+  1621→ * 1. Finds the objective by its completion key
+  1622→ * 2. Marks it as completed
+  1623→ * 3. Executes objective rewards (if any)
+  1624→ * 4. If all objectives complete, marks quest complete
+  1625→ * 5. Executes quest rewards (if any)
+  1626→ * 
+  1627→ * @param objectiveKey - The completion key of the objective (e.g., "psycompletado")
+  1628→ * @param storeAccessor - Access to store functions
+  1629→ * @param context - Execution context
+  1630→ * @param storeActions - Store actions for executing rewards
+  1631→ * @param rewardActions - Actions for executing rewards
+  1632→ * @returns Result of the activation
+  1633→ */
+  1634→export function activateObjectiveDirectly(
+  1635→  objectiveKey: string,
+  1636→  storeAccessor: QuestStoreAccessor,
+  1637→  context: {
+  1638→    sessionId: string;
+  1639→    characterId: string;
+  1640→    character?: CharacterCard | null;
+  1641→    allCharacters?: CharacterCard[];
+  1642→    sessionStats?: SessionStats;
+  1643→    timestamp: number;
+  1644→    soundCollections?: Array<{ name: string; path: string; files: string[] }>;
+  1645→    soundTriggers?: Array<{ id: string; name: string; keywords: string[]; collection: string; active: boolean; playMode?: string }>;
+  1646→    soundSequenceTriggers?: Array<{ id: string; name: string; active: boolean; activationKey?: string; sequence: string[]; volume?: number }>;
+  1647→    backgroundPacks?: Array<{ id: string; name: string; active: boolean; priority: number; items: Array<{ backgroundUrl: string; backgroundName: string; triggerKeys: string[]; enabled: boolean; overlays?: unknown[] }>; defaultOverlays?: unknown[]; defaultBackground?: string }>;
+  1648→    soundSettings?: { enabled: boolean; globalVolume: number };
+  1649→    backgroundSettings?: { transitionDuration: number; defaultTransitionType: string };
+  1650→  },
+  1651→  storeActions: RewardStoreActions,
+  1652→  rewardActions: {
+  1653→    updateCharacterStat: (
+  1654→      sessionId: string,
+  1655→      characterId: string,
+  1656→      attributeKey: string,
+  1657→      value: number | string,
+  1658→      reason?: 'llm_detection' | 'manual' | 'trigger' | 'initialization'
+  1659→    ) => void;
+  1660→    applyTriggerForCharacter: (characterId: string, hit: SpriteTriggerHit) => void;
+  1661→    scheduleReturnToIdleForCharacter?: (
+  1662→      characterId: string,
+  1663→      triggerSpriteUrl: string,
+  1664→      returnToMode: 'idle' | 'talk' | 'thinking' | 'clear',
+  1665→      returnSpriteUrl: string,
+  1666→      returnSpriteLabel: string | null,
+  1667→      returnToIdleMs: number
+  1668→    ) => void;
+  1669→    playSound?: (collection: string, filename: string, volume?: number) => void;
+  1670→    setBackground?: (url: string) => void;
+  1671→    setActiveOverlays?: (overlays: Array<{ url: string; position: string; opacity: number }>) => void;
+  1672→  }
+  1673→): DirectObjectiveActivationResult {
+  1674→  const messages: string[] = [];
+  1675→  const errors: string[] = [];
+  1676→  
+  1677→  try {
+  1678→    const { sessionId, characterId, character, allCharacters, sessionStats, timestamp } = context;
+  1679→    
+  1680→    // 1. Get active quests
+  1681→    const sessionQuests = storeAccessor.getSessionQuests(sessionId);
+  1682→    const activeQuests = sessionQuests.filter(q => 
+  1683→      q.status === 'active' || q.status === 'available'
+  1684→    );
+  1685→    
+  1686→    if (activeQuests.length === 0) {
+  1687→      errors.push('No hay misiones activas');
+  1688→      return {
+  1689→        success: false,
+  1690→        objectiveCompleted: false,
+  1691→        objectiveKey,
+  1692→        questCompleted: false,
+  1693→        objectiveRewardsExecuted: false,
+  1694→        questRewardsExecuted: false,
+  1695→        messages,
+  1696→        errors,
+  1697→      };
+  1698→    }
+  1699→    
+  1700→    // 2. Get templates
+  1701→    const templates = storeAccessor.getTemplates();
+  1702→    
+  1703→    // 3. Find the objective by its completion key
+  1704→    let foundObjective: {
+  1705→      quest: typeof activeQuests[0];
+  1706→      objective: QuestTemplate['objectives'][0];
+  1707→      template: QuestTemplate;
+  1708→    } | null = null;
+  1709→    
+  1710→    const normalizedKey = objectiveKey.toLowerCase().trim();
+  1711→    
+  1712→    for (const quest of activeQuests) {
+  1713→      const template = templates.find(t => t.id === quest.templateId);
+  1714→      if (!template) continue;
+  1715→      
+  1716→      for (const objective of template.objectives || []) {
+  1717→        // Check completion keys
+  1718→        const completionKeys = [
+  1719→          objective.completion?.key,
+  1720→          ...(objective.completion?.keys || [])
+  1721→        ].filter(Boolean);
+  1722→        
+  1723→        for (const key of completionKeys) {
+  1724→          if (
+  1725→            key?.toLowerCase().trim() === normalizedKey ||
+  1726→            key === `obj-${normalizedKey}` ||
+  1727→            key?.toLowerCase().includes(normalizedKey)
+  1728→          ) {
+  1729→            foundObjective = { quest, objective, template };
+  1730→            break;
+  1731→          }
+  1732→        }
+  1733→        
+  1734→        if (foundObjective) break;
+  1735→      }
+  1736→      if (foundObjective) break;
+  1737→    }
+  1738→    
+  1739→    if (!foundObjective) {
+  1740→      errors.push(`No se encontró objetivo con key: ${objectiveKey}`);
+  1741→      return {
+  1742→        success: false,
+  1743→        objectiveCompleted: false,
+  1744→        objectiveKey,
+  1745→        questCompleted: false,
+  1746→        objectiveRewardsExecuted: false,
+  1747→        questRewardsExecuted: false,
+  1748→        messages,
+  1749→        errors,
+  1750→      };
+  1751→    }
+  1752→    
+  1753→    const { quest, objective, template } = foundObjective;
+  1754→    
+  1755→    // 4. Check if already completed
+  1756→    const sessionObj = quest.objectives.find(o => o.templateId === objective.id);
+  1757→    if (sessionObj?.isCompleted) {
+  1758→      messages.push(`Objetivo "${objective.description}" ya estaba completado`);
+  1759→      return {
+  1760→        success: true,
+  1761→        objectiveCompleted: true,
+  1762→        objectiveKey,
+  1763→        questId: template.id,
+  1764→        questCompleted: quest.status === 'completed',
+  1765→        objectiveRewardsExecuted: false,
+  1766→        questRewardsExecuted: false,
+  1767→        messages,
+  1768→        errors,
+  1769→      };
+  1770→    }
+  1771→    
+  1772→    // 5. Complete the objective using progressQuestObjective (same path quest-detector uses)
+  1773→    console.log(`[activateObjectiveDirectly] Completing objective "${objective.description}" (${objective.id}) in quest "${template.name}"`);
+  1774→    storeAccessor.progressQuestObjective(sessionId, template.id, objective.id, 999, characterId);
+  1775→    messages.push(`✅ Objetivo completado: "${objective.description}"`);
+  1776→    
+  1777→    // 6. Check if quest was auto-completed
+  1778→    const updatedQuests = storeAccessor.getSessionQuests(sessionId);
+  1779→    const updatedQuest = updatedQuests.find(q => q.templateId === template.id);
+  1780→    const questCompleted = updatedQuest?.status === 'completed' ?? false;
+  1781→    
+  1782→    if (questCompleted) {
+  1783→      messages.push(`🏆 ¡Misión "${template.name}" completada!`);
+  1784→      // Quest rewards, chain activation, and notifications are all handled by the store
+  1785→    }
+  1786→    
+  1787→    console.log(`[activateObjectiveDirectly] Success! objective=${objective.description}, questCompleted=${questCompleted}`);
+  1788→    
+  1789→    return {
+  1790→      success: true,
+  1791→      objectiveCompleted: true,
+  1792→      objectiveKey,
+  1793→      questId: template.id,
+  1794→      questCompleted,
+  1795→      objectiveRewardsExecuted: true, // Store handles rewards
+  1796→      questRewardsExecuted: questCompleted, // Store handles rewards if completed
+  1797→      messages,
+  1798→      errors,
+  1799→    };
+  1800→    
+  1801→  } catch (error) {
+  1802→    const errorMsg = error instanceof Error ? error.message : String(error);
+  1803→    console.error(`[activateObjectiveDirectly] Error:`, error);
+  1804→    errors.push(`Error: ${errorMsg}`);
+  1805→    
+  1806→    return {
+  1807→      success: false,
+  1808→      objectiveCompleted: false,
+  1809→      objectiveKey,
+  1810→      questCompleted: false,
+  1811→      objectiveRewardsExecuted: false,
+  1812→      questRewardsExecuted: false,
+  1813→      messages,
+  1814→      errors,
+  1815→    };
+  1816→  }
+  1817→}
+  1818→

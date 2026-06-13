@@ -1,0 +1,2002 @@
+     1→'use client';
+     2→
+     3→import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+     4→import { useTavernStore } from '@/store/tavern-store';
+     5→import { ChatMessageBubble } from './chat-message';
+     6→import { Button } from '@/components/ui/button';
+     7→import { Textarea } from '@/components/ui/textarea';
+     8→import { ScrollArea } from '@/components/ui/scroll-area';
+     9→import { Slider } from '@/components/ui/slider';
+    10→import { Badge } from '@/components/ui/badge';
+    11→import { Input } from '@/components/ui/input';
+    12→import { Label } from '@/components/ui/label';
+    13→import { EmojiPicker } from './emoji-picker';
+    14→import { StreamingText } from './streaming-text';
+    15→import { useHotkeys, formatHotkey } from '@/hooks/use-hotkeys';
+    16→import {
+    17→  Send,
+    18→  Loader2,
+    19→  GripVertical,
+    20→  Settings,
+    21→  ChevronUp,
+    22→  ChevronDown,
+    23→  RotateCcw,
+    24→  Eraser,
+    25→  Users,
+    26→  RefreshCw,
+    27→  ChevronLeft,
+    28→  ChevronRight,
+    29→  Sparkles,
+    30→  Database,
+    31→  ScrollText,
+    32→  Check,
+    33→  Circle,
+    34→  Target,
+    35→  Inbox,
+    36→  MessageSquare,
+    37→  Clock,
+    38→  User,
+    39→  Gift,
+    40→  Star,
+    41→  Lock,
+    42→  Play,
+    43→  Pause,
+    44→  Zap,
+    45→  List,
+    46→  Shuffle,
+    47→  Mic,
+    48→  Square,
+    49→  Ear,
+    50→  Radio,
+    51→  Volume2,
+    52→  VolumeX,
+    53→  Brain,
+    54→  Trash2,
+    55→  Plus,
+    56→  ShoppingCart,
+    57→} from 'lucide-react';
+    58→import {
+    59→  Popover,
+    60→  PopoverContent,
+    61→  PopoverTrigger,
+    62→} from '@/components/ui/popover';
+    63→import {
+    64→  Dialog,
+    65→  DialogContent,
+    66→  DialogDescription,
+    67→  DialogFooter,
+    68→  DialogHeader,
+    69→  DialogTitle,
+    70→} from '@/components/ui/dialog';
+    71→import {
+    72→  Select,
+    73→  SelectContent,
+    74→  SelectItem,
+    75→  SelectTrigger,
+    76→  SelectValue,
+    77→} from '@/components/ui/select';
+    78→import { cn } from '@/lib/utils';
+    79→import { useIsMobile } from '@/hooks/use-mobile';
+    80→import type { ChatLayoutSettings, CharacterCard, CharacterGroup, Persona, ChatboxAppearanceSettings } from '@/types';
+    81→import { DEFAULT_CHATBOX_APPEARANCE, THEME_COLOR_PRESETS } from '@/types';
+    82→import { t } from '@/lib/i18n';
+    83→import { getItemTypeLabel, getRarityColor, getRarityBgColor } from '@/store/slices/inventorySlice';
+    84→import { QuickPetitions } from './user-solicitudes';
+    85→import { ThemeEffects, getThemeColors as getThemeColorsUtil } from './theme-effects';
+    86→import { useAudioRecorder, useAudioTranscription } from '@/hooks/use-audio-recorder';
+    87→import { useWakeWordDetection } from '@/hooks/use-wake-word-detection';
+    88→import { isGlobalMuted, setGlobalMuted } from '@/lib/audio/audio-mute-store';
+    89→import { pauseAllTimelines, resumeAllTimelines } from '@/hooks/use-timeline-sprite-sounds';
+    90→import { stopAllSoundTriggers } from '@/hooks/use-sound-triggers';
+    91→import { ttsService } from '@/lib/tts';
+    92→import { resolveTemplateVariables } from '@/lib/key-resolver';
+    93→import type { CharacterQuickReply, QuickReplyAttributeModifier, QuickReplySpriteActivation, SpritePackV2, TriggerCollection } from '@/types';
+    94→import { evaluatePackConditionalSprites, evaluateConditionalEntries } from '@/lib/sprites/condition-evaluator';
+    95→
+    96→// Tab type for the chatbox
+    97→type ChatboxTab = 'chat' | 'solicitudes' | 'misiones' | 'memorias' | 'tienda';
+    98→
+    99→interface NovelChatBoxProps {
+   100→  onSendMessage: (message: string) => void;
+   101→  isGenerating: boolean;
+   102→  /** Whether a proactive message is being generated (separate from isGenerating) */
+   103→  isGeneratingProactive?: boolean;
+   104→  onStopGeneration?: () => void;
+   105→  onResetChat?: () => void;
+   106→  onClearChat?: () => void;
+   107→  onRegenerate?: (messageId: string) => void;
+   108→  onEdit?: (messageId: string, newContent: string) => void;
+   109→  onReplay?: (messageId: string, content: string, characterId?: string) => void;
+   110→  onSpeak?: (messageId: string, content: string, characterId?: string) => void;
+   111→  streamingContent?: string;
+   112→  streamingCharacter?: CharacterCard | null;
+   113→  streamingProgress?: { current: number; total: number } | null;
+   114→  isGroupMode?: boolean;
+   115→  activeGroup?: CharacterGroup | null;
+   116→  activeCharacter?: CharacterCard | null;
+   117→  characters?: CharacterCard[];
+   118→  activePersona?: Persona | null;
+   119→  /** Whether TTS is currently playing audio (used to pause KWS during TTS) */
+   120→  ttsPlaying?: boolean;
+   121→  /** Whether memory extraction is currently running (triggers auto-refresh of memories tab) */
+   122→  memoryExtracting?: boolean;
+   123→  /** Current session ID for session-scoped memory namespaces */
+   124→  sessionId?: string;
+   125→}
+   126→
+   127→// Format memory date to relative time
+   128→function formatMemoryDate(date: Date): string {
+   129→  const now = new Date();
+   130→  const diff = now.getTime() - date.getTime();
+   131→  const minutes = Math.floor(diff / 60000);
+   132→  if (minutes < 1) return 'Ahora';
+   133→  if (minutes < 60) return `Hace ${minutes}m`;
+   134→  const hours = Math.floor(minutes / 60);
+   135→  if (hours < 24) return `Hace ${hours}h`;
+   136→  const days = Math.floor(hours / 24);
+   137→  if (days < 7) return `Hace ${days}d`;
+   138→  return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+   139→}
+   140→
+   141→// Memory type labels and colors (outside component to avoid re-creation)
+   142→const MEMORY_TYPE_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
+   143→  hecho: { label: 'Hecho', color: 'text-blue-400', bgColor: 'bg-blue-500/20' },
+   144→  evento: { label: 'Evento', color: 'text-amber-400', bgColor: 'bg-amber-500/20' },
+   145→  relacion: { label: 'Relación', color: 'text-pink-400', bgColor: 'bg-pink-500/20' },
+   146→  preferencia: { label: 'Preferencia', color: 'text-green-400', bgColor: 'bg-green-500/20' },
+   147→  secreto: { label: 'Secreto', color: 'text-violet-400', bgColor: 'bg-violet-500/20' },
+   148→  otro: { label: 'Otro', color: 'text-gray-400', bgColor: 'bg-gray-500/20' },
+   149→};
+   150→
+   151→// Memory item component (outside main component for stable identity)
+   152→function MemoryItem({ memory, onDelete }: {
+   153→  memory: { id: string; content: string; namespace: string; metadata: Record<string, any>; created_at: string };
+   154→  onDelete: (id: string) => void;
+   155→}) {
+   156→  const memType = memory.metadata?.memory_type || 'otro';
+   157→  const typeConfig = MEMORY_TYPE_CONFIG[memType] || MEMORY_TYPE_CONFIG.otro;
+   158→  const importance = memory.metadata?.importance || 3;
+   159→  const isConsolidated = memory.metadata?.is_consolidated;
+   160→  const createdDate = memory.created_at ? new Date(memory.created_at) : null;
+   161→
+   162→  return (
+   163→    <div className="group flex items-start gap-2 p-2 rounded-md bg-white/5 hover:bg-white/10 transition-colors">
+   164→      {/* Type indicator bar */}
+   165→      <div className={cn("w-1 h-full min-h-[2rem] rounded-full flex-shrink-0 mt-0.5", typeConfig.bgColor.replace('/20', '/60'))} />
+   166→
+   167→      <div className="flex-1 min-w-0">
+   168→        {/* Top row: type badge + importance + date */}
+   169→        <div className="flex items-center gap-1.5 mb-1">
+   170→          <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", typeConfig.bgColor, typeConfig.color)}>
+   171→            {typeConfig.label}
+   172→          </span>
+   173→          {/* Importance stars */}
+   174→          <span className="text-[10px] text-amber-400">
+   175→            {'★'.repeat(Math.min(importance, 5))}{'☆'.repeat(Math.max(0, 5 - importance))}
+   176→          </span>
+   177→          {isConsolidated && (
+   178→            <span className="text-[9px] text-cyan-400 bg-cyan-500/20 px-1 py-0.5 rounded">
+   179→              Consolidada
+   180→            </span>
+   181→          )}
+   182→          <span className="text-[9px] text-muted-foreground ml-auto">
+   183→            {createdDate ? formatMemoryDate(createdDate) : ''}
+   184→          </span>
+   185→        </div>
+   186→
+   187→        {/* Memory content */}
+   188→        <p className="text-xs leading-relaxed text-foreground/90 line-clamp-3">
+   189→          {memory.content}
+   190→        </p>
+   191→      </div>
+   192→
+   193→      {/* Delete button (appears on hover) */}
+   194→      <button
+   195→        onClick={() => onDelete(memory.id)}
+   196→        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-500/20 text-muted-foreground hover:text-red-400 flex-shrink-0"
+   197→        title="Eliminar memoria"
+   198→      >
+   199→        <Trash2 className="w-3 h-3" />
+   200→      </button>
+   201→    </div>
+   202→  );
+   203→}
+   204→
+   205→export function NovelChatBox({
+   206→  onSendMessage,
+   207→  isGenerating,
+   208→  isGeneratingProactive = false,
+   209→  onStopGeneration,
+   210→  onResetChat,
+   211→  onClearChat,
+   212→  onRegenerate,
+   213→  onEdit,
+   214→  onReplay,
+   215→  onSpeak,
+   216→  streamingContent = '',
+   217→  streamingCharacter = null,
+   218→  streamingProgress = null,
+   219→  isGroupMode = false,
+   220→  activeGroup = null,
+   221→  activeCharacter = null,
+   222→  characters = [],
+   223→  activePersona = null,
+   224→  ttsPlaying = false,
+   225→  memoryExtracting = false,
+   226→  sessionId,
+   227→}: NovelChatBoxProps) {
+   228→  const [input, setInput] = useState('');
+   229→  // Global audio mute state
+   230→  const [globalMuted, setGlobalMutedState] = useState(false);
+   231→
+   232→  // Combined generation state: either regular or proactive generation is active
+   233→  const isAnyGenerating = isGenerating || isGeneratingProactive;
+   234→
+   235→  const [isDragging, setIsDragging] = useState(false);
+   236→  const [isResizing, setIsResizing] = useState(false);
+   237→  const isMobile = useIsMobile();
+   238→  const [showSettings, setShowSettings] = useState(false);
+   239→  const [showVariables, setShowVariables] = useState(false);
+   240→  const [isCollapsed, setIsCollapsed] = useState(false);
+   241→  const [activeTab, setActiveTab] = useState<ChatboxTab>('chat');
+   242→  const [showAvailableQuests, setShowAvailableQuests] = useState(false);
+   243→  const [showAutoQuestConfig, setShowAutoQuestConfig] = useState(false);
+   244→  const [expandedQuestId, setExpandedQuestId] = useState<string | null>(null);
+   245→  
+   246→  // Memories tab state
+   247→  const [memoriesLoading, setMemoriesLoading] = useState(false);
+   248→  const [memories, setMemories] = useState<Array<{
+   249→    id: string;
+   250→    content: string;
+   251→    namespace: string;
+   252→    metadata: Record<string, any>;
+   253→    created_at: string;
+   254→  }>>([]);
+   255→  const [memoriesLoaded, setMemoriesLoaded] = useState(false);
+   256→  
+   257→  // Add memory dialog state
+   258→  const [addMemoryOpen, setAddMemoryOpen] = useState(false);
+   259→  const [addMemoryContent, setAddMemoryContent] = useState('');
+   260→  const [addMemoryType, setAddMemoryType] = useState<string>('hecho');
+   261→  const [addMemoryImportance, setAddMemoryImportance] = useState<number>(3);
+   262→  const [addMemoryCharacterId, setAddMemoryCharacterId] = useState<string>('');
+   263→  const [addingMemory, setAddingMemory] = useState(false);
+   264→  
+   265→  const containerRef = useRef<HTMLDivElement>(null);
+   266→  const scrollRef = useRef<HTMLDivElement>(null);
+   267→  const textareaRef = useRef<HTMLTextAreaElement>(null);
+   268→  const messagesEndRef = useRef<HTMLDivElement>(null);
+   269→  const dragStartRef = useRef({ x: 0, y: 0, left: 0, top: 0 });
+   270→  const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
+   271→
+   272→  const {
+   273→    activeSessionId,
+   274→    getActiveSession,
+   275→    settings,
+   276→    updateSettings,
+   277→    deleteMessage,
+   278→    swipeMessage,
+   279→    getSwipeCount,
+   280→    characters: allCharacters,
+   281→    questTemplates,
+   282→    questSettings,
+   283→    activateUserPeticion,
+   284→    getPendingUserSolicitudes,
+   285→    acceptUserSolicitud,
+   286→    rejectUserSolicitud,
+   287→    activateQuest,
+   288→    deactivateQuest,
+   289→    setQuestSettings,
+   290→    items,
+   291→    purchaseItem,
+   292→    getShopItems,
+   293→    batchUpdateCharacterStats,
+   294→    getAttributeValue,
+   295→  } = useTavernStore();
+   296→
+   297→  // ASR config state (loaded from API)
+   298→  const [asrConfig, setAsrConfig] = useState<{
+   299→    model: string;
+   300→    language: string;
+   301→    enabled: boolean;
+   302→  }>({
+   303→    model: 'whisper-small',
+   304→    language: 'es',
+   305→    enabled: true,
+   306→  });
+   307→
+   308→  // KWS config state
+   309→  const [kwsConfig, setKwsConfig] = useState<{
+   310→    enabled: boolean;
+   311→    language: string;
+   312→    sensitivity: 'low' | 'medium' | 'high';
+   313→    cooldownMs: number;
+   314→    silenceDurationMs: number;
+   315→    wakeWords: string[];
+   316→  }>({
+   317→    enabled: false,
+   318→    language: 'es-ES',
+   319→    sensitivity: 'medium',
+   320→    cooldownMs: 2000,
+   321→    silenceDurationMs: 1500,
+   322→    wakeWords: [],
+   323→  });
+   324→
+   325→  // Get wake words from active character OR group members + global config
+   326→  const characterWakeWords = useMemo(() => {
+   327→    const words: string[] = [];
+   328→    
+   329→    if (isGroupMode && activeGroup && characters.length > 0) {
+   330→      // GROUP MODE: Add all group members' names as wake words
+   331→      // This allows the user to address any character in the group
+   332→      const groupCharacterIds = activeGroup.members?.map(m => m.characterId) || activeGroup.characterIds || [];
+   333→      
+   334→      for (const charId of groupCharacterIds) {
+   335→        const char = characters.find(c => c.id === charId);
+   336→        if (char?.name) {
+   337→          words.push(char.name);
+   338→          // Add alternate names if available
+   339→          if (char.data?.alternate_names) {
+   340→            words.push(...char.data.alternate_names);
+   341→          }
+   342→        }
+   343→      }
+   344→      
+   345→      console.log('[KWS] Group mode - wake words:', words);
+   346→    } else if (activeCharacter?.name) {
+   347→      // SINGLE CHARACTER MODE: Add only the active character's name
+   348→      words.push(activeCharacter.name);
+   349→      // Add alternate names if available
+   350→      if (activeCharacter.data?.alternate_names) {
+   351→        words.push(...activeCharacter.data.alternate_names);
+   352→      }
+   353→      
+   354→      console.log('[KWS] Single mode - wake words:', words);
+   355→    }
+   356→    
+   357→    // Add global wake words from config (case-preserved, comparison is case-insensitive)
+   358→    if (kwsConfig.wakeWords && kwsConfig.wakeWords.length > 0) {
+   359→      words.push(...kwsConfig.wakeWords);
+   360→    }
+   361→    
+   362→    // Remove duplicates
+   363→    return [...new Set(words)];
+   364→  }, [isGroupMode, activeGroup, activeCharacter, characters, kwsConfig.wakeWords]);
+   365→
+   366→  // Wake Word Detection hook - Uses only Web Speech API (no Whisper needed)
+   367→  const {
+   368→    isListening: kwsListening,
+   369→    isCapturing: kwsCapturing,
+   370→    isPausedByTTS: kwsPausedByTTS,
+   371→    transcript: kwsTranscript,
+   372→    capturedMessage: kwsCapturedMessage,
+   373→    lastDetectedWord: kwsLastDetectedWord,
+   374→    error: kwsError,
+   375→    startListening: startKWS,
+   376→    stopListening: stopKWS,
+   377→  } = useWakeWordDetection({
+   378→    wakeWords: characterWakeWords,
+   379→    language: kwsConfig.language,
+   380→    silenceDurationMs: kwsConfig.silenceDurationMs,
+   381→    cooldownMs: kwsConfig.cooldownMs,
+   382→    ttsPlaying,
+   383→    onTranscriptUpdate: (transcript, isCapturing) => {
+   384→      console.log('[KWS] Transcript:', transcript, 'Capturing:', isCapturing);
+   385→    },
+   386→    onWakeWordDetected: (word) => {
+   387→      console.log('[KWS] Wake word detected:', word);
+   388→    },
+   389→    onMessageReady: (message, detectedWakeWord) => {
+   390→      // Message captured and silence detected - send automatically!
+   391→      console.log('[KWS] ✅ Message ready to send:', message, 'wake word:', detectedWakeWord);
+   392→      if (message.trim()) {
+   393→        // In group mode, prepend the detected wake word so the backend
+   394→        // can detect which character was mentioned
+   395→        if (isGroupMode && detectedWakeWord) {
+   396→          const messageWithWakeWord = `${detectedWakeWord} ${message.trim()}`;
+   397→          console.log('[KWS] Group mode - sending with wake word:', messageWithWakeWord);
+   398→          onSendMessage(messageWithWakeWord);
+   399→        } else {
+   400→          // Single mode - send message as-is
+   401→          onSendMessage(message.trim());
+   402→        }
+   403→      }
+   404→    },
+   405→  });
+   406→
+   407→  // Derive KWS active state: true when listening or paused by TTS
+   408→  const kwsActive = kwsListening || kwsPausedByTTS;
+   409→
+   410→  // Load ASR/KWS config on mount
+   411→  useEffect(() => {
+   412→    const loadAsrConfig = async () => {
+   413→      try {
+   414→        const response = await fetch('/api/tts/config');
+   415→        if (response.ok) {
+   416→          const data = await response.json();
+   417→          if (data.config?.asr) {
+   418→            setAsrConfig({
+   419→              model: data.config.asr.model || 'whisper-small',
+   420→              language: data.config.asr.language || 'es',
+   421→              enabled: data.config.asr.enabled ?? true,
+   422→            });
+   423→          }
+   424→          // Load KWS config
+   425→          if (data.config?.kws) {
+   426→            setKwsConfig(prev => ({
+   427→              ...prev,
+   428→              enabled: data.config.kws.enabled ?? false,
+   429→              language: data.config.kws.language || 'es-ES',
+   430→              sensitivity: data.config.kws.sensitivity || 'medium',
+   431→              cooldownMs: data.config.kws.cooldownMs || 2000,
+   432→              silenceDurationMs: data.config.vad?.silenceDurationMs || 1500,
+   433→              wakeWords: data.config.kws.wakeWords || [],
+   434→            }));
+   435→          }
+   436→        }
+   437→      } catch (error) {
+   438→        console.error('[NovelChatBox] Failed to load ASR config:', error);
+   439→      }
+   440→    };
+   441→    loadAsrConfig();
+   442→  }, []);
+   443→
+   444→  // Handle KWS toggle
+   445→  const handleKWSToggle = useCallback(async () => {
+   446→    if (kwsActive) {
+   447→      stopKWS();
+   448→    } else {
+   449→      await startKWS();
+   450→    }
+   451→  }, [kwsActive, startKWS, stopKWS]);
+   452→
+   453→  // Audio recording hooks
+   454→  const { transcribe, isTranscribing } = useAudioTranscription();
+   455→  
+   456→  const {
+   457→    isRecording,
+   458→    duration: recordingDuration,
+   459→    startRecording,
+   460→    stopRecording,
+   461→    audioBase64,
+   462→    reset: resetRecording,
+   463→    error: recordingError,
+   464→    permissionStatus,
+   465→    requestPermission,
+   466→    resetError,
+   467→  } = useAudioRecorder({
+   468→    maxDuration: 60000, // 60 seconds max
+   469→    onError: (error) => {
+   470→      console.error('[NovelChatBox] Recording error:', error);
+   471→    },
+   472→  });
+   473→
+   474→  // Handle recording button click
+   475→  const handleRecordingClick = useCallback(async () => {
+   476→    if (isRecording) {
+   477→      stopRecording();
+   478→    } else if (permissionStatus === 'denied') {
+   479→      // Try to request permission again
+   480→      resetError();
+   481→      const granted = await requestPermission();
+   482→      if (!granted) {
+   483→        console.error('[NovelChatBox] Permission still denied');
+   484→      }
+   485→    } else {
+   486→      const success = await startRecording();
+   487→      if (!success) {
+   488→        console.error('[NovelChatBox] Failed to start recording');
+   489→      }
+   490→    }
+   491→  }, [isRecording, startRecording, stopRecording, permissionStatus, requestPermission, resetError]);
+   492→
+   493→  // Show recording error feedback
+   494→  useEffect(() => {
+   495→    if (recordingError) {
+   496→      // Could show toast here if available
+   497→      console.error('[NovelChatBox] Recording error:', recordingError);
+   498→    }
+   499→  }, [recordingError]);
+   500→
+   501→  const activeSession = getActiveSession();
+   502→  const layout = settings.chatLayout;
+   503→  const hotkeys = settings.hotkeys;
+   504→
+   505→  // Get appearance settings
+   506→  const appearance = settings.chatboxAppearance || DEFAULT_CHATBOX_APPEARANCE;
+   507→  const safeAppearance = useMemo(() => ({
+   508→    ...DEFAULT_CHATBOX_APPEARANCE,
+   509→    ...appearance,
+   510→    enableAnimations: appearance?.enableAnimations ?? DEFAULT_CHATBOX_APPEARANCE.enableAnimations,
+   511→    enableParticles: appearance?.enableParticles ?? DEFAULT_CHATBOX_APPEARANCE.enableParticles,
+   512→    animationIntensity: appearance?.animationIntensity ?? DEFAULT_CHATBOX_APPEARANCE.animationIntensity,
+   513→    background: { ...DEFAULT_CHATBOX_APPEARANCE.background, ...appearance?.background },
+   514→    font: { ...DEFAULT_CHATBOX_APPEARANCE.font, ...appearance?.font },
+   515→    textFormatting: { ...DEFAULT_CHATBOX_APPEARANCE.textFormatting, ...appearance?.textFormatting },
+   516→    textColors: { ...DEFAULT_CHATBOX_APPEARANCE.textColors, ...appearance?.textColors },
+   517→    bubbles: { ...DEFAULT_CHATBOX_APPEARANCE.bubbles, ...appearance?.bubbles },
+   518→    avatars: { ...DEFAULT_CHATBOX_APPEARANCE.avatars, ...appearance?.avatars },
+   519→    streaming: { ...DEFAULT_CHATBOX_APPEARANCE.streaming, ...appearance?.streaming },
+   520→    input: { ...DEFAULT_CHATBOX_APPEARANCE.input, ...appearance?.input },
+   521→  }), [appearance]);
+   522→
+   523→  // Helper function to convert hex color to rgba with transparency
+   524→  const hexToRgba = useCallback((hex: string, alpha: number): string => {
+   525→    const cleanHex = hex.replace('#', '');
+   526→    const r = parseInt(cleanHex.substring(0, 2), 16);
+   527→    const g = parseInt(cleanHex.substring(2, 4), 16);
+   528→    const b = parseInt(cleanHex.substring(4, 6), 16);
+   529→    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+   530→  }, []);
+   531→
+   532→  // Get session stats for the variables panel
+   533→  const sessionStats = activeSession?.sessionStats;
+   534→  
+   535→  // Get session quests for the quests panel
+   536→  const sessionQuests = activeSession?.sessionQuests || [];
+   537→
+   538→  // Determine display name for header
+   539→  const headerName = isGroupMode 
+   540→    ? activeGroup?.name || t('chat.groupTitle')
+   541→    : activeCharacter?.name || t('chat.title');
+   542→
+   543→  // Auto-scroll to bottom when new messages arrive or during streaming
+   544→  useEffect(() => {
+   545→    if (settings.autoScroll && messagesEndRef.current && activeTab === 'chat') {
+   546→      messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+   547→    }
+   548→  }, [activeSession?.messages, settings.autoScroll, isAnyGenerating, streamingContent, activeTab]);
+   549→
+   550→  // Auto-resize textarea
+   551→  useEffect(() => {
+   552→    if (textareaRef.current) {
+   553→      textareaRef.current.style.height = 'auto';
+   554→      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
+   555→    }
+   556→  }, [input]);
+   557→
+   558→  // Handle transcription when audio is ready
+   559→  useEffect(() => {
+   560→    if (!audioBase64 || isTranscribing) return;
+   561→
+   562→    const processTranscription = async () => {
+   563→      console.log('[NovelChatBox] Processing transcription with model:', asrConfig.model);
+   564→      const result = await transcribe(audioBase64, {
+   565→        model: asrConfig.model,
+   566→        language: asrConfig.language,
+   567→      });
+   568→
+   569→      if (result?.text) {
+   570→        // Set the transcribed text as input
+   571→        setInput(result.text);
+   572→        // Focus the textarea so user can edit if needed
+   573→        textareaRef.current?.focus();
+   574→      }
+   575→
+   576→      // Reset recording state
+   577→      resetRecording();
+   578→    };
+   579→
+   580→    processTranscription();
+   581→  }, [audioBase64, isTranscribing, transcribe, resetRecording, asrConfig]);
+   582→
+   583→  // Handle recording error
+   584→  useEffect(() => {
+   585→    if (recordingError) {
+   586→      console.error('[NovelChatBox] Recording error:', recordingError);
+   587→    }
+   588→  }, [recordingError]);
+   589→
+   590→  const updateLayout = useCallback((updates: Partial<ChatLayoutSettings>) => {
+   591→    updateSettings({
+   592→      chatLayout: {
+   593→        ...layout,
+   594→        ...updates
+   595→      }
+   596→    });
+   597→  }, [layout, updateSettings]);
+   598→
+   599→  // Drag handlers
+   600→  const handleDragStart = (e: React.MouseEvent) => {
+   601→    if (isCollapsed || isMobile) return;
+   602→    e.preventDefault();
+   603→    setIsDragging(true);
+   604→    dragStartRef.current = {
+   605→      x: e.clientX,
+   606→      y: e.clientY,
+   607→      left: layout.chatX,
+   608→      top: layout.chatY
+   609→    };
+   610→  };
+   611→
+   612→  useEffect(() => {
+   613→    if (!isDragging) return;
+   614→
+   615→    const handleDragMove = (e: MouseEvent) => {
+   616→      const container = containerRef.current?.parentElement;
+   617→      if (!container) return;
+   618→
+   619→      const rect = container.getBoundingClientRect();
+   620→      const deltaX = ((e.clientX - dragStartRef.current.x) / rect.width) * 100;
+   621→      const deltaY = ((e.clientY - dragStartRef.current.y) / rect.height) * 100;
+   622→
+   623→      let newX = dragStartRef.current.left + deltaX;
+   624→      let newY = dragStartRef.current.top + deltaY;
+   625→
+   626→      // Constrain to container bounds
+   627→      const halfWidth = layout.chatWidth / 2;
+   628→      const halfHeight = layout.chatHeight / 2;
+   629→      newX = Math.max(halfWidth, Math.min(100 - halfWidth, newX));
+   630→      newY = Math.max(halfHeight, Math.min(100 - halfHeight, newY));
+   631→
+   632→      updateLayout({ chatX: newX, chatY: newY });
+   633→    };
+   634→
+   635→    const handleDragEnd = () => {
+   636→      setIsDragging(false);
+   637→    };
+   638→
+   639→    document.addEventListener('mousemove', handleDragMove);
+   640→    document.addEventListener('mouseup', handleDragEnd);
+   641→
+   642→    return () => {
+   643→      document.removeEventListener('mousemove', handleDragMove);
+   644→      document.removeEventListener('mouseup', handleDragEnd);
+   645→    };
+   646→  }, [isDragging, layout.chatWidth, layout.chatHeight, updateLayout]);
+   647→
+   648→  // Resize handlers
+   649→  const handleResizeStart = (e: React.MouseEvent) => {
+   650→    if (isCollapsed || isMobile) return;
+   651→    e.preventDefault();
+   652→    e.stopPropagation();
+   653→    setIsResizing(true);
+   654→    resizeStartRef.current = {
+   655→      x: e.clientX,
+   656→      y: e.clientY,
+   657→      width: layout.chatWidth,
+   658→      height: layout.chatHeight
+   659→    };
+   660→  };
+   661→
+   662→  useEffect(() => {
+   663→    if (!isResizing) return;
+   664→
+   665→    const handleResizeMove = (e: MouseEvent) => {
+   666→      const container = containerRef.current?.parentElement;
+   667→      if (!container) return;
+   668→
+   669→      const rect = container.getBoundingClientRect();
+   670→      const deltaX = ((e.clientX - resizeStartRef.current.x) / rect.width) * 100;
+   671→      const deltaY = ((e.clientY - resizeStartRef.current.y) / rect.height) * 100;
+   672→
+   673→      let newWidth = Math.max(25, Math.min(90, resizeStartRef.current.width + deltaX * 2));
+   674→      let newHeight = Math.max(30, Math.min(90, resizeStartRef.current.height + deltaY * 2));
+   675→
+   676→      updateLayout({ chatWidth: newWidth, chatHeight: newHeight });
+   677→    };
+   678→
+   679→    const handleResizeEnd = () => {
+   680→      setIsResizing(false);
+   681→    };
+   682→
+   683→    document.addEventListener('mousemove', handleResizeMove);
+   684→    document.addEventListener('mouseup', handleResizeEnd);
+   685→
+   686→    return () => {
+   687→      document.removeEventListener('mousemove', handleResizeMove);
+   688→      document.removeEventListener('mouseup', handleResizeEnd);
+   689→    };
+   690→  }, [isResizing, updateLayout]);
+   691→
+   692→  // Toggle global audio mute
+   693→  const handleGlobalMuteToggle = useCallback(() => {
+   694→    const newMuted = !globalMuted;
+   695→    setGlobalMutedState(newMuted);
+   696→    setGlobalMuted(newMuted);
+   697→    if (newMuted) {
+   698→      // Stop any currently playing TTS when muting
+   699→      try { ttsService.stop(); } catch { /* ignore */ }
+   700→      // Pause ALL sprite timeline sounds and haptic tracks (can be resumed on unmute)
+   701→      pauseAllTimelines();
+   702→      // Stop ALL keyword-triggered sound queue playback
+   703→      stopAllSoundTriggers();
+   704→    } else {
+   705→      // Resume sprite timeline sounds and haptic tracks when unmuting
+   706→      resumeAllTimelines();
+   707→    }
+   708→  }, [globalMuted]);
+   709→
+   710→  const handleSend = () => {
+   711→    if (!input.trim() || isAnyGenerating) return;
+   712→    onSendMessage(input.trim());
+   713→    setInput('');
+   714→  };
+   715→
+   716→  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+   717→    const sendKey = hotkeys.send || 'Enter';
+   718→    const newLineKey = hotkeys.newLine || 'Shift+Enter';
+   719→    
+   720→    // Check if this is the send hotkey
+   721→    const isSendKey = sendKey.toLowerCase() === 'enter' && e.key === 'Enter' && !e.shiftKey;
+   722→    const isNewLineKey = newLineKey.toLowerCase() === 'shift+enter' && e.key === 'Enter' && e.shiftKey;
+   723→    
+   724→    if (isSendKey) {
+   725→      e.preventDefault();
+   726→      handleSend();
+   727→    } else if (isNewLineKey) {
+   728→      // Let the default behavior (new line) happen
+   729→      return;
+   730→    }
+   731→  };
+   732→
+   733→  // Hotkeys for regenerate and swipe (global)
+   734→  useHotkeys(hotkeys, {
+   735→    onRegenerate: () => {
+   736→      if (!isAnyGenerating && activeSession && activeSession.messages.length > 0) {
+   737→        // Get last assistant message
+   738→        const lastAssistantMsg = [...activeSession.messages].reverse().find(m => m.role === 'assistant' && !m.isDeleted);
+   739→        if (lastAssistantMsg) {
+   740→          // Trigger regenerate by deleting and resending
+   741→          deleteMessage(activeSessionId!, lastAssistantMsg.id);
+   742→          setInput('');
+   743→        }
+   744→      }
+   745→    },
+   746→    onSwipeLeft: () => {
+   747→      // Could be used for message swiping in future
+   748→    },
+   749→    onSwipeRight: () => {
+   750→      // Could be used for message swiping in future
+   751→    }
+   752→  }, !isAnyGenerating);
+   753→
+   754→  // Apply attribute modifiers from a quick reply
+   755→  const applyQuickReplyModifiers = (modifiers: QuickReplyAttributeModifier[]) => {
+   756→    if (!activeSessionId || !activeCharacter?.id || modifiers.length === 0) return;
+   757→    const attributes = activeCharacter.statsConfig?.attributes || [];
+   758→    
+   759→    const updates: Array<{ attributeKey: string; value: number | string }> = [];
+   760→    
+   761→    for (const mod of modifiers) {
+   762→      const attr = attributes.find((a) => a.key === mod.attributeKey);
+   763→      if (!attr) continue;
+   764→      
+   765→      const currentValue = getAttributeValue(activeSessionId, activeCharacter.id, mod.attributeKey);
+   766→      const isNumeric = attr.type === 'number';
+   767→      
+   768→      if (isNumeric) {
+   769→        const current = typeof currentValue === 'number' ? currentValue : parseFloat(String(currentValue)) || 0;
+   770→        const modValue = typeof mod.value === 'number' ? mod.value : parseFloat(String(mod.value)) || 0;
+   771→        let newValue: number;
+   772→        
+   773→        switch (mod.operation) {
+   774→          case 'set': newValue = modValue; break;
+   775→          case 'add': newValue = current + modValue; break;
+   776→          case 'subtract': newValue = current - modValue; break;
+   777→          case 'multiply': newValue = current * modValue; break;
+   778→          case 'divide': newValue = modValue !== 0 ? current / modValue : current; break;
+   779→          default: newValue = current;
+   780→        }
+   781→        
+   782→        // Clamp to min/max
+   783→        if (attr.min !== undefined && newValue < attr.min) newValue = attr.min;
+   784→        if (attr.max !== undefined && newValue > attr.max) newValue = attr.max;
+   785→        
+   786→        updates.push({ attributeKey: mod.attributeKey, value: newValue });
+   787→      } else {
+   788→        // Text/keyword: only 'set' operation makes sense
+   789→        updates.push({ attributeKey: mod.attributeKey, value: String(mod.value) });
+   790→      }
+   791→    }
+   792→    
+   793→    if (updates.length > 0) {
+   794→      batchUpdateCharacterStats(activeSessionId, activeCharacter.id, updates, 'manual');
+   795→    }
+   796→  };
+   797→
+   798→  // Activate sprite from a quick reply
+   799→  const activateQuickReplySprite = (activation: QuickReplySpriteActivation) => {
+   800→    if (!activeCharacter?.id || !activeSessionId) return;
+   801→
+   802→    const characterId = activeCharacter.id;
+   803→
+   804→    // Get current session stats (AFTER modifiers have been applied)
+   805→    const session = getActiveSession(activeSessionId);
+   806→    const sessionStats = session?.sessionStats || null;
+   807→
+   808→    if (activation.mode === 'trigger_collection') {
+   809→      // Find the trigger collection
+   810→      const collections = activeCharacter.triggerCollections || [];
+   811→      const collection = collections.find((c: TriggerCollection) => c.id === activation.targetId);
+   812→      if (!collection) {
+   813→        console.warn('[QuickReply] TriggerCollection not found:', activation.targetId);
+   814→        return;
+   815→      }
+   816→
+   817→      // Find the pack referenced by the collection
+   818→      const packs = activeCharacter.spritePacksV2 || [];
+   819→      const pack = packs.find((p: SpritePackV2) => p.id === collection.packId);
+   820→      if (!pack) {
+   821→        console.warn('[QuickReply] SpritePackV2 not found for collection:', collection.packId);
+   822→        return;
+   823→      }
+   824→
+   825→      // Determine which sprite to show
+   826→      let spriteUrl: string | null = null;
+   827→      let spriteLabel: string | null = null;
+   828→
+   829→      // If collection has conditional mode, evaluate conditions
+   830→      if (collection.conditionalMode && collection.conditionalEntries && collection.conditionalEntries.length > 0) {
+   831→        const winner = evaluateConditionalEntries(collection.conditionalEntries, sessionStats, characterId);
+   832→        if (winner) {
+   833→          const sprite = pack.sprites.find((s: any) => s.id === winner.spriteId);
+   834→          if (sprite) {
+   835→            spriteUrl = sprite.url;
+   836→            spriteLabel = sprite.label;
+   837→          }
+   838→        }
+   839→      }
+   840→
+   841→      // If pack has conditional mode and no sprite from collection conditions
+   842→      if (!spriteUrl && pack.conditionalMode) {
+   843→        const winner = evaluatePackConditionalSprites(pack.sprites, sessionStats, characterId);
+   844→        if (winner) {
+   845→          spriteUrl = winner.url;
+   846→          spriteLabel = winner.label;
+   847→        }
+   848→      }
+   849→
+   850→      // Fallback: use principal sprite or first sprite
+   851→      if (!spriteUrl) {
+   852→        const principalId = collection.principalSpriteId;
+   853→        if (principalId) {
+   854→          const sprite = pack.sprites.find((s: any) => s.id === principalId);
+   855→          if (sprite) {
+   856→            spriteUrl = sprite.url;
+   857→            spriteLabel = sprite.label;
+   858→          }
+   859→        }
+   860→        if (!spriteUrl && pack.sprites.length > 0) {
+   861→          spriteUrl = pack.sprites[0].url;
+   862→          spriteLabel = pack.sprites[0].label;
+   863→        }
+   864→      }
+   865→
+   866→      if (!spriteUrl) return;
+   867→
+   868→      // Apply the trigger sprite
+   869→      const store = useTavernStore.getState();
+   870→      store.applyTriggerForCharacter(characterId, {
+   871→        packId: pack.id,
+   872→        collectionId: collection.id,
+   873→        spriteUrl,
+   874→        spriteLabel,
+   875→        returnToIdleMs: activation.fallbackDelayMs,
+   876→        useTimelineSounds: collection.useTimelineSounds,
+   877→      });
+   878→
+   879→      // Schedule fallback
+   880→      if (activation.fallbackDelayMs > 0) {
+   881→        // Resolve fallback sprite URL
+   882→        let returnSpriteUrl = '';
+   883→        let returnSpriteLabel: string | null = null;
+   884→
+   885→        if (activation.fallbackMode === 'idle_collection') {
+   886→          // Return to idle state (clear trigger, let state logic take over)
+   887→          returnSpriteUrl = '';
+   888→        } else if (activation.fallbackMode === 'custom_sprite' && activation.fallbackSpriteId) {
+   889→          const sprite = pack.sprites.find((s: any) => s.id === activation.fallbackSpriteId);
+   890→          if (sprite) {
+   891→            returnSpriteUrl = sprite.url;
+   892→            returnSpriteLabel = sprite.label;
+   893→          }
+   894→        } else if (activation.fallbackMode === 'collection_default') {
+   895→          const principalId = collection.principalSpriteId;
+   896→          if (principalId) {
+   897→            const sprite = pack.sprites.find((s: any) => s.id === principalId);
+   898→            if (sprite) {
+   899→              returnSpriteUrl = sprite.url;
+   900→              returnSpriteLabel = sprite.label;
+   901→            }
+   902→          }
+   903→        }
+   904→
+   905→        const returnToMode = activation.fallbackMode === 'idle_collection' ? 'clear' : 'idle';
+   906→        store.scheduleReturnToIdleForCharacter(
+   907→          characterId,
+   908→          spriteUrl,
+   909→          returnToMode,
+   910→          returnSpriteUrl,
+   911→          returnSpriteLabel,
+   912→          activation.fallbackDelayMs
+   913→        );
+   914→      }
+   915→
+   916→    } else if (activation.mode === 'sprite_pack') {
+   917→      // Find the sprite pack directly
+   918→      const packs = activeCharacter.spritePacksV2 || [];
+   919→      const pack = packs.find((p: SpritePackV2) => p.id === activation.targetId);
+   920→      if (!pack) {
+   921→        console.warn('[QuickReply] SpritePackV2 not found:', activation.targetId);
+   922→        return;
+   923→      }
+   924→
+   925→      // Evaluate conditional sprites in the pack
+   926→      let spriteUrl: string | null = null;
+   927→      let spriteLabel: string | null = null;
+   928→
+   929→      if (pack.conditionalMode) {
+   930→        const winner = evaluatePackConditionalSprites(pack.sprites, sessionStats, characterId);
+   931→        if (winner) {
+   932→          spriteUrl = winner.url;
+   933→          spriteLabel = winner.label;
+   934→        }
+   935→      }
+   936→
+   937→      // Fallback to default sprite
+   938→      if (!spriteUrl && pack.defaultSpriteId) {
+   939→        const sprite = pack.sprites.find((s: any) => s.id === pack.defaultSpriteId);
+   940→        if (sprite) {
+   941→          spriteUrl = sprite.url;
+   942→          spriteLabel = sprite.label;
+   943→        }
+   944→      }
+   945→
+   946→      // Fallback to isDefault sprite
+   947→      if (!spriteUrl) {
+   948→        const defaultSprite = pack.sprites.find((s: any) => s.isDefault);
+   949→        if (defaultSprite) {
+   950→          spriteUrl = defaultSprite.url;
+   951→          spriteLabel = defaultSprite.label;
+   952→        }
+   953→      }
+   954→
+   955→      // Fallback to first sprite
+   956→      if (!spriteUrl && pack.sprites.length > 0) {
+   957→        spriteUrl = pack.sprites[0].url;
+   958→        spriteLabel = pack.sprites[0].label;
+   959→      }
+   960→
+   961→      if (!spriteUrl) return;
+   962→
+   963→      // Apply the trigger sprite
+   964→      const store = useTavernStore.getState();
+   965→      store.applyTriggerForCharacter(characterId, {
+   966→        packId: pack.id,
+   967→        spriteUrl,
+   968→        spriteLabel,
+   969→        returnToIdleMs: activation.fallbackDelayMs,
+   970→      });
+   971→
+   972→      // Schedule fallback
+   973→      if (activation.fallbackDelayMs > 0) {
+   974→        let returnSpriteUrl = '';
+   975→        let returnSpriteLabel: string | null = null;
+   976→
+   977→        if (activation.fallbackMode === 'custom_sprite' && activation.fallbackSpriteId) {
+   978→          const sprite = pack.sprites.find((s: any) => s.id === activation.fallbackSpriteId);
+   979→          if (sprite) {
+   980→            returnSpriteUrl = sprite.url;
+   981→            returnSpriteLabel = sprite.label;
+   982→          }
+   983→        }
+   984→        // For idle_collection and collection_default, clear the trigger
+   985→
+   986→        const returnToMode = activation.fallbackMode === 'custom_sprite' ? 'idle' : 'clear';
+   987→        store.scheduleReturnToIdleForCharacter(
+   988→          characterId,
+   989→          spriteUrl,
+   990→          returnToMode,
+   991→          returnSpriteUrl,
+   992→          returnSpriteLabel,
+   993→          activation.fallbackDelayMs
+   994→        );
+   995→      }
+   996→    }
+   997→  };
+   998→
+   999→  const handleQuickReply = (item: CharacterQuickReply) => {
+  1000→    if (isAnyGenerating || !item.response.trim()) return;
+  1001→    // Resolve template variables like {{char}} and {{user}} in quick replies
+  1002→    const resolutionContext = {
+  1003→      user: activePersona?.name || 'User',
+  1004→      char: activeCharacter?.name || 'Character',
+  1005→    };
+  1006→    const resolvedResponse = resolveTemplateVariables(item.response.trim(), resolutionContext);
+  1007→    // Apply attribute modifiers if any (BEFORE sprite activation so conditions evaluate with new stats)
+  1008→    if (item.modifiers && item.modifiers.length > 0) {
+  1009→      applyQuickReplyModifiers(item.modifiers);
+  1010→    }
+  1011→    // Activate sprite if configured
+  1012→    if (item.spriteActivation) {
+  1013→      activateQuickReplySprite(item.spriteActivation);
+  1014→    }
+  1015→    onSendMessage(resolvedResponse);
+  1016→    setInput('');
+  1017→  };
+  1018→
+  1019→  // Get pending user solicitudes
+  1020→  const pendingUserSolicitudes = activeSessionId 
+  1021→    ? getPendingUserSolicitudes(activeSessionId)
+  1022→    : [];
+  1023→
+  1024→  // Handle user activating a peticion
+  1025→  const handleActivatePeticion = (
+  1026→    targetCharacterId: string,
+  1027→    solicitudKey: string,
+  1028→    description: string,
+  1029→    completionDescription?: string
+  1030→  ) => {
+  1031→    if (!activeSessionId) return;
+  1032→    
+  1033→    activateUserPeticion(
+  1034→      activeSessionId,
+  1035→      targetCharacterId,
+  1036→      solicitudKey,
+  1037→      description,
+  1038→      completionDescription,
+  1039→      activePersona?.name || 'Usuario'
+  1040→    );
+  1041→  };
+  1042→
+  1043→  // Format relative time
+  1044→  const formatTime = (timestamp: number) => {
+  1045→    const diff = Date.now() - timestamp;
+  1046→    const minutes = Math.floor(diff / 60000);
+  1047→    if (minutes < 1) return 'Ahora';
+  1048→    if (minutes < 60) return `Hace ${minutes}m`;
+  1049→    const hours = Math.floor(minutes / 60);
+  1050→    if (hours < 24) return `Hace ${hours}h`;
+  1051→    return `Hace ${Math.floor(hours / 24)}d`;
+  1052→  };
+  1053→
+  1054→  // Quest handlers
+  1055→  const handleQuestToggle = (templateId: string, currentStatus: string) => {
+  1056→    if (!activeSessionId) return;
+  1057→    
+  1058→    if (currentStatus === 'available') {
+  1059→      activateQuest(activeSessionId, templateId);
+  1060→    } else if (currentStatus === 'active') {
+  1061→      deactivateQuest(activeSessionId, templateId);
+  1062→    }
+  1063→  };
+  1064→
+  1065→  const handleAutoQuestChange = (updates: Partial<typeof questSettings>) => {
+  1066→    setQuestSettings(updates);
+  1067→  };
+  1068→
+  1069→  // Priority colors for quests
+  1070→  const priorityColors: Record<string, { bg: string; text: string; border: string; progress: string }> = {
+  1071→    main: {
+  1072→      bg: 'bg-amber-500/20',
+  1073→      text: 'text-amber-400',
+  1074→      border: 'border-amber-500/40',
+  1075→      progress: 'bg-amber-500',
+  1076→    },
+  1077→    side: {
+  1078→      bg: 'bg-blue-500/20',
+  1079→      text: 'text-blue-400',
+  1080→      border: 'border-blue-500/40',
+  1081→      progress: 'bg-blue-500',
+  1082→    },
+  1083→    hidden: {
+  1084→      bg: 'bg-slate-500/20',
+  1085→      text: 'text-slate-400',
+  1086→      border: 'border-slate-500/40',
+  1087→      progress: 'bg-slate-500',
+  1088→    },
+  1089→  };
+  1090→
+  1091→  // Get theme colors for tabs
+  1092→  const getThemeColors = useCallback(() => {
+  1093→    const theme = safeAppearance.theme;
+  1094→    
+  1095→    // Check special themes first
+  1096→    if (theme in THEME_COLOR_PRESETS) {
+  1097→      const preset = THEME_COLOR_PRESETS[theme];
+  1098→      return { primary: preset.primary, secondary: preset.secondary };
+  1099→    }
+  1100→    
+  1101→    const presets: Record<string, { primary: string; secondary: string }> = {
+  1102→      default: { primary: '#3b82f6', secondary: '#6366f1' },
+  1103→      midnight: { primary: '#6366f1', secondary: '#8b5cf6' },
+  1104→      forest: { primary: '#22c55e', secondary: '#16a34a' },
+  1105→      sunset: { primary: '#f97316', secondary: '#ef4444' },
+  1106→      ocean: { primary: '#0ea5e9', secondary: '#06b6d4' },
+  1107→      lavender: { primary: '#a855f7', secondary: '#d946ef' },
+  1108→      cherry: { primary: '#ec4899', secondary: '#f43f5e' },
+  1109→      custom: safeAppearance.customThemeColors || { primary: '#3b82f6', secondary: '#6366f1' },
+  1110→    };
+  1111→    return presets[theme] || presets.default;
+  1112→  }, [safeAppearance.theme, safeAppearance.customThemeColors]);
+  1113→
+  1114→  const themeColors = getThemeColors();
+  1115→
+  1116→  // ============================================
+  1117→  // MEMORIES TAB - Load, Add & Delete memories
+  1118→  // ============================================
+  1119→  const loadMemories = useCallback(async (forceRefresh = false) => {
+  1120→    if (memoriesLoaded && !forceRefresh) return;
+  1121→    setMemoriesLoading(true);
+  1122→    try {
+  1123→      const sessionSuffix = sessionId ? `-${sessionId}` : '';
+  1124→      let namespacesToFetch: string[] = [];
+  1125→      if (isGroupMode && activeGroup) {
+  1126→        // Group mode: fetch session-scoped MEMORY namespaces + each member's character namespace
+  1127→        // NEW FORMAT: memory-group-{id}-{session}, memory-character-{id}-{session}
+  1128→        const memberIds = activeGroup.members?.map(m => m.characterId) || activeGroup.characterIds || [];
+  1129→        // Primary: session-scoped memory namespaces (auto-extracted + manual)
+  1130→        const sessionNS = sessionSuffix 
+  1131→          ? [
+  1132→              `memory-group-${activeGroup.id}${sessionSuffix}`,
+  1133→              `memory-character-${activeGroup.id}${sessionSuffix}`,
+  1134→              ...memberIds.map(id => `memory-character-${id}${sessionSuffix}`)
+  1135→            ]
+  1136→          : [];
+  1137→        // Fallback: generic memory namespaces (manually created without session)
+  1138→        const genericNS = [
+  1139→          `memory-group-${activeGroup.id}`,
+  1140→          `memory-character-${activeGroup.id}`,
+  1141→          ...memberIds.map(id => `memory-character-${id}`)
+  1142→        ];
+  1143→        namespacesToFetch = [...sessionNS, ...genericNS];
+  1144→      } else if (activeCharacter) {
+  1145→        // Single mode: fetch session-scoped character MEMORY namespace
+  1146→        // NEW FORMAT: memory-character-{id}-{session}
+  1147→        namespacesToFetch = [`memory-character-${activeCharacter.id}${sessionSuffix}`];
+  1148→        if (sessionSuffix) {
+  1149→          namespacesToFetch.push(`memory-character-${activeCharacter.id}`);
+  1150→        }
+  1151→        // Also include generic namespace for backward compat
+  1152→        namespacesToFetch.push(`character-${activeCharacter.id}`);
+  1153→      }
+  1154→
+  1155→      if (namespacesToFetch.length === 0) {
+  1156→        setMemoriesLoaded(true);
+  1157→        setMemoriesLoading(false);
+  1158→        return;
+  1159→      }
+  1160→
+  1161→      // Deduplicate namespaces
+  1162→      const uniqueNamespaces = [...new Set(namespacesToFetch)];
+  1163→
+  1164→      // Fetch all namespaces in parallel
+  1165→      const results = await Promise.all(
+  1166→        uniqueNamespaces.map(ns =>
+  1167→          fetch(`/api/embeddings?namespace=${encodeURIComponent(ns)}&source_type=memory&limit=200`)
+  1168→            .then(r => r.json())
+  1169→            .then(data => (data.success ? data.data.embeddings : []))
+  1170→            .catch(() => [])
+  1171→        )
+  1172→      );
+  1173→
+  1174→      // Flatten, deduplicate by id, and sort by created_at (newest first)
+  1175→      const seenIds = new Set<string>();
+  1176→      const allMemories = results
+  1177→        .flat()
+  1178→        .filter((m: any) => {
+  1179→          if (seenIds.has(m.id)) return false;
+  1180→          seenIds.add(m.id);
+  1181→          return true;
+  1182→        })
+  1183→        .sort((a: any, b: any) =>
+  1184→          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  1185→        );
+  1186→
+  1187→      setMemories(allMemories);
+  1188→      setMemoriesLoaded(true);
+  1189→    } catch (error) {
+  1190→      console.error('[NovelChatBox] Failed to load memories:', error);
+  1191→    } finally {
+  1192→      setMemoriesLoading(false);
+  1193→    }
+  1194→  }, [isGroupMode, activeGroup, activeCharacter, memoriesLoaded, sessionId]);
+  1195→
+  1196→  // Add memory function
+  1197→  const addMemory = useCallback(async () => {
+  1198→    if (!addMemoryContent.trim()) return;
+  1199→    setAddingMemory(true);
+  1200→    
+  1201→    try {
+  1202→      // Determine which character to add memory for
+  1203→      let targetCharacterId = activeCharacter?.id || '';
+  1204→      let targetCharacterName = activeCharacter?.name || '';
+  1205→      
+  1206→      if (isGroupMode) {
+  1207→        // In group mode, use the selected character from dropdown
+  1208→        // or default to activeCharacter if not specified
+  1209→        if (addMemoryCharacterId) {
+  1210→          const selectedChar = characters.find(c => c.id === addMemoryCharacterId);
+  1211→          if (selectedChar) {
+  1212→            targetCharacterId = selectedChar.id;
+  1213→            targetCharacterName = selectedChar.name;
+  1214→          }
+  1215→        } else if (activeCharacter) {
+  1216→          targetCharacterId = activeCharacter.id;
+  1217→          targetCharacterName = activeCharacter.name;
+  1218→        }
+  1219→      }
+  1220→      
+  1221→      if (!targetCharacterId) {
+  1222→        console.error('[NovelChatBox] No character selected for memory');
+  1223→        setAddingMemory(false);
+  1224→        return;
+  1225→      }
+  1226→
+  1227→      // Build namespace: memory-character-{id}-{session}
+  1228→      const namespace = `memory-character-${targetCharacterId}${sessionId ? `-${sessionId}` : ''}`;
+  1229→      
+  1230→      const response = await fetch('/api/embeddings', {
+  1231→        method: 'POST',
+  1232→        headers: { 'Content-Type': 'application/json' },
+  1233→        body: JSON.stringify({
+  1234→          content: addMemoryContent.trim(),
+  1235→          namespace,
+  1236→          source_type: 'memory',
+  1237→          source_id: sessionId || 'unknown',
+  1238→          metadata: {
+  1239→            memory_type: addMemoryType,
+  1240→            importance: addMemoryImportance,
+  1241→            manually_created: true,
+  1242→            character_id: targetCharacterId,
+  1243→            session_id: sessionId,
+  1244→            created_at: new Date().toISOString(),
+  1245→          },
+  1246→        }),
+  1247→      });
+  1248→      
+  1249→      if (response.ok) {
+  1250→        // Reset form
+  1251→        setAddMemoryContent('');
+  1252→        setAddMemoryType('hecho');
+  1253→        setAddMemoryImportance(3);
+  1254→        setAddMemoryCharacterId('');
+  1255→        setAddMemoryOpen(false);
+  1256→        
+  1257→        // Refresh memories list
+  1258→        setMemoriesLoaded(false);
+  1259→        loadMemories(true);
+  1260→      } else {
+  1261→        console.error('[NovelChatBox] Failed to add memory:', response.status);
+  1262→      }
+  1263→    } catch (error) {
+  1264→      console.error('[NovelChatBox] Error adding memory:', error);
+  1265→    } finally {
+  1266→      setAddingMemory(false);
+  1267→    }
+  1268→  }, [addMemoryContent, addMemoryType, addMemoryImportance, addMemoryCharacterId, activeCharacter, isGroupMode, sessionId, characters, loadMemories]);
+  1269→
+  1270→  const deleteMemory = useCallback(async (memoryId: string) => {
+  1271→    try {
+  1272→      const response = await fetch(`/api/embeddings/${memoryId}`, { method: 'DELETE' });
+  1273→      if (response.ok) {
+  1274→        setMemories(prev => prev.filter(m => m.id !== memoryId));
+  1275→      }
+  1276→    } catch (error) {
+  1277→      console.error('[NovelChatBox] Failed to delete memory:', error);
+  1278→    }
+  1279→  }, []);
+  1280→
+  1281→  // Reset memories when character/group/session changes
+  1282→  useEffect(() => {
+  1283→    setMemoriesLoaded(false);
+  1284→    setMemories([]);
+  1285→  }, [activeCharacter?.id, activeGroup?.id, isGroupMode, sessionId]);
+  1286→
+  1287→  // Load memories when tab is selected
+  1288→  useEffect(() => {
+  1289→    if (activeTab === 'memorias') {
+  1290→      loadMemories();
+  1291→    }
+  1292→  }, [activeTab, loadMemories]);
+  1293→
+  1294→  // Auto-refresh memories after extraction completes
+  1295→  // When memoryExtracting goes from true → false, wait a few seconds then refresh
+  1296→  const prevExtractingRef = useRef(memoryExtracting);
+  1297→  useEffect(() => {
+  1298→    if (prevExtractingRef.current && !memoryExtracting) {
+  1299→      // Extraction just finished — refresh memories after a delay
+  1300→      const timer = setTimeout(() => {
+  1301→        setMemoriesLoaded(false);
+  1302→        loadMemories(true);
+  1303→      }, 3000);
+  1304→      return () => clearTimeout(timer);
+  1305→    }
+  1306→    prevExtractingRef.current = memoryExtracting;
+  1307→  }, [memoryExtracting, loadMemories]);
+  1308→
+  1309→  // Get character name for a namespace
+  1310→  const getCharacterNameForNamespace = useCallback((ns: string) => {
+  1311→    if (ns.startsWith('character-')) {
+  1312→      const charId = ns.replace('character-', '');
+  1313→      return characters.find(c => c.id === charId)?.name || ns;
+  1314→    }
+  1315→    if (ns.startsWith('group-')) {
+  1316→      return activeGroup?.name || 'Grupo';
+  1317→    }
+  1318→    return ns;
+  1319→  }, [characters, activeGroup]);
+  1320→
+  1321→  if (!activeSession) return null;
+  1322→
+  1323→  return (
+  1324→    <div
+  1325→      ref={containerRef}
+  1326→      className={cn(
+  1327→        "z-20 flex flex-col overflow-hidden transition-colors",
+  1328→        // Desktop: floating, draggable, resizable chat box
+  1329→        !isMobile && "absolute rounded-lg shadow-2xl",
+  1330→        isMobile && "relative h-full w-full",
+  1331→        !isMobile && isDragging && "cursor-grabbing",
+  1332→        !isMobile && isResizing && "cursor-nwse-resize"
+  1333→      )}
+  1334→      style={{
+  1335→        // Positioning & sizing: desktop uses percentage-based floating layout
+  1336→        // Mobile uses full-width/height via CSS classes (relative h-full w-full)
+  1337→        ...(isMobile ? {} : {
+  1338→          left: `${layout.chatX}%`,
+  1339→          top: `${layout.chatY}%`,
+  1340→          transform: 'translate(-50%, -50%)',
+  1341→          width: `${layout.chatWidth}%`,
+  1342→          height: isCollapsed ? 'auto' : `${layout.chatHeight}%`,
+  1343→          minWidth: '280px',
+  1344→          minHeight: isCollapsed ? 'auto' : '180px',
+  1345→          maxHeight: isCollapsed ? 'auto' : '95vh',
+  1346→        }),
+  1347→        backgroundColor: safeAppearance.background.customBackgroundColor || `hsl(var(--background) / ${layout.chatOpacity})`,
+  1348→        backdropFilter: safeAppearance.background.useGlassEffect ? `blur(${safeAppearance.background.blur}px)` : layout.blurBackground ? 'blur(12px)' : undefined,
+  1349→        opacity: safeAppearance.background.transparency,
+  1350→      }}
+  1351→    >
+  1352→      {/* Theme Effects Layer */}
+  1353→      <ThemeEffects
+  1354→        theme={safeAppearance.theme}
+  1355→        enableAnimations={safeAppearance.enableAnimations}
+  1356→        enableParticles={safeAppearance.enableParticles}
+  1357→        intensity={safeAppearance.animationIntensity}
+  1358→        className="z-0"
+  1359→      />
+  1360→      
+  1361→      {/* Drag Handle / Header with Tabs */}
+  1362→      <div
+  1363→        className={cn(
+  1364→          "flex flex-col bg-background/50 border-b select-none flex-shrink-0",
+  1365→          !isMobile && "cursor-grab active:cursor-grabbing"
+  1366→        )}
+  1367→        onMouseDown={handleDragStart}
+  1368→      >
+  1369→        {/* Header Row */}
+  1370→        <div className="flex items-center justify-between px-3 py-2">
+  1371→          <div className="flex items-center gap-2">
+  1372→            <GripVertical className="w-4 h-4 text-muted-foreground" />
+  1373→            
+  1374→            {/* Avatar in header */}
+  1375→            <div className="w-6 h-6 rounded-full overflow-hidden flex-shrink-0">
+  1376→              {isGroupMode ? (
+  1377→                <div className="w-full h-full bg-gradient-to-br from-violet-400 to-purple-600 flex items-center justify-center">
+  1378→                  <Users className="w-3 h-3 text-white" />
+  1379→                </div>
+  1380→              ) : activeCharacter?.avatar ? (
+  1381→                <img 
+  1382→                  src={activeCharacter.avatar} 
+  1383→                  alt={activeCharacter.name}
+  1384→                  className="w-full h-full object-cover" 
+  1385→                />
+  1386→              ) : (
+  1387→                <div className="w-full h-full bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center">
+  1388→                  <span className="text-white font-bold text-xs">
+  1389→                    {activeCharacter?.name?.[0]?.toUpperCase() || '?'}
+  1390→                  </span>
+  1391→                </div>
+  1392→              )}
+  1393→            </div>
+  1394→            
+  1395→            <span className="text-sm font-medium truncate max-w-[100px]">
+  1396→              {headerName}
+  1397→            </span>
+  1398→            
+  1399→            {/* Turn count - only show on chat tab (1 turn = 1 user message) */}
+  1400→            {activeTab === 'chat' && (
+  1401→              <span className="text-xs text-muted-foreground">
+  1402→                {activeSession.messages.filter(m => !m.isDeleted && m.role === 'user').length}{t('chat.turnsCount')}
+  1403→              </span>
+  1404→            )}
+  1405→          </div>
+  1406→          
+  1407→          <div className="flex items-center gap-1">
+  1408→            {/* Session Variables Popover */}
+  1409→            <Popover open={showVariables} onOpenChange={setShowVariables}>
+  1410→              <PopoverTrigger asChild>
+  1411→                <Button variant="ghost" size="icon" className="h-7 w-7">
+  1412→                  <Database className="w-4 h-4" />
+  1413→                </Button>
+  1414→              </PopoverTrigger>
+  1415→              <PopoverContent className="w-80 max-h-96 overflow-y-auto" align="end">
+  1416→                <div className="space-y-3">
+  1417→                  <h4 className="font-medium text-sm flex items-center gap-2">
+  1418→                    <Database className="w-4 h-4" />
+  1419→                    {t('chatbox.sessionVariables')}
+  1420→                  </h4>
+  1421→                  
+  1422→                  {!sessionStats?.initialized ? (
+  1423→                    <div className="text-center py-4 text-muted-foreground text-xs">
+  1424→                      <Database className="w-6 h-6 mx-auto mb-2 opacity-50" />
+  1425→                      {t('chatbox.noVariables')}
+  1426→                    </div>
+  1427→                  ) : (
+  1428→                    <div className="space-y-3">
+  1429→                      {/* For each character with stats */}
+  1430→                      {Object.entries(sessionStats.characterStats).map(([charId, charStats]) => {
+  1431→                        const character = allCharacters.find(c => c.id === charId);
+  1432→                        if (!character) return null;
+  1433→                        
+  1434→                        const attributeValues = charStats.attributeValues;
+  1435→                        const attributeDefs = character.statsConfig?.attributes || [];
+  1436→                        
+  1437→                        if (Object.keys(attributeValues).length === 0) return null;
+  1438→                        
+  1439→                        return (
+  1440→                          <div key={charId} className="space-y-2">
+  1441→                            {/* Character Header */}
+  1442→                            <div className="flex items-center gap-2 pb-1 border-b">
+  1443→                              <div className="w-5 h-5 rounded-full overflow-hidden">
+  1444→                                {character.avatar ? (
+  1445→                                  <img src={character.avatar} alt={character.name} className="w-full h-full object-cover" />
+  1446→                                ) : (
+  1447→                                  <div className="w-full h-full bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center">
+  1448→                                    <span className="text-white font-bold text-[10px]">{character.name?.[0]?.toUpperCase()}</span>
+  1449→                                  </div>
+  1450→                                )}
+  1451→                              </div>
+  1452→                              <span className="text-xs font-medium">{character.name}</span>
+  1453→                            </div>
+  1454→                            
+  1455→                            {/* Attributes Grid */}
+  1456→                            <div className="grid grid-cols-2 gap-1.5">
+  1457→                              {Object.entries(attributeValues).map(([key, value]) => {
+  1458→                                const attrDef = attributeDefs.find(a => a.key === key);
+  1459→                                const icon = attrDef?.icon;
+  1460→                                const color = attrDef?.color || 'default';
+  1461→                                
+  1462→                                const colorClasses: Record<string, string> = {
+  1463→                                  red: 'bg-red-500/20 border-red-500/30 text-red-400',
+  1464→                                  green: 'bg-green-500/20 border-green-500/30 text-green-400',
+  1465→                                  blue: 'bg-blue-500/20 border-blue-500/30 text-blue-400',
+  1466→                                  yellow: 'bg-yellow-500/20 border-yellow-500/30 text-yellow-400',
+  1467→                                  purple: 'bg-purple-500/20 border-purple-500/30 text-purple-400',
+  1468→                                  orange: 'bg-orange-500/20 border-orange-500/30 text-orange-400',
+  1469→                                  cyan: 'bg-cyan-500/20 border-cyan-500/30 text-cyan-400',
+  1470→                                  default: 'bg-white/10 border-white/20 text-white/80',
+  1471→                                };
+  1472→                                
+  1473→                                return (
+  1474→                                  <div
+  1475→                                    key={key}
+  1476→                                    className={cn(
+  1477→                                      'flex items-center gap-1.5 px-2 py-1 rounded border text-xs',
+  1478→                                      colorClasses[color] || colorClasses.default
+  1479→                                    )}
+  1480→                                  >
+  1481→                                    {icon && <span className="text-xs">{icon}</span>}
+  1482→                                    <span className="text-muted-foreground truncate">{attrDef?.name || key}:</span>
+  1483→                                    <span className="font-medium">{String(value)}</span>
+  1484→                                  </div>
+  1485→                                );
+  1486→                              })}
+  1487→                            </div>
+  1488→                          </div>
+  1489→                        );
+  1490→                      })}
+  1491→                      
+  1492→                      {/* Session Events Section */}
+  1493→                      <div className="space-y-2 pt-2 border-t">
+  1494→                        <div className="flex items-center gap-2 pb-1">
+  1495→                          <span className="text-xs font-medium text-amber-400">Eventos de Sesión</span>
+  1496→                        </div>
+  1497→                        <div className="space-y-1.5">
+  1498→                          {/* ultimo_objetivo_completado */}
+  1499→                          <div className="flex items-start gap-1.5 px-2 py-1.5 rounded border bg-amber-500/10 border-amber-500/20 text-xs">
+  1500→                            <span className="text-muted-foreground shrink-0">Objetivo completado:</span>
+  1501→                            <span className="text-amber-400">{sessionStats.ultimo_objetivo_completado || 'N/A'}</span>
+  1502→                          </div>
+  1503→                          {/* ultima_solicitud_realizada */}
+  1504→                          <div className="flex items-start gap-1.5 px-2 py-1.5 rounded border bg-emerald-500/10 border-emerald-500/20 text-xs">
+  1505→                            <span className="text-muted-foreground shrink-0">Solicitud realizada:</span>
+  1506→                            <span className="text-emerald-400">{sessionStats.ultima_solicitud_realizada || 'N/A'}</span>
+  1507→                          </div>
+  1508→                          {/* ultima_solicitud_completada */}
+  1509→                          <div className="flex items-start gap-1.5 px-2 py-1.5 rounded border bg-cyan-500/10 border-cyan-500/20 text-xs">
+  1510→                            <span className="text-muted-foreground shrink-0">Solicitud completada:</span>
+  1511→                            <span className="text-cyan-400">{sessionStats.ultima_solicitud_completada || 'N/A'}</span>
+  1512→                          </div>
+  1513→                          {/* ultima_accion_realizada */}
+  1514→                          <div className="flex items-start gap-1.5 px-2 py-1.5 rounded border bg-purple-500/10 border-purple-500/20 text-xs">
+  1515→                            <span className="text-muted-foreground shrink-0">Acción realizada{sessionStats.ultima_accion_character ? ` (${sessionStats.ultima_accion_character})` : ''}:</span>
+  1516→                            <span className="text-purple-400">{sessionStats.ultima_accion_realizada || 'N/A'}</span>
+  1517→                          </div>
+  1518→                        </div>
+  1519→                      </div>
+  1520→                    </div>
+  1521→                  )}
+  1522→                </div>
+  1523→              </PopoverContent>
+  1524→            </Popover>
+  1525→
+  1526→            {/* Settings Popover */}
+  1527→            <Popover open={showSettings} onOpenChange={setShowSettings}>
+  1528→              <PopoverTrigger asChild>
+  1529→                <Button variant="ghost" size="icon" className="h-7 w-7">
+  1530→                  <Settings className="w-4 h-4" />
+  1531→                </Button>
+  1532→              </PopoverTrigger>
+  1533→              <PopoverContent className="w-64" align="end">
+  1534→                <div className="space-y-4">
+  1535→                  <h4 className="font-medium text-sm">{t('chatbox.settings')}</h4>
+  1536→                  
+  1537→                  <div className="space-y-2">
+  1538→                    <label className="text-xs text-muted-foreground">{t('chatbox.width')} {Math.round(layout.chatWidth)}%</label>
+  1539→                    <Slider
+  1540→                      value={[layout.chatWidth]}
+  1541→                      onValueChange={([value]) => updateLayout({ chatWidth: value })}
+  1542→                      min={25}
+  1543→                      max={90}
+  1544→                      step={1}
+  1545→                    />
+  1546→                  </div>
+  1547→                  
+  1548→                  <div className="space-y-2">
+  1549→                    <label className="text-xs text-muted-foreground">{t('chatbox.height')} {Math.round(layout.chatHeight)}%</label>
+  1550→                    <Slider
+  1551→                      value={[layout.chatHeight]}
+  1552→                      onValueChange={([value]) => updateLayout({ chatHeight: value })}
+  1553→                      min={20}
+  1554→                      max={90}
+  1555→                      step={1}
+  1556→                    />
+  1557→                  </div>
+  1558→                  
+  1559→                  <div className="space-y-2">
+  1560→                    <label className="text-xs text-muted-foreground">{t('chatbox.opacity')} {Math.round(layout.chatOpacity * 100)}%</label>
+  1561→                    <Slider
+  1562→                      value={[layout.chatOpacity * 100]}
+  1563→                      onValueChange={([value]) => updateLayout({ chatOpacity: value / 100 })}
+  1564→                      min={50}
+  1565→                      max={100}
+  1566→                      step={1}
+  1567→                    />
+  1568→                  </div>
+  1569→
+  1570→                  <div className="flex items-center justify-between">
+  1571→                    <label className="text-xs text-muted-foreground">{t('chatbox.blurBackground')}</label>
+  1572→                    <Button
+  1573→                      variant={layout.blurBackground ? "default" : "outline"}
+  1574→                      size="sm"
+  1575→                      className="h-6 px-2 text-xs"
+  1576→                      onClick={() => updateLayout({ blurBackground: !layout.blurBackground })}
+  1577→                    >
+  1578→                      {layout.blurBackground ? t('common.on') : t('common.off')}
+  1579→                    </Button>
+  1580→                  </div>
+  1581→
+  1582→                  {/* Chat Actions */}
+  1583→                  <div className="pt-2 border-t space-y-2">
+  1584→                    <label className="text-xs text-muted-foreground">{t('chatbox.actions')}</label>
+  1585→                    <div className="flex gap-2">
+  1586→                      <Button
+  1587→                        variant="outline"
+  1588→                        size="sm"
+  1589→                        className="flex-1 h-7 text-xs"
+  1590→                        onClick={() => {
+  1591→                          setShowSettings(false);
+  1592→                          onResetChat?.();
+  1593→                        }}
+  1594→                      >
+  1595→                        <RotateCcw className="w-3 h-3 mr-1" />
+  1596→                        {t('common.reset')}
+  1597→                      </Button>
+  1598→                      <Button
+  1599→                        variant="outline"
+  1600→                        size="sm"
+  1601→                        className="flex-1 h-7 text-xs text-destructive hover:text-destructive"
+  1602→                        onClick={() => {
+  1603→                          setShowSettings(false);
+  1604→                          onClearChat?.();
+  1605→                        }}
+  1606→                      >
+  1607→                        <Eraser className="w-3 h-3 mr-1" />
+  1608→                        {t('common.clear')}
+  1609→                      </Button>
+  1610→                    </div>
+  1611→                  </div>
+  1612→
+  1613→                  <Button
+  1614→                    variant="outline"
+  1615→                    size="sm"
+  1616→                    className="w-full"
+  1617→                    onClick={() => {
+  1618→                      updateLayout({
+  1619→                        chatWidth: 60,
+  1620→                        chatHeight: 70,
+  1621→                        chatX: 50,
+  1622→                        chatY: 50,
+  1623→                        chatOpacity: 0.95
+  1624→                      });
+  1625→                    }}
+  1626→                  >
+  1627→                    {t('chat.resetPosition')}
+  1628→                  </Button>
+  1629→                </div>
+  1630→              </PopoverContent>
+  1631→            </Popover>
+  1632→
+  1633→            {/* Collapse Button */}
+  1634→            <Button
+  1635→              variant="ghost"
+  1636→              size="icon"
+  1637→              className="h-7 w-7"
+  1638→              onClick={() => setIsCollapsed(!isCollapsed)}
+  1639→            >
+  1640→              {isCollapsed ? (
+  1641→                <ChevronUp className="w-4 h-4" />
+  1642→              ) : (
+  1643→                <ChevronDown className="w-4 h-4" />
+  1644→              )}
+  1645→            </Button>
+  1646→          </div>
+  1647→        </div>
+  1648→        
+  1649→        {/* Tab Bar */}
+  1650→        {!isCollapsed && (
+  1651→          <div 
+  1652→            className="flex items-center gap-0.5 px-2 pb-1.5 border-b border-border/50"
+  1653→            onMouseDown={(e) => e.stopPropagation()}
+  1654→          >
+  1655→            {/* Chat Tab */}
+  1656→            <button
+  1657→              onClick={() => setActiveTab('chat')}
+  1658→              className={cn(
+  1659→                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+  1660→                activeTab === 'chat' 
+  1661→                  ? "text-white shadow-sm" 
+  1662→                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+  1663→              )}
+  1664→              style={activeTab === 'chat' ? {
+  1665→                backgroundColor: themeColors.primary,
+  1666→              } : undefined}
+  1667→            >
+  1668→              <MessageSquare className="w-3.5 h-3.5" />
+  1669→              <span>Chat</span>
+  1670→            </button>
+  1671→            
+  1672→            {/* Solicitudes Tab */}
+  1673→            <button
+  1674→              onClick={() => setActiveTab('solicitudes')}
+  1675→              className={cn(
+  1676→                "relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+  1677→                activeTab === 'solicitudes' 
+  1678→                  ? "text-white shadow-sm" 
+  1679→                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+  1680→              )}
+  1681→              style={activeTab === 'solicitudes' ? {
+  1682→                backgroundColor: themeColors.primary,
+  1683→              } : undefined}
+  1684→            >
+  1685→              <Inbox className="w-3.5 h-3.5" />
+  1686→              <span>Solicitudes</span>
+  1687→              {pendingUserSolicitudes.length > 0 && (
+  1688→                <Badge 
+  1689→                  className="ml-0.5 h-4 min-w-4 px-1 text-[9px] font-bold"
+  1690→                  style={{ 
+  1691→                    backgroundColor: activeTab === 'solicitudes' ? 'rgba(255,255,255,0.3)' : themeColors.primary,
+  1692→                    color: 'white'
+  1693→                  }}
+  1694→                >
+  1695→                  {pendingUserSolicitudes.length}
+  1696→                </Badge>
+  1697→              )}
+  1698→            </button>
+  1699→            
+  1700→            {/* Misiones Tab */}
+  1701→            <button
+  1702→              onClick={() => setActiveTab('misiones')}
+  1703→              className={cn(
+  1704→                "relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+  1705→                activeTab === 'misiones' 
+  1706→                  ? "text-white shadow-sm" 
+  1707→                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+  1708→              )}
+  1709→              style={activeTab === 'misiones' ? {
+  1710→                backgroundColor: themeColors.primary,
+  1711→              } : undefined}
+  1712→            >
+  1713→              <ScrollText className="w-3.5 h-3.5" />
+  1714→              <span>Misiones</span>
+  1715→              {sessionQuests.filter(q => q.status === 'active').length > 0 && (
+  1716→                <Badge 
+  1717→                  className="ml-0.5 h-4 min-w-4 px-1 text-[9px] font-bold"
+  1718→                  style={{ 
+  1719→                    backgroundColor: activeTab === 'misiones' ? 'rgba(255,255,255,0.3)' : themeColors.primary,
+  1720→                    color: 'white'
+  1721→                  }}
+  1722→                >
+  1723→                  {sessionQuests.filter(q => q.status === 'active').length}
+  1724→                </Badge>
+  1725→              )}
+  1726→            </button>
+  1727→            
+  1728→            {/* Memorias Tab */}
+  1729→            <button
+  1730→              onClick={() => setActiveTab('memorias')}
+  1731→              className={cn(
+  1732→                "relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+  1733→                activeTab === 'memorias' 
+  1734→                  ? "text-white shadow-sm" 
+  1735→                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+  1736→              )}
+  1737→              style={activeTab === 'memorias' ? {
+  1738→                backgroundColor: themeColors.primary,
+  1739→              } : undefined}
+  1740→            >
+  1741→              <Brain className="w-3.5 h-3.5" />
+  1742→              <span>Memorias</span>
+  1743→              {memories.length > 0 && (
+  1744→                <Badge 
+  1745→                  className="ml-0.5 h-4 min-w-4 px-1 text-[9px] font-bold"
+  1746→                  style={{ 
+  1747→                    backgroundColor: activeTab === 'memorias' ? 'rgba(255,255,255,0.3)' : themeColors.primary,
+  1748→                    color: 'white'
+  1749→                  }}
+  1750→                >
+  1751→                  {memories.length}
+  1752→                </Badge>
+  1753→              )}
+  1754→            </button>
+  1755→            
+  1756→            {/* Tienda Tab */}
+  1757→            <button
+  1758→              onClick={() => setActiveTab('tienda')}
+  1759→              className={cn(
+  1760→                "relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+  1761→                activeTab === 'tienda' 
+  1762→                  ? "text-white shadow-sm" 
+  1763→                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+  1764→              )}
+  1765→              style={activeTab === 'tienda' ? {
+  1766→                backgroundColor: themeColors.primary,
+  1767→              } : undefined}
+  1768→            >
+  1769→              <ShoppingCart className="w-3.5 h-3.5" />
+  1770→              <span>Tienda</span>
+  1771→              <Badge 
+  1772→                className="ml-0.5 h-4 min-w-4 px-1 text-[9px] font-bold"
+  1773→                style={{ 
+  1774→                  backgroundColor: activeTab === 'tienda' ? 'rgba(255,255,255,0.3)' : themeColors.primary,
+  1775→                  color: 'white'
+  1776→                }}
+  1777→              >
+  1778→                {activePersona?.currency || 0}
+  1779→              </Badge>
+  1780→            </button>
+  1781→          </div>
+  1782→        )}
+  1783→      </div>
+  1784→
+  1785→      {/* Content Area */}
+  1786→      {!isCollapsed && (
+  1787→        <>
+  1788→          {/* Chat Tab Content */}
+  1789→          {activeTab === 'chat' && (
+  1790→            <>
+  1791→              <ScrollArea className="flex-1 min-h-0" ref={scrollRef}>
+  1792→                <div className="p-2 space-y-2">
+  1793→                  {activeSession.messages.filter(m => {
+  1794→                    // Filter deleted messages
+  1795→                    if (m.isDeleted) return false;
+  1796→
+  1797→                    // Check if this is a narrator message and if narrator is hidden from chat
+  1798→                    if (isGroupMode && activeGroup?.narratorSettings?.hiddenFromChat && m.role === 'assistant') {
+  1799→                      // Find if this character is a narrator
+  1800→                      const memberInfo = activeGroup.members?.find(mem => mem.characterId === m.characterId);
+  1801→                      if (memberInfo?.isNarrator) {
+  1802→                        return false; // Hide narrator messages from chat display
+  1803→                      }
+  1804→                    }
+  1805→
+  1806→                    return true;
+  1807→                  }).map((message) => {
+  1808→                    // Determine character for this message
+  1809→                    let messageCharacter: CharacterCard | undefined;
+  1810→                    let displayName: string | undefined;
+  1811→                    let displayAvatar: string | undefined;
+  1812→                    let isNarratorMessage = false;
+  1813→
+  1814→                    if (message.role === 'user') {
+  1815→                      displayName = activePersona?.name || t('message.you');
+  1816→                      displayAvatar = activePersona?.avatar || undefined;
+  1817→                    } else if (isGroupMode) {
+  1818→                      // Use allCharacters from store if characters prop is empty
+  1819→                      const characterList = characters.length > 0 ? characters : allCharacters;
+  1820→                      messageCharacter = characterList.find(c => c.id === message.characterId);
+  1821→                      displayName = messageCharacter?.name;
+  1822→                      displayAvatar = messageCharacter?.avatar;
+  1823→
+  1824→                      // Check if this character is a narrator in the group
+  1825→                      if (activeGroup?.members) {
+  1826→                        const memberInfo = activeGroup.members.find(m => m.characterId === message.characterId);
+  1827→                        isNarratorMessage = memberInfo?.isNarrator || false;
+  1828→                      }
+  1829→
+  1830→                      // Debug: log if character not found
+  1831→                      if (!messageCharacter && message.characterId) {
+  1832→                        console.warn('[NovelChatBox] Character not found:', message.characterId, 'Available:', characterList.map(c => c.id));
+  1833→                      }
+  1834→                    } else {
+  1835→                      messageCharacter = activeCharacter || undefined;
+  1836→                      displayName = activeCharacter?.name;
+  1837→                      displayAvatar = activeCharacter?.avatar;
+  1838→                    }
+  1839→
+  1840→                    return (
+  1841→                      <ChatMessageBubble
+  1842→                        key={message.id}
+  1843→                        message={message}
+  1844→                        characterName={displayName}
+  1845→                        characterAvatar={displayAvatar}
+  1846→                        userName={activePersona?.name || t('message.you')}
+  1847→                        userAvatar={activePersona?.avatar || undefined}
+  1848→                        showTimestamp={settings.showTimestamps}
+  1849→                        showTokens={settings.showTokens}
+  1850→                        onDelete={() => deleteMessage(activeSessionId!, message.id)}
+  1851→                        displayMode={settings.messageDisplay}
+  1852→                        onSwipe={(direction) => swipeMessage(activeSessionId!, message.id, direction)}
+  1853→                        hasAlternatives={(message.swipes?.length || 1) > 1}
+  1854→                        currentIndex={message.swipeIndex || 0}
+  1855→                        totalAlternatives={message.swipes?.length || 1}
+  1856→                        onRegenerate={() => onRegenerate?.(message.id)}
+  1857→                        onEdit={onEdit}
+  1858→                        onReplay={onReplay}
+  1859→                        onSpeak={() => onSpeak?.(message.id, message.content, message.characterId)}
+  1860→                        isNarrator={isNarratorMessage}
+  1861→                      />
+  1862→                    );
+  1863→                  })}
+  1864→
+  1865→                  {/* Streaming Message or Typing Indicator */}
+  1866→                  {isAnyGenerating && (
+  1867→                    <div className="flex gap-2 py-2 animate-in fade-in-0 slide-in-from-bottom-2 duration-200">
+  1868→                      {/* Avatar */}
+  1869→                      <div 
+  1870→                        className={cn(
+  1871→                          'overflow-hidden flex-shrink-0 flex items-center justify-center',
+  1872→                          safeAppearance.avatars.size === 'sm' ? 'w-8 h-8' : 
+  1873→                          safeAppearance.avatars.size === 'md' ? 'w-10 h-10' :
+  1874→                          safeAppearance.avatars.size === 'lg' ? 'w-12 h-12' : 'w-14 h-14',
+  1875→                          safeAppearance.avatars.shape === 'circle' ? 'rounded-full' :
+  1876→                          safeAppearance.avatars.shape === 'square' ? 'rounded-none' :
+  1877→                          safeAppearance.avatars.shape === 'rounded' ? 'rounded-lg' : 'rounded-sm'
+  1878→                        )}
+  1879→                        style={{
+  1880→                          borderWidth: safeAppearance.avatars.showBorder ? safeAppearance.avatars.borderWidth : 0,
+  1881→                          borderColor: safeAppearance.avatars.borderColor,
+  1882→                          borderStyle: 'solid',
+  1883→                        }}
+  1884→                      >
+  1885→                        {isGroupMode ? (
+  1886→                          // In group mode, only show avatar when we know which character is responding
+  1887→                          streamingCharacter ? (
+  1888→                            streamingCharacter.avatar ? (
+  1889→                              <img 
+  1890→                                src={streamingCharacter.avatar} 
+  1891→                                alt={streamingCharacter.name}
+  1892→                                className="w-full h-full object-cover"
+  1893→                              />
+  1894→                            ) : (
+  1895→                              <div className="w-full h-full bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center">
+  1896→                                <span className="text-white font-bold text-xs">
+  1897→                                  {streamingCharacter.name?.[0]?.toUpperCase() || '?'}
+  1898→                                </span>
+  1899→                              </div>
+  1900→                            )
+  1901→                          ) : (
+  1902→                            // Waiting for character_start event - show loading indicator
+  1903→                            <div className="w-full h-full bg-gradient-to-br from-violet-400 to-purple-600 flex items-center justify-center">
+  1904→                              <span className="text-white font-bold text-xs animate-pulse">?</span>
+  1905→                            </div>
+  1906→                          )
+  1907→                        ) : activeCharacter?.avatar ? (
+  1908→                          <img 
+  1909→                            src={activeCharacter.avatar} 
+  1910→                            alt={activeCharacter.name}
+  1911→                            className="w-full h-full object-cover"
+  1912→                          />
+  1913→                        ) : (
+  1914→                          <div className="w-full h-full bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center">
+  1915→                            <span className="text-white font-bold text-xs">
+  1916→                              {activeCharacter?.name?.[0]?.toUpperCase() || '?'}
+  1917→                            </span>
+  1918→                          </div>
+  1919→                        )}
+  1920→                      </div>
+  1921→                      
+  1922→                      <div className="flex-1 min-w-0">
+  1923→                        {/* Name above bubble */}
+  1924→                        <div className="flex items-center gap-1 mb-1">
+  1925→                          <span className="text-xs font-medium">
+  1926→                            {isGroupMode 
+  1927→                              ? (streamingCharacter?.name || 'Preparando...')
+  1928→                              : activeCharacter?.name || 'Assistant'}
+  1929→                          </span>
+  1930→                          {isGeneratingProactive && (
+  1931→                            <Badge variant="outline" className="text-[9px] py-0 h-3.5 px-1 gap-0.5 border-amber-500/30 text-amber-400/70 bg-amber-500/5">
+  1932→                              <Sparkles className="w-2 h-2" />
+  1933→                              Proactivo
+  1934→                            </Badge>
+  1935→                          )}
+  1936→                          {streamingProgress && (
+  1937→                            <span className="text-[10px] text-muted-foreground">
+  1938→                              ({streamingProgress.current}/{streamingProgress.total})
+  1939→                            </span>
+  1940→                          )}
+  1941→                        </div>
+  1942→                        
+  1943→                        {/* Content bubble */}
+  1944→                        <div 
+  1945→                          className="px-3 py-2"
+  1946→                          style={{
+  1947→                            backgroundColor: hexToRgba(safeAppearance.bubbles.characterBubbleColor, safeAppearance.bubbles.transparency),
+  1948→                            borderRadius: safeAppearance.bubbles.borderRadius,
+  1949→                            borderTopLeftRadius: 4,
+  1950→                            maxWidth: `${safeAppearance.bubbles.maxWidth}%`,
+  1951→                            boxShadow: safeAppearance.bubbles.shadowEnabled 
+  1952→                              ? safeAppearance.bubbles.shadowIntensity === 'soft' ? '0 1px 3px rgba(0,0,0,0.1)' :
+  1953→                                safeAppearance.bubbles.shadowIntensity === 'medium' ? '0 4px 6px rgba(0,0,0,0.15)' :
+  1954→                                '0 10px 15px rgba(0,0,0,0.2)' : undefined,
+  1955→                          }}
+  1956→                        >
+  1957→                          {streamingContent ? (
+  1958→                            <div 
+  1959→                              className="text-xs"
+  1960→                              style={{ 
+  1961→                                color: safeAppearance.bubbles.characterBubbleTextColor,
+  1962→                              }}
+  1963→                            >
+  1964→                              {streamingContent}
+  1965→                              {safeAppearance.streaming.showCursor && (
+  1966→                                <span 
+  1967→                                  className="inline-block ml-0.5 animate-pulse"
+  1968→                                  style={{ color: safeAppearance.streaming.cursorColor }}
+  1969→                                >
+  1970→                                  {safeAppearance.streaming.cursorStyle === 'block' ? '▋' :
+  1971→                                   safeAppearance.streaming.cursorStyle === 'line' ? '|' :
+  1972→                                   safeAppearance.streaming.cursorStyle === 'underscore' ? '_' : '●'}
+  1973→                                </span>
+  1974→                              )}
+  1975→                            </div>
+  1976→                          ) : (
+  1977→                            <div className="flex items-center gap-1">
+  1978→                              <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+  1979→                              <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+  1980→                              <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+  1981→                            </div>
+  1982→                          )}
+  1983→                        </div>
+  1984→                      </div>
+  1985→                    </div>
+  1986→                  )}
+  1987→                  
+  1988→                  {/* Auto-scroll anchor */}
+  1989→                  <div ref={messagesEndRef} />
+  1990→                </div>
+  1991→              </ScrollArea>
+  1992→
+  1993→              {/* Quick Replies - From character card */}
+  1994→              {activeCharacter?.quickReplies && activeCharacter.quickReplies.length > 0 && (() => {
+  1995→                const qrContext = {
+  1996→                  user: activePersona?.name || 'User',
+  1997→                  char: activeCharacter?.name || 'Character',
+  1998→                };
+  1999→                return (
+  2000→                <div className="px-2 py-1 flex gap-1 overflow-x-auto border-t bg-background/30 flex-shrink-0">
+
+[showing lines 1-2000 of 3163; use offset=2001 with limit to continue reading]

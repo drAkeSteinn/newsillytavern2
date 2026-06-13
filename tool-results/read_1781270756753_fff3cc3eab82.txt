@@ -1,0 +1,1662 @@
+     1→// ============================================
+     2→// Use Trigger System - Unified Trigger Hook
+     3→// ============================================
+     4→//
+     5→// This hook integrates all trigger components:
+     6→// - KeyDetector (unified key detection for all formats)
+     7→// - HandlerRegistry (orchestration of KeyHandlers)
+     8→// - KeyHandlers (Sound, Skill, Solicitud - unified interface)
+     9→// - Legacy TokenDetector (for Sprite, HUD, Background, Quest, Item, Stats)
+    10→//
+    11→// Usage:
+    12→// ```tsx
+    13→// const { processStreamingContent, resetForNewMessage } = useTriggerSystem();
+    14→// 
+    15→// // During streaming
+    16→// processStreamingContent(accumulatedContent, character, messageKey);
+    17→// 
+    18→// // When message ends
+    19→// resetForNewMessage(messageKey, character);
+    20→// ```
+    21→
+    22→import { useCallback, useEffect, useRef, useMemo } from 'react';
+    23→import { useTavernStore } from '@/store';
+    24→import type { CharacterCard, HUDTemplate } from '@/types';
+    25→
+    26→// ============================================
+    27→// UNIFIED: KeyDetector and KeyHandler system
+    28→// ============================================
+    29→import { 
+    30→  getKeyDetector,
+    31→  resetKeyDetector,
+    32→  normalizeKey,
+    33→  keyMatches,
+    34→  type DetectedKey,
+    35→  type KeyFormat,
+    36→} from './key-detector';
+    37→import {
+    38→  getHandlerRegistry,
+    39→  resetHandlerRegistry,
+    40→  type HandlerRegistryResult,
+    41→} from './handler-registry';
+    42→import type { KeyHandler, TriggerMatchResult } from './types';
+    43→
+    44→// ============================================
+    45→// UNIFIED: KeyHandler implementations
+    46→// ============================================
+    47→import {
+    48→  createSoundKeyHandler,
+    49→  SoundKeyHandler,
+    50→  type SoundKeyHandlerContext,
+    51→} from './handlers/sound-key-handler';
+    52→import {
+    53→  createSpriteKeyHandler,
+    54→  SpriteKeyHandler,
+    55→  type SpriteKeyHandlerContext,
+    56→  getIdleSpriteUrl,
+    57→} from './handlers/sprite-key-handler';
+    58→import {
+    59→  createSkillKeyHandler,
+    60→  SkillKeyHandler,
+    61→  type SkillKeyHandlerContext,
+    62→} from './handlers/skill-key-handler';
+    63→import {
+    64→  createSolicitudKeyHandler,
+    65→  SolicitudKeyHandler,
+    66→  type SolicitudKeyHandlerContext,
+    67→} from './handlers/solicitud-key-handler';
+    68→import {
+    69→  createBackgroundKeyHandler,
+    70→  BackgroundKeyHandler,
+    71→  type BackgroundKeyHandlerContext,
+    72→} from './handlers/background-key-handler';
+    73→import {
+    74→  createHUDKeyHandler,
+    75→  HUDKeyHandler,
+    76→  type HUDKeyHandlerContext,
+    77→} from './handlers/hud-key-handler';
+    78→import {
+    79→  createQuestKeyHandler,
+    80→  QuestKeyHandler,
+    81→  type QuestKeyHandlerContext,
+    82→} from './handlers/quest-key-handler';
+    83→import {
+    84→  createStatsKeyHandler,
+    85→  StatsKeyHandler,
+    86→  type StatsKeyHandlerContext,
+    87→} from './handlers/stats-key-handler';
+    88→import {
+    89→  createItemKeyHandler,
+    90→  ItemKeyHandler,
+    91→  type ItemKeyHandlerContext,
+    92→} from './handlers/item-key-handler';
+    93→
+    94→// ============================================
+    95→// LEGACY: TokenDetector (for handlers not yet migrated)
+    96→// ============================================
+    97→import { 
+    98→  getTokenDetector, 
+    99→  type TokenDetectorConfig 
+   100→} from './token-detector';
+   101→import { 
+   102→  getTriggerBus, 
+   103→  type TriggerContext, 
+   104→  createMessageEndEvent,
+   105→} from './trigger-bus';
+   106→import {
+   107→  createSoundHandlerState,
+   108→  checkSoundTriggers,
+   109→  executeAllSoundTriggers,
+   110→  resetSoundHandlerState,
+   111→  clearSoundHandlerState,
+   112→  checkSoundSequenceTriggers,
+   113→  executeAllSoundSequenceTriggers,
+   114→  type SoundHandlerState,
+   115→  type SoundTriggerContext,
+   116→  type SoundSequenceContext,
+   117→} from './handlers/sound-handler';
+   118→import {
+   119→  createSpriteHandlerState,
+   120→  checkSpriteTriggers,
+   121→  executeSpriteTrigger,
+   122→  resetSpriteHandlerState,
+   123→  clearSpriteHandlerState,
+   124→  checkTriggerCollections,
+   125→  executeTriggerCollectionResult,
+   126→  markCollectionTriggered,
+   127→  type SpriteHandlerState,
+   128→  type SpriteTriggerContext,
+   129→  type SpriteTriggerContextV2,
+   130→  type TriggerCollectionMatchResult,
+   131→} from './handlers/sprite-handler';
+   132→import {
+   133→  createHUDHandlerState,
+   134→  checkHUDTriggers,
+   135→  executeHUDTrigger,
+   136→  resetHUDHandlerState,
+   137→  clearHUDHandlerState,
+   138→  type HUDHandlerState,
+   139→  type HUDTriggerContext,
+   140→} from './handlers/hud-handler';
+   141→import {
+   142→  createBackgroundHandlerState,
+   143→  checkBackgroundTriggers,
+   144→  checkBackgroundTriggersMulti,
+   145→  checkReturnToDefault,
+   146→  executeBackgroundTrigger,
+   147→  executeAllBackgroundTriggers,
+   148→  resetBackgroundHandlerState,
+   149→  clearBackgroundHandlerState,
+   150→  type BackgroundHandlerState,
+   151→  type BackgroundTriggerContext,
+   152→} from './handlers/background-handler';
+   153→import {
+   154→  createQuestHandlerState,
+   155→  checkQuestTriggers,
+   156→  resetQuestHandlerState,
+   157→  clearQuestHandlerState,
+   158→  type QuestHandlerState,
+   159→  type QuestTriggerContext,
+   160→} from './handlers/quest-handler';
+   161→import {
+   162→  executeReward,
+   163→} from '@/lib/quest/quest-reward-executor';
+   164→import {
+   165→  createItemHandlerState,
+   166→  checkItemTriggers,
+   167→  resetItemHandlerState,
+   168→  clearItemHandlerState,
+   169→  type ItemHandlerState,
+   170→  type ItemTriggerContext,
+   171→} from './handlers/item-handler';
+   172→import {
+   173→  createStatsHandlerState,
+   174→  checkStatsTriggersInText,
+   175→  executeStatsTrigger,
+   176→  resetStatsHandlerState,
+   177→  clearStatsHandlerState,
+   178→  type StatsHandlerState,
+   179→  type StatsTriggerContext,
+   180→} from './handlers/stats-handler';
+   181→import {
+   182→  createSkillActivationHandlerState,
+   183→  checkSkillActivationTriggersInText,
+   184→  executeAllSkillActivations,
+   185→  resetSkillActivationState,
+   186→  clearSkillActivationHandlerState,
+   187→  type SkillActivationHandlerState,
+   188→  type SkillActivationTriggerContext,
+   189→} from './handlers/skill-activation-handler';
+   190→import {
+   191→  createSolicitudHandlerState,
+   192→  checkSolicitudTriggersInText,
+   193→  resetSolicitudHandlerState,
+   194→  clearSolicitudHandlerState,
+   195→  type SolicitudHandlerState,
+   196→  type SolicitudTriggerContext,
+   197→} from './handlers/solicitud-handler';
+   198→import type { BackgroundOverlay, BackgroundTransitionType } from '@/types';
+   199→
+   200→// ============================================
+   201→// Hook Configuration
+   202→// ============================================
+   203→
+   204→export interface TriggerSystemConfig {
+   205→  tokenDetector?: Partial<TokenDetectorConfig>;
+   206→  soundEnabled?: boolean;
+   207→  spriteEnabled?: boolean;
+   208→  backgroundEnabled?: boolean;
+   209→  hudEnabled?: boolean;
+   210→  questEnabled?: boolean;
+   211→  inventoryEnabled?: boolean;
+   212→  statsEnabled?: boolean;
+   213→  debug?: boolean;
+   214→  maxSoundsPerMessage?: number;
+   215→  // Persona for peticiones/solicitudes system
+   216→  activePersona?: { id: string; name: string; statsConfig?: any } | null;
+   217→}
+   218→
+   219→// ============================================
+   220→// Hook Return Type
+   221→// ============================================
+   222→
+   223→export interface TriggerSystemResult {
+   224→  processStreamingContent: (
+   225→    content: string, 
+   226→    character: CharacterCard | null,
+   227→    messageKey: string,
+   228→    characters?: CharacterCard[]
+   229→  ) => void;
+   230→  
+   231→  processFullContent: (
+   232→    content: string,
+   233→    character: CharacterCard | null,
+   234→    messageKey: string,
+   235→    characters?: CharacterCard[]
+   236→  ) => void;
+   237→  
+   238→  completePartialMatches: (
+   239→    messageKey: string,
+   240→    character: CharacterCard | null,
+   241→    characters?: CharacterCard[]
+   242→  ) => DetectedKey | null;
+   243→  
+   244→  resetForNewMessage: (messageKey: string, character: CharacterCard | null, characters?: CharacterCard[]) => void;
+   245→  
+   246→  // Clear ALL state - call this when chat is reset
+   247→  clearAllState: () => void;
+   248→  
+   249→  isEnabled: boolean;
+   250→}
+   251→
+   252→// ============================================
+   253→// Hook Implementation
+   254→// ============================================
+   255→
+   256→export function useTriggerSystem(config: TriggerSystemConfig = {}): TriggerSystemResult {
+   257→  const store = useTavernStore();
+   258→  const settings = store.settings;
+   259→  
+   260→  // Handler states (created once)
+   261→  const soundHandlerState = useMemo(() => createSoundHandlerState(), []);
+   262→  const spriteHandlerState = useMemo(() => createSpriteHandlerState(), []);
+   263→  const hudHandlerState = useMemo(() => createHUDHandlerState(), []);
+   264→  const backgroundHandlerState = useMemo(() => createBackgroundHandlerState(), []);
+   265→  const questHandlerState = useMemo(() => createQuestHandlerState(), []);
+   266→  const itemHandlerState = useMemo(() => createItemHandlerState(), []);
+   267→  const statsHandlerState = useMemo(() => createStatsHandlerState(), []);
+   268→  const skillActivationHandlerState = useMemo(() => createSkillActivationHandlerState(), []);
+   269→  const solicitudHandlerState = useMemo(() => createSolicitudHandlerState(), []);
+   270→
+   271→  // Key handlers (created once to preserve deduplication state)
+   272→  // IMPORTANT: These must be created once and reused, otherwise the position tracking
+   273→  // for deduplication is reset on every call, causing double activations
+   274→  const soundHandler = useMemo(() => createSoundKeyHandler(config.maxSoundsPerMessage ?? 10), [config.maxSoundsPerMessage]);
+   275→  const spriteHandler = useMemo(() => createSpriteKeyHandler(), []);
+   276→  const skillHandler = useMemo(() => createSkillKeyHandler(), []);
+   277→  const solicitudHandler = useMemo(() => createSolicitudKeyHandler(), []);
+   278→  const backgroundHandler = useMemo(() => createBackgroundKeyHandler(), []);
+   279→  const hudHandler = useMemo(() => createHUDKeyHandler(), []);
+   280→  const questHandler = useMemo(() => createQuestKeyHandler(), []);
+   281→  const statsHandler = useMemo(() => createStatsKeyHandler(), []);
+   282→  const itemHandler = useMemo(() => createItemKeyHandler(), []);
+   283→
+   284→  // Track last processed content per message
+   285→  const lastProcessedRef = useRef<Map<string, string>>(new Map());
+   286→  
+   287→  // Initialize trigger bus and detector
+   288→  useEffect(() => {
+   289→    const bus = getTriggerBus();
+   290→    const detector = getTokenDetector(config.tokenDetector);
+   291→    
+   292→    if (config.debug) {
+   293→      bus.setDebug(true);
+   294→    }
+   295→    
+   296→    // Cleanup on unmount
+   297→    return () => {
+   298→      soundHandlerState.triggeredPositions.clear();
+   299→      soundHandlerState.soundCountPerMessage.clear();
+   300→      spriteHandlerState.triggeredPositions.clear();
+   301→      spriteHandlerState.lastPackMatches.clear();
+   302→      hudHandlerState.updatedFields.clear();
+   303→      backgroundHandlerState.triggeredPositions.clear();
+   304→      backgroundHandlerState.lastTriggeredBackground.clear();
+   305→      backgroundHandlerState.lastTriggerTime.clear();
+   306→      backgroundHandlerState.currentActivePack.clear();
+   307→      questHandlerState.processedQuests.clear();
+   308→      questHandlerState.triggeredPositions.clear();
+   309→      itemHandlerState.processedItems.clear();
+   310→      itemHandlerState.triggeredPositions.clear();
+   311→      statsHandlerState.detectionStates.clear();
+   312→      statsHandlerState.processedMessages.clear();
+   313→    };
+   314→  }, [config.debug, config.tokenDetector, soundHandlerState, spriteHandlerState, hudHandlerState, backgroundHandlerState, questHandlerState, itemHandlerState, statsHandlerState]);
+   315→  
+   316→  // Check for return to default background periodically
+   317→  useEffect(() => {
+   318→    if (config.backgroundEnabled === false) return;
+   319→    
+   320→    const checkInterval = setInterval(() => {
+   321→      const bgSettings = settings.backgroundTriggers;
+   322→      if (!bgSettings?.enabled || !bgSettings?.returnToDefaultEnabled) return;
+   323→      
+   324→      const context: BackgroundTriggerContext = {
+   325→        character: null,
+   326→        characters: undefined,
+   327→        fullText: '',
+   328→        messageKey: 'return-check',
+   329→        isStreaming: false,
+   330→        timestamp: Date.now(),
+   331→        backgroundPacks: store.backgroundTriggerPacks ?? [],
+   332→        backgroundCollections: store.backgroundCollections ?? [],
+   333→        backgroundSettings: {
+   334→          enabled: bgSettings.enabled,
+   335→          globalCooldown: bgSettings.globalCooldown ?? 0,
+   336→          transitionDuration: bgSettings.transitionDuration ?? 500,
+   337→          defaultTransitionType: (bgSettings.defaultTransitionType as BackgroundTransitionType) ?? 'fade',
+   338→          returnToDefaultEnabled: bgSettings.returnToDefaultEnabled ?? false,
+   339→          returnToDefaultAfter: bgSettings.returnToDefaultAfter ?? 300000,
+   340→          defaultBackgroundUrl: bgSettings.defaultBackgroundUrl ?? '',
+   341→          globalOverlays: (bgSettings.globalOverlays as BackgroundOverlay[]) ?? [],
+   342→        },
+   343→        cooldownContextKey: 'default',
+   344→      };
+   345→      
+   346→      const returnResult = checkReturnToDefault(context, backgroundHandlerState);
+   347→      
+   348→      if (returnResult?.shouldReturn && returnResult.defaultUrl) {
+   349→        console.log('[TriggerSystem] Returning to default background');
+   350→        store.setBackground(returnResult.defaultUrl);
+   351→        if (returnResult.overlays) {
+   352→          store.setActiveOverlays(returnResult.overlays);
+   353→        }
+   354→      }
+   355→    }, 10000); // Check every 10 seconds
+   356→    
+   357→    return () => clearInterval(checkInterval);
+   358→  }, [settings.backgroundTriggers, store, backgroundHandlerState, config.backgroundEnabled]);
+   359→  
+   360→  /**
+   361→   * Get the active HUD template based on character or group
+   362→   */
+   363→  const getActiveHUDTemplate = useCallback((): HUDTemplate | null => {
+   364→    const hudSessionState = store.hudSessionState;
+   365→    
+   366→    // If there's an active template in session, use it
+   367→    if (hudSessionState.activeTemplateId) {
+   368→      return store.hudTemplates.find(t => t.id === hudSessionState.activeTemplateId) || null;
+   369→    }
+   370→    
+   371→    return null;
+   372→  }, [store.hudTemplates, store.hudSessionState]);
+   373→  
+   374→  /**
+   375→   * Process streaming content incrementally
+   376→   */
+   377→  const processStreamingContent = useCallback((
+   378→    content: string,
+   379→    character: CharacterCard | null,
+   380→    messageKey: string,
+   381→    characters?: CharacterCard[]
+   382→  ) => {
+   383→    // DEBUG: Log all processStreamingContent calls
+   384→    console.log(`[TriggerSystem] processStreamingContent called`, {
+   385→      messageKey,
+   386→      characterName: character?.name,
+   387→      characterId: character?.id,
+   388→      contentLength: content.length,
+   389→      contentPreview: content.slice(0, 100),
+   390→      charactersCount: characters?.length,
+   391→      hasPersona: characters?.some(c => c.id === '__user__'),
+   392→    });
+   393→
+   394→    // Check if already processed this exact content
+   395→    // Use characterMessageKey for cache to avoid cross-character conflicts in group chat
+   396→    // But we need to compute characterMessageKey first
+   397→    let characterMessageKey: string;
+   398→    if (character?.id) {
+   399→      // Check if messageKey already ends with the characterId (group chat case)
+   400→      if (messageKey.endsWith(`_${character.id}`)) {
+   401→        characterMessageKey = messageKey;
+   402→      } else {
+   403→        characterMessageKey = `${messageKey}_${character.id}`;
+   404→      }
+   405→    } else {
+   406→      characterMessageKey = messageKey;
+   407→    }
+   408→    
+   409→    const lastProcessed = lastProcessedRef.current.get(characterMessageKey);
+   410→    if (lastProcessed === content) {
+   411→      console.log(`[TriggerSystem] Skipping - same content as last processed for ${characterMessageKey}`);
+   412→      return;
+   413→    }
+   414→    lastProcessedRef.current.set(characterMessageKey, content);
+   415→    
+   416→    console.log(`[TriggerSystem] Using characterMessageKey: ${characterMessageKey}`);
+   417→    
+   418→    // Create context (needed for both token-based triggers AND solicitud processing)
+   419→    const context: TriggerContext = {
+   420→      character,
+   421→      characters,
+   422→      fullText: content,
+   423→      messageKey: characterMessageKey,
+   424→      isStreaming: true,
+   425→      timestamp: Date.now(),
+   426→    };
+   427→    
+   428→    // ============================================
+   429→    // UNIFIED KEY DETECTION (NEW SYSTEM)
+   430→    // Detect ALL key formats in one pass: [key], |key|, Peticion:key, key:value, etc.
+   431→    // ============================================
+   432→    const keyDetector = getKeyDetector();
+   433→    const registry = getHandlerRegistry();
+   434→    
+   435→    // Detect formatted keys incrementally (only NEW keys since last call)
+   436→    // Use characterMessageKey for independent tracking per character
+   437→    const newKeys = keyDetector.detectKeys(content, characterMessageKey);
+   438→    
+   439→    // Also detect plain word keys for registered sound triggers
+   440→    // This is needed because "glohg" and "gluck" are plain words without special format
+   441→    const soundKeywords = store.soundTriggers
+   442→      ?.filter(t => t.active)
+   443→      ?.flatMap(t => t.keywords) || [];
+   444→    
+   445→    // Also detect skill activation keys as plain words
+   446→    // This is needed because "hab1" can appear as a plain word
+   447→    const skillActivationKeys = character?.statsConfig?.skills
+   448→      ?.filter(s => s.activationKey || (s.activationKeys && s.activationKeys.length > 0))
+   449→      ?.flatMap(s => [
+   450→        s.activationKey,
+   451→        ...(s.activationKeys || [])
+   452→      ].filter(Boolean)) || [];
+   453→    
+   454→    // Also detect background trigger keys as plain words
+   455→    // This is needed because "sofa", "cama", etc. are plain words without special format
+   456→    const backgroundKeywords = store.backgroundTriggerPacks
+   457→      ?.filter(p => p.active)
+   458→      ?.flatMap(p => p.items.filter(i => i.enabled).flatMap(i => i.triggerKeys)) || [];
+   459→    
+   460→    // Also detect quest activation and objective completion keys as plain words
+   461→    // Quest activation keys from available quests
+   462→    const activeSession = store.getActiveSession?.();
+   463→    const sessionQuests = activeSession?.sessionQuests || [];
+   464→    
+   465→    // Get quest templates for looking up activation/completion keys
+   466→    const questTemplates = store.questTemplates || [];
+   467→    
+   468→    // Activation keys from available quests
+   469→    const questActivationKeys = sessionQuests
+   470→      .filter(q => q.status === 'available')
+   471→      .flatMap(q => {
+   472→        const template = questTemplates.find(t => t.id === q.templateId);
+   473→        if (template?.activation?.method === 'keyword') {
+   474→          return [
+   475→            template.activation.key,
+   476→            ...(template.activation.keys || [])
+   477→          ].filter(Boolean);
+   478→        }
+   479→        return [];
+   480→      });
+   481→    
+   482→    // Objective completion keys from active quests
+   483→    const questObjectiveKeys = sessionQuests
+   484→      .filter(q => q.status === 'active')
+   485→      .flatMap(q => {
+   486→        const template = questTemplates.find(t => t.id === q.templateId);
+   487→        if (!template) return [];
+   488→        return template.objectives.flatMap(obj => {
+   489→          const sessionObj = q.objectives.find(o => o.templateId === obj.id);
+   490→          if (sessionObj?.isCompleted) return [];
+   491→          return [
+   492→            obj.completion?.key,
+   493→            ...(obj.completion?.keys || [])
+   494→          ].filter(Boolean);
+   495→        });
+   496→      });
+   497→    
+   498→    // Quest completion keys from active quests
+   499→    const questCompletionKeys = sessionQuests
+   500→      .filter(q => q.status === 'active')
+   501→      .flatMap(q => {
+   502→        const template = questTemplates.find(t => t.id === q.templateId);
+   503→        if (!template) return [];
+   504→        return [
+   505→          template.completion?.key,
+   506→          ...(template.completion?.keys || [])
+   507→        ].filter(Boolean);
+   508→      });
+   509→    
+   510→    // Combine all keywords to detect as plain words
+   511→    const allKeywords = [
+   512→      ...soundKeywords,
+   513→      ...skillActivationKeys,
+   514→      ...backgroundKeywords,
+   515→      ...questActivationKeys,
+   516→      ...questObjectiveKeys,
+   517→      ...questCompletionKeys,
+   518→      // Item trigger keywords from inventory V2
+   519→      ...(store.inventorySettings?.enabled
+   520→        ? (store.items ?? []).flatMap(item => item.triggerKeywords ?? [])
+   521→        : []),
+   522→    ];
+   523→    
+   524→    // DEBUG: Log keyword detection setup
+   525→    console.log(`[TriggerSystem] Keyword detection setup:`, {
+   526→      soundKeywordsCount: soundKeywords.length,
+   527→      skillActivationKeysCount: skillActivationKeys.length,
+   528→      backgroundKeywordsCount: backgroundKeywords.length,
+   529→      questActivationKeysCount: questActivationKeys.length,
+   530→      questObjectiveKeysCount: questObjectiveKeys.length,
+   531→      questCompletionKeysCount: questCompletionKeys.length,
+   532→      allKeywordsCount: allKeywords.length,
+   533→      // Show actual quest keywords for debugging
+   534→      questActivationKeys,
+   535→      questObjectiveKeys,
+   536→      questCompletionKeys,
+   537→      sessionQuestsCount: sessionQuests.length,
+   538→      sessionQuestsStatuses: sessionQuests.map(q => q.status),
+   539→    });
+   540→    
+   541→    // Use characterMessageKey for independent tracking per character
+   542→    const wordKeys = keyDetector.detectWordKeys(content, characterMessageKey, allKeywords);
+   543→    
+   544→    // Combine all detected keys (formatted + plain words)
+   545→    const allDetectedKeys = [...newKeys, ...wordKeys];
+   546→    
+   547→    console.log(`[TriggerSystem] Detection summary: ${newKeys.length} formatted + ${wordKeys.length} word = ${allDetectedKeys.length} total`);
+   548→    
+   549→    if (allDetectedKeys.length > 0) {
+   550→      console.log(`[TriggerSystem] Detected ${allDetectedKeys.length} keys:`, 
+   551→        allDetectedKeys.map(k => ({ key: k.key, format: k.format, position: k.position })));
+   552→      
+   553→      // Build contexts for each handler type
+   554→      const activeSession = store.getActiveSession?.();
+   555→      const sessionId = store.activeSessionId || '';
+   556→      
+   557→      // Include persona as pseudo-character for peticiones targeting __user__
+   558→      const allCharactersWithPersona = [
+   559→        ...(characters || []),
+   560→        ...(config.activePersona?.statsConfig?.enabled ? [{
+   561→          id: '__user__',
+   562→          name: config.activePersona.name || 'User',
+   563→          statsConfig: config.activePersona.statsConfig,
+   564→        }] as CharacterCard[] : []),
+   565→      ];
+   566→      
+   567→      // ============================================
+   568→      // UNIFIED HANDLER REGISTRY PROCESSING
+   569→      // Register all handlers and process keys through registry
+   570→      // This replaces the manual loop with a unified handler system
+   571→      // ============================================
+   572→      
+   573→      // Build context for handlers
+   574→      const soundKeyHandlerContext: SoundKeyHandlerContext = {
+   575→        ...context,
+   576→        sessionId,
+   577→        characterId: character?.id,
+   578→        soundTriggers: store.soundTriggers,
+   579→        soundCollections: store.soundCollections,
+   580→        soundSequenceTriggers: store.soundSequenceTriggers,
+   581→        soundSettings: {
+   582→          enabled: settings.sound?.enabled ?? false,
+   583→          globalVolume: settings.sound?.globalVolume ?? 0.85,
+   584→          globalCooldown: settings.sound?.globalCooldown ?? 0,
+   585→        },
+   586→        cooldownContextKey: character?.id || 'default',
+   587→        playSound: store.playSound?.bind(store),
+   588→      };
+   589→      
+   590→      const spriteKeyHandlerContext: SpriteKeyHandlerContext = {
+   591→        ...context,
+   592→        sessionId,
+   593→        characterId: character?.id,
+   594→        character,
+   595→        allCharacters: characters,
+   596→        triggerCollections: character?.triggerCollections ?? [],
+   597→        spritePacksV2: character?.spritePacksV2 ?? store.spritePacksV2 ?? [],
+   598→        stateCollectionsV2: character?.stateCollectionsV2,
+   599→        spritePacks: character?.spritePacks ?? store.spritePacks ?? [],
+   600→        spriteTriggers: character?.spriteTriggers ?? [],
+   601→        spriteIndex: store.spriteIndex,
+   602→        isSpriteLocked: store.isSpriteLocked?.() ?? false,
+   603→        applyTriggerForCharacter: store.applyTriggerForCharacter?.bind(store),
+   604→        scheduleReturnToIdleForCharacter: store.scheduleReturnToIdleForCharacter?.bind(store),
+   605→        addTriggerToQueue: store.addTriggerToQueue?.bind(store),
+   606→        startSpriteChain: store.startSpriteChain?.bind(store),
+   607→        startSoundChain: store.startSoundChain?.bind(store),
+   608→      };
+   609→      
+   610→      const skillHandlerContext: SkillKeyHandlerContext = {
+   611→        ...context,
+   612→        characterId: character?.id || '',
+   613→        characterName: character?.name || '',
+   614→        statsConfig: character?.statsConfig,
+   615→        sessionStats: activeSession?.sessionStats,
+   616→        sessionId,
+   617→        lorebooks: store.lorebooks,
+   618→        storeActions: {
+   619→          updateCharacterStat: store.updateCharacterStat.bind(store),
+   620→          updateSessionEvent: store.updateSessionEvent?.bind(store),
+   621→        },
+   622→      };
+   623→      
+   624→      const solicitudHandlerContext: SolicitudKeyHandlerContext = {
+   625→        ...context,
+   626→        characterId: character?.id || '',
+   627→        characterName: character?.name || '',
+   628→        statsConfig: character?.statsConfig,
+   629→        sessionStats: activeSession?.sessionStats,
+   630→        sessionId,
+   631→        allCharacters: allCharactersWithPersona,
+   632→        activePersona: config.activePersona,
+   633→        storeActions: {
+   634→          createSolicitud: store.createSolicitud.bind(store),
+   635→          completeSolicitud: store.completeSolicitud.bind(store),
+   636→          getSessionStats: (sid: string) => {
+   637→            const session = store.sessions?.find((s: any) => s.id === sid);
+   638→            return session?.sessionStats || null;
+   639→          },
+   640→        },
+   641→      };
+   642→
+   643→      // Build handler contexts (outside the loop for efficiency)
+   644→      const backgroundKeyHandlerContext: BackgroundKeyHandlerContext = {
+   645→        ...context,
+   646→        sessionId,
+   647→        characterId: character?.id,
+   648→        backgroundPacks: store.backgroundTriggerPacks ?? [],
+   649→        backgroundSettings: {
+   650→          enabled: settings.backgroundTriggers?.enabled ?? false,
+   651→          globalCooldown: settings.backgroundTriggers?.globalCooldown ?? 0,
+   652→          transitionDuration: settings.backgroundTriggers?.transitionDuration ?? 500,
+   653→          defaultTransitionType: settings.backgroundTriggers?.defaultTransitionType ?? 'fade',
+   654→          returnToDefaultEnabled: settings.backgroundTriggers?.returnToDefaultEnabled ?? false,
+   655→          returnToDefaultAfter: settings.backgroundTriggers?.returnToDefaultAfter ?? 300000,
+   656→          defaultBackgroundUrl: settings.backgroundTriggers?.defaultBackgroundUrl ?? '',
+   657→          globalOverlays: settings.backgroundTriggers?.globalOverlays ?? [],
+   658→        },
+   659→        cooldownContextKey: character?.id || 'default',
+   660→        setBackground: store.setBackground?.bind(store),
+   661→        setOverlays: store.setActiveOverlays?.bind(store),
+   662→      };
+   663→
+   664→      const activeHUDTemplate = getActiveHUDTemplate();
+   665→      const hudKeyHandlerContext: HUDKeyHandlerContext | null = activeHUDTemplate ? {
+   666→        ...context,
+   667→        sessionId,
+   668→        characterId: character?.id,
+   669→        activeHUDTemplate,
+   670→        currentHUDValues: store.hudSessionState.fieldValues,
+   671→        updateHUDFieldValue: store.updateHUDFieldValue.bind(store),
+   672→      } : null;
+   673→
+   674→      // Quest handler context
+   675→      const questKeyHandlerContext: QuestKeyHandlerContext = {
+   676→        ...context,
+   677→        sessionId,
+   678→        characterId: character?.id,
+   679→        questTemplates: store.questTemplates ?? [],
+   680→        sessionQuests: activeSession?.sessionQuests ?? [],
+   681→        questSettings: store.questSettings ?? { enabled: false },
+   682→        turnCount: activeSession?.turnCount ?? 0,
+   683→        sessionStats: activeSession?.sessionStats,
+   684→        activateQuest: store.activateQuest?.bind(store),
+   685→        progressQuestObjective: store.progressQuestObjective?.bind(store),
+   686→        completeQuest: store.completeQuest?.bind(store),
+   687→      };
+   688→
+   689→      // Stats handler context
+   690→      const statsKeyHandlerContext: StatsKeyHandlerContext = {
+   691→        ...context,
+   692→        sessionId,
+   693→        characterId: character?.id,
+   694→        characterName: character?.name,
+   695→        statsConfig: character?.statsConfig,
+   696→        sessionStats: activeSession?.sessionStats,
+   697→        updateCharacterStat: store.updateCharacterStat.bind(store),
+   698→      };
+   699→
+   700→      // Item handler context (V2)
+   701→      const activePersonaId = store.activePersonaId ?? config.activePersona?.id;
+   702→      const itemKeyHandlerContext: ItemKeyHandlerContext = {
+   703→        ...context,
+   704→        sessionId,
+   705→        characterId: character?.id,
+   706→        personaId: activePersonaId,
+   707→        items: store.items ?? [],
+   708→        inventorySettings: store.inventorySettings ?? { enabled: false },
+   709→        addToPersona: store.addToPersona?.bind(store),
+   710→        removeFromPersona: store.removeFromPersona?.bind(store),
+   711→        equipItem: store.equipItem?.bind(store),
+   712→        unequipItem: store.unequipItem?.bind(store),
+   713→        consumeItem: store.useConsumable?.bind(store),
+   714→        addInventoryNotification: store.addInventoryNotification?.bind(store),
+   715→      };
+   716→
+   717→      // Process keys through unified handlers
+   718→      for (const detectedKey of allDetectedKeys) {
+   719→        // 1. Sound Handler (highest priority for audio)
+   720→        if (config.soundEnabled !== false && settings.sound?.enabled) {
+   721→          if (soundHandler.canHandle(detectedKey, soundKeyHandlerContext)) {
+   722→            const result = soundHandler.handleKey(detectedKey, soundKeyHandlerContext);
+   723→            if (result?.matched) {
+   724→              console.log(`[TriggerSystem] Sound key matched: ${detectedKey.key}`);
+   725→              soundHandler.execute(result.trigger, soundKeyHandlerContext);
+   726→            }
+   727→          }
+   728→        }
+   729→        
+   730→        // 2. Sprite Handler
+   731→        if (config.spriteEnabled !== false) {
+   732→          if (spriteHandler.canHandle(detectedKey, spriteKeyHandlerContext)) {
+   733→            const result = spriteHandler.handleKey(detectedKey, spriteKeyHandlerContext);
+   734→            if (result?.matched) {
+   735→              console.log(`[TriggerSystem] Sprite key matched: ${detectedKey.key}`);
+   736→              spriteHandler.execute(result.trigger, spriteKeyHandlerContext);
+   737→            }
+   738→          }
+   739→        }
+   740→        
+   741→        // Helper function to complete quest objectives by their detection key
+   742→        // objectiveDetectionKey is the completion.key (e.g., "psycompletado") from QuestRewardObjective
+   743→        // Reads from session.sessionQuests directly for reliability
+   744→        const completeQuestObjectiveByKey = (
+   745→          sessionId: string,
+   746→          questTemplateId: string, // Can be empty to search all active quests
+   747→          objectiveDetectionKey: string,
+   748→          characterId?: string
+   749→        ): boolean => {
+   750→          try {
+   751→            console.log(`[completeQuestObjectiveByKey] Searching for objective with key: "${objectiveDetectionKey}"`);
+   752→            // Read from session.sessionQuests directly (most reliable source)
+   753→            const targetSession = store.sessions?.find((s: any) => s.id === sessionId);
+   754→            const sessionQuests = targetSession?.sessionQuests || [];
+   755→            console.log(`[completeQuestObjectiveByKey] Session quests found: ${sessionQuests.length} (source: session.sessionQuests)`);
+   756→            
+   757→            const activeQuests = sessionQuests.filter((q: any) => q.status === 'active' || q.status === 'available');
+   758→            console.log(`[completeQuestObjectiveByKey] Active/available quests: ${activeQuests.length}`);
+   759→            
+   760→            const templates = store.questTemplates || [];
+   761→            console.log(`[completeQuestObjectiveByKey] Templates loaded: ${templates.length}`);
+   762→            
+   763→            if (templates.length === 0) {
+   764→              console.log(`[completeQuestObjectiveByKey] WARNING: No templates loaded in store!`);
+   765→            }
+   766→            
+   767→            // Search for matching objective (exact match first)
+   768→            let matchedObjective: any = null;
+   769→            let matchedQuest: any = null;
+   770→            let matchedTemplate: any = null;
+   771→            
+   772→            for (const quest of activeQuests) {
+   773→              if (questTemplateId && quest.templateId !== questTemplateId) continue;
+   774→              
+   775→              const template = templates.find((t: any) => t.id === quest.templateId);
+   776→              if (!template) continue;
+   777→              
+   778→              for (const objective of template.objectives || []) {
+   779→                const completionKeys = [objective.completion?.key, ...(objective.completion?.keys || [])].filter(Boolean);
+   780→                
+   781→                for (const completionKey of completionKeys) {
+   782→                  if (completionKey === objectiveDetectionKey || 
+   783→                      completionKey?.toLowerCase() === objectiveDetectionKey.toLowerCase() ||
+   784→                      completionKey === `obj-${objectiveDetectionKey}`) {
+   785→                    matchedObjective = objective;
+   786→                    matchedQuest = quest;
+   787→                    matchedTemplate = template;
+   788→                    break;
+   789→                  }
+   790→                }
+   791→                if (matchedObjective) break;
+   792→              }
+   793→              if (matchedObjective) break;
+   794→            }
+   795→            
+   796→            // Try case-insensitive partial match if no exact match
+   797→            if (!matchedObjective) {
+   798→              const lowerKey = objectiveDetectionKey.toLowerCase();
+   799→              for (const quest of activeQuests) {
+   800→                if (questTemplateId && quest.templateId !== questTemplateId) continue;
+   801→                
+   802→                const template = templates.find((t: any) => t.id === quest.templateId);
+   803→                if (!template) continue;
+   804→                
+   805→                for (const objective of template.objectives || []) {
+   806→                  const completionKeys = [objective.completion?.key, ...(objective.completion?.keys || [])].filter(Boolean);
+   807→                  
+   808→                  for (const completionKey of completionKeys) {
+   809→                    if (completionKey?.toLowerCase().includes(lowerKey) || lowerKey.includes(completionKey?.toLowerCase())) {
+   810→                      matchedObjective = objective;
+   811→                      matchedQuest = quest;
+   812→                      matchedTemplate = template;
+   813→                      break;
+   814→                    }
+   815→                  }
+   816→                  if (matchedObjective) break;
+   817→                }
+   818→                if (matchedObjective) break;
+   819→              }
+   820→            }
+   821→            
+   822→            if (!matchedObjective || !matchedTemplate || !matchedQuest) {
+   823→              console.log(`[TriggerSystem] Objective not found: ${objectiveDetectionKey}`);
+   824→              return false;
+   825→            }
+   826→            
+   827→            // Check if objective is already completed in the session (prevent duplicate rewards)
+   828→            const sessionObjective = matchedQuest.objectives?.find((o: any) => o.templateId === matchedObjective.id);
+   829→            if (sessionObjective?.isCompleted) {
+   830→              console.log(`[completeQuestObjectiveByKey] Objective "${matchedObjective.description}" is already completed, skipping.`);
+   831→              return true; // Return true since the objective WAS found (just already done)
+   832→            }
+   833→            
+   834→            // Complete the objective using progressQuestObjective (same function quest-detector uses)
+   835→            // Note: store.completeObjective is from sessionSlice now (conflicting questSlice version removed)
+   836→            console.log(`[completeQuestObjectiveByKey] MATCH! Completing objective "${matchedObjective.description}" in quest ${matchedQuest.templateId}`);
+   837→            store.progressQuestObjective?.(sessionId, matchedQuest.templateId, matchedObjective.id, 999, characterId);
+   838→            // Note: Rewards (objective + quest auto-completion) are executed by progressQuestObjective internally
+   839→            
+   840→            return true;
+   841→          } catch (err) {
+   842→            console.error('[TriggerSystem] Error completing objective:', err);
+   843→            return false;
+   844→          }
+   845→        };
+   846→        
+   847→        // 3. Skill Handler (for skill activations)
+   848→        if (config.statsEnabled !== false && character?.statsConfig?.enabled) {
+   849→          if (skillHandler.canHandle(detectedKey, skillHandlerContext)) {
+   850→            const result = skillHandler.handleKey(detectedKey, skillHandlerContext);
+   851→            if (result?.matched) {
+   852→              console.log(`[TriggerSystem] Skill key matched: ${detectedKey.key}`);
+   853→              const executeResult = skillHandler.execute(result.trigger, skillHandlerContext);
+   854→              
+   855→              // If skill was skipped due to unmet requirements, don't execute rewards
+   856→              if (executeResult.skipped) {
+   857→                console.log(`[TriggerSystem] Skill "${result.trigger.data?.skillName}" skipped: ${executeResult.reason}`);
+   858→              } else {
+   859→                // Execute activation rewards (sounds, sprites, objective completions, etc.)
+   860→                const rewards: any[] = result.trigger.data?.activationRewards || [];
+   861→                if (rewards.length > 0) {
+   862→                console.log(`[TriggerSystem] Executing ${rewards.length} skill activation rewards`);
+   863→                for (const reward of rewards) {
+   864→                  try {
+   865→                    executeReward(reward, {
+   866→                      sessionId,
+   867→                      characterId: character.id,
+   868→                      character,
+   869→                      allCharacters: allCharactersWithPersona,
+   870→                      sessionStats: activeSession?.sessionStats,
+   871→                      timestamp: Date.now(),
+   872→                      soundCollections: store.soundCollections,
+   873→                      soundTriggers: store.soundTriggers,
+   874→                      backgroundPacks: store.backgroundTriggerPacks,
+   875→                      soundSettings: {
+   876→                        enabled: settings.sound?.enabled ?? false,
+   877→                        globalVolume: settings.sound?.globalVolume ?? 0.85,
+   878→                      },
+   879→                      backgroundSettings: {
+   880→                        transitionDuration: settings.backgroundTriggers?.transitionDuration ?? 500,
+   881→                        defaultTransitionType: settings.backgroundTriggers?.defaultTransitionType ?? 'fade',
+   882→                      },
+   883→                    }, {
+   884→                      updateCharacterStat: store.updateCharacterStat.bind(store),
+   885→                      applyTriggerForCharacter: store.applyTriggerForCharacter?.bind(store),
+   886→                      scheduleReturnToIdleForCharacter: store.scheduleReturnToIdleForCharacter?.bind(store),
+   887→                      isSpriteLocked: store.isSpriteLocked?.bind(store),
+   888→                      playSound: store.playSound?.bind(store),
+   889→                      setBackground: store.setBackground?.bind(store),
+   890→                      setActiveOverlays: store.setActiveOverlays?.bind(store),
+   891→                      progressQuestObjective: store.progressQuestObjective?.bind(store),
+   892→                      completeQuestObjective: completeQuestObjectiveByKey,
+   893→                      completeSolicitud: store.completeSolicitud?.bind(store),
+   894→                      getSessionQuests: (sid: string) => {
+   895→                        const s = store.sessions?.find((session: any) => session.id === sid);
+   896→                        return s?.sessionQuests || [];
+   897→                      },
+   898→                    });
+   899→                    console.log(`[TriggerSystem] Reward executed: ${reward.type} - ${reward.key || reward.id}`);
+   900→                  } catch (err) {
+   901→                    console.error('[TriggerSystem] Failed to execute skill activation reward:', err);
+   902→                  }
+   903→                }
+   904→              }
+   905→              
+   906→              // Execute threshold effects (when attribute reaches min/max)
+   907→              if (executeResult.thresholdsReached.length > 0) {
+   908→                console.log(`[TriggerSystem] Executing ${executeResult.thresholdsReached.length} threshold effects`);
+   909→                for (const threshold of executeResult.thresholdsReached) {
+   910→                  for (const reward of threshold.rewards) {
+   911→                    try {
+   912→                      executeReward(reward, {
+   913→                        sessionId,
+   914→                        characterId: character.id,
+   915→                        character,
+   916→                        allCharacters: allCharactersWithPersona,
+   917→                        sessionStats: activeSession?.sessionStats,
+   918→                        timestamp: Date.now(),
+   919→                        soundCollections: store.soundCollections,
+   920→                        soundTriggers: store.soundTriggers,
+   921→                        backgroundPacks: store.backgroundTriggerPacks,
+   922→                        soundSettings: {
+   923→                          enabled: settings.sound?.enabled ?? false,
+   924→                          globalVolume: settings.sound?.globalVolume ?? 0.85,
+   925→                        },
+   926→                        backgroundSettings: {
+   927→                          transitionDuration: settings.backgroundTriggers?.transitionDuration ?? 500,
+   928→                          defaultTransitionType: settings.backgroundTriggers?.defaultTransitionType ?? 'fade',
+   929→                        },
+   930→                      }, {
+   931→                        updateCharacterStat: store.updateCharacterStat.bind(store),
+   932→                        applyTriggerForCharacter: store.applyTriggerForCharacter?.bind(store),
+   933→                        scheduleReturnToIdleForCharacter: store.scheduleReturnToIdleForCharacter?.bind(store),
+   934→                        isSpriteLocked: store.isSpriteLocked?.bind(store),
+   935→                        playSound: store.playSound?.bind(store),
+   936→                        setBackground: store.setBackground?.bind(store),
+   937→                        setActiveOverlays: store.setActiveOverlays?.bind(store),
+   938→                        completeQuestObjective: completeQuestObjectiveByKey,
+   939→                        completeSolicitud: store.completeSolicitud?.bind(store),
+   940→                        getSessionQuests: (sid: string) => {
+   941→                          const s = store.sessions?.find((session: any) => session.id === sid);
+   942→                          return s?.sessionQuests || [];
+   943→                        },
+   944→                      });
+   945→                      console.log(`[TriggerSystem] Executed threshold effect for ${threshold.attributeName}`);
+   946→                    } catch (err) {
+   947→                      console.error(`[TriggerSystem] Failed to execute threshold effect:`, err);
+   948→                    }
+   949→                  }
+   950→                }
+   951→              }
+   952→              } // end else (requirements met — execute rewards and thresholds)
+   953→            }
+   954→          }
+   955→        }
+   956→        
+   957→        // 4. Solicitud Handler (for peticiones/solicitudes)
+   958→        if (config.statsEnabled !== false && character?.statsConfig?.enabled) {
+   959→          const hasPeticiones = character.statsConfig.invitations && character.statsConfig.invitations.length > 0;
+   960→          const hasPendingSolicitudes = activeSession?.sessionStats?.solicitudes?.characterSolicitudes?.[character.id]
+   961→            ?.some(s => s.status === 'pending');
+   962→          
+   963→          if (hasPeticiones || hasPendingSolicitudes) {
+   964→            if (solicitudHandler.canHandle(detectedKey, solicitudHandlerContext)) {
+   965→              const result = solicitudHandler.handleKey(detectedKey, solicitudHandlerContext);
+   966→              if (result?.matched) {
+   967→                console.log(`[TriggerSystem] Solicitud key matched: ${detectedKey.key}`);
+   968→                solicitudHandler.execute(result.trigger, solicitudHandlerContext);
+   969→              }
+   970→            }
+   971→          }
+   972→        }
+   973→
+   974→        // 5. Background Handler
+   975→        if (config.backgroundEnabled !== false && settings.backgroundTriggers?.enabled) {
+   976→          if (backgroundHandler.canHandle(detectedKey, backgroundKeyHandlerContext)) {
+   977→            const result = backgroundHandler.handleKey(detectedKey, backgroundKeyHandlerContext);
+   978→            if (result?.matched) {
+   979→              console.log(`[TriggerSystem] Background key matched: ${detectedKey.key}`);
+   980→              backgroundHandler.execute(result.trigger, backgroundKeyHandlerContext);
+   981→            }
+   982→          }
+   983→        }
+   984→
+   985→        // 6. HUD Handler
+   986→        if (config.hudEnabled !== false && hudKeyHandlerContext) {
+   987→          if (hudHandler.canHandle(detectedKey, hudKeyHandlerContext)) {
+   988→            const result = hudHandler.handleKey(detectedKey, hudKeyHandlerContext);
+   989→            if (result?.matched) {
+   990→              console.log(`[TriggerSystem] HUD key matched: ${detectedKey.key}`);
+   991→              hudHandler.execute(result.trigger, hudKeyHandlerContext);
+   992→            }
+   993→          }
+   994→        }
+   995→
+   996→        // 7. Quest Handler — DISABLED: quests are processed by the legacy quest-detector
+   997→        // system below (checkQuestTriggers) which has full reward execution support,
+   998→        // prefix expansion, value conditions, and word boundary matching.
+   999→        // The unified QuestKeyHandler was causing double-processing and missing rewards.
+  1000→        // Quest keys are still registered for word detection above (questActivationKeys,
+  1001→        // questObjectiveKeys, questCompletionKeys) to ensure they reach the legacy path.
+  1002→
+  1003→        // 8. Stats Handler
+  1004→        if (config.statsEnabled !== false && character?.statsConfig?.enabled) {
+  1005→          if (statsHandler.canHandle(detectedKey, statsKeyHandlerContext)) {
+  1006→            const result = statsHandler.handleKey(detectedKey, statsKeyHandlerContext);
+  1007→            if (result?.matched) {
+  1008→              console.log(`[TriggerSystem] Stats key matched: ${detectedKey.key}`);
+  1009→              statsHandler.execute(result.trigger, statsKeyHandlerContext);
+  1010→            }
+  1011→          }
+  1012→        }
+  1013→
+  1014→        // 9. Item Handler
+  1015→        if (config.inventoryEnabled !== false && store.inventorySettings?.enabled) {
+  1016→          if (itemHandler.canHandle(detectedKey, itemKeyHandlerContext)) {
+  1017→            const result = itemHandler.handleKey(detectedKey, itemKeyHandlerContext);
+  1018→            if (result?.matched) {
+  1019→              console.log(`[TriggerSystem] Item key matched: ${detectedKey.key}`);
+  1020→              itemHandler.execute(result.trigger, itemKeyHandlerContext);
+  1021→            }
+  1022→          }
+  1023→        }
+  1024→      }
+  1025→
+  1026→      // Reset handlers for next message (use characterMessageKey for correct tracking)
+  1027→      soundHandler.reset(characterMessageKey);
+  1028→      spriteHandler.reset(characterMessageKey);
+  1029→      backgroundHandler.reset(characterMessageKey);
+  1030→      hudHandler.reset(characterMessageKey);
+  1031→      questHandler.reset(characterMessageKey);
+  1032→      statsHandler.reset(characterMessageKey);
+  1033→      itemHandler.reset(characterMessageKey);
+  1034→    }
+  1035→    
+  1036→    // ============================================
+  1037→    // PROCESS Solicitud triggers FIRST (before token-based early return)
+  1038→    // This is critical because the TokenDetector may not detect peticion/solicitud keys
+  1039→    // but we still need to process them for the peticiones/solicitudes system
+  1040→    // ============================================
+  1041→    console.log(`[TriggerSystem] Checking solicitud conditions`, {
+  1042→      statsEnabled: config.statsEnabled !== false,
+  1043→      characterStatsEnabled: character?.statsConfig?.enabled,
+  1044→      hasInvitations: character?.statsConfig?.invitations?.length,
+  1045→    });
+  1046→
+  1047→    if (config.statsEnabled !== false) {
+  1048→      const activeSession = store.getActiveSession?.();
+  1049→      const sessionId = store.activeSessionId || '';
+  1050→
+  1051→      // Only process for the speaking character
+  1052→      if (character?.statsConfig?.enabled) {
+  1053→        const hasPeticiones = character.statsConfig.invitations && character.statsConfig.invitations.length > 0;
+  1054→        const hasPendingSolicitudes = activeSession?.sessionStats?.solicitudes?.characterSolicitudes?.[character.id]
+  1055→          ?.some(s => s.status === 'pending');
+  1056→
+  1057→        console.log(`[TriggerSystem] Solicitud check for ${character.name}`, {
+  1058→          hasPeticiones,
+  1059→          hasPendingSolicitudes,
+  1060→          invitationsCount: character.statsConfig.invitations?.length,
+  1061→          invitations: character.statsConfig.invitations?.map(i => ({ key: i.peticionKey, target: i.objetivo })),
+  1062→        });
+  1063→
+  1064→        if (hasPeticiones || hasPendingSolicitudes) {
+  1065→          // Include persona as pseudo-character for peticiones targeting __user__
+  1066→          const allCharactersWithPersona = [
+  1067→            ...(characters || []),
+  1068→            ...(config.activePersona?.statsConfig?.enabled ? [{
+  1069→              id: '__user__',
+  1070→              name: config.activePersona.name || 'User',
+  1071→              statsConfig: config.activePersona.statsConfig,
+  1072→            }] as CharacterCard[] : []),
+  1073→          ];
+  1074→          
+  1075→          const solicitudContext: SolicitudTriggerContext = {
+  1076→            ...context,
+  1077→            characterId: character.id,
+  1078→            characterName: character.name,
+  1079→            statsConfig: character.statsConfig,
+  1080→            sessionStats: activeSession?.sessionStats,
+  1081→            sessionId,
+  1082→            allCharacters: allCharactersWithPersona,
+  1083→            activePersona: config.activePersona,
+  1084→          };
+  1085→
+  1086→          const solicitudResult = checkSolicitudTriggersInText(
+  1087→            content,
+  1088→            solicitudContext,
+  1089→            solicitudHandlerState,
+  1090→            {
+  1091→              createSolicitud: store.createSolicitud.bind(store),
+  1092→              completeSolicitud: store.completeSolicitud.bind(store),
+  1093→              getSessionStats: (sessionId: string) => {
+  1094→                const session = store.sessions?.find((s: any) => s.id === sessionId);
+  1095→                return session?.sessionStats || null;
+  1096→              },
+  1097→            }
+  1098→          );
+  1099→
+  1100→          if (solicitudResult.matched && solicitudResult.processingResult) {
+  1101→            const { activations, completions } = solicitudResult.processingResult;
+  1102→            
+  1103→            if (activations.length > 0) {
+  1104→              console.log(`[TriggerSystem] Peticiones activated for ${character.name}: ${activations.filter(a => a.activated).map(a => a.peticionKey).join(', ')}`);
+  1105→            }
+  1106→            
+  1107→            if (completions.length > 0) {
+  1108→              console.log(`[TriggerSystem] Solicitudes completed for ${character.name}: ${completions.filter(c => c.completed).map(c => c.solicitudKey).join(', ')}`);
+  1109→            }
+  1110→          }
+  1111→        }
+  1112→      }
+  1113→    }
+  1114→    
+  1115→    // ============================================
+  1116→    // TOKEN-BASED TRIGGERS (sound, sprite, etc.)
+  1117→    // These use the TokenDetector for pattern matching
+  1118→    // ============================================
+  1119→    const detector = getTokenDetector();
+  1120→    
+  1121→    // Process incrementally - get only NEW tokens
+  1122→    const newTokens = detector.processIncremental(content, messageKey);
+  1123→    
+  1124→    if (newTokens.length === 0) {
+  1125→      return;
+  1126→    }
+  1127→    
+  1128→    // ============================================
+  1129→    // NOTE: Sound and Sprite are now handled by the UNIFIED KeyHandlers above
+  1130→    // The legacy processing below has been removed to avoid double-processing
+  1131→    // ============================================
+  1132→    
+  1133→    // Process HUD triggers
+  1134→    if (config.hudEnabled !== false) {
+  1135→      const activeHUDTemplate = getActiveHUDTemplate();
+  1136→      
+  1137→      if (activeHUDTemplate) {
+  1138→        const hudContext: HUDTriggerContext = {
+  1139→          ...context,
+  1140→          activeHUDTemplate,
+  1141→          currentValues: store.hudSessionState.fieldValues,
+  1142→        };
+  1143→        
+  1144→        const hudResult = checkHUDTriggers(
+  1145→          newTokens,
+  1146→          hudContext,
+  1147→          hudHandlerState
+  1148→        );
+  1149→        
+  1150→        if (hudResult?.matched && hudResult.trigger) {
+  1151→          executeHUDTrigger(hudResult.trigger, context, {
+  1152→            updateHUDFieldValue: store.updateHUDFieldValue.bind(store),
+  1153→          });
+  1154→        }
+  1155→      }
+  1156→    }
+  1157→    
+  1158→    // Process Background triggers - Use Multi version for multiple background changes
+  1159→    if (config.backgroundEnabled !== false && settings.backgroundTriggers?.enabled) {
+  1160→      const bgContext: BackgroundTriggerContext = {
+  1161→        ...context,
+  1162→        backgroundPacks: store.backgroundTriggerPacks ?? [],
+  1163→        backgroundCollections: store.backgroundCollections ?? [],
+  1164→        backgroundSettings: {
+  1165→          enabled: settings.backgroundTriggers?.enabled ?? false,
+  1166→          globalCooldown: settings.backgroundTriggers?.globalCooldown ?? 0,
+  1167→          transitionDuration: settings.backgroundTriggers?.transitionDuration ?? 500,
+  1168→          defaultTransitionType: (settings.backgroundTriggers?.defaultTransitionType as BackgroundTransitionType) ?? 'fade',
+  1169→          returnToDefaultEnabled: settings.backgroundTriggers?.returnToDefaultEnabled ?? false,
+  1170→          returnToDefaultAfter: settings.backgroundTriggers?.returnToDefaultAfter ?? 300000,
+  1171→          defaultBackgroundUrl: settings.backgroundTriggers?.defaultBackgroundUrl ?? '',
+  1172→          globalOverlays: (settings.backgroundTriggers?.globalOverlays as BackgroundOverlay[]) ?? [],
+  1173→        },
+  1174→        cooldownContextKey: character?.id || 'default',
+  1175→      };
+  1176→      
+  1177→      // Use Multi version to detect ALL background matches in order of appearance
+  1178→      const bgResult = checkBackgroundTriggersMulti(
+  1179→        newTokens,
+  1180→        bgContext,
+  1181→        backgroundHandlerState
+  1182→      );
+  1183→      
+  1184→      if (bgResult?.matched && bgResult.triggers.length > 0) {
+  1185→        executeAllBackgroundTriggers(bgResult, context, {
+  1186→          setBackground: store.setBackground.bind(store),
+  1187→          setOverlays: store.setActiveOverlays.bind(store),
+  1188→        });
+  1189→      }
+  1190→    }
+  1191→    
+  1192→    // Process Quest triggers (New Template/Instance System)
+  1193→    if (config.questEnabled !== false && store.questSettings?.enabled) {
+  1194→      const activeSession = store.getActiveSession?.();
+  1195→      const sessionId = store.activeSessionId || '';
+  1196→      
+  1197→      // Get templates and session quest instances
+  1198→      const templates = store.questTemplates || [];
+  1199→      const sessionQuests = activeSession?.sessionQuests || [];
+  1200→      const turnCount = activeSession?.turnCount || 0;
+  1201→      
+  1202→      // Only process if we have quests in this session
+  1203→      if (templates.length > 0 || sessionQuests.length > 0) {
+  1204→        const questContext: QuestTriggerContext = {
+  1205→          ...context,
+  1206→          templates,
+  1207→          sessionQuests,
+  1208→          questSettings: store.questSettings,
+  1209→          sessionId,
+  1210→          turnCount,
+  1211→        };
+  1212→        
+  1213→        const questResult = checkQuestTriggers(
+  1214→          newTokens,
+  1215→          content,
+  1216→          questContext,
+  1217→          questHandlerState
+  1218→        );
+  1219→        
+  1220→        if (questResult.hits.length > 0) {
+  1221→          // Process quest trigger hits
+  1222→          for (const hit of questResult.hits) {
+  1223→            console.log(`[TriggerSystem] Quest trigger: ${hit.message}`);
+  1224→            
+  1225→            // Handle different quest actions
+  1226→            switch (hit.action) {
+  1227→              case 'activate':
+  1228→                // Activate a quest in the session
+  1229→                store.activateQuest(sessionId, hit.questId);
+  1230→                break;
+  1231→                
+  1232→              case 'progress':
+  1233→                // Progress an objective
+  1234→                // Note: store.progressQuestObjective now handles reward execution internally
+  1235→                if (hit.questId && hit.objectiveId) {
+  1236→                  store.progressQuestObjective(
+  1237→                    sessionId,
+  1238→                    hit.questId,
+  1239→                    hit.objectiveId,
+  1240→                    hit.progress || 1,
+  1241→                    character?.id
+  1242→                  );
+  1243→                  // Rewards (objective + quest auto-completion) are now executed by the store.
+  1244→                  // No need for duplicate reward execution here.
+  1245→                }
+  1246→                break;
+  1247→                
+  1248→              case 'complete':
+  1249→                if (hit.questId) {
+  1250→                  // Complete the quest
+  1251→                  // Note: store.completeQuest now handles reward execution internally
+  1252→                  store.completeQuest(sessionId, hit.questId, character?.id);
+  1253→                  // Rewards are now executed by the store. No duplicate here.
+  1254→                }
+  1255→                break;
+  1256→                
+  1257→              case 'fail':
+  1258→                if (hit.questId) {
+  1259→                  store.failQuest(sessionId, hit.questId);
+  1260→                }
+  1261→                break;
+  1262→            }
+  1263→            
+  1264→            // Add notification for quest events (except complete and progress with rewards which are handled separately)
+  1265→            // Only add notification if:
+  1266→            // - action is 'activate' or 'fail'
+  1267→            // - action is 'progress' but doesn't complete objective (no rewards)
+  1268→            if (store.questSettings.showNotifications) {
+  1269→              if (hit.action === 'activate') {
+  1270→                store.addQuestNotification({
+  1271→                  questId: hit.questId,
+  1272→                  questName: hit.template?.name || 'Quest',
+  1273→                  type: 'quest_activated',
+  1274→                  message: hit.message,
+  1275→                });
+  1276→              } else if (hit.action === 'fail') {
+  1277→                store.addQuestNotification({
+  1278→                  questId: hit.questId,
+  1279→                  questName: hit.template?.name || 'Quest',
+  1280→                  type: 'quest_failed',
+  1281→                  message: hit.message,
+  1282→                });
+  1283→              } else if (hit.action === 'progress' && !hit.completesObjective) {
+  1284→                // Only notify for progress that doesn't complete objective
+  1285→                // Progress that completes objective already notified with rewards above
+  1286→                store.addQuestNotification({
+  1287→                  questId: hit.questId,
+  1288→                  questName: hit.template?.name || 'Quest',
+  1289→                  type: 'objective_complete',
+  1290→                  message: hit.message,
+  1291→                });
+  1292→              }
+  1293→            }
+  1294→          }
+  1295→        }
+  1296→      }
+  1297→    }
+  1298→    
+  1299→    // Process Item triggers (V2 — uses persona-based inventory)
+  1300→    if (config.inventoryEnabled !== false && store.inventorySettings?.enabled) {
+  1301→      const activePersonaId = store.activePersonaId ?? config.activePersona?.id;
+  1302→      
+  1303→      const itemContext: ItemTriggerContext = {
+  1304→        ...context,
+  1305→        items: store.items,
+  1306→        inventoryEntries: [],  // Legacy V1 — not used in V2
+  1307→        inventorySettings: store.inventorySettings as any,
+  1308→        defaultContainerId: '',
+  1309→      };
+  1310→      
+  1311→      const itemResult = checkItemTriggers(
+  1312→        newTokens,
+  1313→        content,
+  1314→        itemContext,
+  1315→        itemHandlerState
+  1316→      );
+  1317→      
+  1318→      if (itemResult.hits.length > 0) {
+  1319→        // Process item trigger hits using V2 store methods
+  1320→        for (const hit of itemResult.hits) {
+  1321→          console.log(`[TriggerSystem] Item trigger: ${hit.message}`);
+  1322→          
+  1323→          if (!activePersonaId) continue;
+  1324→          
+  1325→          switch (hit.type) {
+  1326→            case 'add':
+  1327→              store.addToPersona?.(activePersonaId, hit.itemId, hit.quantity);
+  1328→              break;
+  1329→            case 'remove':
+  1330→              store.removeFromPersona?.(activePersonaId, hit.itemId, hit.quantity);
+  1331→              break;
+  1332→            case 'equip':
+  1333→              store.equipItem?.(activePersonaId, hit.itemId);
+  1334→              break;
+  1335→          }
+  1336→          
+  1337→          // Add notification if enabled
+  1338→          if (store.inventorySettings.showNotifications) {
+  1339→            store.addInventoryNotification({
+  1340→              type: hit.type,
+  1341→              itemName: hit.item?.name || 'Item',
+  1342→              quantity: hit.quantity,
+  1343→              message: hit.message,
+  1344→            });
+  1345→          }
+  1346→        }
+  1347→      }
+  1348→    }
+  1349→    
+  1350→    // Process Stats triggers (Character Attributes)
+  1351→    // IMPORTANT: Only process stats for the SPEAKING character (the one in `character` parameter)
+  1352→    // This prevents conflicts when multiple characters have the same attribute key
+  1353→    if (config.statsEnabled !== false) {
+  1354→      const activeSession = store.getActiveSession?.();
+  1355→      const sessionId = store.activeSessionId || '';
+  1356→
+  1357→      // Only process stats for the speaking character
+  1358→      // In group chats, `character` is the current speaker, not all characters
+  1359→      if (character?.statsConfig?.enabled) {
+  1360→        const statsContext: StatsTriggerContext = {
+  1361→          ...context,
+  1362→          characterId: character.id,
+  1363→          statsConfig: character.statsConfig,
+  1364→          sessionStats: activeSession?.sessionStats,
+  1365→        };
+  1366→
+  1367→        const statsResult = checkStatsTriggersInText(
+  1368→          content,
+  1369→          statsContext,
+  1370→          statsHandlerState
+  1371→        );
+  1372→
+  1373→        if (statsResult.matched && statsResult.trigger) {
+  1374→          const hits = executeStatsTrigger(statsResult.trigger, context, {
+  1375→            updateCharacterStat: store.updateCharacterStat.bind(store),
+  1376→            activeSessionId: sessionId,
+  1377→          });
+  1378→
+  1379→          if (hits.length > 0) {
+  1380→            console.log(`[TriggerSystem] Stats updated for ${character.name} (${character.id}): ${hits.map(h => `${h.attributeName}=${h.newValue}`).join(', ')}`);
+  1381→          }
+  1382→        }
+  1383→      }
+  1384→
+  1385→      // Also process stats for the user persona (if persona has stats enabled)
+  1386→      if (config.activePersona?.statsConfig?.enabled) {
+  1387→        const personaStatsContext: StatsTriggerContext = {
+  1388→          ...context,
+  1389→          characterId: '__user__',
+  1390→          characterName: config.activePersona.name || 'User',
+  1391→          statsConfig: config.activePersona.statsConfig,
+  1392→          sessionStats: activeSession?.sessionStats,
+  1393→        };
+  1394→
+  1395→        const personaStatsResult = checkStatsTriggersInText(
+  1396→          content,
+  1397→          personaStatsContext,
+  1398→          statsHandlerState
+  1399→        );
+  1400→
+  1401→        if (personaStatsResult.matched && personaStatsResult.trigger) {
+  1402→          const hits = executeStatsTrigger(personaStatsResult.trigger, personaStatsContext, {
+  1403→            updateCharacterStat: store.updateCharacterStat.bind(store),
+  1404→            activeSessionId: sessionId,
+  1405→          });
+  1406→
+  1407→          if (hits.length > 0) {
+  1408→            console.log(`[TriggerSystem] Persona stats updated: ${hits.map(h => `${h.attributeName}=${h.newValue}`).join(', ')}`);
+  1409→          }
+  1410→        }
+  1411→      }
+  1412→    }
+  1413→    
+  1414→    // ============================================
+  1415→    // LEGACY: Skill Activation triggers - DISABLED
+  1416→    // Now handled by SkillKeyHandler in the unified system above
+  1417→    // ============================================
+  1418→    // if (config.statsEnabled !== false) {
+  1419→    //   ... legacy skill activation code removed ...
+  1420→    // }
+  1421→  }, [config, settings, store, soundHandlerState, spriteHandlerState, hudHandlerState, backgroundHandlerState, questHandlerState, itemHandlerState, statsHandlerState, skillActivationHandlerState, solicitudHandlerState, getActiveHUDTemplate, soundHandler, spriteHandler, skillHandler, solicitudHandler, backgroundHandler, hudHandler, questHandler, statsHandler, itemHandler]);
+  1422→  
+  1423→  /**
+  1424→   * Process full content at once (non-streaming)
+  1425→   */
+  1426→  const processFullContent = useCallback((
+  1427→    content: string,
+  1428→    character: CharacterCard | null,
+  1429→    messageKey: string,
+  1430→    characters?: CharacterCard[]
+  1431→  ) => {
+  1432→    const detector = getTokenDetector();
+  1433→    
+  1434→    // Reset and process full content
+  1435→    detector.reset(messageKey);
+  1436→    lastProcessedRef.current.set(messageKey, content);
+  1437→    
+  1438→    // Process as streaming content (same logic)
+  1439→    processStreamingContent(content, character, messageKey, characters);
+  1440→  }, [processStreamingContent]);
+  1441→  
+  1442→  /**
+  1443→   * Complete any pending partial matches and process them
+  1444→   * This should be called when streaming ends to capture key:value pairs at end of text
+  1445→   */
+  1446→  const completePartialMatches = useCallback((
+  1447→    messageKey: string, 
+  1448→    character: CharacterCard | null,
+  1449→    characters?: CharacterCard[]
+  1450→  ): DetectedKey | null => {
+  1451→    const keyDetector = getKeyDetector();
+  1452→    
+  1453→    // Create characterMessageKey with same logic as processStreamingContent
+  1454→    let characterMessageKey: string;
+  1455→    if (character?.id) {
+  1456→      // Check if messageKey already ends with the characterId (group chat case)
+  1457→      if (messageKey.endsWith(`_${character.id}`)) {
+  1458→        characterMessageKey = messageKey;
+  1459→      } else {
+  1460→        characterMessageKey = `${messageKey}_${character.id}`;
+  1461→      }
+  1462→    } else {
+  1463→      characterMessageKey = messageKey;
+  1464→    }
+  1465→    
+  1466→    // Complete any pending partial match
+  1467→    const completedKey = keyDetector.completePartialMatch(characterMessageKey);
+  1468→    
+  1469→    if (completedKey) {
+  1470→      console.log(`[TriggerSystem] Completed partial match:`, {
+  1471→        key: completedKey.key,
+  1472→        value: completedKey.value,
+  1473→        format: completedKey.format,
+  1474→        characterId: character?.id,
+  1475→      });
+  1476→      
+  1477→      // Process the completed key through handlers
+  1478→      const sessionId = store.activeSessionId || '';
+  1479→      const activeSession = store.getActiveSession?.();
+  1480→      
+  1481→      // Include persona as pseudo-character for peticiones targeting __user__
+  1482→      const allCharactersWithPersona = [
+  1483→        ...(characters || []),
+  1484→        ...(config.activePersona?.statsConfig?.enabled ? [{
+  1485→          id: '__user__',
+  1486→          name: config.activePersona.name || 'User',
+  1487→          statsConfig: config.activePersona.statsConfig,
+  1488→        }] as CharacterCard[] : []),
+  1489→      ];
+  1490→      
+  1491→      // Build context for sprite handler (most common case for key:value)
+  1492→      const spriteKeyHandlerContext: SpriteKeyHandlerContext = {
+  1493→        character,
+  1494→        characters,
+  1495→        characterId: character?.id,
+  1496→        messageKey,
+  1497→        fullText: '',
+  1498→        isStreaming: false,
+  1499→        timestamp: Date.now(),
+  1500→        sessionId,
+  1501→        allCharacters: characters,
+  1502→        triggerCollections: character?.triggerCollections ?? [],
+  1503→        spritePacksV2: character?.spritePacksV2 ?? store.spritePacksV2 ?? [],
+  1504→        stateCollectionsV2: character?.stateCollectionsV2,
+  1505→        spritePacks: character?.spritePacks ?? store.spritePacks ?? [],
+  1506→        spriteTriggers: character?.spriteTriggers ?? [],
+  1507→        spriteIndex: store.spriteIndex,
+  1508→        isSpriteLocked: store.isSpriteLocked?.() ?? false,
+  1509→        applyTriggerForCharacter: store.applyTriggerForCharacter?.bind(store),
+  1510→        scheduleReturnToIdleForCharacter: store.scheduleReturnToIdleForCharacter?.bind(store),
+  1511→        addTriggerToQueue: store.addTriggerToQueue?.bind(store),
+  1512→        startSpriteChain: store.startSpriteChain?.bind(store),
+  1513→        startSoundChain: store.startSoundChain?.bind(store),
+  1514→      };
+  1515→      
+  1516→      const soundKeyHandlerContext: SoundKeyHandlerContext = {
+  1517→        character,
+  1518→        characters,
+  1519→        characterId: character?.id,
+  1520→        messageKey,
+  1521→        fullText: '',
+  1522→        isStreaming: false,
+  1523→        timestamp: Date.now(),
+  1524→        sessionId,
+  1525→        soundTriggers: store.soundTriggers,
+  1526→        soundCollections: store.soundCollections,
+  1527→        soundSequenceTriggers: store.soundSequenceTriggers,
+  1528→        soundSettings: {
+  1529→          enabled: settings.sound?.enabled ?? false,
+  1530→          globalVolume: settings.sound?.globalVolume ?? 0.85,
+  1531→          globalCooldown: settings.sound?.globalCooldown ?? 0,
+  1532→        },
+  1533→        cooldownContextKey: character?.id || 'default',
+  1534→        playSound: store.playSound?.bind(store),
+  1535→      };
+  1536→      
+  1537→      // Process through handlers
+  1538→      const spriteHandler = createSpriteKeyHandler();
+  1539→      const soundHandler = createSoundKeyHandler(config.maxSoundsPerMessage ?? 10);
+  1540→      
+  1541→      // Try sprite handler first
+  1542→      if (config.spriteEnabled !== false) {
+  1543→        if (spriteHandler.canHandle(completedKey, spriteKeyHandlerContext)) {
+  1544→          const result = spriteHandler.handleKey(completedKey, spriteKeyHandlerContext);
+  1545→          if (result?.matched) {
+  1546→            console.log(`[TriggerSystem] Completed partial match - Sprite key matched: ${completedKey.key}=${completedKey.value}`);
+  1547→            spriteHandler.execute(result.trigger, spriteKeyHandlerContext);
+  1548→          }
+  1549→        }
+  1550→      }
+  1551→      
+  1552→      // Try sound handler
+  1553→      if (config.soundEnabled !== false && settings.sound?.enabled) {
+  1554→        if (soundHandler.canHandle(completedKey, soundKeyHandlerContext)) {
+  1555→          const result = soundHandler.handleKey(completedKey, soundKeyHandlerContext);
+  1556→          if (result?.matched) {
+  1557→            console.log(`[TriggerSystem] Completed partial match - Sound key matched: ${completedKey.key}=${completedKey.value}`);
+  1558→            soundHandler.execute(result.trigger, soundKeyHandlerContext);
+  1559→          }
+  1560→        }
+  1561→      }
+  1562→    }
+  1563→    
+  1564→    return completedKey;
+  1565→  }, [config, store, settings]);
+  1566→  
+  1567→  /**
+  1568→   * Reset for new message
+  1569→   */
+  1570→  const resetForNewMessage = useCallback((messageKey: string, character: CharacterCard | null, characters?: CharacterCard[]) => {
+  1571→    // First, complete any pending partial matches
+  1572→    completePartialMatches(messageKey, character, characters);
+  1573→    
+  1574→    // Create characterMessageKey for resetting with same logic as processStreamingContent
+  1575→    let characterMessageKey: string;
+  1576→    if (character?.id) {
+  1577→      // Check if messageKey already ends with the characterId (group chat case)
+  1578→      if (messageKey.endsWith(`_${character.id}`)) {
+  1579→        characterMessageKey = messageKey;
+  1580→      } else {
+  1581→        characterMessageKey = `${messageKey}_${character.id}`;
+  1582→      }
+  1583→    } else {
+  1584→      characterMessageKey = messageKey;
+  1585→    }
+  1586→    
+  1587→    console.log(`[TriggerSystem] resetForNewMessage using characterMessageKey: ${characterMessageKey}`);
+  1588→    
+  1589→    // Reset unified KeyDetector
+  1590→    const keyDetector = getKeyDetector();
+  1591→    keyDetector.reset(characterMessageKey);
+  1592→    
+  1593→    // Reset legacy TokenDetector
+  1594→    const tokenDetector = getTokenDetector();
+  1595→    tokenDetector.reset(messageKey);
+  1596→    
+  1597→    // Get sessionId for quest handler reset
+  1598→    const sessionId = store.activeSessionId || undefined;
+  1599→    
+  1600→    // Reset handlers
+  1601→    resetSoundHandlerState(soundHandlerState, messageKey);
+  1602→    resetSpriteHandlerState(spriteHandlerState, messageKey);
+  1603→    resetHUDHandlerState(hudHandlerState, messageKey);
+  1604→    resetBackgroundHandlerState(backgroundHandlerState, messageKey);
+  1605→    resetQuestHandlerState(questHandlerState, messageKey, sessionId);
+  1606→    resetItemHandlerState(itemHandlerState, messageKey);
+  1607→    resetStatsHandlerState(statsHandlerState, character?.id || '', messageKey);
+  1608→    resetSkillActivationState(skillActivationHandlerState, messageKey);
+  1609→    resetSolicitudHandlerState(solicitudHandlerState, character?.id || '', messageKey);
+  1610→    
+  1611→    // Clear last processed
+  1612→    lastProcessedRef.current.delete(messageKey);
+  1613→    
+  1614→    // Emit message end event
+  1615→    const bus = getTriggerBus();
+  1616→    bus.emit(createMessageEndEvent(messageKey, character, ''));
+  1617→  }, [soundHandlerState, spriteHandlerState, hudHandlerState, backgroundHandlerState, questHandlerState, itemHandlerState, statsHandlerState, skillActivationHandlerState, solicitudHandlerState, store.activeSessionId, completePartialMatches]);
+  1618→  
+  1619→  /**
+  1620→   * Clear ALL trigger state - call this when chat is reset
+  1621→   * This clears all detection states so quests can be re-activated
+  1622→   */
+  1623→  const clearAllState = useCallback(() => {
+  1624→    // Clear unified KeyDetector
+  1625→    getKeyDetector().clearAll();
+  1626→    
+  1627→    // Clear all handler states
+  1628→    clearSoundHandlerState(soundHandlerState);
+  1629→    clearSpriteHandlerState(spriteHandlerState);
+  1630→    clearHUDHandlerState(hudHandlerState);
+  1631→    clearBackgroundHandlerState(backgroundHandlerState);
+  1632→    clearQuestHandlerState(questHandlerState);
+  1633→    clearItemHandlerState(itemHandlerState);
+  1634→    clearStatsHandlerState(statsHandlerState);
+  1635→    clearSkillActivationHandlerState(skillActivationHandlerState);
+  1636→    clearSolicitudHandlerState(solicitudHandlerState);
+  1637→    
+  1638→    // Clear processed tracking
+  1639→    lastProcessedRef.current.clear();
+  1640→    
+  1641→    console.log('[TriggerSystem] All state cleared');
+  1642→  }, [soundHandlerState, spriteHandlerState, hudHandlerState, backgroundHandlerState, questHandlerState, itemHandlerState, statsHandlerState, skillActivationHandlerState, solicitudHandlerState]);
+  1643→  
+  1644→  return {
+  1645→    processStreamingContent,
+  1646→    processFullContent,
+  1647→    completePartialMatches,
+  1648→    resetForNewMessage,
+  1649→    clearAllState,
+  1650→    isEnabled: true,
+  1651→  };
+  1652→}
+  1653→
+  1654→// ============================================
+  1655→// Export Everything
+  1656→// ============================================
+  1657→
+  1658→export { getTokenDetector, getTriggerBus };
+  1659→export * from './token-detector';
+  1660→export * from './trigger-bus';
+  1661→export * from './types';
+  1662→

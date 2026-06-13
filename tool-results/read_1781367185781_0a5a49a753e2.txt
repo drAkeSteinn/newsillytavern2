@@ -1,0 +1,936 @@
+     1→'use client';
+     2→
+     3→import { useTavernStore } from '@/store/tavern-store';
+     4→import { Button } from '@/components/ui/button';
+     5→import { ScrollArea } from '@/components/ui/scroll-area';
+     6→import { Input } from '@/components/ui/input';
+     7→import { 
+     8→  Plus, 
+     9→  Search, 
+    10→  Users, 
+    11→  MessageSquare,
+    12→  MoreVertical,
+    13→  Trash2,
+    14→  Edit,
+    15→  Download,
+    16→  Upload,
+    17→  FileUp,
+    18→  Package,
+    19→  PackageOpen
+    20→} from 'lucide-react';
+    21→import {
+    22→  DropdownMenu,
+    23→  DropdownMenuContent,
+    24→  DropdownMenuItem,
+    25→  DropdownMenuSeparator,
+    26→  DropdownMenuTrigger,
+    27→} from '@/components/ui/dropdown-menu';
+    28→import { useState, useRef, useEffect } from 'react';
+    29→import { cn } from '@/lib/utils';
+    30→import { CharacterEditor } from './character-editor';
+    31→import { GroupEditor } from './group-editor';
+    32→import { importCharacterCard, exportCharacterCardAsPng, exportCharacterCardAsJson } from '@/lib/character-card';
+    33→import type { CharacterCard, CharacterGroup } from '@/types';
+    34→import { useToast } from '@/hooks/use-toast';
+    35→import { getLogger } from '@/lib/logger';
+    36→
+    37→const charLogger = getLogger('character');
+    38→
+    39→// Type for exported data
+    40→interface ExportedData {
+    41→  version: string;
+    42→  exportedAt: string;
+    43→  characters: CharacterCard[];
+    44→  groups: CharacterGroup[];
+    45→}
+    46→
+    47→export function CharacterPanel() {
+    48→  const [searchQuery, setSearchQuery] = useState('');
+    49→  const [editorOpen, setEditorOpen] = useState(false);
+    50→  const [editingCharacterId, setEditingCharacterId] = useState<string | null>(null);
+    51→  const [groupEditorOpen, setGroupEditorOpen] = useState(false);
+    52→  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+    53→  const [isImporting, setIsImporting] = useState(false);
+    54→  const [isDragging, setIsDragging] = useState(false);
+    55→  const fileInputRef = useRef<HTMLInputElement>(null);
+    56→  const bulkImportRef = useRef<HTMLInputElement>(null);
+    57→  const { toast } = useToast();
+    58→
+    59→  // Use individual selectors to avoid re-rendering on unrelated store changes
+    60→  const characters = useTavernStore((s) => s.characters);
+    61→  const groups = useTavernStore((s) => s.groups);
+    62→  const activeCharacterId = useTavernStore((s) => s.activeCharacterId);
+    63→  const activeGroupId = useTavernStore((s) => s.activeGroupId);
+    64→  const sessions = useTavernStore((s) => s.sessions);
+    65→  const setActiveCharacter = useTavernStore((s) => s.setActiveCharacter);
+    66→  const setActiveGroup = useTavernStore((s) => s.setActiveGroup);
+    67→  const createSession = useTavernStore((s) => s.createSession);
+    68→  const setActiveSession = useTavernStore((s) => s.setActiveSession);
+    69→  const deleteCharacter = useTavernStore((s) => s.deleteCharacter);
+    70→  const deleteGroup = useTavernStore((s) => s.deleteGroup);
+    71→  const addCharacter = useTavernStore((s) => s.addCharacter);
+    72→  const addGroup = useTavernStore((s) => s.addGroup);
+    73→  const sidebarOpen = useTavernStore((s) => s.sidebarOpen);
+    74→
+    75→  // Ensure quest templates are loaded (needed for createSession to instantiate quests)
+    76→  const questTemplates = useTavernStore((s) => s.questTemplates);
+    77→  const loadTemplates = useTavernStore((s) => s.loadTemplates);
+    78→  useEffect(() => {
+    79→    if (questTemplates.length === 0) {
+    80→      loadTemplates();
+    81→    }
+    82→  }, []);
+    83→
+    84→  const filteredCharacters = characters.filter(c => 
+    85→    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    86→    c.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
+    87→  );
+    88→
+    89→  const handleSelectCharacter = (characterId: string) => {
+    90→    setActiveCharacter(characterId);
+    91→    setActiveGroup(null);
+    92→
+    93→    // Find existing INDIVIDUAL session (not group session) for this character
+    94→    // A character can have: 1 individual session + multiple group sessions
+    95→    // Priority: individual session (no groupId) > group session
+    96→    const individualSession = sessions.find(s =>
+    97→      s.characterId === characterId && !s.groupId
+    98→    );
+    99→
+   100→    if (individualSession) {
+   101→      setActiveSession(individualSession.id);
+   102→    } else {
+   103→      // No individual session exists, create one
+   104→      createSession(characterId);
+   105→    }
+   106→  };
+   107→
+   108→  const handleSelectGroup = (groupId: string) => {
+   109→    setActiveGroup(groupId);
+   110→    setActiveCharacter(null);
+   111→    
+   112→    // Find existing session for this group or create new
+   113→    const existingSession = sessions.find(s => s.groupId === groupId);
+   114→    if (existingSession) {
+   115→      setActiveSession(existingSession.id);
+   116→    } else {
+   117→      // Create a new session for the group using the store's createSession
+   118→      // Pass the first group member's characterId and the groupId
+   119→      const group = groups.find(g => g.id === groupId);
+   120→      if (group && group.members && group.members.length > 0) {
+   121→        // Use the first member's characterId to create the session
+   122→        const firstMemberId = group.members[0].characterId;
+   123→        createSession(firstMemberId, groupId);
+   124→      } else {
+   125→        // Fallback: create without character if group has no members
+   126→        createSession('', groupId);
+   127→      }
+   128→    }
+   129→  };
+   130→
+   131→  const handleEditCharacter = (characterId: string) => {
+   132→    setEditingCharacterId(characterId);
+   133→    setEditorOpen(true);
+   134→  };
+   135→
+   136→  const handleEditGroup = (groupId: string) => {
+   137→    setEditingGroupId(groupId);
+   138→    setGroupEditorOpen(true);
+   139→  };
+   140→
+   141→  const handleNewGroup = () => {
+   142→    setEditingGroupId(null);
+   143→    setGroupEditorOpen(true);
+   144→  };
+   145→
+   146→  const handleDeleteCharacter = (characterId: string) => {
+   147→    if (confirm('¿Estás seguro de que quieres eliminar este personaje?')) {
+   148→      deleteCharacter(characterId);
+   149→    }
+   150→  };
+   151→
+   152→  const handleNewCharacter = () => {
+   153→    setEditingCharacterId(null);
+   154→    setEditorOpen(true);
+   155→  };
+   156→
+   157→  const handleImportClick = () => {
+   158→    fileInputRef.current?.click();
+   159→  };
+   160→
+   161→  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+   162→    const file = e.target.files?.[0];
+   163→    if (!file) return;
+   164→
+   165→    setIsImporting(true);
+   166→    
+   167→    try {
+   168→      const result = await importCharacterCard(file);
+   169→      
+   170→      if (!result) {
+   171→        toast({
+   172→          title: 'Error de Importación',
+   173→          description: 'No se pudo analizar la tarjeta del personaje. Asegúrate de que sea un archivo PNG o JSON válido.',
+   174→          variant: 'destructive'
+   175→        });
+   176→        return;
+   177→      }
+   178→
+   179→      const { character, avatar } = result;
+   180→      
+   181→      // Add the character to the store - preserve ALL fields from import
+   182→      addCharacter({
+   183→        // Basic fields
+   184→        name: character.name || 'Personaje sin nombre',
+   185→        description: character.description || '',
+   186→        personality: character.personality || '',
+   187→        scenario: character.scenario || '',
+   188→        firstMes: character.firstMes || '',
+   189→        mesExample: character.mesExample || '',
+   190→        creatorNotes: character.creatorNotes || '',
+   191→        characterNote: character.characterNote || '',
+   192→        systemPrompt: character.systemPrompt || '',
+   193→        postHistoryInstructions: character.postHistoryInstructions || '',
+   194→        authorNote: character.authorNote || '',
+   195→        alternateGreetings: character.alternateGreetings || [],
+   196→        tags: character.tags || [],
+   197→        avatar: avatar,
+   198→        sprites: character.sprites || [],
+   199→        voice: character.voice || null,
+   200→        statsConfig: character.statsConfig,
+   201→        // V2 Sprite System fields
+   202→        spritePacksV2: character.spritePacksV2,
+   203→        stateCollectionsV2: character.stateCollectionsV2,
+   204→        triggerCollections: character.triggerCollections,
+   205→        spriteLibraries: character.spriteLibraries,
+   206→        spriteIndex: character.spriteIndex,
+   207→        // Legacy sprite fields
+   208→        spriteConfig: character.spriteConfig,
+   209→        spritePacks: character.spritePacks,
+   210→        spriteTriggers: character.spriteTriggers,
+   211→        // Reference IDs
+   212→        hudTemplateId: character.hudTemplateId,
+   213→        lorebookIds: character.lorebookIds,
+   214→        questTemplateIds: character.questTemplateIds,
+   215→        // Additional fields
+   216→        creator: character.creator,
+   217→        characterVersion: character.characterVersion,
+   218→        memory: character.memory,
+   219→        chatStats: character.chatStats,
+   220→        // Embeddings
+   221→        embeddingNamespaces: character.embeddingNamespaces,
+   222→        // Quick Replies & Proactive Messages
+   223→        quickReplies: character.quickReplies,
+   224→        proactiveMessages: character.proactiveMessages,
+   225→      });
+   226→
+   227→      toast({
+   228→        title: 'Personaje Importado',
+   229→        description: `"${character.name || 'Personaje sin nombre'}" ha sido importado exitosamente.`
+   230→      });
+   231→    } catch (error) {
+   232→      charLogger.error('Import error', { error, source: 'file-input' });
+   233→      toast({
+   234→        title: 'Error de Importación',
+   235→        description: 'Ocurrió un error al importar el personaje.',
+   236→        variant: 'destructive'
+   237→      });
+   238→    } finally {
+   239→      setIsImporting(false);
+   240→      // Reset file input
+   241→      if (fileInputRef.current) {
+   242→        fileInputRef.current.value = '';
+   243→      }
+   244→    }
+   245→  };
+   246→
+   247→  const handleExportCharacter = async (character: CharacterCard, format: 'png' | 'json') => {
+   248→    try {
+   249→      let blob: Blob;
+   250→      let filename: string;
+   251→      
+   252→      if (format === 'png') {
+   253→        blob = await exportCharacterCardAsPng(character);
+   254→        filename = `${character.name.replace(/[^a-z0-9]/gi, '_')}.png`;
+   255→      } else {
+   256→        const jsonStr = exportCharacterCardAsJson(character);
+   257→        blob = new Blob([jsonStr], { type: 'application/json' });
+   258→        filename = `${character.name.replace(/[^a-z0-9]/gi, '_')}.json`;
+   259→      }
+   260→      
+   261→      const url = URL.createObjectURL(blob);
+   262→      const a = document.createElement('a');
+   263→      a.href = url;
+   264→      a.download = filename;
+   265→      document.body.appendChild(a);
+   266→      a.click();
+   267→      document.body.removeChild(a);
+   268→      URL.revokeObjectURL(url);
+   269→      
+   270→      toast({
+   271→        title: 'Personaje Exportado',
+   272→        description: `"${character.name}" ha sido exportado como ${format.toUpperCase()}.`
+   273→      });
+   274→    } catch (error) {
+   275→      charLogger.error('Export error', { error, characterName: character.name, format });
+   276→      toast({
+   277→        title: 'Error de Exportación',
+   278→        description: 'Ocurrió un error al exportar el personaje.',
+   279→        variant: 'destructive'
+   280→      });
+   281→    }
+   282→  };
+   283→
+   284→  // ============================================
+   285→  // Bulk Export/Import Functions
+   286→  // ============================================
+   287→
+   288→  const handleExportAll = () => {
+   289→    try {
+   290→      const exportData: ExportedData = {
+   291→        version: '2.0',
+   292→        exportedAt: new Date().toISOString(),
+   293→        characters: characters,
+   294→        groups: groups
+   295→      };
+   296→
+   297→      const jsonStr = JSON.stringify(exportData, null, 2);
+   298→      const blob = new Blob([jsonStr], { type: 'application/json' });
+   299→      const url = URL.createObjectURL(blob);
+   300→      
+   301→      const timestamp = new Date().toISOString().split('T')[0];
+   302→      const filename = `tavernflow_backup_${timestamp}.json`;
+   303→      
+   304→      const a = document.createElement('a');
+   305→      a.href = url;
+   306→      a.download = filename;
+   307→      document.body.appendChild(a);
+   308→      a.click();
+   309→      document.body.removeChild(a);
+   310→      URL.revokeObjectURL(url);
+   311→
+   312→      toast({
+   313→        title: 'Exportación Completa',
+   314→        description: `Exportados ${characters.length} personajes y ${groups.length} grupos.`
+   315→      });
+   316→    } catch (error) {
+   317→      charLogger.error('Bulk export error', { error });
+   318→      toast({
+   319→        title: 'Error de Exportación',
+   320→        description: 'Ocurrió un error al exportar los datos.',
+   321→        variant: 'destructive'
+   322→      });
+   323→    }
+   324→  };
+   325→
+   326→  const handleBulkImportClick = () => {
+   327→    bulkImportRef.current?.click();
+   328→  };
+   329→
+   330→  const handleBulkImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+   331→    const file = e.target.files?.[0];
+   332→    if (!file) return;
+   333→
+   334→    setIsImporting(true);
+   335→
+   336→    try {
+   337→      const text = await file.text();
+   338→      const data = JSON.parse(text) as ExportedData;
+   339→
+   340→      // Validate structure
+   341→      if (!data.version || !Array.isArray(data.characters)) {
+   342→        toast({
+   343→          title: 'Error de Importación',
+   344→          description: 'El archivo no tiene el formato correcto. Debe ser un backup de TavernFlow.',
+   345→          variant: 'destructive'
+   346→        });
+   347→        return;
+   348→      }
+   349→
+   350→      let importedCharacters = 0;
+   351→      let importedGroups = 0;
+   352→      let skippedCharacters = 0;
+   353→
+   354→      // Build a map of old ID to new ID for updating group references
+   355→      const idMapping: Record<string, string> = {};
+   356→
+   357→      // Import characters
+   358→      for (const character of data.characters) {
+   359→        // Check if character with same ID already exists
+   360→        const exists = characters.some(c => c.id === character.id);
+   361→        if (exists) {
+   362→          skippedCharacters++;
+   363→          // Map the existing ID to itself for group references
+   364→          if (character.id) {
+   365→            idMapping[character.id] = character.id;
+   366→          }
+   367→          continue;
+   368→        }
+   369→
+   370→        // Add character using store action - preserve ALL fields including ID
+   371→        // Use preserveId=true to maintain the original ID for group/reward references
+   372→        addCharacter({
+   373→          // Preserve original ID
+   374→          id: character.id,
+   375→          createdAt: character.createdAt,
+   376→          // Basic fields
+   377→          name: character.name || 'Personaje sin nombre',
+   378→          description: character.description || '',
+   379→          personality: character.personality || '',
+   380→          scenario: character.scenario || '',
+   381→          firstMes: character.firstMes || '',
+   382→          mesExample: character.mesExample || '',
+   383→          creatorNotes: character.creatorNotes || '',
+   384→          characterNote: character.characterNote || '',
+   385→          systemPrompt: character.systemPrompt || '',
+   386→          postHistoryInstructions: character.postHistoryInstructions || '',
+   387→          authorNote: character.authorNote || '',
+   388→          alternateGreetings: character.alternateGreetings || [],
+   389→          tags: character.tags || [],
+   390→          avatar: character.avatar || '',
+   391→          sprites: character.sprites || [],
+   392→          voice: character.voice || null,
+   393→          statsConfig: character.statsConfig,
+   394→          // V2 Sprite System fields
+   395→          spritePacksV2: character.spritePacksV2,
+   396→          stateCollectionsV2: character.stateCollectionsV2,
+   397→          triggerCollections: character.triggerCollections,
+   398→          spriteLibraries: character.spriteLibraries,
+   399→          spriteIndex: character.spriteIndex,
+   400→          spriteConfig: character.spriteConfig,
+   401→          // Legacy sprite fields
+   402→          spritePacks: character.spritePacks,
+   403→          spriteTriggers: character.spriteTriggers,
+   404→          // Reference IDs
+   405→          hudTemplateId: character.hudTemplateId,
+   406→          lorebookIds: character.lorebookIds,
+   407→          questTemplateIds: character.questTemplateIds,
+   408→          // Additional fields
+   409→          creator: character.creator,
+   410→          characterVersion: character.characterVersion,
+   411→          extensions: character.extensions,
+   412→          chatStats: character.chatStats,
+   413→          memory: character.memory,
+   414→          // Embeddings
+   415→          embeddingNamespaces: character.embeddingNamespaces,
+   416→          // Quick Replies & Proactive Messages
+   417→          quickReplies: character.quickReplies,
+   418→          proactiveMessages: character.proactiveMessages,
+   419→        }, true); // preserveId = true
+   420→        importedCharacters++;
+   421→      }
+   422→
+   423→      // Import groups
+   424→      if (data.groups && Array.isArray(data.groups)) {
+   425→        for (const group of data.groups) {
+   426→          // Check if group with same ID already exists
+   427→          const exists = groups.some(g => g.id === group.id);
+   428→          if (exists) continue;
+   429→
+   430→          // Add group using store action - preserve ALL fields including ID
+   431→          // Use preserveId=true to maintain the original ID
+   432→          addGroup({
+   433→            // Preserve original ID
+   434→            id: group.id,
+   435→            createdAt: group.createdAt,
+   436→            name: group.name || 'Grupo sin nombre',
+   437→            description: group.description || '',
+   438→            characterIds: group.characterIds || [],
+   439→            members: group.members || [],
+   440→            avatar: group.avatar || '',
+   441→            systemPrompt: group.systemPrompt || '',
+   442→            activationStrategy: group.activationStrategy || 'all',
+   443→            minResponsesPerTurn: group.minResponsesPerTurn ?? 1,
+   444→            maxResponsesPerTurn: group.maxResponsesPerTurn ?? 3,
+   445→            allowMentions: group.allowMentions ?? true,
+   446→            mentionTriggers: group.mentionTriggers || [],
+   447→            conversationStyle: group.conversationStyle || 'sequential',
+   448→            // Reference IDs
+   449→            hudTemplateId: group.hudTemplateId,
+   450→            lorebookIds: group.lorebookIds,
+   451→            questTemplateIds: group.questTemplateIds,
+   452→            // Narrator settings
+   453→            narratorSettings: group.narratorSettings,
+   454→            // Embeddings
+   455→            embeddingNamespaces: group.embeddingNamespaces,
+   456→          }, true); // preserveId = true
+   457→          importedGroups++;
+   458→        }
+   459→      }
+   460→
+   461→      toast({
+   462→        title: 'Importación Completa',
+   463→        description: `Importados ${importedCharacters} personajes y ${importedGroups} grupos.${skippedCharacters > 0 ? ` (${skippedCharacters} personajes omitidos por duplicados)` : ''}`
+   464→      });
+   465→    } catch (error) {
+   466→      charLogger.error('Bulk import error', { error });
+   467→      toast({
+   468→        title: 'Error de Importación',
+   469→        description: 'No se pudo leer el archivo. Asegúrate de que sea un JSON válido.',
+   470→        variant: 'destructive'
+   471→      });
+   472→    } finally {
+   473→      setIsImporting(false);
+   474→      if (bulkImportRef.current) {
+   475→        bulkImportRef.current.value = '';
+   476→      }
+   477→    }
+   478→  };
+   479→
+   480→  const handleDragOver = (e: React.DragEvent) => {
+   481→    e.preventDefault();
+   482→    e.stopPropagation();
+   483→    setIsDragging(true);
+   484→  };
+   485→
+   486→  const handleDragLeave = (e: React.DragEvent) => {
+   487→    e.preventDefault();
+   488→    e.stopPropagation();
+   489→    setIsDragging(false);
+   490→  };
+   491→
+   492→  const handleDrop = async (e: React.DragEvent) => {
+   493→    e.preventDefault();
+   494→    e.stopPropagation();
+   495→    setIsDragging(false);
+   496→    
+   497→    const files = e.dataTransfer.files;
+   498→    if (files.length === 0) return;
+   499→    
+   500→    const file = files[0];
+   501→    setIsImporting(true);
+   502→    
+   503→    try {
+   504→      const result = await importCharacterCard(file);
+   505→      
+   506→      if (!result) {
+   507→        toast({
+   508→          title: 'Error de Importación',
+   509→          description: 'No se pudo analizar la tarjeta del personaje. Asegúrate de que sea un archivo PNG o JSON válido.',
+   510→          variant: 'destructive'
+   511→        });
+   512→        return;
+   513→      }
+   514→
+   515→      const { character, avatar } = result;
+   516→      
+   517→      // Add character using store action - preserve ALL fields from import
+   518→      addCharacter({
+   519→        // Basic fields
+   520→        name: character.name || 'Personaje sin nombre',
+   521→        description: character.description || '',
+   522→        personality: character.personality || '',
+   523→        scenario: character.scenario || '',
+   524→        firstMes: character.firstMes || '',
+   525→        mesExample: character.mesExample || '',
+   526→        creatorNotes: character.creatorNotes || '',
+   527→        characterNote: character.characterNote || '',
+   528→        systemPrompt: character.systemPrompt || '',
+   529→        postHistoryInstructions: character.postHistoryInstructions || '',
+   530→        authorNote: character.authorNote || '',
+   531→        alternateGreetings: character.alternateGreetings || [],
+   532→        tags: character.tags || [],
+   533→        avatar: avatar,
+   534→        sprites: character.sprites || [],
+   535→        voice: character.voice || null,
+   536→        statsConfig: character.statsConfig,
+   537→        // V2 Sprite System fields
+   538→        spritePacksV2: character.spritePacksV2,
+   539→        stateCollectionsV2: character.stateCollectionsV2,
+   540→        triggerCollections: character.triggerCollections,
+   541→        spriteLibraries: character.spriteLibraries,
+   542→        spriteIndex: character.spriteIndex,
+   543→        // Legacy sprite fields
+   544→        spriteConfig: character.spriteConfig,
+   545→        spritePacks: character.spritePacks,
+   546→        spriteTriggers: character.spriteTriggers,
+   547→        // Reference IDs
+   548→        hudTemplateId: character.hudTemplateId,
+   549→        lorebookIds: character.lorebookIds,
+   550→        questTemplateIds: character.questTemplateIds,
+   551→        // Additional fields
+   552→        creator: character.creator,
+   553→        characterVersion: character.characterVersion,
+   554→        memory: character.memory,
+   555→        chatStats: character.chatStats,
+   556→        // Embeddings
+   557→        embeddingNamespaces: character.embeddingNamespaces,
+   558→        // Quick Replies & Proactive Messages
+   559→        quickReplies: character.quickReplies,
+   560→        proactiveMessages: character.proactiveMessages,
+   561→      });
+   562→
+   563→      toast({
+   564→        title: 'Personaje Importado',
+   565→        description: `"${character.name || 'Personaje sin nombre'}" ha sido importado exitosamente.`
+   566→      });
+   567→    } catch (error) {
+   568→      charLogger.error('Import error', { error, source: 'drag-drop' });
+   569→      toast({
+   570→        title: 'Error de Importación',
+   571→        description: 'Ocurrió un error al importar el personaje.',
+   572→        variant: 'destructive'
+   573→      });
+   574→    } finally {
+   575→      setIsImporting(false);
+   576→    }
+   577→  };
+   578→
+   579→  return (
+   580→    <>
+   581→      {/* Hidden file input for single character import */}
+   582→      <input
+   583→        ref={fileInputRef}
+   584→        type="file"
+   585→        accept=".png,.json,image/png,application/json"
+   586→        onChange={handleFileChange}
+   587→        className="hidden"
+   588→      />
+   589→      
+   590→      {/* Hidden file input for bulk import */}
+   591→      <input
+   592→        ref={bulkImportRef}
+   593→        type="file"
+   594→        accept=".json,application/json"
+   595→        onChange={handleBulkImport}
+   596→        className="hidden"
+   597→      />
+   598→      
+   599→      <div 
+   600→        className={cn(
+   601→          "w-72 border-l bg-background flex flex-col h-full relative z-10 transition-all duration-300",
+   602→          !sidebarOpen && "w-0 overflow-hidden border-l-0",
+   603→          isDragging && "ring-2 ring-primary ring-inset"
+   604→        )}
+   605→        onDragOver={handleDragOver}
+   606→        onDragLeave={handleDragLeave}
+   607→        onDrop={handleDrop}
+   608→      >
+   609→        {/* Drag overlay */}
+   610→        {isDragging && (
+   611→          <div className="absolute inset-0 bg-primary/10 backdrop-blur-sm z-10 flex items-center justify-center">
+   612→            <div className="bg-background border-2 border-dashed border-primary rounded-lg p-6 text-center">
+   613→              <Upload className="w-8 h-8 mx-auto mb-2 text-primary" />
+   614→              <p className="text-sm font-medium">Suelta la tarjeta aquí</p>
+   615→              <p className="text-xs text-muted-foreground mt-1">PNG o JSON</p>
+   616→            </div>
+   617→          </div>
+   618→        )}
+   619→        
+   620→        {/* Header */}
+   621→        <div className="p-4 border-b space-y-3">
+   622→          <div className="flex items-center justify-between">
+   623→            <h2 className="font-semibold text-lg">Personajes</h2>
+   624→            <div className="flex gap-1">
+   625→              <Button 
+   626→                variant="ghost" 
+   627→                size="icon" 
+   628→                className="h-8 w-8" 
+   629→                onClick={handleImportClick}
+   630→                disabled={isImporting}
+   631→                title="Importar Personaje"
+   632→              >
+   633→                {isImporting ? (
+   634→                  <div className="w-4 h-4 border-2 border-current border-t-transparent animate-spin" />
+   635→                ) : (
+   636→                  <Upload className="w-4 h-4" />
+   637→                )}
+   638→              </Button>
+   639→              <Button 
+   640→                variant="ghost" 
+   641→                size="icon" 
+   642→                className="h-8 w-8" 
+   643→                onClick={handleNewCharacter} 
+   644→                title="Crear Nuevo Personaje"
+   645→              >
+   646→                <Plus className="w-4 h-4" />
+   647→              </Button>
+   648→            </div>
+   649→          </div>
+   650→          
+   651→          <div className="relative">
+   652→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   653→            <Input
+   654→              placeholder="Buscar personajes..."
+   655→              className="pl-9"
+   656→              value={searchQuery}
+   657→              onChange={(e) => setSearchQuery(e.target.value)}
+   658→            />
+   659→          </div>
+   660→        </div>
+   661→
+   662→        <ScrollArea className="flex-1 min-h-0">
+   663→          {/* Characters List */}
+   664→          <div className="p-2">
+   665→            <div className="flex items-center gap-2 px-2 py-1 text-muted-foreground">
+   666→              <MessageSquare className="w-4 h-4" />
+   667→              <span className="text-sm font-medium">Personajes</span>
+   668→              <span className="text-xs ml-auto">{characters.length}</span>
+   669→            </div>
+   670→            {filteredCharacters.length === 0 ? (
+   671→              <div className="text-center py-8 text-muted-foreground">
+   672→                {searchQuery ? 'No se encontraron personajes' : 'Sin personajes aún'}
+   673→                <Button 
+   674→                  variant="link" 
+   675→                  className="block mx-auto mt-2"
+   676→                  onClick={handleNewCharacter}
+   677→                >
+   678→                  Crea tu primer personaje
+   679→                </Button>
+   680→              </div>
+   681→            ) : (
+   682→              <div className="space-y-1 mt-1">
+   683→                {filteredCharacters.map((character) => (
+   684→                  <div
+   685→                    key={character.id}
+   686→                    className={cn(
+   687→                      'flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors',
+   688→                      activeCharacterId === character.id 
+   689→                        ? 'bg-primary/10 border border-primary/20' 
+   690→                        : 'hover:bg-muted'
+   691→                    )}
+   692→                    onClick={() => handleSelectCharacter(character.id)}
+   693→                  >
+   694→                    {/* Avatar */}
+   695→                    <div className="w-10 h-10 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+   696→                      {character.avatar ? (
+   697→                        <img 
+   698→                          src={character.avatar} 
+   699→                          alt={character.name}
+   700→                          className="w-full h-full object-cover"
+   701→                        />
+   702→                      ) : (
+   703→                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-amber-400 to-orange-600">
+   704→                          <span className="text-white font-bold">
+   705→                            {character.name[0].toUpperCase()}
+   706→                          </span>
+   707→                        </div>
+   708→                      )}
+   709→                    </div>
+   710→
+   711→                    {/* Info */}
+   712→                    <div className="flex-1 min-w-0">
+   713→                      <p className="text-sm font-medium truncate">{character.name}</p>
+   714→                      <p className="text-xs text-muted-foreground truncate">
+   715→                        {character.tags.slice(0, 2).join(', ')}
+   716→                      </p>
+   717→                    </div>
+   718→
+   719→                    {/* Actions - always visible */}
+   720→                    <DropdownMenu>
+   721→                      <DropdownMenuTrigger asChild>
+   722→                        <Button 
+   723→                          variant="ghost" 
+   724→                          size="icon" 
+   725→                          className="h-8 w-8 flex-shrink-0"
+   726→                          onClick={(e) => e.stopPropagation()}
+   727→                        >
+   728→                          <MoreVertical className="w-4 h-4" />
+   729→                        </Button>
+   730→                      </DropdownMenuTrigger>
+   731→                      <DropdownMenuContent align="end">
+   732→                        <DropdownMenuItem onClick={(e) => {
+   733→                          e.stopPropagation();
+   734→                          handleEditCharacter(character.id);
+   735→                        }}>
+   736→                          <Edit className="w-4 h-4 mr-2" />
+   737→                          Editar
+   738→                        </DropdownMenuItem>
+   739→                        <DropdownMenuSeparator />
+   740→                        <DropdownMenuItem onClick={(e) => {
+   741→                          e.stopPropagation();
+   742→                          handleExportCharacter(character, 'png');
+   743→                        }}>
+   744→                          <Download className="w-4 h-4 mr-2" />
+   745→                          Exportar como PNG
+   746→                        </DropdownMenuItem>
+   747→                        <DropdownMenuItem onClick={(e) => {
+   748→                          e.stopPropagation();
+   749→                          handleExportCharacter(character, 'json');
+   750→                        }}>
+   751→                          <FileUp className="w-4 h-4 mr-2" />
+   752→                          Exportar como JSON
+   753→                        </DropdownMenuItem>
+   754→                        <DropdownMenuSeparator />
+   755→                        <DropdownMenuItem 
+   756→                          className="text-destructive"
+   757→                          onClick={(e) => {
+   758→                            e.stopPropagation();
+   759→                            handleDeleteCharacter(character.id);
+   760→                          }}
+   761→                        >
+   762→                          <Trash2 className="w-4 h-4 mr-2" />
+   763→                          Eliminar
+   764→                        </DropdownMenuItem>
+   765→                      </DropdownMenuContent>
+   766→                    </DropdownMenu>
+   767→                  </div>
+   768→                ))}
+   769→              </div>
+   770→            )}
+   771→          </div>
+   772→
+   773→          {/* Groups Section */}
+   774→          <div className="p-2 border-t mt-2">
+   775→            <div className="flex items-center justify-between px-2 py-1 text-muted-foreground">
+   776→              <div className="flex items-center gap-2">
+   777→                <Users className="w-4 h-4" />
+   778→                <span className="text-sm font-medium">Grupos</span>
+   779→                <span className="text-xs">{groups.length}</span>
+   780→              </div>
+   781→              <Button 
+   782→                variant="ghost" 
+   783→                size="icon" 
+   784→                className="h-6 w-6"
+   785→                onClick={handleNewGroup}
+   786→                title="Crear Nuevo Grupo"
+   787→              >
+   788→                <Plus className="w-4 h-4" />
+   789→              </Button>
+   790→            </div>
+   791→            {groups.length === 0 ? (
+   792→              <div className="text-center py-4 text-muted-foreground text-sm">
+   793→                Sin grupos aún
+   794→              </div>
+   795→            ) : (
+   796→              <div className="space-y-1 mt-1">
+   797→                {groups.map((group) => (
+   798→                  <div
+   799→                    key={group.id}
+   800→                    className={cn(
+   801→                      'flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors',
+   802→                      activeGroupId === group.id 
+   803→                        ? 'bg-primary/10 border border-primary/20' 
+   804→                        : 'hover:bg-muted'
+   805→                    )}
+   806→                    onClick={() => handleSelectGroup(group.id)}
+   807→                  >
+   808→                    <div className="w-10 h-10 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+   809→                      {group.avatar ? (
+   810→                        <img src={group.avatar} alt={group.name} className="w-full h-full object-cover" />
+   811→                      ) : (
+   812→                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-violet-400 to-purple-600">
+   813→                          <Users className="w-5 h-5 text-white" />
+   814→                        </div>
+   815→                      )}
+   816→                    </div>
+   817→                    <div className="flex-1 min-w-0">
+   818→                      <p className="text-sm font-medium truncate">{group.name}</p>
+   819→                      <p className="text-xs text-muted-foreground">
+   820→                        {group.members?.length || group.characterIds?.length || 0} personajes
+   821→                      </p>
+   822→                    </div>
+   823→                    
+   824→                    {/* Group Actions Menu - always visible */}
+   825→                    <DropdownMenu>
+   826→                      <DropdownMenuTrigger asChild>
+   827→                        <Button 
+   828→                          variant="ghost" 
+   829→                          size="icon" 
+   830→                          className="h-8 w-8 flex-shrink-0"
+   831→                          onClick={(e) => e.stopPropagation()}
+   832→                        >
+   833→                          <MoreVertical className="w-4 h-4" />
+   834→                        </Button>
+   835→                      </DropdownMenuTrigger>
+   836→                      <DropdownMenuContent align="end">
+   837→                        <DropdownMenuItem onClick={(e) => {
+   838→                          e.stopPropagation();
+   839→                          handleEditGroup(group.id);
+   840→                        }}>
+   841→                          <Edit className="w-4 h-4 mr-2" />
+   842→                          Editar Grupo
+   843→                        </DropdownMenuItem>
+   844→                        <DropdownMenuSeparator />
+   845→                        <DropdownMenuItem 
+   846→                          className="text-destructive"
+   847→                          onClick={(e) => {
+   848→                            e.stopPropagation();
+   849→                            if (confirm(`¿Estás seguro de que quieres eliminar el grupo "${group.name}"?`)) {
+   850→                              deleteGroup(group.id);
+   851→                            }
+   852→                          }}
+   853→                        >
+   854→                          <Trash2 className="w-4 h-4 mr-2" />
+   855→                          Eliminar Grupo
+   856→                        </DropdownMenuItem>
+   857→                      </DropdownMenuContent>
+   858→                    </DropdownMenu>
+   859→                  </div>
+   860→                ))}
+   861→              </div>
+   862→            )}
+   863→          </div>
+   864→        </ScrollArea>
+   865→
+   866→        {/* Footer */}
+   867→        <div className="p-3 border-t space-y-2">
+   868→          {/* Single character actions */}
+   869→          <Button 
+   870→            variant="outline" 
+   871→            className="w-full justify-start gap-2"
+   872→            onClick={handleNewCharacter}
+   873→          >
+   874→            <Plus className="w-4 h-4" />
+   875→            Nuevo Personaje
+   876→          </Button>
+   877→          <Button 
+   878→            variant="outline" 
+   879→            className="w-full justify-start gap-2"
+   880→            onClick={handleNewGroup}
+   881→          >
+   882→            <Users className="w-4 h-4" />
+   883→            Nuevo Grupo
+   884→          </Button>
+   885→          
+   886→          {/* Bulk actions */}
+   887→          <div className="grid grid-cols-2 gap-2 pt-2 border-t">
+   888→            <Button 
+   889→              variant="secondary" 
+   890→              size="sm"
+   891→              className="justify-start gap-1.5"
+   892→              onClick={handleExportAll}
+   893→              disabled={characters.length === 0 && groups.length === 0}
+   894→              title="Exportar todos los personajes y grupos"
+   895→            >
+   896→              <Package className="w-4 h-4" />
+   897→              Exportar Todo
+   898→            </Button>
+   899→            <Button 
+   900→              variant="secondary" 
+   901→              size="sm"
+   902→              className="justify-start gap-1.5"
+   903→              onClick={handleBulkImportClick}
+   904→              disabled={isImporting}
+   905→              title="Importar personajes y grupos desde backup"
+   906→            >
+   907→              {isImporting ? (
+   908→                <div className="w-4 h-4 border-2 border-current border-t-transparent animate-spin" />
+   909→              ) : (
+   910→                <PackageOpen className="w-4 h-4" />
+   911→              )}
+   912→              Importar Todo
+   913→            </Button>
+   914→          </div>
+   915→        </div>
+   916→      </div>
+   917→
+   918→      {/* Character Editor - Full-screen overlay */}
+   919→      <CharacterEditor
+   920→        key={editingCharacterId || 'new-character'}
+   921→        characterId={editingCharacterId}
+   922→        open={editorOpen}
+   923→        onClose={() => setEditorOpen(false)}
+   924→      />
+   925→
+   926→      {/* Group Editor - Full-screen overlay */}
+   927→      <GroupEditor 
+   928→        key={editingGroupId || 'new-group'}
+   929→        groupId={editingGroupId}
+   930→        open={groupEditorOpen}
+   931→        onClose={() => setGroupEditorOpen(false)}
+   932→      />
+   933→    </>
+   934→  );
+   935→}
+   936→

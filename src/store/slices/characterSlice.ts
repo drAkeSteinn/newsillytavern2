@@ -4,6 +4,42 @@
 
 import type { CharacterCard } from '@/types';
 import { uuidv4 } from '@/lib/uuid';
+import { needsMigration, migrateCharacterSprites, applyMigrationResult } from '@/lib/migration/sprite-migration';
+
+/**
+ * Auto-migrate legacy sprite data to V2 for a character.
+ * Only runs if legacy data exists and V2 data is missing.
+ * Returns the character with migrated data, or the original if no migration needed.
+ * 
+ * @deprecated Auto-migration is temporary during the deprecation period.
+ */
+function autoMigrateCharacter(character: Partial<CharacterCard> & { name: string }): Partial<CharacterCard> {
+  const fullChar = character as CharacterCard;
+  
+  if (!needsMigration(fullChar)) {
+    return character;
+  }
+
+  try {
+    const result = migrateCharacterSprites(fullChar, {
+      defaultPackName: `${character.name || 'Character'} - Migrated`,
+      createDefaultStateCollections: true,
+      skipIfV2Exists: true,
+    });
+
+    if (result.success && (result.report.packsCreated > 0 || result.report.triggerCollectionsCreated > 0 || result.report.stateCollectionsCreated > 0)) {
+      const migrationUpdates = applyMigrationResult(fullChar, result);
+      return {
+        ...character,
+        ...migrationUpdates,
+      };
+    }
+  } catch {
+    // Silently fail - auto-migration is best-effort
+  }
+
+  return character;
+}
 
 export interface CharacterSlice {
   // State
@@ -27,14 +63,19 @@ export const createCharacterSlice = (set: any, get: any): CharacterSlice => ({
   activeCharacterId: null,
 
   // Actions
-  addCharacter: (character, preserveId = false) => set((state: any) => ({
-    characters: [...state.characters, {
-      ...character,
-      id: (preserveId && character.id) ? character.id : uuidv4(),
-      createdAt: character.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }]
-  })),
+  addCharacter: (character, preserveId = false) => set((state: any) => {
+    // Auto-migrate legacy sprite data on character add
+    const migrated = autoMigrateCharacter(character);
+    
+    return {
+      characters: [...state.characters, {
+        ...migrated,
+        id: (preserveId && character.id) ? character.id : uuidv4(),
+        createdAt: character.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }]
+    };
+  }),
 
   updateCharacter: (id, updates) => set((state: any) => ({
     characters: state.characters.map((c: CharacterCard) =>

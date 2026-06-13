@@ -71,17 +71,18 @@ export interface TimerEvaluationResult {
 /**
  * Evaluate timer conditions for an attribute
  * Returns true if the timer should apply (conditions met or no conditions defined)
+ * Supports AND (default) and OR logic via conditionOperator
  */
 function evaluateTimerConditions(
   conditions: StatRequirement[] | undefined,
   attributeValues: Record<string, number | string>,
-  sessionStats?: SessionStats
+  sessionStats?: SessionStats,
+  conditionOperator?: 'AND' | 'OR'
 ): boolean {
   if (!conditions || conditions.length === 0) return true;
 
-  // Inline basic evaluation (same logic as evaluateRequirements in statsSlice,
-  // but self-contained to avoid importing Zustand slice at lib level)
-  for (const req of conditions) {
+  // Evaluate each condition individually
+  const results = conditions.map(req => {
     const currentValue = attributeValues[req.attributeKey];
     if (currentValue === undefined) return false;
 
@@ -94,32 +95,34 @@ function evaluateTimerConditions(
       const strReq = String(req.value).toLowerCase();
 
       switch (req.operator) {
-        case '==': if (strCurrent !== strReq) return false; break;
-        case '!=': if (strCurrent === strReq) return false; break;
-        case 'contains': if (!strCurrent.includes(strReq)) return false; break;
-        case 'not_contains': if (strCurrent.includes(strReq)) return false; break;
-        default: continue;
+        case '==': return strCurrent === strReq;
+        case '!=': return strCurrent !== strReq;
+        case 'contains': return strCurrent.includes(strReq);
+        case 'not_contains': return !strCurrent.includes(strReq);
+        default: return false;
       }
-      continue;
     }
 
     switch (req.operator) {
-      case '<': if (!(numValue < reqValue)) return false; break;
-      case '<=': if (!(numValue <= reqValue)) return false; break;
-      case '>': if (!(numValue > reqValue)) return false; break;
-      case '>=': if (!(numValue >= reqValue)) return false; break;
-      case '==': if (numValue !== reqValue) return false; break;
-      case '!=': if (numValue === reqValue) return false; break;
+      case '<': return numValue < reqValue;
+      case '<=': return numValue <= reqValue;
+      case '>': return numValue > reqValue;
+      case '>=': return numValue >= reqValue;
+      case '==': return numValue === reqValue;
+      case '!=': return numValue !== reqValue;
       case 'between': {
         const maxVal = typeof req.valueMax === 'number' ? req.valueMax : reqValue;
-        if (!(numValue >= reqValue && numValue <= maxVal)) return false;
-        break;
+        return numValue >= reqValue && numValue <= maxVal;
       }
-      default: continue;
+      default: return false;
     }
-  }
+  });
 
-  return true;
+  // Apply logic operator
+  if (conditionOperator === 'OR') {
+    return results.some(r => r);
+  }
+  return results.every(r => r);
 }
 
 /**
@@ -289,7 +292,8 @@ export function evaluateTimerTicks(
     const conditionsMet = evaluateTimerConditions(
       attr.timer.condition,
       attributeValues,
-      sessionStats
+      sessionStats,
+      attr.timer.conditionOperator
     );
 
     if (!conditionsMet) continue;

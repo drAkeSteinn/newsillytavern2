@@ -1,0 +1,1256 @@
+     1→'use client';
+     2→
+     3→import { useState, useMemo, useRef } from 'react';
+     4→import { Button } from '@/components/ui/button';
+     5→import { Label } from '@/components/ui/label';
+     6→import { Badge } from '@/components/ui/badge';
+     7→import { ScrollArea } from '@/components/ui/scroll-area';
+     8→import { Input } from '@/components/ui/input';
+     9→import { Textarea } from '@/components/ui/textarea';
+    10→import { Switch } from '@/components/ui/switch';
+    11→import {
+    12→  Tooltip,
+    13→  TooltipContent,
+    14→  TooltipProvider,
+    15→  TooltipTrigger,
+    16→} from '@/components/ui/tooltip';
+    17→import {
+    18→  Dialog,
+    19→  DialogContent,
+    20→  DialogHeader,
+    21→  DialogTitle,
+    22→  DialogFooter,
+    23→  DialogDescription,
+    24→} from '@/components/ui/dialog';
+    25→import {
+    26→  Select,
+    27→  SelectContent,
+    28→  SelectItem,
+    29→  SelectTrigger,
+    30→  SelectValue,
+    31→} from '@/components/ui/select';
+    32→import {
+    33→  Accordion,
+    34→  AccordionContent,
+    35→  AccordionItem,
+    36→  AccordionTrigger,
+    37→} from '@/components/ui/accordion';
+    38→import { cn } from '@/lib/utils';
+    39→import {
+    40→  Plus,
+    41→  Trash2,
+    42→  Package,
+    43→  Image as ImageIcon,
+    44→  Edit,
+    45→  Check,
+    46→  X,
+    47→  Video,
+    48→  Film,
+    49→  Layers,
+    50→  FolderOpen,
+    51→  GitBranch,
+    52→  HelpCircle,
+    53→  Settings2,
+    54→  ArrowUp,
+    55→  Star,
+    56→} from 'lucide-react';
+    57→import type { 
+    58→  SpritePackV2,
+    59→  SpritePackEntryV2,
+    60→  SpriteIndexEntry,
+    61→  SpriteCollection,
+    62→  CharacterCard,
+    63→  AttributeDefinition,
+    64→  StatRequirement,
+    65→  RequirementOperator,
+    66→} from '@/types';
+    67→import { SpritePreview } from './sprite-preview';
+    68→const uuidv4 = () => crypto.randomUUID();
+    69→import { getLogger } from '@/lib/logger';
+    70→
+    71→const logger = getLogger('sprite-pack-editor');
+    72→
+    73→// Check if URL is a video file
+    74→function isVideoUrl(url: string): boolean {
+    75→  return /\.(webm|mp4|mov|avi)(\?.*)?$/i.test(url);
+    76→}
+    77→
+    78→// Check if URL is an animated image
+    79→function isAnimatedImage(url: string): boolean {
+    80→  return /\.(gif|apng|webp)(\?.*)?$/i.test(url);
+    81→}
+    82→
+    83→// Operator display config
+    84→const OPERATOR_OPTIONS: { value: RequirementOperator; label: string; symbol: string }[] = [
+    85→  { value: '<', label: 'Menor que', symbol: '<' },
+    86→  { value: '<=', label: 'Menor o igual', symbol: '≤' },
+    87→  { value: '>', label: 'Mayor que', symbol: '>' },
+    88→  { value: '>=', label: 'Mayor o igual', symbol: '≥' },
+    89→  { value: '==', label: 'Igual', symbol: '==' },
+    90→  { value: '!=', label: 'Distinto', symbol: '!=' },
+    91→  { value: 'between', label: 'Entre', symbol: '∈' },
+    92→  { value: 'contains', label: 'Contiene', symbol: '∋' },
+    93→  { value: 'not_contains', label: 'No contiene', symbol: '∌' },
+    94→];
+    95→
+    96→// Inline editable label for sprite cards — click to edit, Enter/blur to save, Escape to cancel
+    97→function SpriteLabelInput({
+    98→  label,
+    99→  onLabelChange,
+   100→}: {
+   101→  label: string;
+   102→  onLabelChange: (newLabel: string) => void;
+   103→}) {
+   104→  const [isEditing, setIsEditing] = useState(false);
+   105→  const [draft, setDraft] = useState(label);
+   106→  const inputRef = useRef<HTMLInputElement>(null);
+   107→
+   108→  const startEditing = () => {
+   109→    setDraft(label);
+   110→    setIsEditing(true);
+   111→    // Focus the input on next tick
+   112→    setTimeout(() => inputRef.current?.focus(), 0);
+   113→  };
+   114→
+   115→  const commit = () => {
+   116→    const trimmed = draft.trim();
+   117→    if (trimmed && trimmed !== label) {
+   118→      onLabelChange(trimmed);
+   119→    }
+   120→    setIsEditing(false);
+   121→  };
+   122→
+   123→  const cancel = () => {
+   124→    setDraft(label);
+   125→    setIsEditing(false);
+   126→  };
+   127→
+   128→  if (isEditing) {
+   129→    return (
+   130→      <input
+   131→        ref={inputRef}
+   132→        type="text"
+   133→        value={draft}
+   134→        onChange={(e) => setDraft(e.target.value)}
+   135→        onBlur={commit}
+   136→        onKeyDown={(e) => {
+   137→          if (e.key === 'Enter') commit();
+   138→          if (e.key === 'Escape') cancel();
+   139→        }}
+   140→        className="w-full text-sm text-center font-medium bg-background border border-primary/50 rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-primary"
+   141→      />
+   142→    );
+   143→  }
+   144→
+   145→  return (
+   146→    <p
+   147→      className="text-sm truncate text-center font-medium cursor-pointer hover:text-primary hover:underline underline-offset-2 transition-colors"
+   148→      onClick={startEditing}
+   149→      title="Click para editar la etiqueta"
+   150→    >
+   151→      {label}
+   152→    </p>
+   153→  );
+   154→}
+   155→
+   156→// Sprite Condition Editor - Full-size version for dialog
+   157→function SpriteConditionEditorFull({
+   158→  conditions,
+   159→  availableAttributes,
+   160→  onConditionsChange,
+   161→}: {
+   162→  conditions: StatRequirement[];
+   163→  availableAttributes: AttributeDefinition[];
+   164→  onConditionsChange: (conditions: StatRequirement[]) => void;
+   165→}) {
+   166→  return (
+   167→    <div className="space-y-3">
+   168→      {conditions.length === 0 && (
+   169→        <div className="text-center py-4 text-muted-foreground border border-dashed rounded-lg">
+   170→          <GitBranch className="w-5 h-5 mx-auto mb-1.5 opacity-40" />
+   171→          <p className="text-sm">Sin condiciones</p>
+   172→          <p className="text-xs mt-0.5">Este sprite se mostrará si tiene la mayor prioridad</p>
+   173→        </div>
+   174→      )}
+   175→      {conditions.map((cond, idx) => {
+   176→        const attrDef = availableAttributes.find(a => a.key === cond.attributeKey);
+   177→        return (
+   178→          <div key={idx} className="flex items-start gap-3 p-3 rounded-lg bg-muted/40 border">
+   179→            <div className="flex-1 space-y-2">
+   180→              {/* Row 1: Attribute + Operator */}
+   181→              <div className="flex items-center gap-2">
+   182→                <div className="flex-1">
+   183→                  <Label className="text-xs text-muted-foreground mb-1 block">Atributo</Label>
+   184→                  <Select
+   185→                    value={cond.attributeKey}
+   186→                    onValueChange={(v) => {
+   187→                      const newConditions = [...conditions];
+   188→                      newConditions[idx] = { ...newConditions[idx], attributeKey: v };
+   189→                      onConditionsChange(newConditions);
+   190→                    }}
+   191→                  >
+   192→                    <SelectTrigger className="h-9 text-sm">
+   193→                      <SelectValue placeholder="Seleccionar atributo" />
+   194→                    </SelectTrigger>
+   195→                    <SelectContent>
+   196→                      {availableAttributes.map(attr => (
+   197→                        <SelectItem key={attr.key} value={attr.key}>
+   198→                          {attr.name || attr.key}
+   199→                        </SelectItem>
+   200→                      ))}
+   201→                    </SelectContent>
+   202→                  </Select>
+   203→                </div>
+   204→                <div className="w-40">
+   205→                  <Label className="text-xs text-muted-foreground mb-1 block">Operador</Label>
+   206→                  <Select
+   207→                    value={cond.operator}
+   208→                    onValueChange={(v) => {
+   209→                      const newConditions = [...conditions];
+   210→                      newConditions[idx] = { ...newConditions[idx], operator: v as RequirementOperator };
+   211→                      onConditionsChange(newConditions);
+   212→                    }}
+   213→                  >
+   214→                    <SelectTrigger className="h-9 text-sm">
+   215→                      <SelectValue />
+   216→                    </SelectTrigger>
+   217→                    <SelectContent>
+   218→                      {OPERATOR_OPTIONS.map(op => (
+   219→                        <SelectItem key={op.value} value={op.value}>
+   220→                          {op.symbol} {op.label}
+   221→                        </SelectItem>
+   222→                      ))}
+   223→                    </SelectContent>
+   224→                  </Select>
+   225→                </div>
+   226→              </div>
+   227→              {/* Row 2: Value(s) */}
+   228→              <div className="flex items-center gap-2">
+   229→                <div className="flex-1">
+   230→                  <Label className="text-xs text-muted-foreground mb-1 block">
+   231→                    Valor {attrDef?.type === 'string' ? '(texto)' : '(número)'}
+   232→                  </Label>
+   233→                  <Input
+   234→                    type={attrDef?.type === 'string' ? 'text' : 'number'}
+   235→                    className="h-9 text-sm"
+   236→                    value={typeof cond.value === 'number' ? cond.value : cond.value || ''}
+   237→                    onChange={(e) => {
+   238→                      const newConditions = [...conditions];
+   239→                      const val = attrDef?.type === 'string' ? e.target.value : Number(e.target.value);
+   240→                      newConditions[idx] = { ...newConditions[idx], value: val as number };
+   241→                      onConditionsChange(newConditions);
+   242→                    }}
+   243→                  />
+   244→                </div>
+   245→                {cond.operator === 'between' && (
+   246→                  <div className="flex-1">
+   247→                    <Label className="text-xs text-muted-foreground mb-1 block">Valor máximo</Label>
+   248→                    <Input
+   249→                      type="number"
+   250→                      className="h-9 text-sm"
+   251→                      value={cond.valueMax || 0}
+   252→                      onChange={(e) => {
+   253→                        const newConditions = [...conditions];
+   254→                        newConditions[idx] = { ...newConditions[idx], valueMax: Number(e.target.value) };
+   255→                        onConditionsChange(newConditions);
+   256→                      }}
+   257→                    />
+   258→                  </div>
+   259→                )}
+   260→              </div>
+   261→              {/* Condition summary */}
+   262→              <div className="text-xs text-muted-foreground">
+   263→                {attrDef?.name || cond.attributeKey}{' '}
+   264→                {OPERATOR_OPTIONS.find(o => o.value === cond.operator)?.symbol}{' '}
+   265→                {cond.value}
+   266→                {cond.operator === 'between' ? ` ~ ${cond.valueMax}` : ''}
+   267→              </div>
+   268→            </div>
+   269→            {/* Delete button */}
+   270→            <Button
+   271→              variant="ghost"
+   272→              size="sm"
+   273→              className="h-9 w-9 p-0 shrink-0 text-red-500 hover:text-red-600 hover:bg-red-500/10 mt-5"
+   274→              onClick={() => onConditionsChange(conditions.filter((_, i) => i !== idx))}
+   275→              title="Eliminar condición"
+   276→            >
+   277→              <Trash2 className="w-4 h-4" />
+   278→            </Button>
+   279→          </div>
+   280→        );
+   281→      })}
+   282→      <Button
+   283→        variant="outline"
+   284→        size="sm"
+   285→        className="w-full h-9 text-sm text-purple-600 hover:text-purple-700 border-purple-500/30 hover:border-purple-500/50 hover:bg-purple-500/5"
+   286→        onClick={() => {
+   287→          const newCondition: StatRequirement = {
+   288→            attributeKey: availableAttributes[0]?.key || '',
+   289→            operator: '>=',
+   290→            value: 0,
+   291→          };
+   292→          onConditionsChange([...conditions, newCondition]);
+   293→        }}
+   294→      >
+   295→        <Plus className="w-4 h-4 mr-1.5" /> Agregar Condición
+   296→      </Button>
+   297→    </div>
+   298→  );
+   299→}
+   300→
+   301→interface SpritePackEditorV2Props {
+   302→  character: CharacterCard;
+   303→  customSprites: SpriteIndexEntry[];
+   304→  collections: SpriteCollection[];
+   305→  onChange: (updates: Partial<CharacterCard>) => void;
+   306→}
+   307→
+   308→export function SpritePackEditorV2({ 
+   309→  character, 
+   310→  customSprites,
+   311→  collections,
+   312→  onChange 
+   313→}: SpritePackEditorV2Props) {
+   314→  // State for dialogs
+   315→  const [showCreatePackDialog, setShowCreatePackDialog] = useState(false);
+   316→  const [showAddSpriteDialog, setShowAddSpriteDialog] = useState<string | null>(null); // packId
+   317→  const [editingPackId, setEditingPackId] = useState<string | null>(null);
+   318→  const [editingName, setEditingName] = useState('');
+   319→  const [searchQuery, setSearchQuery] = useState('');
+   320→  const [collectionFilter, setCollectionFilter] = useState<string>('__all__');
+   321→  
+   322→  // Sprite edit dialog state
+   323→  const [editingSprite, setEditingSprite] = useState<{ packId: string; spriteId: string } | null>(null);
+   324→  
+   325→  // New pack form state
+   326→  const [newPackName, setNewPackName] = useState('');
+   327→  const [newPackDescription, setNewPackDescription] = useState('');
+   328→
+   329→  // Get current packs from character
+   330→  const spritePacksV2: SpritePackV2[] = useMemo(() => {
+   331→    return character.spritePacksV2 || [];
+   332→  }, [character.spritePacksV2]);
+   333→
+   334→  // Available attributes from character statsConfig
+   335→  const availableAttributes: AttributeDefinition[] = useMemo(() => {
+   336→    return character.statsConfig?.attributes || [];
+   337→  }, [character.statsConfig?.attributes]);
+   338→
+   339→  // Filter sprites by collection filter AND search
+   340→  const filteredSprites = useMemo(() => {
+   341→    let result = customSprites;
+   342→    
+   343→    // Filter by collection
+   344→    if (collectionFilter && collectionFilter !== '__all__') {
+   345→      result = result.filter(s => s.pack === collectionFilter);
+   346→    }
+   347→    
+   348→    // Filter by search query
+   349→    if (searchQuery.trim()) {
+   350→      const query = searchQuery.toLowerCase();
+   351→      result = result.filter(s => 
+   352→        s.label.toLowerCase().includes(query) ||
+   353→        s.filename.toLowerCase().includes(query) ||
+   354→        (s.pack && s.pack.toLowerCase().includes(query))
+   355→      );
+   356→    }
+   357→    
+   358→    return result;
+   359→  }, [customSprites, collectionFilter, searchQuery]);
+   360→
+   361→  // Get unique collection names from sprites for grouping
+   362→  const collectionNames = useMemo(() => {
+   363→    const names = new Set(customSprites.map(s => s.pack).filter(Boolean));
+   364→    return Array.from(names).sort();
+   365→  }, [customSprites]);
+   366→
+   367→  // Check if sprite is in any pack
+   368→  const getSpritePackInfo = (spriteUrl: string) => {
+   369→    for (const pack of spritePacksV2) {
+   370→      const found = pack.sprites.find(s => s.url === spriteUrl);
+   371→      if (found) return { packId: pack.id, packName: pack.name, sprite: found };
+   372→    }
+   373→    return null;
+   374→  };
+   375→
+   376→  // Get current editing sprite data
+   377→  const currentEditSprite = useMemo(() => {
+   378→    if (!editingSprite) return null;
+   379→    const pack = spritePacksV2.find(p => p.id === editingSprite.packId);
+   380→    if (!pack) return null;
+   381→    const sprite = pack.sprites.find(s => s.id === editingSprite.spriteId);
+   382→    if (!sprite) return null;
+   383→    return { pack, sprite };
+   384→  }, [editingSprite, spritePacksV2]);
+   385→
+   386→  // Create new pack
+   387→  const handleCreatePack = () => {
+   388→    if (!newPackName.trim()) return;
+   389→    
+   390→    const now = new Date().toISOString();
+   391→    const newPack: SpritePackV2 = {
+   392→      id: uuidv4(),
+   393→      name: newPackName.trim(),
+   394→      description: newPackDescription.trim() || undefined,
+   395→      sprites: [],
+   396→      createdAt: now,
+   397→      updatedAt: now,
+   398→    };
+   399→    
+   400→    onChange({
+   401→      spritePacksV2: [...spritePacksV2, newPack],
+   402→    });
+   403→    
+   404→    // Reset form
+   405→    setNewPackName('');
+   406→    setNewPackDescription('');
+   407→    setShowCreatePackDialog(false);
+   408→    
+   409→    logger.info('Created sprite pack', { packId: newPack.id, name: newPack.name });
+   410→  };
+   411→
+   412→  // Delete pack
+   413→  const handleDeletePack = (packId: string) => {
+   414→    const pack = spritePacksV2.find(p => p.id === packId);
+   415→    if (!pack) return;
+   416→    
+   417→    if (!confirm(`¿Eliminar el pack "${pack.name}"? Los sprites no se eliminarán, solo se quitarán del pack.\n\nSi este pack está siendo usado en Colecciones de Estado, se eliminará la referencia.`)) return;
+   418→    
+   419→    // Remove pack from spritePacksV2
+   420→    const updatedPacks = spritePacksV2.filter(p => p.id !== packId);
+   421→    
+   422→    // Also clean up stateCollectionsV2 references to this pack
+   423→    const stateCollectionsV2 = character.stateCollectionsV2 || [];
+   424→    const updatedStateCollections = stateCollectionsV2
+   425→      .filter(c => c.packId !== packId); // Remove collections that reference this pack
+   426→    
+   427→    // Also clean up trigger collections that reference this pack
+   428→    const triggerCollections = character.triggerCollections || [];
+   429→    const updatedTriggerCollections = triggerCollections.filter(c => c.packId !== packId);
+   430→    
+   431→    onChange({
+   432→      spritePacksV2: updatedPacks,
+   433→      stateCollectionsV2: updatedStateCollections,
+   434→      triggerCollections: updatedTriggerCollections.length < triggerCollections.length ? updatedTriggerCollections : undefined,
+   435→    });
+   436→    
+   437→    logger.info('Deleted sprite pack and cleaned up references', { 
+   438→      packId,
+   439→      removedStateCollections: stateCollectionsV2.length - updatedStateCollections.length,
+   440→      removedTriggerCollections: triggerCollections.length - updatedTriggerCollections.length,
+   441→    });
+   442→  };
+   443→
+   444→  // Rename pack
+   445→  const handleRenamePack = (packId: string) => {
+   446→    if (!editingName.trim()) {
+   447→      setEditingPackId(null);
+   448→      return;
+   449→    }
+   450→    
+   451→    onChange({
+   452→      spritePacksV2: spritePacksV2.map(p => 
+   453→        p.id === packId 
+   454→          ? { ...p, name: editingName.trim(), updatedAt: new Date().toISOString() }
+   455→          : p
+   456→      ),
+   457→    });
+   458→    
+   459→    setEditingPackId(null);
+   460→    logger.info('Renamed sprite pack', { packId, newName: editingName });
+   461→  };
+   462→
+   463→  // Add sprite to pack
+   464→  const handleAddSpriteToPack = (packId: string, sprite: SpriteIndexEntry) => {
+   465→    const pack = spritePacksV2.find(p => p.id === packId);
+   466→    if (!pack) return;
+   467→    
+   468→    // Check if already in pack
+   469→    if (pack.sprites.some(s => s.url === sprite.url)) {
+   470→      return;
+   471→    }
+   472→    
+   473→    const newEntry: SpritePackEntryV2 = {
+   474→      id: uuidv4(),
+   475→      label: sprite.label,
+   476→      url: sprite.url,
+   477→      thumbnail: sprite.thumb,
+   478→      tags: sprite.expressions,
+   479→      isAnimated: isAnimatedImage(sprite.url) || isVideoUrl(sprite.url),
+   480→    };
+   481→    
+   482→    onChange({
+   483→      spritePacksV2: spritePacksV2.map(p => 
+   484→        p.id === packId 
+   485→          ? { ...p, sprites: [...p.sprites, newEntry], updatedAt: new Date().toISOString() }
+   486→          : p
+   487→      ),
+   488→    });
+   489→    
+   490→    logger.info('Added sprite to pack', { packId, spriteLabel: sprite.label });
+   491→  };
+   492→
+   493→  // Remove sprite from pack
+   494→  const handleRemoveSpriteFromPack = (packId: string, spriteId: string) => {
+   495→    onChange({
+   496→      spritePacksV2: spritePacksV2.map(p => 
+   497→        p.id === packId 
+   498→          ? { 
+   499→              ...p, 
+   500→              sprites: p.sprites.filter(s => s.id !== spriteId),
+   501→              updatedAt: new Date().toISOString() 
+   502→            }
+   503→          : p
+   504→      ),
+   505→    });
+   506→    
+   507→    logger.info('Removed sprite from pack', { packId, spriteId });
+   508→  };
+   509→
+   510→  // Update sprite within a pack
+   511→  const handleUpdateSpriteInPack = (packId: string, spriteId: string, updates: Partial<SpritePackEntryV2>) => {
+   512→    onChange({
+   513→      spritePacksV2: spritePacksV2.map(p =>
+   514→        p.id === packId
+   515→          ? {
+   516→              ...p,
+   517→              sprites: p.sprites.map(s =>
+   518→                s.id === spriteId ? { ...s, ...updates } : s
+   519→              ),
+   520→              updatedAt: new Date().toISOString()
+   521→            }
+   522→          : p
+   523→      ),
+   524→    });
+   525→  };
+   526→
+   527→  // Set default sprite for a pack
+   528→  const handleSetDefaultSprite = (packId: string, spriteId: string | undefined) => {
+   529→    onChange({
+   530→      spritePacksV2: spritePacksV2.map(p =>
+   531→        p.id === packId
+   532→          ? { ...p, defaultSpriteId: spriteId, updatedAt: new Date().toISOString() }
+   533→          : p
+   534→      ),
+   535→    });
+   536→  };
+   537→
+   538→  // Get sprites not in current pack for add dialog
+   539→  const getSpritesNotInPack = (packId: string) => {
+   540→    const pack = spritePacksV2.find(p => p.id === packId);
+   541→    if (!pack) return filteredSprites;
+   542→    
+   543→    const packUrls = new Set(pack.sprites.map(s => s.url));
+   544→    return filteredSprites.filter(s => !packUrls.has(s.url));
+   545→  };
+   546→
+   547→  // Get condition summary text for compact display
+   548→  const getConditionSummary = (sprite: SpritePackEntryV2): string => {
+   549→    if (!sprite.conditions || sprite.conditions.length === 0) return 'Sin condiciones';
+   550→    return sprite.conditions.map(c => {
+   551→      const attr = availableAttributes.find(a => a.key === c.attributeKey);
+   552→      const op = OPERATOR_OPTIONS.find(o => o.value === c.operator);
+   553→      return `${attr?.name || c.attributeKey} ${op?.symbol || c.operator} ${c.value}${c.operator === 'between' ? `~${c.valueMax}` : ''}`;
+   554→    }).join(', ');
+   555→  };
+   556→
+   557→  return (
+   558→    <TooltipProvider>
+   559→      <div className="space-y-4">
+   560→        {/* Header */}
+   561→        <div className="flex items-center justify-between">
+   562→          <div>
+   563→            <h4 className="text-sm font-medium flex items-center gap-2">
+   564→              <Layers className="w-4 h-4 text-purple-500" />
+   565→              Sprite Packs
+   566→            </h4>
+   567→            <p className="text-xs text-muted-foreground">
+   568→              Crea packs de sprites para usar en colecciones de estado y triggers.
+   569→            </p>
+   570→          </div>
+   571→          <Button
+   572→            size="sm"
+   573→            className="h-8"
+   574→            onClick={() => setShowCreatePackDialog(true)}
+   575→          >
+   576→            <Plus className="w-4 h-4 mr-1" />
+   577→            Nuevo Pack
+   578→          </Button>
+   579→        </div>
+   580→
+   581→        {/* Info Banner */}
+   582→        <div className="text-xs bg-purple-500/10 border border-purple-500/20 rounded-lg p-3">
+   583→          <div className="flex items-center gap-2 font-medium text-purple-600">
+   584→            <Package className="w-4 h-4" />
+   585→            ¿Qué son los Sprite Packs?
+   586→          </div>
+   587→          <p className="text-muted-foreground mt-1">
+   588→            Los Sprite Packs son <strong>contenedores simples</strong> que agrupan sprites relacionados.
+   589→            No tienen lógica de triggers - solo organizan los sprites para que las 
+   590→            <strong> Colecciones de Estado</strong> y <strong>Trigger Collections</strong> puedan usarlos.
+   591→            Puedes agregar sprites de <strong>cualquier colección</strong> a un pack.
+   592→          </p>
+   593→        </div>
+   594→
+   595→        {/* Available Sprites Summary */}
+   596→        <div className="flex items-center gap-2 flex-wrap">
+   597→          <Badge variant="outline" className="text-xs bg-purple-500/10 border-purple-500/30">
+   598→            <Package className="w-3 h-3 mr-1" />
+   599→            {customSprites.length} sprites disponibles
+   600→          </Badge>
+   601→          {collectionNames.map(name => {
+   602→            const count = customSprites.filter(s => s.pack === name).length;
+   603→            return (
+   604→              <Badge key={name} variant="secondary" className="text-xs">
+   605→                <FolderOpen className="w-3 h-3 mr-1" />
+   606→                {name}: {count}
+   607→              </Badge>
+   608→            );
+   609→          })}
+   610→        </div>
+   611→
+   612→        {/* Packs List */}
+   613→        {spritePacksV2.length > 0 ? (
+   614→          <Accordion type="multiple" className="w-full space-y-2">
+   615→            {spritePacksV2.map(pack => (
+   616→              <AccordionItem 
+   617→                key={pack.id} 
+   618→                value={pack.id}
+   619→                className="border rounded-lg px-0"
+   620→              >
+   621→                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+   622→                  <div className="flex items-center gap-3 w-full">
+   623→                    <div className="p-1.5 bg-purple-500/10 rounded">
+   624→                      <Package className="w-4 h-4 text-purple-500" />
+   625→                    </div>
+   626→                    <div className="flex-1 text-left">
+   627→                      {editingPackId === pack.id ? (
+   628→                        <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+   629→                          <Input
+   630→                            value={editingName}
+   631→                            onChange={e => setEditingName(e.target.value)}
+   632→                            className="h-7 w-48"
+   633→                            autoFocus
+   634→                          />
+   635→                          <Button
+   636→                            size="sm"
+   637→                            variant="ghost"
+   638→                            className="h-7 w-7 p-0"
+   639→                            onClick={() => handleRenamePack(pack.id)}
+   640→                          >
+   641→                            <Check className="w-3.5 h-3.5 text-green-500" />
+   642→                          </Button>
+   643→                          <Button
+   644→                            size="sm"
+   645→                            variant="ghost"
+   646→                            className="h-7 w-7 p-0"
+   647→                            onClick={() => setEditingPackId(null)}
+   648→                          >
+   649→                            <X className="w-3.5 h-3.5" />
+   650→                          </Button>
+   651→                        </div>
+   652→                      ) : (
+   653→                        <>
+   654→                          <div className="text-sm font-medium">{pack.name}</div>
+   655→                          {pack.description && (
+   656→                            <div className="text-xs text-muted-foreground">{pack.description}</div>
+   657→                          )}
+   658→                        </>
+   659→                      )}
+   660→                    </div>
+   661→                    <Badge variant="secondary" className="text-xs">
+   662→                      {pack.sprites.length} sprites
+   663→                    </Badge>
+   664→                    {pack.conditionalMode && (
+   665→                      <Badge variant="secondary" className="text-xs bg-purple-500/10 text-purple-600 border-purple-500/30">
+   666→                        <GitBranch className="w-3 h-3 mr-1" />
+   667→                        Condicional
+   668→                      </Badge>
+   669→                    )}
+   670→                  </div>
+   671→                </AccordionTrigger>
+   672→                <AccordionContent className="px-4 pb-4">
+   673→                  <div className="space-y-3">
+   674→                    {/* Actions */}
+   675→                    <div className="flex gap-2">
+   676→                      <Button
+   677→                        variant="outline"
+   678→                        size="sm"
+   679→                        className="h-7"
+   680→                        onClick={() => {
+   681→                          setEditingPackId(pack.id);
+   682→                          setEditingName(pack.name);
+   683→                        }}
+   684→                      >
+   685→                        <Edit className="w-3.5 h-3.5 mr-1" />
+   686→                        Renombrar
+   687→                      </Button>
+   688→                      <Button
+   689→                        variant="outline"
+   690→                        size="sm"
+   691→                        className="h-7"
+   692→                        onClick={() => {
+   693→                          setCollectionFilter('__all__');
+   694→                          setSearchQuery('');
+   695→                          setShowAddSpriteDialog(pack.id);
+   696→                        }}
+   697→                      >
+   698→                        <Plus className="w-3.5 h-3.5 mr-1" />
+   699→                        Agregar Sprites
+   700→                      </Button>
+   701→                      <Button
+   702→                        variant="outline"
+   703→                        size="sm"
+   704→                        className="h-7 text-destructive hover:text-destructive"
+   705→                        onClick={() => handleDeletePack(pack.id)}
+   706→                      >
+   707→                        <Trash2 className="w-3.5 h-3.5 mr-1" />
+   708→                        Eliminar
+   709→                      </Button>
+   710→                    </div>
+   711→
+   712→                    {/* Conditional Mode Section */}
+   713→                    <div className="space-y-2 p-3 rounded-lg bg-purple-500/5 border border-purple-500/20">
+   714→                      <div className="flex items-center justify-between">
+   715→                        <div className="flex items-center gap-1.5">
+   716→                          <GitBranch className="w-3.5 h-3.5 text-purple-500" />
+   717→                          <Label className="text-xs font-medium">Modo Condicional</Label>
+   718→                          <Tooltip>
+   719→                            <TooltipTrigger asChild>
+   720→                              <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+   721→                            </TooltipTrigger>
+   722→                            <TooltipContent className="max-w-xs">
+   723→                              <p>Cuando está activado, los sprites del pack se seleccionan según condiciones de atributos y prioridad.</p>
+   724→                              <p className="mt-1 text-xs text-muted-foreground">El sprite con mayor prioridad cuyas condiciones se cumplan será el que se muestre.</p>
+   725→                            </TooltipContent>
+   726→                          </Tooltip>
+   727→                        </div>
+   728→                        <Switch
+   729→                          checked={pack.conditionalMode || false}
+   730→                          onCheckedChange={(checked) => {
+   731→                            onChange({
+   732→                              spritePacksV2: spritePacksV2.map(p =>
+   733→                                p.id === pack.id
+   734→                                  ? { ...p, conditionalMode: checked, updatedAt: new Date().toISOString() }
+   735→                                  : p
+   736→                              ),
+   737→                            });
+   738→                          }}
+   739→                        />
+   740→                      </div>
+   741→                      {pack.conditionalMode && (
+   742→                        <p className="text-xs text-muted-foreground">
+   743→                          Cada sprite puede tener condiciones y prioridad. El sprite con mayor prioridad cuyas condiciones se cumplan será el seleccionado.
+   744→                          Define un sprite como &quot;Default&quot; para usarlo cuando ninguna condición coincida.
+   745→                        </p>
+   746→                      )}
+   747→                    </div>
+   748→
+   749→                    {/* Sprites Horizontal Slider */}
+   750→                    {pack.sprites.length > 0 ? (
+   751→                      <div className="relative">
+   752→                        <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory" style={{ scrollbarWidth: 'thin' }}>
+   753→                          {pack.sprites.map(sprite => {
+   754→                            const isCondEnabled = pack.conditionalMode && sprite.conditionalEnabled;
+   755→                            const isDefaultSprite = sprite.isDefault || pack.defaultSpriteId === sprite.id;
+   756→                            const condCount = sprite.conditions?.length || 0;
+   757→                            
+   758→                            return (
+   759→                              <div
+   760→                                key={sprite.id}
+   761→                                className={cn(
+   762→                                  "relative group border rounded-lg overflow-hidden shrink-0 snap-start",
+   763→                                  "w-56",
+   764→                                  isCondEnabled ? "border-purple-500/50 bg-purple-500/5" : "bg-muted/30",
+   765→                                  isDefaultSprite && pack.conditionalMode && "border-amber-500/50 bg-amber-500/5"
+   766→                                )}
+   767→                              >
+   768→                                <div className="aspect-square relative">
+   769→                                  <SpritePreview
+   770→                                    src={sprite.url}
+   771→                                    alt={sprite.label}
+   772→                                    className="w-full h-full"
+   773→                                    objectFit="contain"
+   774→                                  />
+   775→                                  {/* Type indicator */}
+   776→                                  {isVideoUrl(sprite.url) && (
+   777→                                    <div className="absolute top-1 right-1">
+   778→                                      <Badge variant="secondary" className="text-[10px] h-5 px-1.5 bg-blue-500/80 text-white">
+   779→                                        <Video className="w-3 h-3" />
+   780→                                      </Badge>
+   781→                                    </div>
+   782→                                  )}
+   783→                                  {isAnimatedImage(sprite.url) && (
+   784→                                    <div className="absolute top-1 right-1">
+   785→                                      <Badge variant="secondary" className="text-[10px] h-5 px-1.5 bg-purple-500/80 text-white">
+   786→                                        <Film className="w-3 h-3" />
+   787→                                      </Badge>
+   788→                                    </div>
+   789→                                  )}
+   790→                                  {/* Conditional indicator */}
+   791→                                  {isCondEnabled && (
+   792→                                    <div className="absolute top-1 left-1">
+   793→                                      <Badge variant="secondary" className="text-[10px] h-5 px-1.5 bg-purple-500/80 text-white">
+   794→                                        <GitBranch className="w-3 h-3" />
+   795→                                      </Badge>
+   796→                                    </div>
+   797→                                  )}
+   798→                                  {/* Default indicator */}
+   799→                                  {isDefaultSprite && pack.conditionalMode && (
+   800→                                    <div className="absolute bottom-1 left-1">
+   801→                                      <Badge variant="secondary" className="text-[10px] h-5 px-1.5 bg-amber-500/80 text-white">
+   802→                                        ★
+   803→                                      </Badge>
+   804→                                    </div>
+   805→                                  )}
+   806→                                  {/* Remove button */}
+   807→                                  <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+   808→                                    <Button
+   809→                                      variant="destructive"
+   810→                                      size="sm"
+   811→                                      className="h-6 w-6 p-0"
+   812→                                      onClick={() => handleRemoveSpriteFromPack(pack.id, sprite.id)}
+   813→                                    >
+   814→                                      <X className="w-3.5 h-3.5" />
+   815→                                    </Button>
+   816→                                  </div>
+   817→                                </div>
+   818→                                {/* Compact info area */}
+   819→                                <div className="p-3 border-t bg-background space-y-1.5">
+   820→                                  <SpriteLabelInput
+   821→                                    label={sprite.label}
+   822→                                    onLabelChange={(newLabel) => handleUpdateSpriteInPack(pack.id, sprite.id, { label: newLabel })}
+   823→                                  />
+   824→                                  {pack.conditionalMode && (
+   825→                                    <div className="flex items-center justify-center gap-1.5 flex-wrap">
+   826→                                      {/* Priority badge */}
+   827→                                      <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
+   828→                                        <ArrowUp className="w-2.5 h-2.5 mr-0.5" />
+   829→                                        P:{sprite.priority || 0}
+   830→                                      </Badge>
+   831→                                      {/* Conditional status */}
+   832→                                      {sprite.conditionalEnabled ? (
+   833→                                        <Badge variant="secondary" className="text-[10px] h-5 px-1.5 bg-purple-500/10 text-purple-600 border-purple-500/30">
+   834→                                          <GitBranch className="w-2.5 h-2.5 mr-0.5" />
+   835→                                          {condCount} cond.
+   836→                                        </Badge>
+   837→                                      ) : (
+   838→                                        <Badge variant="secondary" className="text-[10px] h-5 px-1.5 text-muted-foreground">
+   839→                                          Sin cond.
+   840→                                        </Badge>
+   841→                                      )}
+   842→                                      {/* Default badge */}
+   843→                                      {isDefaultSprite && (
+   844→                                        <Badge variant="secondary" className="text-[10px] h-5 px-1.5 bg-amber-500/10 text-amber-600 border-amber-500/30">
+   845→                                          <Star className="w-2.5 h-2.5 mr-0.5" />
+   846→                                          Default
+   847→                                        </Badge>
+   848→                                      )}
+   849→                                      {/* Edit button */}
+   850→                                      <Button
+   851→                                        variant="ghost"
+   852→                                        size="sm"
+   853→                                        className="h-5 px-1.5 text-[10px] text-purple-600 hover:text-purple-700"
+   854→                                        onClick={() => setEditingSprite({ packId: pack.id, spriteId: sprite.id })}
+   855→                                        title="Editar condiciones y prioridad"
+   856→                                      >
+   857→                                        <Settings2 className="w-3 h-3 mr-0.5" />
+   858→                                        Editar
+   859→                                      </Button>
+   860→                                    </div>
+   861→                                  )}
+   862→                                  {/* Condition summary for conditional sprites */}
+   863→                                  {pack.conditionalMode && sprite.conditionalEnabled && condCount > 0 && (
+   864→                                    <p className="text-[10px] text-muted-foreground text-center truncate" title={getConditionSummary(sprite)}>
+   865→                                      {getConditionSummary(sprite)}
+   866→                                    </p>
+   867→                                  )}
+   868→                                </div>
+   869→                              </div>
+   870→                            );
+   871→                          })}
+   872→                        </div>
+   873→                      </div>
+   874→                    ) : (
+   875→                      <div className="text-center py-6 text-muted-foreground border rounded-lg bg-muted/20">
+   876→                        <ImageIcon className="w-6 h-6 mx-auto mb-1 opacity-50" />
+   877→                        <p className="text-xs">Pack vacío</p>
+   878→                        <Button
+   879→                          variant="outline"
+   880→                          size="sm"
+   881→                          className="h-7 mt-2"
+   882→                          onClick={() => {
+   883→                            setCollectionFilter('__all__');
+   884→                            setSearchQuery('');
+   885→                            setShowAddSpriteDialog(pack.id);
+   886→                          }}
+   887→                        >
+   888→                          <Plus className="w-3.5 h-3.5 mr-1" />
+   889→                          Agregar Sprites
+   890→                        </Button>
+   891→                      </div>
+   892→                    )}
+   893→                  </div>
+   894→                </AccordionContent>
+   895→              </AccordionItem>
+   896→            ))}
+   897→          </Accordion>
+   898→        ) : (
+   899→          <div className="text-center py-8 text-muted-foreground border rounded-lg bg-muted/20">
+   900→            <Package className="w-10 h-10 mx-auto mb-2 opacity-30" />
+   901→            <p className="text-sm">No hay Sprite Packs</p>
+   902→            <p className="text-xs mt-1">Crea un pack para organizar tus sprites</p>
+   903→            <Button
+   904→              size="sm"
+   905→              className="mt-3"
+   906→              onClick={() => setShowCreatePackDialog(true)}
+   907→            >
+   908→              <Plus className="w-4 h-4 mr-1" />
+   909→              Crear Primer Pack
+   910→            </Button>
+   911→          </div>
+   912→        )}
+   913→
+   914→        {/* Sprite Edit Dialog - Full conditions editor */}
+   915→        <Dialog 
+   916→          open={editingSprite !== null} 
+   917→          onOpenChange={(open) => !open && setEditingSprite(null)}
+   918→        >
+   919→          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+   920→            <DialogHeader>
+   921→              <DialogTitle className="flex items-center gap-2">
+   922→                <Settings2 className="w-5 h-5 text-purple-500" />
+   923→                Editar Sprite Condicional
+   924→              </DialogTitle>
+   925→              <DialogDescription>
+   926→                Configura la prioridad y condiciones para este sprite dentro del pack.
+   927→              </DialogDescription>
+   928→            </DialogHeader>
+   929→            {currentEditSprite && (
+   930→              <div className="space-y-6 py-4">
+   931→                {/* Sprite Preview + Name */}
+   932→                <div className="flex gap-4 items-start">
+   933→                  <div className="w-40 h-40 border rounded-lg overflow-hidden bg-muted/30 shrink-0">
+   934→                    <SpritePreview
+   935→                      src={currentEditSprite.sprite.url}
+   936→                      alt={currentEditSprite.sprite.label}
+   937→                      className="w-full h-full"
+   938→                      objectFit="contain"
+   939→                    />
+   940→                  </div>
+   941→                  <div className="flex-1 space-y-2">
+   942→                    <div className="flex items-center gap-2">
+   943→                      <Input
+   944→                        value={currentEditSprite.sprite.label}
+   945→                        onChange={(e) => handleUpdateSpriteInPack(currentEditSprite.pack.id, currentEditSprite.sprite.id, { label: e.target.value })}
+   946→                        className="h-8 text-lg font-medium border-transparent bg-transparent hover:bg-muted/50 focus:bg-background focus:border-primary/50 px-1 py-0"
+   947→                      />
+   948→                    </div>
+   949→                    <p className="text-sm text-muted-foreground">
+   950→                      Pack: <span className="font-medium text-foreground">{currentEditSprite.pack.name}</span>
+   951→                    </p>
+   952→                    {isVideoUrl(currentEditSprite.sprite.url) && (
+   953→                      <Badge variant="secondary" className="text-xs bg-blue-500/10 text-blue-600 border-blue-500/30">
+   954→                        <Video className="w-3 h-3 mr-1" /> Video
+   955→                      </Badge>
+   956→                    )}
+   957→                    {isAnimatedImage(currentEditSprite.sprite.url) && (
+   958→                      <Badge variant="secondary" className="text-xs bg-purple-500/10 text-purple-600 border-purple-500/30">
+   959→                        <Film className="w-3 h-3 mr-1" /> Animado
+   960→                      </Badge>
+   961→                    )}
+   962→                  </div>
+   963→                </div>
+   964→
+   965→                {/* Settings Section */}
+   966→                <div className="space-y-4 p-4 rounded-lg bg-muted/30 border">
+   967→                  <h4 className="text-sm font-medium flex items-center gap-1.5">
+   968→                    <Settings2 className="w-4 h-4 text-purple-500" />
+   969→                    Configuración
+   970→                  </h4>
+   971→                  
+   972→                  {/* Row: Priority + Default */}
+   973→                  <div className="flex items-end gap-4">
+   974→                    <div className="flex-1 max-w-48">
+   975→                      <Label className="text-sm mb-1.5 block">Prioridad</Label>
+   976→                      <Input
+   977→                        type="number"
+   978→                        className="h-10 text-sm"
+   979→                        value={currentEditSprite.sprite.priority || 0}
+   980→                        onChange={(e) => handleUpdateSpriteInPack(currentEditSprite.pack.id, currentEditSprite.sprite.id, { priority: parseInt(e.target.value) || 0 })}
+   981→                        min={0}
+   982→                      />
+   983→                      <p className="text-xs text-muted-foreground mt-1">
+   984→                        Mayor número = mayor prioridad
+   985→                      </p>
+   986→                    </div>
+   987→                    <div className="flex items-center gap-3 pb-0.5">
+   988→                      <div className="flex items-center gap-2">
+   989→                        <Switch
+   990→                          id="conditional-enabled"
+   991→                          checked={currentEditSprite.sprite.conditionalEnabled || false}
+   992→                          onCheckedChange={(checked) => handleUpdateSpriteInPack(currentEditSprite.pack.id, currentEditSprite.sprite.id, { conditionalEnabled: checked })}
+   993→                        />
+   994→                        <Label htmlFor="conditional-enabled" className="text-sm cursor-pointer">
+   995→                          Condicional
+   996→                        </Label>
+   997→                      </div>
+   998→                    </div>
+   999→                  </div>
+  1000→
+  1001→                  {/* Default sprite toggle */}
+  1002→                  <div className="flex items-center gap-2">
+  1003→                    <Button
+  1004→                      variant={currentEditSprite.sprite.isDefault || currentEditSprite.pack.defaultSpriteId === currentEditSprite.sprite.id ? "default" : "outline"}
+  1005→                      size="sm"
+  1006→                      className={cn(
+  1007→                        "h-9",
+  1008→                        currentEditSprite.sprite.isDefault || currentEditSprite.pack.defaultSpriteId === currentEditSprite.sprite.id
+  1009→                          ? "bg-amber-500 hover:bg-amber-600 text-white"
+  1010→                          : "text-muted-foreground"
+  1011→                      )}
+  1012→                      onClick={() => {
+  1013→                        const isDefault = currentEditSprite.sprite.isDefault || currentEditSprite.pack.defaultSpriteId === currentEditSprite.sprite.id;
+  1014→                        handleSetDefaultSprite(currentEditSprite.pack.id, isDefault ? undefined : currentEditSprite.sprite.id);
+  1015→                      }}
+  1016→                    >
+  1017→                      <Star className="w-4 h-4 mr-1.5" />
+  1018→                      {currentEditSprite.sprite.isDefault || currentEditSprite.pack.defaultSpriteId === currentEditSprite.sprite.id ? 'Sprite Default' : 'Marcar como Default'}
+  1019→                    </Button>
+  1020→                    <p className="text-xs text-muted-foreground">
+  1021→                      Se muestra cuando ninguna condición coincide
+  1022→                    </p>
+  1023→                  </div>
+  1024→                </div>
+  1025→
+  1026→                {/* Conditions Section */}
+  1027→                {currentEditSprite.sprite.conditionalEnabled && (
+  1028→                  <div className="space-y-4">
+  1029→                    <div className="flex items-center gap-2">
+  1030→                      <GitBranch className="w-4 h-4 text-purple-500" />
+  1031→                      <h4 className="text-sm font-medium">Condiciones</h4>
+  1032→                      <Badge variant="secondary" className="text-xs">
+  1033→                        {currentEditSprite.sprite.conditions?.length || 0}
+  1034→                      </Badge>
+  1035→                    </div>
+  1036→                    <p className="text-sm text-muted-foreground">
+  1037→                      Define las condiciones que deben cumplirse para que este sprite se muestre. 
+  1038→                      Todas las condiciones deben cumplirse simultáneamente (AND).
+  1039→                    </p>
+  1040→                    <SpriteConditionEditorFull
+  1041→                      conditions={currentEditSprite.sprite.conditions || []}
+  1042→                      availableAttributes={availableAttributes}
+  1043→                      onConditionsChange={(conditions) => handleUpdateSpriteInPack(currentEditSprite.pack.id, currentEditSprite.sprite.id, { conditions })}
+  1044→                    />
+  1045→                  </div>
+  1046→                )}
+  1047→
+  1048→                {/* Info when conditional is disabled */}
+  1049→                {!currentEditSprite.sprite.conditionalEnabled && (
+  1050→                  <div className="text-center py-6 text-muted-foreground border border-dashed rounded-lg">
+  1051→                    <GitBranch className="w-6 h-6 mx-auto mb-2 opacity-40" />
+  1052→                    <p className="text-sm">Condiciones desactivadas</p>
+  1053→                    <p className="text-xs mt-1">
+  1054→                      Activa &quot;Condicional&quot; para agregar condiciones a este sprite
+  1055→                    </p>
+  1056→                  </div>
+  1057→                )}
+  1058→              </div>
+  1059→            )}
+  1060→            <DialogFooter>
+  1061→              <Button variant="outline" onClick={() => setEditingSprite(null)}>
+  1062→                Cerrar
+  1063→              </Button>
+  1064→            </DialogFooter>
+  1065→          </DialogContent>
+  1066→        </Dialog>
+  1067→
+  1068→        {/* Create Pack Dialog */}
+  1069→        <Dialog open={showCreatePackDialog} onOpenChange={setShowCreatePackDialog}>
+  1070→          <DialogContent className="sm:max-w-md">
+  1071→            <DialogHeader>
+  1072→              <DialogTitle>Crear Nuevo Sprite Pack</DialogTitle>
+  1073→            </DialogHeader>
+  1074→            <div className="space-y-4 py-4">
+  1075→              <div>
+  1076→                <Label htmlFor="packName">Nombre del pack</Label>
+  1077→                <Input
+  1078→                  id="packName"
+  1079→                  value={newPackName}
+  1080→                  onChange={(e) => setNewPackName(e.target.value)}
+  1081→                  placeholder="Ej: Expressions, Outfits, Actions..."
+  1082→                  className="mt-1"
+  1083→                  onKeyDown={(e) => e.key === 'Enter' && handleCreatePack()}
+  1084→                />
+  1085→              </div>
+  1086→              <div>
+  1087→                <Label htmlFor="packDescription">Descripción (opcional)</Label>
+  1088→                <Textarea
+  1089→                  id="packDescription"
+  1090→                  value={newPackDescription}
+  1091→                  onChange={(e) => setNewPackDescription(e.target.value)}
+  1092→                  placeholder="Describe qué contiene este pack..."
+  1093→                  className="mt-1 h-20 resize-none"
+  1094→                />
+  1095→              </div>
+  1096→            </div>
+  1097→            <DialogFooter>
+  1098→              <Button variant="outline" onClick={() => setShowCreatePackDialog(false)}>
+  1099→                Cancelar
+  1100→              </Button>
+  1101→              <Button onClick={handleCreatePack} disabled={!newPackName.trim()}>
+  1102→                <Package className="w-4 h-4 mr-1" />
+  1103→                Crear Pack
+  1104→              </Button>
+  1105→            </DialogFooter>
+  1106→          </DialogContent>
+  1107→        </Dialog>
+  1108→
+  1109→        {/* Add Sprites Dialog */}
+  1110→        <Dialog 
+  1111→          open={showAddSpriteDialog !== null} 
+  1112→          onOpenChange={(open) => !open && setShowAddSpriteDialog(null)}
+  1113→        >
+  1114→          <DialogContent className="sm:max-w-2xl">
+  1115→            <DialogHeader>
+  1116→              <DialogTitle>
+  1117→                Agregar Sprites a &quot;{spritePacksV2.find(p => p.id === showAddSpriteDialog)?.name}&quot;
+  1118→              </DialogTitle>
+  1119→              <p className="text-xs text-muted-foreground">
+  1120→                {customSprites.length} sprites disponibles en {collectionNames.length} colección(es)
+  1121→              </p>
+  1122→            </DialogHeader>
+  1123→            <div className="space-y-3 py-4">
+  1124→              {/* Collection Filter + Search */}
+  1125→              <div className="flex gap-2">
+  1126→                <Select
+  1127→                  value={collectionFilter}
+  1128→                  onValueChange={setCollectionFilter}
+  1129→                >
+  1130→                  <SelectTrigger className="h-8 w-44">
+  1131→                    <FolderOpen className="w-3.5 h-3.5 mr-1 text-muted-foreground" />
+  1132→                    <SelectValue placeholder="Filtrar colección..." />
+  1133→                  </SelectTrigger>
+  1134→                  <SelectContent>
+  1135→                    <SelectItem value="__all__">
+  1136→                      <span className="text-muted-foreground">Todas ({customSprites.length})</span>
+  1137→                    </SelectItem>
+  1138→                    {collectionNames.map(name => {
+  1139→                      const count = customSprites.filter(s => s.pack === name).length;
+  1140→                      return (
+  1141→                        <SelectItem key={name} value={name}>
+  1142→                          {name} ({count})
+  1143→                        </SelectItem>
+  1144→                      );
+  1145→                    })}
+  1146→                  </SelectContent>
+  1147→                </Select>
+  1148→                <div className="relative flex-1">
+  1149→                  <Input
+  1150→                    value={searchQuery}
+  1151→                    onChange={(e) => setSearchQuery(e.target.value)}
+  1152→                    placeholder="Buscar sprite..."
+  1153→                    className="h-8 pr-8"
+  1154→                  />
+  1155→                  {searchQuery && (
+  1156→                    <Button
+  1157→                      variant="ghost"
+  1158→                      size="sm"
+  1159→                      className="absolute right-0 top-0 h-8 w-8 p-0"
+  1160→                      onClick={() => setSearchQuery('')}
+  1161→                    >
+  1162→                      <X className="w-3 h-3" />
+  1163→                    </Button>
+  1164→                  )}
+  1165→                </div>
+  1166→              </div>
+  1167→
+  1168→              {/* Sprite Selection - Horizontal Slider Style */}
+  1169→              <ScrollArea className="h-80">
+  1170→                {showAddSpriteDialog && getSpritesNotInPack(showAddSpriteDialog).length > 0 ? (
+  1171→                  <div className="flex gap-3 flex-wrap">
+  1172→                    {getSpritesNotInPack(showAddSpriteDialog).map(sprite => {
+  1173→                      const existingPack = getSpritePackInfo(sprite.url);
+  1174→                      
+  1175→                      return (
+  1176→                        <div
+  1177→                          key={sprite.url}
+  1178→                          className="relative group border rounded-lg overflow-hidden cursor-pointer hover:border-primary transition-all bg-muted/30 shrink-0 w-36"
+  1179→                          onClick={() => handleAddSpriteToPack(showAddSpriteDialog!, sprite)}
+  1180→                        >
+  1181→                          <div className="aspect-square relative">
+  1182→                            <SpritePreview
+  1183→                              src={sprite.url}
+  1184→                              alt={sprite.label}
+  1185→                              className="w-full h-full"
+  1186→                              objectFit="contain"
+  1187→                            />
+  1188→                            {/* Type indicator */}
+  1189→                            {isVideoUrl(sprite.url) && (
+  1190→                              <div className="absolute top-1 right-1">
+  1191→                                <Badge variant="secondary" className="text-[9px] h-4 px-1 bg-blue-500/80 text-white">
+  1192→                                  <Video className="w-2.5 h-2.5" />
+  1193→                                </Badge>
+  1194→                              </div>
+  1195→                            )}
+  1196→                            {isAnimatedImage(sprite.url) && (
+  1197→                              <div className="absolute top-1 right-1">
+  1198→                                <Badge variant="secondary" className="text-[9px] h-4 px-1 bg-purple-500/80 text-white">
+  1199→                                  <Film className="w-2.5 h-2.5" />
+  1200→                                </Badge>
+  1201→                              </div>
+  1202→                            )}
+  1203→                            {/* Hover overlay */}
+  1204→                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+  1205→                              <Plus className="w-6 h-6 text-white" />
+  1206→                            </div>
+  1207→                          </div>
+  1208→                          <div className="p-1.5 border-t bg-background">
+  1209→                            <p className="text-[10px] truncate text-center">{sprite.label}</p>
+  1210→                            {/* Collection badge */}
+  1211→                            {sprite.pack && (
+  1212→                              <p className="text-[9px] text-muted-foreground text-center truncate">
+  1213→                                {sprite.pack}
+  1214→                              </p>
+  1215→                            )}
+  1216→                            {existingPack && (
+  1217→                              <p className="text-[9px] text-amber-600 text-center truncate">
+  1218→                                En: {existingPack.packName}
+  1219→                              </p>
+  1220→                            )}
+  1221→                          </div>
+  1222→                        </div>
+  1223→                      );
+  1224→                    })}
+  1225→                  </div>
+  1226→                ) : (
+  1227→                  <div className="text-center py-8 text-muted-foreground">
+  1228→                    {customSprites.length === 0 ? (
+  1229→                      <>
+  1230→                        <ImageIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
+  1231→                        <p className="text-sm">No hay sprites disponibles</p>
+  1232→                        <p className="text-xs mt-1">
+  1233→                          Ve a la sección &quot;Sprites&quot; para subir sprites a las colecciones.
+  1234→                        </p>
+  1235→                      </>
+  1236→                    ) : (
+  1237→                      <p className="text-sm">No se encontraron sprites{searchQuery ? ` para &quot;${searchQuery}&quot;` : ''}</p>
+  1238→                    )}
+  1239→                  </div>
+  1240→                )}
+  1241→              </ScrollArea>
+  1242→            </div>
+  1243→            <DialogFooter>
+  1244→              <Button variant="outline" onClick={() => setShowAddSpriteDialog(null)}>
+  1245→                Cerrar
+  1246→              </Button>
+  1247→            </DialogFooter>
+  1248→          </DialogContent>
+  1249→        </Dialog>
+  1250→      </div>
+  1251→    </TooltipProvider>
+  1252→  );
+  1253→}
+  1254→
+  1255→export default SpritePackEditorV2;
+  1256→

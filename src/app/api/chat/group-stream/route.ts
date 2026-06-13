@@ -1650,7 +1650,8 @@ export async function POST(request: NextRequest) {
                       userName: effectiveUserName,
                       postHistoryInstructions: resolvedPostHistoryInstructions,
                       embeddingsContext: embeddingsContext,
-                      exampleMessages: exampleMessages
+                      exampleMessages: exampleMessages,
+                      allCharacters: characters  // Pass all characters for proper speaker attribution
                     });
                     generator = streamOllama(prompt, llmConfig);
                   }
@@ -1848,7 +1849,8 @@ export async function POST(request: NextRequest) {
                       userName: effectiveUserName,
                       postHistoryInstructions: resolvedPostHistoryInstructions,
                       embeddingsContext: embeddingsContext,
-                      exampleMessages: exampleMessages
+                      exampleMessages: exampleMessages,
+                      allCharacters: characters  // Pass all characters for proper speaker attribution
                     });
                     generator = streamTextGenerationWebUI(prompt, llmConfig);
                   }
@@ -1863,7 +1865,8 @@ export async function POST(request: NextRequest) {
                     userName: effectiveUserName,
                     postHistoryInstructions: resolvedPostHistoryInstructions,
                     embeddingsContext: embeddingsContext,
-                    exampleMessages: exampleMessages
+                    exampleMessages: exampleMessages,
+                    allCharacters: characters  // Pass all characters for proper speaker attribution
                   });
                   generator = streamTextGenerationWebUI(prompt, llmConfig);
                   break;

@@ -613,6 +613,23 @@ export function buildSystemPrompt(
     });
   }
 
+  // FASE 5: Add emotional state injection
+  // When enabled, inject the character's current emotional state into the prompt
+  // This gives the LLM awareness of the character's mood for consistent behavior
+  if (character.emotionalConfig?.enabled && character.emotionalConfig.includeInPrompt) {
+    const emotionalState = sessionStats?.characterStats?.[character.id]?.emotionalState;
+    if (emotionalState) {
+      const format = character.emotionalConfig.promptInjectionFormat || 'Estado emocional actual: {estado}';
+      const emotionContent = format.replace('{estado}', emotionalState);
+      sections.push({
+        type: 'personality',
+        label: 'Estado Emocional',
+        content: emotionContent,
+        color: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
+      });
+    }
+  }
+
   // Add scenario
   if (character.scenario) {
     sections.push({
@@ -1038,7 +1055,7 @@ export function buildChatMessages(
  * 5. Assistant prefix
  */
 export function buildCompletionPrompt(config: CompletionPromptConfig): string {
-  const { systemPrompt, messages, character, userName, postHistoryInstructions, authorNote, embeddingsContext, exampleMessages } = config;
+  const { systemPrompt, messages, character, userName, postHistoryInstructions, authorNote, embeddingsContext, exampleMessages, allCharacters } = config;
   const parts: string[] = [];
 
   parts.push(systemPrompt);
@@ -1061,7 +1078,12 @@ export function buildCompletionPrompt(config: CompletionPromptConfig): string {
     if (msg.role === 'user') {
       parts.push(`${userName}: ${msg.content}`);
     } else if (msg.role === 'assistant') {
-      parts.push(`${character.name}: ${msg.content}`);
+      // Use actual speaker name from characterId (important for group chats where
+      // multiple characters speak - each should be attributed to their own name)
+      const speakerName = msg.characterId
+        ? (allCharacters?.find(c => c.id === msg.characterId)?.name || character.name)
+        : character.name;
+      parts.push(`${speakerName}: ${msg.content}`);
     }
   }
 
@@ -1200,6 +1222,36 @@ export function buildGroupSystemPrompt(
       content: character.personality,
       color: SECTION_COLORS.personality
     });
+  }
+
+  // Add minimal info about other group members (just names, not full descriptions to save context)
+  // Exclude persona pseudo-character (__user__) since the user is not a responding character
+  if (allCharacters && allCharacters.length > 0) {
+    const otherChars = allCharacters.filter(c => c.id !== character.id && c.id !== '__user__');
+    if (otherChars.length > 0) {
+      const otherNames = otherChars.map(c => c.name).join(', ');
+      sections.push({
+        type: 'character_description',
+        label: 'Other Characters in Group',
+        content: `Other characters present in this conversation: ${otherNames}`,
+        color: SECTION_COLORS.character_description
+      });
+    }
+  }
+
+  // FASE 5: Add emotional state injection for group chat
+  if (character.emotionalConfig?.enabled && character.emotionalConfig.includeInPrompt) {
+    const emotionalState = sessionStats?.characterStats?.[character.id]?.emotionalState;
+    if (emotionalState) {
+      const format = character.emotionalConfig.promptInjectionFormat || 'Estado emocional actual: {estado}';
+      const emotionContent = format.replace('{estado}', emotionalState);
+      sections.push({
+        type: 'personality',
+        label: `${character.name} - Estado Emocional`,
+        content: emotionContent,
+        color: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
+      });
+    }
   }
 
   // Add scenario - Group description takes priority over character scenario
@@ -1356,14 +1408,22 @@ export function buildGroupChatMessages(
   }
 
   // Build merged API messages with proper alternation
+  // IMPORTANT: In group chats, multiple characters speak as 'assistant' role.
+  // When merging consecutive assistant messages, we MUST include speaker names
+  // so the LLM can distinguish which character said what.
   const mergedMessages: ChatApiMessage[] = [];
   for (const msg of visibleMessages) {
     const role = msg.role === 'user' ? 'user' : 'assistant';
+    // Include speaker name for assistant messages so different characters' lines
+    // are distinguishable even when merged into the same message
+    const speakerName = msg.role === 'user' ? userName :
+      (allCharacters.find(c => c.id === msg.characterId)?.name || character.name);
+    const contentWithSpeaker = msg.role === 'user' ? msg.content : `${speakerName}: ${msg.content}`;
     const last = mergedMessages[mergedMessages.length - 1];
     if (last && last.role === role) {
-      last.content += '\n' + msg.content;
+      last.content += '\n' + contentWithSpeaker;
     } else {
-      mergedMessages.push({ role, content: msg.content });
+      mergedMessages.push({ role, content: contentWithSpeaker });
     }
   }
 
@@ -1372,10 +1432,11 @@ export function buildGroupChatMessages(
     for (const resp of previousResponses) {
       historyLines.push(`${resp.characterName}: ${resp.content}`);
       const last = mergedMessages[mergedMessages.length - 1];
+      const contentWithSpeaker = `${resp.characterName}: ${resp.content}`;
       if (last && last.role === 'assistant') {
-        last.content += '\n' + resp.content;
+        last.content += '\n' + contentWithSpeaker;
       } else {
-        mergedMessages.push({ role: 'assistant', content: resp.content });
+        mergedMessages.push({ role: 'assistant', content: contentWithSpeaker });
       }
     }
   }

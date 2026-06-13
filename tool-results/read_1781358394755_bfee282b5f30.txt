@@ -1,0 +1,949 @@
+     1→'use client';
+     2→
+     3→import { useState, useRef, useEffect } from 'react';
+     4→import { cn } from '@/lib/utils';
+     5→import { 
+     6→  Maximize2, 
+     7→  RotateCcw,
+     8→  Settings,
+     9→  Lock,
+    10→  LockOpen,
+    11→  Timer,
+    12→  X,
+    13→  Play
+    14→} from 'lucide-react';
+    15→import { Button } from '@/components/ui/button';
+    16→import {
+    17→  Popover,
+    18→  PopoverContent,
+    19→  PopoverTrigger,
+    20→} from '@/components/ui/popover';
+    21→import { Slider } from '@/components/ui/slider';
+    22→import { Badge } from '@/components/ui/badge';
+    23→import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+    24→import type { SpriteState, CharacterCard, SpritePackV2, StateCollectionV2, SessionStats } from '@/types';
+    25→import { SpritePreview } from './sprite-preview';
+    26→import { useTavernStore } from '@/store';
+    27→import { createDefaultCharacterState } from '@/store/slices/spriteSlice';
+    28→import { evaluatePackConditionalSprites } from '@/lib/sprites/condition-evaluator';
+    29→
+    30→interface SpriteSettings {
+    31→  x: number;        // percentage (0-100) - horizontal position
+    32→  y: number;        // percentage (0-100) - vertical position from bottom (0 = bottom)
+    33→  width: number;    // percentage (10-80)
+    34→  height: number;   // percentage (10-90)
+    35→  opacity: number;  // 0-1
+    36→}
+    37→
+    38→interface CharacterSpriteProps {
+    39→  characterId: string;
+    40→  characterName: string;
+    41→  avatarUrl: string;
+    42→  character?: CharacterCard;    // Full character data for V2 system
+    43→  isStreaming?: boolean;         // Is the character currently generating?
+    44→  hasContent?: boolean;          // Is there streaming content? (for thinking vs talk)
+    45→  isTTSPlaying?: boolean;        // Is TTS currently playing for this character?
+    46→  onSettingsChange?: (settings: SpriteSettings) => void;
+    47→}
+    48→
+    49→const DEFAULT_SPRITE_SETTINGS: SpriteSettings = {
+    50→  x: 50,           // center horizontally
+    51→  y: 0,            // at bottom (0 = bottom, higher values = higher up)
+    52→  width: 35,       // 35% of screen width
+    53→  height: 70,      // 70% of screen height
+    54→  opacity: 0.9
+    55→};
+    56→
+    57→// ============================================
+    58→// Sprite List Rotation Tracker
+    59→// Tracks rotation indices per character per state
+    60→// Avoids modifying character data (no persistence noise)
+    61→// ============================================
+    62→const _spriteRotationIndex = new Map<string, Map<SpriteState, number>>();
+    63→
+    64→function getRotationIndex(characterId: string, state: SpriteState): number {
+    65→  let charMap = _spriteRotationIndex.get(characterId);
+    66→  if (!charMap) {
+    67→    charMap = new Map<SpriteState, number>();
+    68→    _spriteRotationIndex.set(characterId, charMap);
+    69→  }
+    70→  return charMap.get(state) ?? 0;
+    71→}
+    72→
+    73→function advanceRotationIndex(characterId: string, state: SpriteState): number {
+    74→  let charMap = _spriteRotationIndex.get(characterId);
+    75→  if (!charMap) {
+    76→    charMap = new Map<SpriteState, number>();
+    77→    _spriteRotationIndex.set(characterId, charMap);
+    78→  }
+    79→  const current = charMap.get(state) ?? 0;
+    80→  const next = current + 1;
+    81→  charMap.set(state, next);
+    82→  return next;
+    83→}
+    84→
+    85→// Helper: resolve a sprite from a pack given behavior config
+    86→function resolveSpriteFromPack(
+    87→  pack: SpritePackV2,
+    88→  behavior: 'principal' | 'random' | 'list',
+    89→  principalSpriteId: string | undefined,
+    90→  characterId: string,
+    91→  state: SpriteState
+    92→): { url: string | null; label: string | null } {
+    93→  if (pack.sprites.length === 0) return { url: null, label: null };
+    94→
+    95→  switch (behavior) {
+    96→    case 'principal':
+    97→      // Use principal sprite if specified, otherwise first sprite
+    98→      if (principalSpriteId) {
+    99→        const principal = pack.sprites.find(s => s.id === principalSpriteId);
+   100→        if (principal) return { url: principal.url, label: principal.label };
+   101→      }
+   102→      return { url: pack.sprites[0].url, label: pack.sprites[0].label };
+   103→
+   104→    case 'random':
+   105→      // Random selection
+   106→      const randomIndex = Math.floor(Math.random() * pack.sprites.length);
+   107→      const randomSprite = pack.sprites[randomIndex];
+   108→      return { url: randomSprite.url, label: randomSprite.label };
+   109→
+   110→    case 'list': {
+   111→      // Rotate through sprites using the rotation tracker
+   112→      const index = getRotationIndex(characterId, state);
+   113→      const safeIndex = index % pack.sprites.length;
+   114→      const listSprite = pack.sprites[safeIndex];
+   115→      return { url: listSprite.url, label: listSprite.label };
+   116→    }
+   117→
+   118→    default:
+   119→      return { url: pack.sprites[0].url, label: pack.sprites[0].label };
+   120→  }
+   121→}
+   122→
+   123→// Get sprite from State Collection V2 (uses sprite packs)
+   124→// Now supports conditional mode at the pack level
+   125→function getSpriteFromStateCollectionV2(
+   126→  state: SpriteState,
+   127→  stateCollectionsV2: StateCollectionV2[],
+   128→  spritePacksV2: SpritePackV2[],
+   129→  characterId: string,
+   130→  sessionStats?: SessionStats | null
+   131→): { url: string | null; label: string | null } {
+   132→  const stateCollection = stateCollectionsV2.find(c => c.state === state);
+   133→  if (!stateCollection) return { url: null, label: null };
+   134→
+   135→  const pack = spritePacksV2.find(p => p.id === stateCollection.packId);
+   136→  if (!pack || pack.sprites.length === 0) return { url: null, label: null };
+   137→
+   138→  // ============================================
+   139→  // Evaluate pack-level conditional sprites (if pack has conditionalMode)
+   140→  // ============================================
+   141→  if (pack.conditionalMode) {
+   142→    const winningSprite = evaluatePackConditionalSprites(
+   143→      pack.sprites,
+   144→      sessionStats,
+   145→      characterId
+   146→    );
+   147→
+   148→    if (winningSprite) {
+   149→      return { url: winningSprite.url, label: winningSprite.label };
+   150→    }
+   151→
+   152→    // No conditional sprite matched - try defaultSpriteId
+   153→    if (pack.defaultSpriteId) {
+   154→      const defaultSprite = pack.sprites.find(s => s.id === pack.defaultSpriteId);
+   155→      if (defaultSprite) {
+   156→        return { url: defaultSprite.url, label: defaultSprite.label };
+   157→      }
+   158→    }
+   159→
+   160→    // Also check for sprites marked as isDefault
+   161→    const markedDefault = pack.sprites.find(s => s.isDefault);
+   162→    if (markedDefault) {
+   163→      return { url: markedDefault.url, label: markedDefault.label };
+   164→    }
+   165→
+   166→    // Fall through to behavior-based resolution
+   167→  }
+   168→
+   169→  // ============================================
+   170→  // Default: use the state collection's behavior
+   171→  // ============================================
+   172→  return resolveSpriteFromPack(
+   173→    pack,
+   174→    stateCollection.behavior,
+   175→    stateCollection.principalSpriteId,
+   176→    characterId,
+   177→    state
+   178→  );
+   179→}
+   180→
+   181→// Get the appropriate sprite URL based on state and config
+   182→// Priority: V2 State Collections > Avatar (legacy system removed)
+   183→function getSpriteUrl(
+   184→  state: SpriteState,
+   185→  avatarUrl?: string,
+   186→  character?: CharacterCard,
+   187→  characterId?: string,
+   188→  sessionStats?: SessionStats | null
+   189→): { url: string; label: string | null } {
+   190→  const charId = characterId || '';
+   191→  // Try V2 state collections (new system)
+   192→  // Check for non-empty arrays (empty arrays should not be considered as "configured")
+   193→  const hasV2Collections = character?.stateCollectionsV2 && character.stateCollectionsV2.length > 0;
+   194→  const hasV2Packs = character?.spritePacksV2 && character.spritePacksV2.length > 0;
+   195→  
+   196→  if (hasV2Collections && hasV2Packs) {
+   197→    const v2Result = getSpriteFromStateCollectionV2(
+   198→      state,
+   199→      character.stateCollectionsV2,
+   200→      character.spritePacksV2,
+   201→      charId,
+   202→      sessionStats
+   203→    );
+   204→    if (v2Result.url) {
+   205→      return v2Result;
+   206→    }
+   207→  }
+   208→
+   209→  // Additional fallback for talk and thinking states - try V2 idle collection
+   210→  if (state === 'talk' || state === 'thinking') {
+   211→    if (hasV2Collections && hasV2Packs) {
+   212→      const v2IdleResult = getSpriteFromStateCollectionV2(
+   213→        'idle',
+   214→        character!.stateCollectionsV2,
+   215→        character!.spritePacksV2,
+   216→        charId,
+   217→        sessionStats
+   218→      );
+   219→      if (v2IdleResult.url) {
+   220→        return v2IdleResult;
+   221→      }
+   222→    }
+   223→  }
+   224→
+   225→  // Final fallback to avatar
+   226→  if (avatarUrl) {
+   227→    return { url: avatarUrl, label: 'avatar' };
+   228→  }
+   229→
+   230→  return { url: '', label: null };
+   231→}
+   232→
+   233→// Format milliseconds to readable time
+   234→function formatTime(ms: number): string {
+   235→  if (ms <= 0) return '0s';
+   236→  const seconds = Math.floor(ms / 1000);
+   237→  if (seconds < 60) return `${seconds}s`;
+   238→  const minutes = Math.floor(seconds / 60);
+   239→  const remainingSeconds = seconds % 60;
+   240→  return `${minutes}m ${remainingSeconds}s`;
+   241→}
+   242→
+   243→export function CharacterSprite({ 
+   244→  characterId, 
+   245→  characterName, 
+   246→  avatarUrl,
+   247→  character,
+   248→  isStreaming = false,
+   249→  hasContent = false,
+   250→  isTTSPlaying = false,
+   251→  onSettingsChange 
+   252→}: CharacterSpriteProps) {
+   253→  const [settings, setSettings] = useState<SpriteSettings>(() => {
+   254→    if (typeof window !== 'undefined') {
+   255→      const saved = localStorage.getItem(`sprite-${characterId}`);
+   256→      if (saved) {
+   257→        try {
+   258→          return { ...DEFAULT_SPRITE_SETTINGS, ...JSON.parse(saved) };
+   259→        } catch {
+   260→          return DEFAULT_SPRITE_SETTINGS;
+   261→        }
+   262→      }
+   263→    }
+   264→    return DEFAULT_SPRITE_SETTINGS;
+   265→  });
+   266→
+   267→  const [isDragging, setIsDragging] = useState(false);
+   268→  const [isResizing, setIsResizing] = useState(false);
+   269→  const [showControls, setShowControls] = useState(false);
+   270→  const [countdown, setCountdown] = useState<number>(0);
+   271→  
+   272→  const spriteRef = useRef<HTMLDivElement>(null);
+   273→  const dragStartRef = useRef({ x: 0, y: 0, settingsX: 0, settingsY: 0 });
+   274→  const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
+   275→
+   276→  // ============================================
+   277→  // UNIFIED SYSTEM: Get sprite state from store
+   278→  // ============================================
+   279→  // 
+   280→  // ⚠️ SPRITE PRIORITY SYSTEM - DO NOT MODIFY ⚠️
+   281→  // 
+   282→  // The sprite system follows a STRICT priority order:
+   283→  // 
+   284→  // 1. TRIGGER SPRITE (HIGHEST PRIORITY)
+   285→  //    - Activated by sprite triggers from AI response
+   286→  //    - Once active, CANNOT be overridden by talk/thinking/idle
+   287→  //    - Only changes when:
+   288→  //      a) Timer expires (returnToIdleMs > 0)
+   289→  //      b) Another trigger replaces it
+   290→  //      c) User manually clears it
+   291→  //
+   292→  // 2. STATE COLLECTION V2 SPRITES
+   293→  //    - Talk sprite (streaming with content)
+   294→  //    - Thinking sprite (generating without content)
+   295→  //    - Idle sprite (default state)
+   296→  //    - Only shown when NO trigger sprite is active
+   297→  //
+   298→  // 3. AVATAR (lowest priority)
+   299→  //    - Character avatar as final fallback
+   300→  //
+   301→  // See: /docs/SPRITE_PRIORITY_SYSTEM.md
+   302→  //
+   303→  // Use proper Zustand selectors to ensure reactivity
+   304→  const characterSpriteStates = useTavernStore((state) => state.characterSpriteStates);
+   305→  const isLocked = useTavernStore((state) => state.spriteLock.active);
+   306→  const lockState = useTavernStore((state) => state.spriteLock);
+   307→  const getReturnToIdleCountdownForCharacter = useTavernStore((state) => state.getReturnToIdleCountdownForCharacter);
+   308→  const cancelReturnToIdleForCharacter = useTavernStore((state) => state.cancelReturnToIdleForCharacter);
+   309→  const executeReturnToIdleForCharacter = useTavernStore((state) => state.executeReturnToIdleForCharacter);
+   310→  const clearSpriteLock = useTavernStore((state) => state.clearSpriteLock);
+   311→  const setSpriteStateForCharacter = useTavernStore((state) => state.setSpriteStateForCharacter);
+   312→
+   313→  // Get sessionStats from the active session for conditional sprite evaluation
+   314→  const sessionStats = useTavernStore((state) => {
+   315→    const activeSessionId = state.activeSessionId;
+   316→    if (!activeSessionId) return null;
+   317→    const session = state.sessions.find(s => s.id === activeSessionId);
+   318→    return session?.sessionStats ?? null;
+   319→  });
+   320→  
+   321→  // Get per-character sprite state from the unified store
+   322→  // This is now reactive because characterSpriteStates is a proper selector
+   323→  const charSpriteState = characterSpriteStates[characterId] || createDefaultCharacterState();
+   324→  
+   325→  // Debug logging for trigger sprite state
+   326→  useEffect(() => {
+   327→    if (charSpriteState.triggerSpriteUrl) {
+   328→      console.log('[CharacterSprite] Trigger sprite active:', {
+   329→        characterId,
+   330→        triggerSpriteUrl: charSpriteState.triggerSpriteUrl,
+   331→        triggerSpriteLabel: charSpriteState.triggerSpriteLabel,
+   332→        isStreaming,
+   333→        hasContent,
+   334→      });
+   335→    }
+   336→  }, [charSpriteState.triggerSpriteUrl, charSpriteState.triggerSpriteLabel, characterId, isStreaming, hasContent]);
+   337→  
+   338→  // Check if sprite is locked (global state)
+   339→  const spriteLockActive = isLocked && lockState.until === 0 ? true : (isLocked && Date.now() < lockState.until);
+   340→  
+   341→  // Get return to idle state for this character
+   342→  const isReturnToIdleScheduled = charSpriteState.returnToIdle.active;
+   343→  
+   344→  // Determine the effective sprite state:
+   345→  // Priority: Trigger sprite > TTS Talk > Streaming Thinking > Store State
+   346→  // 
+   347→  // When TTS is active:
+   348→  //   - During streaming → 'thinking' (not talk, since the character is "thinking" while generating)
+   349→  //   - During TTS playback → 'talk' (the character is "speaking")
+   350→  //   - After TTS ends → 'idle'
+   351→  // 
+   352→  // If a trigger sprite is active, it always takes absolute priority.
+   353→  const effectiveSpriteState = charSpriteState.triggerSpriteUrl
+   354→    ? 'idle' // Trigger active, use trigger sprite (handled below)
+   355→    : isTTSPlaying
+   356→      ? 'talk'                    // TTS is playing → character is speaking
+   357→      : isStreaming
+   358→        ? 'thinking'               // Generating → thinking (not talk, even with content)
+   359→        : charSpriteState.spriteState;
+   360→
+   361→  // ============================================
+   362→  // LIST MODE ROTATION: Advance index on state transition
+   363→  // When effectiveSpriteState transitions to 'talk' or 'thinking',
+   364→  // advance the rotation index so the NEXT sprite in the list is shown.
+   365→  // ============================================
+   366→  const prevEffectiveStateRef = useRef<SpriteState>(effectiveSpriteState);
+   367→  useEffect(() => {
+   368→    const prev = prevEffectiveStateRef.current;
+   369→    prevEffectiveStateRef.current = effectiveSpriteState;
+   370→
+   371→    // Only advance when transitioning INTO talk or thinking (not from one to the other)
+   372→    if (prev !== 'talk' && prev !== 'thinking' && 
+   373→        (effectiveSpriteState === 'talk' || effectiveSpriteState === 'thinking')) {
+   374→      // Check if the target state collection uses 'list' behavior
+   375→      const stateCollections = character?.stateCollectionsV2;
+   376→      const collection = stateCollections?.find(c => c.state === effectiveSpriteState);
+   377→      if (collection?.behavior === 'list') {
+   378→        advanceRotationIndex(characterId, effectiveSpriteState);
+   379→      }
+   380→    }
+   381→  }, [effectiveSpriteState, character?.stateCollectionsV2, characterId]);
+   382→
+   383→  // ============================================
+   384→  // TTS ↔ SPRITE STATE SYNC
+   385→  // When TTS playback ends, return the sprite to idle state
+   386→  // (only if no trigger is active and not currently streaming)
+   387→  // ============================================
+   388→  const prevTTSToStateRef = useRef(isTTSPlaying);
+   389→  useEffect(() => {
+   390→    const wasPlaying = prevTTSToStateRef.current;
+   391→    prevTTSToStateRef.current = isTTSPlaying;
+   392→
+   393→    // TTS just stopped playing → return to idle
+   394→    if (wasPlaying && !isTTSPlaying && !isStreaming) {
+   395→      const currentState = characterSpriteStates[characterId];
+   396→      // Only update if no trigger is active (trigger has absolute priority)
+   397→      if (currentState && !currentState.triggerSpriteUrl) {
+   398→        setSpriteStateForCharacter(characterId, 'idle');
+   399→      }
+   400→    }
+   401→  }, [isTTSPlaying, isStreaming, characterId, characterSpriteStates, setSpriteStateForCharacter]);
+   402→
+   403→  // Update countdown for return to idle
+   404→  useEffect(() => {
+   405→    if (!isReturnToIdleScheduled) {
+   406→      setCountdown(0);
+   407→      return;
+   408→    }
+   409→
+   410→    const updateCountdown = () => {
+   411→      const remaining = getReturnToIdleCountdownForCharacter(characterId);
+   412→      setCountdown(remaining);
+   413→    };
+   414→
+   415→    updateCountdown();
+   416→    const interval = setInterval(updateCountdown, 100);
+   417→
+   418→    return () => clearInterval(interval);
+   419→  }, [isReturnToIdleScheduled, getReturnToIdleCountdownForCharacter, characterId]);
+   420→
+   421→  // Determine the current sprite URL
+   422→  // PRIORITY:
+   423→  // 1. Trigger sprite from store (highest priority)
+   424→  // 2. State collection V2 (if available)
+   425→  // 3. Avatar (lowest priority)
+   426→  const spriteResult = charSpriteState.triggerSpriteUrl 
+   427→    ? { url: charSpriteState.triggerSpriteUrl, label: charSpriteState.triggerSpriteLabel }
+   428→    : getSpriteUrl(
+   429→        effectiveSpriteState,
+   430→        avatarUrl,
+   431→        character,
+   432→        characterId,
+   433→        sessionStats
+   434→      );
+   435→  const currentSpriteUrl = spriteResult.url;
+   436→  const currentSpriteLabel = spriteResult.label;
+   437→
+   438→  // Debug: Log when sprite data changes
+   439→  useEffect(() => {
+   440→    console.log('[CharacterSprite] Sprite data:', {
+   441→      characterId,
+   442→      hasCharacter: !!character,
+   443→      spritePacksV2Count: character?.spritePacksV2?.length ?? 'undefined',
+   444→      stateCollectionsV2Count: character?.stateCollectionsV2?.length ?? 'undefined',
+   445→      currentSpriteUrl: currentSpriteUrl?.substring(0, 50),
+   446→      avatarUrl: avatarUrl?.substring(0, 50),
+   447→    });
+   448→  }, [characterId, character?.spritePacksV2, character?.stateCollectionsV2, currentSpriteUrl, avatarUrl]);
+   449→
+   450→  // Save settings to localStorage
+   451→  useEffect(() => {
+   452→    localStorage.setItem(`sprite-${characterId}`, JSON.stringify(settings));
+   453→    onSettingsChange?.(settings);
+   454→  }, [settings, characterId, onSettingsChange]);
+   455→
+   456→  // Drag handlers - click anywhere on sprite to drag
+   457→  const handleDragStart = (e: React.MouseEvent) => {
+   458→    // Don't start drag if clicking on controls
+   459→    if ((e.target as HTMLElement).closest('.sprite-controls')) return;
+   460→    if (isResizing) return;
+   461→    
+   462→    e.preventDefault();
+   463→    e.stopPropagation();
+   464→    setIsDragging(true);
+   465→    dragStartRef.current = {
+   466→      x: e.clientX,
+   467→      y: e.clientY,
+   468→      settingsX: settings.x,
+   469→      settingsY: settings.y
+   470→    };
+   471→  };
+   472→
+   473→  useEffect(() => {
+   474→    if (!isDragging) return;
+   475→
+   476→    const handleDragMove = (e: MouseEvent) => {
+   477→      const container = spriteRef.current?.parentElement;
+   478→      if (!container) return;
+   479→
+   480→      const rect = container.getBoundingClientRect();
+   481→      const deltaX = ((e.clientX - dragStartRef.current.x) / rect.width) * 100;
+   482→      const deltaY = ((e.clientY - dragStartRef.current.y) / rect.height) * 100;
+   483→
+   484→      // Calculate new position
+   485→      let newX = dragStartRef.current.settingsX + deltaX;
+   486→      // Invert deltaY because we use 'bottom' positioning
+   487→      // Dragging up (negative deltaY) should increase Y (move sprite up)
+   488→      let newY = dragStartRef.current.settingsY - deltaY;
+   489→
+   490→      // Constrain X: sprite center must stay within screen
+   491→      const halfWidth = settings.width / 2;
+   492→      newX = Math.max(halfWidth, Math.min(100 - halfWidth, newX));
+   493→
+   494→      // Constrain Y: sprite bottom must stay within screen
+   495→      // y = 0 means at bottom, higher values move it up
+   496→      // Maximum Y should not exceed (100 - height) to keep sprite visible
+   497→      const maxY = 100 - settings.height;
+   498→      newY = Math.max(0, Math.min(maxY, newY));
+   499→
+   500→      setSettings(prev => ({ ...prev, x: newX, y: newY }));
+   501→    };
+   502→
+   503→    const handleDragEnd = () => {
+   504→      setIsDragging(false);
+   505→    };
+   506→
+   507→    document.addEventListener('mousemove', handleDragMove);
+   508→    document.addEventListener('mouseup', handleDragEnd);
+   509→
+   510→    return () => {
+   511→      document.removeEventListener('mousemove', handleDragMove);
+   512→      document.removeEventListener('mouseup', handleDragEnd);
+   513→    };
+   514→  }, [isDragging, settings.width, settings.height]);
+   515→
+   516→  // Resize handlers
+   517→  const handleResizeStart = (e: React.MouseEvent) => {
+   518→    e.preventDefault();
+   519→    e.stopPropagation();
+   520→    setIsResizing(true);
+   521→    resizeStartRef.current = {
+   522→      x: e.clientX,
+   523→      y: e.clientY,
+   524→      width: settings.width,
+   525→      height: settings.height
+   526→    };
+   527→  };
+   528→
+   529→  useEffect(() => {
+   530→    if (!isResizing) return;
+   531→
+   532→    const handleResizeMove = (e: MouseEvent) => {
+   533→      const container = spriteRef.current?.parentElement;
+   534→      if (!container) return;
+   535→
+   536→      const rect = container.getBoundingClientRect();
+   537→      const deltaX = ((e.clientX - resizeStartRef.current.x) / rect.width) * 100;
+   538→      const deltaY = ((e.clientY - resizeStartRef.current.y) / rect.height) * 100;
+   539→
+   540→      // Handle is in top-left corner, so:
+   541→      // - Dragging left (negative deltaX) increases width
+   542→      // - Dragging up (negative deltaY) increases height
+   543→      let newWidth = Math.max(10, Math.min(80, resizeStartRef.current.width - deltaX * 2));
+   544→      let newHeight = Math.max(10, Math.min(90, resizeStartRef.current.height - deltaY * 2));
+   545→
+   546→      setSettings(prev => ({ 
+   547→        ...prev, 
+   548→        width: newWidth, 
+   549→        height: newHeight 
+   550→      }));
+   551→    };
+   552→
+   553→    const handleResizeEnd = () => {
+   554→      setIsResizing(false);
+   555→    };
+   556→
+   557→    document.addEventListener('mousemove', handleResizeMove);
+   558→    document.addEventListener('mouseup', handleResizeEnd);
+   559→
+   560→    return () => {
+   561→      document.removeEventListener('mousemove', handleResizeMove);
+   562→      document.removeEventListener('mouseup', handleResizeEnd);
+   563→    };
+   564→  }, [isResizing]);
+   565→
+   566→  const updateSetting = (key: keyof SpriteSettings, value: number) => {
+   567→    setSettings(prev => ({ ...prev, [key]: value }));
+   568→  };
+   569→
+   570→  const resetSettings = () => {
+   571→    setSettings(DEFAULT_SPRITE_SETTINGS);
+   572→  };
+   573→
+   574→  // Sprite lock/unlock handlers
+   575→  const handleUnlockSprite = () => {
+   576→    clearSpriteLock();
+   577→  };
+   578→
+   579→  const handleCancelReturnToIdle = () => {
+   580→    cancelReturnToIdleForCharacter(characterId);
+   581→  };
+   582→
+   583→  const handleForceReturnToIdle = () => {
+   584→    executeReturnToIdleForCharacter(characterId);
+   585→  };
+   586→
+   587→  // Calculate max Y based on height
+   588→  const maxY = Math.max(0, 100 - settings.height);
+   589→
+   590→  return (
+   591→    <div
+   592→      ref={spriteRef}
+   593→      data-character-id={characterId}
+   594→      className={cn(
+   595→        "absolute select-none",
+   596→        isDragging ? "cursor-grabbing" : "cursor-grab"
+   597→      )}
+   598→      style={{
+   599→        left: `${settings.x}%`,
+   600→        bottom: `${settings.y}%`,  // y=0 at bottom
+   601→        transform: 'translate(-50%, 0)',
+   602→        width: `${settings.width}%`,
+   603→        height: `${settings.height}%`,
+   604→        opacity: settings.opacity,
+   605→        zIndex: 5
+   606→      }}
+   607→      onMouseDown={handleDragStart}
+   608→      onMouseEnter={() => setShowControls(true)}
+   609→      onMouseLeave={() => !isDragging && setShowControls(false)}
+   610→    >
+   611→      {/* The actual sprite image/video */}
+   612→      {currentSpriteUrl ? (
+   613→        <SpritePreview
+   614→          src={currentSpriteUrl}
+   615→          alt={characterName}
+   616→          className="w-full h-full drop-shadow-2xl select-none pointer-events-none"
+   617→        />
+   618→      ) : (
+   619→        <div className="w-full h-full flex items-end justify-center">
+   620→          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center shadow-lg">
+   621→            <span className="text-white font-bold text-2xl">
+   622→              {characterName?.[0]?.toUpperCase() || '?'}
+   623→            </span>
+   624→          </div>
+   625→        </div>
+   626→      )}
+   627→
+   628→      {/* Lock indicator badge */}
+   629→      {spriteLockActive && (
+   630→        <div className="sprite-controls absolute top-2 left-1/2 -translate-x-1/2 z-50">
+   631→          <Badge 
+   632→            variant="secondary" 
+   633→            className="bg-amber-500/90 text-white border-amber-400 gap-1.5 px-3 py-1 shadow-lg"
+   634→          >
+   635→            <Lock className="h-3 w-3" />
+   636→            <span className="text-xs font-medium">Locked</span>
+   637→            {lockState.until > 0 && (
+   638→              <span className="text-xs opacity-80">
+   639→                ({formatTime(lockState.until - Date.now())})
+   640→              </span>
+   641→            )}
+   642→          </Badge>
+   643→        </div>
+   644→      )}
+   645→
+   646→      {/* Return to idle countdown badge */}
+   647→      {isReturnToIdleScheduled && countdown > 0 && (
+   648→        <div className={cn(
+   649→          "sprite-controls absolute top-2 left-1/2 -translate-x-1/2 z-50",
+   650→          spriteLockActive && "top-10" // Offset if lock badge is shown
+   651→        )}>
+   652→          <Badge 
+   653→            variant="secondary" 
+   654→            className="bg-blue-500/90 text-white border-blue-400 gap-1.5 px-3 py-1 shadow-lg"
+   655→          >
+   656→            <Timer className="h-3 w-3" />
+   657→            <span className="text-xs font-medium">→ Idle: {formatTime(countdown)}</span>
+   658→          </Badge>
+   659→        </div>
+   660→      )}
+   661→
+   662→      {/* Controls overlay - only show on hover */}
+   663→      {showControls && !isDragging && (
+   664→        <div className="sprite-controls absolute top-2 right-2 z-50 flex flex-col gap-1"
+   665→          onMouseEnter={(e) => e.stopPropagation()}
+   666→        >
+   667→          {/* Lock/Unlock button */}
+   668→          {spriteLockActive ? (
+   669→            <TooltipProvider>
+   670→              <Tooltip>
+   671→                <TooltipTrigger asChild>
+   672→                  <Button 
+   673→                    variant="secondary" 
+   674→                    size="icon" 
+   675→                    className="h-8 w-8 bg-amber-500/80 hover:bg-amber-500 text-white"
+   676→                    onMouseDown={(e) => e.stopPropagation()}
+   677→                    onClick={handleUnlockSprite}
+   678→                  >
+   679→                    <Lock className="h-4 w-4" />
+   680→                  </Button>
+   681→                </TooltipTrigger>
+   682→                <TooltipContent side="left">
+   683→                  <p className="text-xs">Unlock Sprite</p>
+   684→                </TooltipContent>
+   685→              </Tooltip>
+   686→            </TooltipProvider>
+   687→          ) : null}
+   688→
+   689→          {/* Return to idle controls */}
+   690→          {isReturnToIdleScheduled && (
+   691→            <>
+   692→              <TooltipProvider>
+   693→                <Tooltip>
+   694→                  <TooltipTrigger asChild>
+   695→                    <Button 
+   696→                      variant="secondary" 
+   697→                      size="icon" 
+   698→                      className="h-8 w-8 bg-red-500/80 hover:bg-red-500 text-white"
+   699→                      onMouseDown={(e) => e.stopPropagation()}
+   700→                      onClick={handleCancelReturnToIdle}
+   701→                    >
+   702→                      <X className="h-4 w-4" />
+   703→                    </Button>
+   704→                  </TooltipTrigger>
+   705→                  <TooltipContent side="left">
+   706→                    <p className="text-xs">Cancel Return to Idle</p>
+   707→                  </TooltipContent>
+   708→                </Tooltip>
+   709→              </TooltipProvider>
+   710→
+   711→              <TooltipProvider>
+   712→                <Tooltip>
+   713→                  <TooltipTrigger asChild>
+   714→                    <Button 
+   715→                      variant="secondary" 
+   716→                      size="icon" 
+   717→                      className="h-8 w-8 bg-blue-500/80 hover:bg-blue-500 text-white"
+   718→                      onMouseDown={(e) => e.stopPropagation()}
+   719→                      onClick={handleForceReturnToIdle}
+   720→                    >
+   721→                      <Play className="h-4 w-4" />
+   722→                    </Button>
+   723→                  </TooltipTrigger>
+   724→                  <TooltipContent side="left">
+   725→                    <p className="text-xs">Return to Idle Now</p>
+   726→                  </TooltipContent>
+   727→                </Tooltip>
+   728→              </TooltipProvider>
+   729→            </>
+   730→          )}
+   731→
+   732→          {/* Settings button */}
+   733→          <Popover>
+   734→            <PopoverTrigger asChild>
+   735→              <Button 
+   736→                variant="secondary" 
+   737→                size="icon" 
+   738→                className="h-8 w-8 bg-background/80 backdrop-blur-sm hover:bg-background/90"
+   739→                onMouseDown={(e) => e.stopPropagation()}
+   740→              >
+   741→                <Settings className="h-4 w-4" />
+   742→              </Button>
+   743→            </PopoverTrigger>
+   744→            <PopoverContent className="w-72" align="end">
+   745→              <div className="space-y-4">
+   746→                <div className="flex items-center justify-between">
+   747→                  <h4 className="font-medium text-sm">Sprite Settings</h4>
+   748→                  <Button 
+   749→                    variant="ghost" 
+   750→                    size="sm" 
+   751→                    className="h-7 px-2"
+   752→                    onClick={resetSettings}
+   753→                  >
+   754→                    <RotateCcw className="h-3 w-3 mr-1" />
+   755→                    Reset
+   756→                  </Button>
+   757→                </div>
+   758→
+   759→                {/* Lock status */}
+   760→                {spriteLockActive && (
+   761→                  <div className="p-2 rounded-md bg-amber-500/10 border border-amber-500/20">
+   762→                    <div className="flex items-center justify-between">
+   763→                      <div className="flex items-center gap-2">
+   764→                        <Lock className="h-4 w-4 text-amber-500" />
+   765→                        <span className="text-sm font-medium">Sprite Locked</span>
+   766→                      </div>
+   767→                      <Button
+   768→                        variant="outline"
+   769→                        size="sm"
+   770→                        className="h-7 px-2 text-xs"
+   771→                        onClick={handleUnlockSprite}
+   772→                      >
+   773→                        <LockOpen className="h-3 w-3 mr-1" />
+   774→                        Unlock
+   775→                      </Button>
+   776→                    </div>
+   777→                    {lockState.until > 0 && (
+   778→                      <p className="text-xs text-muted-foreground mt-1">
+   779→                        Expires in {formatTime(lockState.until - Date.now())}
+   780→                      </p>
+   781→                    )}
+   782→                  </div>
+   783→                )}
+   784→
+   785→                {/* Return to idle status */}
+   786→                {isReturnToIdleScheduled && (
+   787→                  <div className="p-2 rounded-md bg-blue-500/10 border border-blue-500/20">
+   788→                    <div className="flex items-center justify-between">
+   789→                      <div className="flex items-center gap-2">
+   790→                        <Timer className="h-4 w-4 text-blue-500" />
+   791→                        <span className="text-sm font-medium">Return to Idle</span>
+   792→                      </div>
+   793→                      <div className="flex gap-1">
+   794→                        <Button
+   795→                          variant="outline"
+   796→                          size="sm"
+   797→                          className="h-7 px-2 text-xs"
+   798→                          onClick={handleForceReturnToIdle}
+   799→                        >
+   800→                          <Play className="h-3 w-3" />
+   801→                        </Button>
+   802→                        <Button
+   803→                          variant="outline"
+   804→                          size="sm"
+   805→                          className="h-7 px-2 text-xs"
+   806→                          onClick={handleCancelReturnToIdle}
+   807→                        >
+   808→                          <X className="h-3 w-3" />
+   809→                        </Button>
+   810→                      </div>
+   811→                    </div>
+   812→                    <p className="text-xs text-muted-foreground mt-1">
+   813→                      Returns in {formatTime(countdown)}
+   814→                    </p>
+   815→                  </div>
+   816→                )}
+   817→
+   818→                {/* Size sliders */}
+   819→                <div className="space-y-3">
+   820→                  <div className="space-y-1.5">
+   821→                    <div className="flex justify-between text-xs">
+   822→                      <span>Width</span>
+   823→                      <span className="text-muted-foreground">{Math.round(settings.width)}%</span>
+   824→                    </div>
+   825→                    <Slider
+   826→                      value={[settings.width]}
+   827→                      min={10}
+   828→                      max={80}
+   829→                      step={1}
+   830→                      onValueChange={([v]) => updateSetting('width', v)}
+   831→                    />
+   832→                  </div>
+   833→
+   834→                  <div className="space-y-1.5">
+   835→                    <div className="flex justify-between text-xs">
+   836→                      <span>Height</span>
+   837→                      <span className="text-muted-foreground">{Math.round(settings.height)}%</span>
+   838→                    </div>
+   839→                    <Slider
+   840→                      value={[settings.height]}
+   841→                      min={10}
+   842→                      max={90}
+   843→                      step={1}
+   844→                      onValueChange={([v]) => updateSetting('height', v)}
+   845→                    />
+   846→                  </div>
+   847→
+   848→                  <div className="space-y-1.5">
+   849→                    <div className="flex justify-between text-xs">
+   850→                      <span>Opacity</span>
+   851→                      <span className="text-muted-foreground">{Math.round(settings.opacity * 100)}%</span>
+   852→                    </div>
+   853→                    <Slider
+   854→                      value={[settings.opacity * 100]}
+   855→                      min={20}
+   856→                      max={100}
+   857→                      step={1}
+   858→                      onValueChange={([v]) => updateSetting('opacity', v / 100)}
+   859→                    />
+   860→                  </div>
+   861→                </div>
+   862→
+   863→                {/* Position controls */}
+   864→                <div className="space-y-3 pt-2 border-t">
+   865→                  <div className="space-y-1.5">
+   866→                    <div className="flex justify-between text-xs">
+   867→                      <span>X Position (Horizontal)</span>
+   868→                      <span className="text-muted-foreground">{Math.round(settings.x)}%</span>
+   869→                    </div>
+   870→                    <Slider
+   871→                      value={[settings.x]}
+   872→                      min={0}
+   873→                      max={100}
+   874→                      step={1}
+   875→                      onValueChange={([v]) => updateSetting('x', v)}
+   876→                    />
+   877→                  </div>
+   878→
+   879→                  <div className="space-y-1.5">
+   880→                    <div className="flex justify-between text-xs">
+   881→                      <span>Y Position (Vertical from bottom)</span>
+   882→                      <span className="text-muted-foreground">{Math.round(settings.y)}%</span>
+   883→                    </div>
+   884→                    <Slider
+   885→                      value={[settings.y]}
+   886→                      min={0}
+   887→                      max={maxY}
+   888→                      step={1}
+   889→                      onValueChange={([v]) => updateSetting('y', v)}
+   890→                    />
+   891→                  </div>
+   892→                </div>
+   893→
+   894→                {/* Quick position buttons */}
+   895→                <div className="grid grid-cols-3 gap-2 pt-2 border-t">
+   896→                  <Button
+   897→                    variant="outline"
+   898→                    size="sm"
+   899→                    className="h-7 text-xs"
+   900→                    onClick={() => setSettings(prev => ({ ...prev, x: 20 }))}
+   901→                  >
+   902→                    Left
+   903→                  </Button>
+   904→                  <Button
+   905→                    variant="outline"
+   906→                    size="sm"
+   907→                    className="h-7 text-xs"
+   908→                    onClick={() => setSettings(prev => ({ ...prev, x: 50 }))}
+   909→                  >
+   910→                    Center
+   911→                  </Button>
+   912→                  <Button
+   913→                    variant="outline"
+   914→                    size="sm"
+   915→                    className="h-7 text-xs"
+   916→                    onClick={() => setSettings(prev => ({ ...prev, x: 80 }))}
+   917→                  >
+   918→                    Right
+   919→                  </Button>
+   920→                </div>
+   921→
+   922→                <p className="text-xs text-muted-foreground pt-2">
+   923→                  💡 Click and drag the sprite to move it anywhere.
+   924→                </p>
+   925→              </div>
+   926→            </PopoverContent>
+   927→          </Popover>
+   928→        </div>
+   929→      )}
+   930→
+   931→      {/* Resize handle - top left corner */}
+   932→      {showControls && !isDragging && (
+   933→        <div
+   934→          className="sprite-controls absolute top-2 left-2 w-6 h-6 cursor-nwse-resize bg-background/80 backdrop-blur-sm rounded flex items-center justify-center hover:bg-background/90"
+   935→          onMouseDown={handleResizeStart}
+   936→          onMouseEnter={(e) => e.stopPropagation()}
+   937→        >
+   938→          <div className="w-3 h-3 border-l-2 border-t-2 border-muted-foreground" />
+   939→        </div>
+   940→      )}
+   941→
+   942→      {/* Drag indicator border when hovering */}
+   943→      {showControls && !isDragging && (
+   944→        <div className="absolute inset-0 border-2 border-dashed border-primary/30 rounded-lg pointer-events-none" />
+   945→      )}
+   946→    </div>
+   947→  );
+   948→}
+   949→

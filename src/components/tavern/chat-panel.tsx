@@ -18,7 +18,8 @@ import { InventoryHUD } from '@/components/inventory/inventory-hud';
 import { TTSFloatingIndicator } from './tts-playback-controls';
 import { ComicSoundOverlay } from './comic-sound-overlay';
 import { Sparkles } from 'lucide-react';
-import type { CharacterCard, SummaryData, ChatMessage, CharacterMemory } from '@/types';
+import type { CharacterCard, SummaryData, ChatMessage, CharacterMemory, MicroReaction } from '@/types';
+import { generateMicroReactions } from '@/lib/micro-reactions';
 import { EmbeddingsContextContainer } from '@/components/embeddings/embeddings-context-indicator';
 import { ToolCallNotification, type ToolCallPhase } from '@/components/tools/tool-call-notification';
 import { toast } from 'sonner';
@@ -48,6 +49,15 @@ export function ChatPanel() {
     phase: ToolCallPhase;
     callId?: string;
   }>({ active: false, phase: 'idle' });
+
+  // FASE 4: Interrupt reaction state
+  const [interruptReaction, setInterruptReaction] = useState<{
+    content: string;
+    characterId: string;
+    characterName: string;
+  } | null>(null);
+  const [isGeneratingInterrupt, setIsGeneratingInterrupt] = useState(false);
+  const streamingContentRef = useRef<string>(''); // Track streaming content for interrupt
 
   // Use proper selectors to subscribe to store changes
   const activeSessionId = useTavernStore((state) => state.activeSessionId);
@@ -376,6 +386,11 @@ export function ChatPanel() {
     }
   }, [isGenerating]);
 
+  // FASE 4: Keep streamingContentRef in sync with streaming content
+  useEffect(() => {
+    streamingContentRef.current = streamingContent;
+  }, [streamingContent]);
+
   // ============================================
   // MEMORY & SUMMARY INTEGRATION
   // Generates summaries when threshold is reached
@@ -409,6 +424,20 @@ export function ChatPanel() {
       }
     }
   }, [activeSessionId, isGroupMode, activeCharacter?.id, activeCharacter?.statsConfig?.timerEnabled, activeGroup?.members]);
+
+  // FASE 2: Time-based solicitud expiration checker
+  // Checks every 30 seconds for solicitudes that have expired by time
+  useEffect(() => {
+    if (!activeSessionId) return;
+
+    const expirationInterval = setInterval(() => {
+      const store = useTavernStore.getState();
+      const turnCount = store.getTurnCount?.(activeSessionId!) || 0;
+      store.expireSolicitudes?.(activeSessionId!, turnCount);
+    }, 30000); // Check every 30 seconds
+
+    return () => clearInterval(expirationInterval);
+  }, [activeSessionId]);
 
   // Function to generate summary when threshold is reached
   const generateSummaryIfNeeded = useCallback(async () => {
@@ -627,7 +656,12 @@ export function ChatPanel() {
         }
 
         // Get active lorebooks for prompt injection
-        const activeLorebooks = lorebooks.filter(lb => effectiveLorebookIds.includes(lb.id) && activeLorebookIds.includes(lb.id));
+        // IMPORTANT: When group has no lorebooks, we need to send ALL active lorebooks
+        // so the server can filter per-character using characterLorebooksMap.
+        // When group HAS lorebooks, only send those (shared by all characters).
+        const activeLorebooks = (activeGroup?.lorebookIds && activeGroup.lorebookIds.length > 0)
+          ? lorebooks.filter(lb => activeGroup.lorebookIds!.includes(lb.id) && activeLorebookIds.includes(lb.id))
+          : lorebooks.filter(lb => activeLorebookIds.includes(lb.id) && lb.active);
         
         // Get session stats for attribute values
         const sessionStats = currentSession?.sessionStats;
@@ -745,6 +779,7 @@ export function ChatPanel() {
         let currentCharacter: CharacterCard | null = null;
         // Track group extraction flag from 'done' event
         let groupShouldExtract = false;
+        let groupShouldEvaluateEmotion = false;
         let groupResponses: Array<{ characterId: string; characterName: string; content: string }> = [];
 
         try {
@@ -977,6 +1012,22 @@ export function ChatPanel() {
                   }
                 } else if (parsed.type === 'character_done') {
                   if (parsed.fullContent && activeSessionId && isStillActive()) {
+                    // FASE 4: Generate micro-reactions for group chat
+                    let microReactions: MicroReaction[] | undefined;
+                    if (isGroupMode && activeGroup) {
+                      const otherChars = groupCharacters.filter(c => c.id !== parsed.characterId);
+                      const speakerChar = groupCharacters.find(c => c.id === parsed.characterId);
+                      if (speakerChar && otherChars.length > 0 && speakerChar.microReactionConfig?.enabled) {
+                        microReactions = generateMicroReactions(
+                          parsed.characterId,
+                          parsed.characterName || speakerChar.name,
+                          parsed.fullContent,
+                          otherChars,
+                          speakerChar.microReactionConfig,
+                        );
+                      }
+                    }
+
                     addMessage(activeSessionId, {
                       characterId: parsed.characterId,
                       role: 'assistant',
@@ -986,7 +1037,8 @@ export function ChatPanel() {
                       swipeIndex: 0,
                       isNarratorMessage: parsed.isNarrator || false,
                       metadata: {
-                        promptData: parsed.promptSections || []
+                        promptData: parsed.promptSections || [],
+                        microReactions: microReactions && microReactions.length > 0 ? microReactions : undefined,
                       }
                     });
 
@@ -1001,6 +1053,11 @@ export function ChatPanel() {
                         }
                       }
                     }
+
+                    // FASE 2: Check solicitud expiration after each group character turn
+                    const expirationState = useTavernStore.getState();
+                    const currentTurnCount = expirationState.getTurnCount?.(activeSessionId!) || 0;
+                    expirationState.expireSolicitudes?.(activeSessionId!, currentTurnCount);
                   }
                   
                   // UNIFIED SPRITE SYSTEM: End sprite generation for this character
@@ -1037,6 +1094,7 @@ export function ChatPanel() {
                 } else if (parsed.type === 'done') {
                   // Group stream done - capture shouldExtract flag and responses
                   groupShouldExtract = !!parsed.shouldExtract;
+                  groupShouldEvaluateEmotion = !!parsed.shouldEvaluateEmotion;
                   groupResponses = (parsed.responses || []) as Array<{ characterId: string; characterName: string; content: string }>;
                 } else if (parsed.type === 'error') {
                   // Preserve any accumulated group content before throwing
@@ -1218,6 +1276,75 @@ export function ChatPanel() {
                 console.warn('[Memory] Group client-side extraction failed:', err);
               } finally {
                 setMemoryExtractingInfo(prev => ({ ...prev, active: false }));
+              }
+            })();
+          }
+        }
+
+        // FASE 5: Emotional state evaluation for group chat
+        // Evaluate emotional states for each character that has emotional config enabled
+        if (groupShouldEvaluateEmotion && isStillActive() && activeSessionId) {
+          const emotionChars = groupResponses.filter(r => r.content && r.content.length > 20);
+          if (emotionChars.length > 0) {
+            (async () => {
+              try {
+                const state = useTavernStore.getState();
+                const currentLLMConfig = state.llmConfigs.find(c => c.isActive);
+                if (!currentLLMConfig) return;
+
+                const currentSession = state.sessions.find(s => s.id === activeSessionId);
+                const sessionMsgs = currentSession?.messages || [];
+                const groupSessionStats = currentSession?.sessionStats;
+
+                for (const resp of emotionChars) {
+                  const char = characters.find(c => c.id === resp.characterId);
+                  if (!char?.emotionalConfig?.enabled) continue;
+
+                  const currentState = groupSessionStats?.characterStats?.[char.id]?.emotionalState
+                    || char.emotionalConfig.initialState
+                    || 'neutral';
+
+                  const turnCount = groupSessionStats?.characterStats?.[char.id]?.emotionalStateTurnCount || 0;
+                  const interval = char.emotionalConfig.evaluationInterval || 1;
+                  if (turnCount % interval !== 0) continue;
+
+                  try {
+                    const emotionResponse = await fetch('/api/chat/emotion', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        character: char,
+                        messages: sessionMsgs,
+                        llmConfig: {
+                          provider: currentLLMConfig.provider,
+                          endpoint: currentLLMConfig.endpoint,
+                          apiKey: currentLLMConfig.apiKey,
+                          model: currentLLMConfig.model,
+                          parameters: currentLLMConfig.parameters,
+                        },
+                        currentState,
+                        personality: char.personality,
+                      }),
+                    });
+
+                    if (emotionResponse.ok) {
+                      const result = await emotionResponse.json();
+                      if (result.shouldUpdate && result.evaluation) {
+                        const store = useTavernStore.getState();
+                        store.updateEmotionalState?.(
+                          activeSessionId!,
+                          char.id,
+                          result.evaluation.newState,
+                          result.evaluation.previousState,
+                        );
+                      }
+                    }
+                  } catch (charErr) {
+                    console.warn(`[Emotion] Group evaluation failed for ${resp.characterName}:`, charErr);
+                  }
+                }
+              } catch (err) {
+                console.warn('[Emotion] Group evaluation failed:', err);
               }
             })();
           }
@@ -1637,6 +1764,11 @@ export function ChatPanel() {
                       }
                     });
 
+                    // FASE 2: Check solicitud expiration after each turn
+                    const expirationState = useTavernStore.getState();
+                    const currentTurnCount = expirationState.getTurnCount?.(activeSessionId!) || 0;
+                    expirationState.expireSolicitudes?.(activeSessionId!, currentTurnCount);
+
                     // Tick inventory consumable effects (decrement turns)
                     const invState = useTavernStore.getState();
                     if (invState.inventorySettings.enabled && activePersona?.id) {
@@ -1764,6 +1896,72 @@ export function ChatPanel() {
                         setMemoryExtractingInfo(prev => ({ ...prev, active: false }));
                       }
                     })();
+                  }
+
+                  // FASE 5: Emotional state evaluation
+                  // Triggered after the stream is fully processed, if server flagged shouldEvaluateEmotion
+                  if (parsed.shouldEvaluateEmotion && cleanedMessage && isStillActive()) {
+                    const emotionCharacterId = activeCharacter.id;
+                    const emotionCharacterName = activeCharacter.name;
+                    const emotionConfig = activeCharacter.emotionalConfig;
+                    const currentState = sessionStats?.characterStats?.[emotionCharacterId]?.emotionalState
+                      || emotionConfig?.initialState
+                      || 'neutral';
+
+                    // Check evaluation interval
+                    const turnCount = sessionStats?.characterStats?.[emotionCharacterId]?.emotionalStateTurnCount || 0;
+                    const interval = emotionConfig?.evaluationInterval || 1;
+                    const shouldRun = turnCount % interval === 0;
+
+                    if (shouldRun) {
+                      (async () => {
+                        try {
+                          const state = useTavernStore.getState();
+                          const currentLLMConfig = state.llmConfigs.find(c => c.isActive);
+                          if (!currentLLMConfig) return;
+
+                          const currentSession = state.sessions.find(s => s.id === activeSessionId);
+                          const sessionMsgs = currentSession?.messages || [];
+
+                          const emotionResponse = await fetch('/api/chat/emotion', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              character: activeCharacter,
+                              messages: sessionMsgs,
+                              llmConfig: {
+                                provider: currentLLMConfig.provider,
+                                endpoint: currentLLMConfig.endpoint,
+                                apiKey: currentLLMConfig.apiKey,
+                                model: currentLLMConfig.model,
+                                parameters: currentLLMConfig.parameters,
+                              },
+                              currentState,
+                              personality: activeCharacter.personality,
+                            }),
+                          });
+
+                          if (emotionResponse.ok) {
+                            const result = await emotionResponse.json();
+                            if (result.shouldUpdate && result.evaluation) {
+                              const store = useTavernStore.getState();
+                              store.updateEmotionalState?.(
+                                activeSessionId!,
+                                emotionCharacterId,
+                                result.evaluation.newState,
+                                result.evaluation.previousState,
+                              );
+
+                              if (result.evaluation.newState !== result.evaluation.previousState) {
+                                console.log(`[Emotion] ${emotionCharacterName}: ${result.evaluation.previousState} → ${result.evaluation.newState}`);
+                              }
+                            }
+                          }
+                        } catch (err) {
+                          console.warn('[Emotion] Evaluation failed:', err);
+                        }
+                      })();
+                    }
                   }
                 }
               } catch (parseError) {
@@ -1958,11 +2156,162 @@ export function ChatPanel() {
   }, [pendingItemMessage, clearPendingItemMessage, isGenerating]);
 
   // Handle stop generation - cancel the current streaming request
+  // FASE 4: Enhanced with interrupt reaction + bug fix for state cleanup
   const handleStopGeneration = useCallback(() => {
+    const partialContent = streamingContentRef.current;
+    const currentCharacter = activeCharacter;
+    const currentSessionId = activeSessionId;
+
     generationIdRef.current = null;
     isGenerationInProgressRef.current = false;
+
+    // BUG FIX: Properly clean up generation state
+    // Previously, the finally block would skip cleanup when isStillActive() returned false
+    // causing isGenerating to remain true forever
+    setGenerating(false);
+    setStreamingContent('');
+
     chatLogger.info('[ChatPanel] Generation stopped by user');
-  }, []);
+
+    // Save partial message if there's meaningful content
+    if (partialContent.trim() && currentSessionId && currentCharacter) {
+      let cleanedMessage = partialContent.trim();
+      const namePrefix = `${currentCharacter.name}:`;
+      if (cleanedMessage.startsWith(namePrefix)) {
+        cleanedMessage = cleanedMessage.slice(namePrefix.length).trim();
+      }
+
+      if (cleanedMessage) {
+        // Save the partial message with interrupt metadata
+        addMessage(currentSessionId, {
+          characterId: currentCharacter.id,
+          role: 'assistant',
+          content: cleanedMessage,
+          isDeleted: false,
+          swipeId: `interrupt_${Date.now()}`,
+          swipeIndex: 0,
+          swipes: [cleanedMessage],
+          metadata: {
+            isPartial: true,
+            interruptInfo: {
+              interruptedAt: new Date().toISOString(),
+              partialContentLength: partialContent.length,
+              reactionGenerated: false,
+            },
+          },
+        });
+
+        // FASE 4: Generate interrupt reaction in background
+        (async () => {
+          try {
+            const { llmConfigs } = useTavernStore.getState();
+            const activeLLMConfig = llmConfigs.find(c => c.isActive);
+            if (!activeLLMConfig) return;
+
+            setIsGeneratingInterrupt(true);
+
+            const session = useTavernStore.getState().sessions.find(s => s.id === currentSessionId);
+            const recentMsgs = session?.messages
+              .filter((m: any) => !m.isDeleted && m.content?.trim())
+              .slice(-10)
+              .map((m: any) => ({
+                id: m.id,
+                characterId: m.characterId,
+                role: m.role,
+                content: m.content,
+                isDeleted: m.isDeleted,
+                timestamp: m.timestamp,
+              })) || [];
+
+            const response = await fetch('/api/chat/interrupt', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                character: currentCharacter,
+                partialContent: cleanedMessage,
+                llmConfig: activeLLMConfig,
+                userName: activePersona?.name || 'User',
+                messages: recentMsgs,
+              }),
+            });
+
+            if (!response.ok) return;
+
+            const reader = response.body?.getReader();
+            if (!reader) return;
+
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let reactionText = '';
+
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const sseMessages = buffer.split('\n\n');
+                buffer = sseMessages.pop() || '';
+
+                for (const sseMessage of sseMessages) {
+                  const dataMatch = sseMessage.match(/^data: (.+)$/s);
+                  if (!dataMatch) continue;
+
+                  try {
+                    const parsed = JSON.parse(dataMatch[1]);
+
+                    if (parsed.type === 'token' && parsed.content) {
+                      reactionText += parsed.content;
+                    } else if (parsed.type === 'done') {
+                      const finalReaction = parsed.content || reactionText.trim();
+                      if (finalReaction) {
+                        setInterruptReaction({
+                          content: finalReaction,
+                          characterId: currentCharacter.id,
+                          characterName: currentCharacter.name,
+                        });
+
+                        // Add the reaction as a short assistant message
+                        addMessage(currentSessionId, {
+                          characterId: currentCharacter.id,
+                          role: 'assistant',
+                          content: finalReaction,
+                          isDeleted: false,
+                          swipeId: `reaction_${Date.now()}`,
+                          swipeIndex: 0,
+                          swipes: [finalReaction],
+                          metadata: {
+                            interruptInfo: {
+                              interruptedAt: new Date().toISOString(),
+                              partialContentLength: 0,
+                              reactionGenerated: true,
+                            },
+                          },
+                        });
+                      }
+                    }
+                  } catch {
+                    // Skip invalid JSON
+                  }
+                }
+              }
+            } finally {
+              reader.releaseLock();
+            }
+          } catch (err) {
+            console.warn('[Interrupt] Failed to generate reaction:', err);
+          } finally {
+            setIsGeneratingInterrupt(false);
+          }
+        })();
+      }
+    }
+
+    // End sprite generation state
+    if (currentCharacter) {
+      endSpriteGenerationForCharacter(currentCharacter.id);
+    }
+  }, [activeCharacter, activeSessionId, addMessage, activePersona, setGenerating, setStreamingContent]);
 
   // Handle regenerate - create a new swipe alternative for an existing message
   const handleRegenerate = useCallback(async (messageId: string) => {
@@ -2456,7 +2805,7 @@ export function ChatPanel() {
               <span className="opacity-70">
                 {proactiveInactiveReason === 'no_session' && '— Inicia un chat'}
                 {proactiveInactiveReason === 'no_llm' && '— Configura un LLM'}
-                {proactiveInactiveReason === 'group_chat' && '— No disponible en grupo'}
+                {proactiveInactiveReason === 'group_chat' && '— Activa proactividad grupal'}
               </span>
             </div>
           )}

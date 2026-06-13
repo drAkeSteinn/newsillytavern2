@@ -1,0 +1,602 @@
+     1→# TavernFlow - Plan de Mejoras: Personajes Vivos y Dinámicos
+     2→
+     3→## Resumen de Decisiones del Usuario
+     4→
+     5→| # | Recomendación | Decisión |
+     6→|---|--------------|----------|
+     7→| 1 | Sistema de Estados Emocionales Autónomo | ✅ Aprobado |
+     8→| 2 | Memoria de Relaciones Evolutiva | ✅ Aprobado (con dudas sobre implementación) |
+     9→| 3 | Proactividad Inteligente | ✅ Aprobado todo |
+    10→| 4 | Interrupciones y Reacciones en Tiempo Real | ✅ Aprobado |
+    11→| 5 | Narrador Dinámico | ❌ No por el momento |
+    12→| 6 | Lógica OR en Condiciones | ✅ Aprobado |
+    13→| 7 | Atributos Derivados/Computados | ❌ No por el momento |
+    14→| 8 | Recompensas en Solicitudes | ❌ No por el momento |
+    15→| 9 | Expiración de Solicitudes | ✅ Aprobado |
+    16→| 10 | Transiciones de Sprite con Efectos Visuales | ✅ Aprobado |
+    17→| 11 | Migración Completa del Sistema Legacy de Triggers | ✅ Aprobado |
+    18→| 12 | Contexto de Conversación para Proactividad | ✅ Aprobado |
+    19→| 13 | Deduplicación de Notificaciones de Misiones | ✅ Aprobado |
+    20→
+    21→---
+    22→
+    23→## FASE 1: Sistema de Estados Emocionales Autónomo
+    24→
+    25→### Arquitectura
+    26→
+    27→**Enfoque Híbrido** = Atributos Emocionales + Evaluación Post-Respuesta + Tool Calling
+    28→
+    29→### Componentes a implementar:
+    30→
+    31→1. **Tipos nuevos** (`src/types/index.ts`):
+    32→   - `EmotionalStateConfig` - Configuración del sistema emocional por personaje
+    33→   - `EmotionalEvaluation` - Resultado de evaluación emocional
+    34→   - Extender `CharacterCard` con `emotionalConfig?: EmotionalStateConfig`
+    35→   - Extender `CharacterSessionStats` con `emotionalState?: string`
+    36→
+    37→2. **Evaluador Emocional** (`src/lib/emotions/emotion-evaluator.ts`):
+    38→   - Función `evaluateEmotionalState()` que hace consulta ligera al LLM
+    39→   - Usa los últimos N mensajes como contexto
+    40→   - Retorna el estado emocional como string
+    41→   - Sistema de caché para evitar re-evaluaciones innecesarias
+    42→   - Rate limiting configurable (no evaluar cada turno si no se desea)
+    43→
+    44→3. **Integración en Stream API** (`src/app/api/chat/stream/route.ts`):
+    45→   - Después de cada respuesta del LLM, ejecutar evaluación emocional
+    46→   - Actualizar `sessionStats.characterStats[charId].emotionalState`
+    47→   - Emitir evento SSE `emotional_update` para que el frontend actualice sprites
+    48→
+    49→4. **Integración en Prompt Builder** (`src/lib/llm/prompt-builder.ts`):
+    50→   - Nueva key `{{emocion}}` que resuelve al estado emocional actual
+    51→   - Se inyecta en la sección de personalidad/atributos del personaje
+    52→   - Formato: "Estado emocional actual: {emocion}"
+    53→
+    54→5. **Integración con Sprites** (`src/lib/sprites/condition-evaluator.ts`):
+    55→   - Las condiciones de sprites ya soportan `StatRequirement`
+    56→   - Solo falta que `{{emocion}}` se resuelva como un stat más
+    57→   - Automáticamente: si emoción cambia → se reevalúan condiciones → sprite cambia
+    58→
+    59→6. **UI: Configuración Emocional** (en character-editor.tsx):
+    60→   - Sección "Estados Emocionales" en la pestaña de Stats/Atributos
+    61→   - Definir estados posibles (lista de keywords)
+    62→   - Estado inicial
+    63→   - Activar/desactivar evaluación automática
+    64→   - Intervalo de evaluación (cada 1, 2, 3 turnos)
+    65→
+    66→7. **Indicador Visual** (en chat):
+    67→   - Badge/indicador del estado emocional actual del personaje
+    68→   - Se actualiza en tiempo real vía SSE
+    69→
+    70→### Flujo de datos:
+    71→```
+    72→LLM Response → Emotion Evaluator (lightweight LLM call) → Update sessionStats
+    73→  → SSE event `emotional_update` → Frontend updates:
+    74→      1. Emotion badge in chat
+    75→      2. Sprite conditions re-evaluated → sprite changes
+    76→      3. Next LLM call includes {{emocion}} in prompt
+    77→```
+    78→
+    79→---
+    80→
+    81→## FASE 2: Memoria de Relaciones Evolutiva
+    82→
+    83→### Arquitectura
+    84→
+    85→**Enfoque** = Tool Calling + Key en Prompt + Evaluación Periódica
+    86→
+    87→### Componentes a implementar:
+    88→
+    89→1. **Tipos nuevos** (`src/types/index.ts`):
+    90→   - `RelationshipEntry` - Relación entre personaje y otro entidad
+    91→   - `RelationshipMemoryV2` - Extensión del RelationshipMemory actual
+    92→   - Extender `CharacterMemory` con `relationshipsV2: RelationshipEntry[]`
+    93→
+    94→2. **Nuevo Tool: `update_relationship`** (`src/lib/tools/`):
+    95→   - Parámetros: `targetName`, `trustDelta`, `sentimentDelta`, `notes`
+    96→   - El LLM lo llama cuando la interacción cambia significativamente
+    97→   - Actualiza el store de relaciones
+    98→   - Retorna confirmación
+    99→
+   100→3. **Key `{{relaciones}}`** en prompt-builder y key-resolver:
+   101→   - Inyecta bloque formateado de relaciones en el prompt
+   102→   - Formato:
+   103→     ```
+   104→     [RELACIONES DEL PERSONAJE]
+   105→     - Con {{user}}: Confianza 7/10, Sentimiento: cariño. Nota: Se conocen desde la infancia.
+   106→     - Con PersonajeB: Confianza 3/10, Sentimiento: desconfianza. Nota: Tuvo un conflicto.
+   107→     ```
+   108→
+   109→4. **Evaluación Periódica de Relaciones** (opcional, cada N turnos):
+   110→   - Similar al emotion evaluator pero para relaciones
+   111→   - Consulta ligera: "¿Han cambiado las relaciones del personaje?"
+   112→   - Solo actualiza si hay cambio significativo
+   113→
+   114→5. **UI: Visor de Relaciones** (en character panel o sidebar):
+   115→   - Lista de relaciones con barras de confianza/sentimiento
+   116→   - Historial de cambios
+   117→
+   118→### Respuesta a la pregunta del usuario:
+   119→- **¿Es como un call tool?** SÍ, principalmente. El LLM usa `update_relationship` para actualizar relaciones.
+   120→- **¿En qué parte del prompt se agrega?** Se inyecta como `{{relaciones}}` en la sección de atributos/stats del personaje, DESPUÉS de la personalidad y ANTES del escenario.
+   121→
+   122→---
+   123→
+   124→## FASE 3: Proactividad Inteligente
+   125→
+   126→### Mejoras a implementar:
+   127→
+   128→1. **Contexto de Conversación para Nudge**:
+   129→   - El nudge proactivo incluye los últimos 3-5 mensajes como contexto
+   130→   - Evita que el personaje diga algo incongruente
+   131→
+   132→2. **Variación de Nudges**:
+   133→   - Pool de templates de nudge que rotan
+   134→   - Templates por estado emocional (si está triste → nudge empático)
+   135→   - Templates por tiempo sin actividad (corto → casual, largo → preocupado)
+   136→
+   137→3. **Detección de Temas Abandonados**:
+   138→   - Si se habló de un tema y se abandonó, el personaje puede retomarlo
+   139→   - Usa embeddings para detectar temas
+   140→
+   141→4. **Cooldown Temático**:
+   142→   - Si el personaje habló de X, no vuelve a hablar de X por N minutos
+   143→   - Evita repetición
+   144→
+   145→5. **Proactividad en Group Chats**:
+   146→   - Actualmente deshabilitada para grupos → habilitar con estrategia específica
+   147→   - Personaje reacciona cuando otro personaje dice algo relevante
+   148→
+   149→---
+   150→
+   151→## FASE 4: Interrupciones y Reacciones en Tiempo Real
+   152→
+   153→### Componentes:
+   154→
+   155→1. **Sistema de Interrupción**:
+   156→   - El usuario puede interrumpir la generación actual
+   157→   - El personaje reacciona a la interrupción (no simplemente se corta)
+   158→   - Evento SSE `interrupt` que genera una reacción corta
+   159→
+   160→2. **Reacciones a Mensajes Ajenos** (group chat):
+   161→   - Cuando un personaje habla, otros pueden reaccionar automáticamente
+   162→   - Sistema de "micro-respuestas" (reacciones cortas: *suspira*, *sonríe*, etc.)
+   163→   - Basado en mención + relevancia emocional
+   164→
+   165→---
+   166→
+   167→## FASE 5: Lógica OR en Condiciones
+   168→
+   169→### Componentes:
+   170→
+   171→1. **Extender `StatRequirement`** (`src/types/index.ts`):
+   172→   - Añadir campo `operator?: 'AND' | 'OR'` (default: 'AND')
+   173→   - O crear tipo `StatConditionGroup` con `conditions: StatRequirement[]` y `operator`
+   174→
+   175→2. **Actualizar `condition-evaluator.ts`**:
+   176→   - Soportar evaluación OR además de AND
+   177→   - Retrocompatible: sin operator = AND (comportamiento actual)
+   178→
+   179→3. **UI en sprite conditions**:
+   180→   - Toggle AND/OR entre condiciones
+   181→   - Visualización clara del operador
+   182→
+   183→---
+   184→
+   185→## FASE 6: Expiración de Solicitudes
+   186→
+   187→### Componentes:
+   188→
+   189→1. **Extender `SolicitudDefinition`** (`src/types/index.ts`):
+   190→   - Añadir `expirationTurns?: number` - Turnos hasta expirar
+   191→   - Añadir `expirationMinutes?: number` - Minutos hasta expirar
+   192→
+   193→2. **Extender `SessionSolicitud`**:
+   194→   - Añadir `expiresAt?: number` - Timestamp de expiración
+   195→   - Añadir `expiresAtTurn?: number` - Turno de expiración
+   196→
+   197→3. **Verificación de Expiración**:
+   198→   - En `processPostLLMTriggers()` verificar solicitudes expiradas
+   199→   - Emitir notificación de expiración
+   200→   - Marcar como `expired` en el estado
+   201→
+   202→4. **UI**:
+   203→   - Indicador visual de tiempo restante en solicitudes pendientes
+   204→   - Animación de "expirando" cuando queda poco
+   205→
+   206→---
+   207→
+   208→## FASE 7: Transiciones de Sprite con Efectos Visuales
+   209→
+   210→### Componentes:
+   211→
+   212→1. **Tipos de Transición** (`src/types/index.ts`):
+   213→   - `SpriteTransition` type: 'fade' | 'slide' | 'zoom' | 'bounce' | 'none'
+   214→   - `SpriteTransitionConfig`: duration, easing, direction
+   215→
+   216→2. **Extender `TriggerCollection`**:
+   217→   - Añadir `transition?: SpriteTransitionConfig`
+   218→
+   219→3. **Componente CSS de Transición**:
+   220→   - Usar CSS transitions + Tailwind para efectos
+   221→   - Componente wrapper que aplica la transición al cambiar src
+   222→   - Preload del siguiente sprite antes de transicionar
+   223→
+   224→4. **UI en sprite editor**:
+   225→   - Selector de tipo de transición
+   226→   - Preview de la transición
+   227→
+   228→---
+   229→
+   230→## FASE 8: Migración Completa del Sistema Legacy de Triggers
+   231→
+   232→### Componentes:
+   233→
+   234→1. **Auditoría de triggers legacy**:
+   235→   - Identificar todos los triggers que usan el sistema antiguo
+   236→   - Mapear a equivalentes en el nuevo sistema
+   237→
+   238→2. **Herramienta de migración automática**:
+   239→   - Función que convierte `sprites` (legacy) → `spritePacksV2` + `stateCollectionsV2`
+   240→   - Preserva toda la funcionalidad existente
+   241→
+   242→3. **Deprecación gradual**:
+   243→   - Marcar campos legacy como `@deprecated`
+   244→   - Añadir warnings en consola cuando se usen
+   245→   - Eliminar en versión futura
+   246→
+   247→---
+   248→
+   249→## FASE 9: Contexto de Conversación para Proactividad
+   250→
+   251→### Componentes:
+   252→
+   253→1. **Modificar `use-proactive-messages.tsx`**:
+   254→   - Incluir últimos N mensajes en el nudge proactivo
+   255→   - Template mejorado con contexto
+   256→
+   257→2. **Modificar `/api/chat/proactive/route.ts`**:
+   258→   - Recibir mensajes recientes como contexto
+   259→   - Inyectar en el system prompt del proactive call
+   260→
+   261→---
+   262→
+   263→## FASE 10: Deduplicación de Notificaciones de Misiones
+   264→
+   265→### Componentes:
+   266→
+   267→1. **Sistema de hashing de notificaciones**:
+   268→   - Hash de (questId + objectiveId + type) para identificar duplicados
+   269→   - Cache de notificaciones recientes
+   270→
+   271→2. **Modificar `questSlice`**:
+   272→   - Antes de añadir notificación, verificar si ya existe una similar
+   273→   - Ventana de deduplicación configurable (ej: 30 segundos)
+   274→
+   275→3. **UI**:
+   276→   - Si hay duplicados, mostrar contador en vez de múltiples toasts
+   277→
+   278→---
+   279→
+   280→## Orden de Implementación Sugerido
+   281→
+   282→| Fase | Prioridad | Dependencias | Estimación |
+   283→|------|-----------|--------------|------------|
+   284→| 5. Lógica OR | Alta | Ninguna | 1-2h |
+   285→| 6. Expiración Solicitudes | Alta | Ninguna | 2-3h |
+   286→| 1. Estados Emocionales | Alta | Ninguna | 4-6h |
+   287→| 9. Contexto Proactividad | Media | Ninguna | 1-2h |
+   288→| 10. Deduplicación Notificaciones | Media | Ninguna | 1-2h |
+   289→| 2. Memoria Relaciones | Alta | Fase 1 (emociones) | 3-4h |
+   290→| 3. Proactividad Inteligente | Alta | Fase 9 | 3-4h |
+   291→| 7. Transiciones Sprite | Media | Ninguna | 2-3h |
+   292→| 4. Interrupciones | Media | Fase 1 (emociones) | 3-4h |
+   293→| 8. Migración Legacy | Baja | Fase 7 | 2-3h |
+   294→
+   295→---
+   296→
+   297→*Documento creado como plan de trabajo - Sin cambios de código realizados*
+   298→
+   299→---
+   300→Task ID: 1
+   301→Agent: Main Agent
+   302→Task: FASE 1 - Lógica OR en Condiciones
+   303→
+   304→Work Log:
+   305→- Added `conditionOperator?: 'AND' | 'OR'` field to all types that use `conditions: StatRequirement[]`: SpritePackEntryV2, ConditionalStateVariant, ConditionalSpriteEntry, ThresholdEffect
+   306→- Added `requirementOperator?: 'AND' | 'OR'` field to all types that use `requirements: StatRequirement[]`: SkillDefinition, IntentionDefinition, InvitationDefinition, SolicitudDefinition
+   307→- Added `conditionOperator?: 'AND' | 'OR'` to AttributeDefinition.timer
+   308→- Updated `evaluateStatConditions()` in condition-evaluator.ts to accept operator parameter
+   309→- Updated all callers of evaluateStatConditions to pass the operator from parent types
+   310→- Updated `evaluateRequirements()` in statsSlice.ts to accept operator parameter
+   311→- Updated `filterSkillsByRequirements`, `filterIntentionsByRequirements`, `filterInvitationsByRequirements` to pass operator
+   312→- Updated `evaluateRequirements` call in stats-resolver.ts for solicitud requirements
+   313→- Updated timer-processor.ts `evaluateTimerConditions()` to support OR logic
+   314→- Added AND/OR toggle UI to SpriteConditionEditorFull in sprite-pack-editor-v2.tsx
+   315→- Created reusable `RequirementOperatorToggle` component in stats-editor.tsx
+   316→- Added AND/OR toggle to SkillEditor, SolicitudDefinitionEditor, InvitationEditor in stats-editor.tsx
+   317→- Added AND/OR toggle to ThresholdEffectDialog conditions in stats-editor.tsx
+   318→- Added AND/OR toggle to timer conditions in stats-editor.tsx
+   319→- Added AND/OR toggle to trigger-collection-editor.tsx conditional entries
+   320→
+   321→Stage Summary:
+   322→- OR logic fully implemented across all condition/requirement evaluation paths
+   323→- Default is AND (backward compatible)
+   324→- UI toggle visible when 2+ conditions exist
+   325→- All lint checks pass, dev server compiles without errors
+   326→
+   327→---
+   328→Task ID: 2
+   329→Agent: Main Agent
+   330→Task: FASE 2 - Expiración de Solicitudes
+   331→
+   332→Work Log:
+   333→- Extended `SolicitudDefinition` with `expirationTurns?: number` and `expirationMinutes?: number`
+   334→- Extended `SolicitudInstance` with `expiresAt?: number`, `expiresAtTurn?: number`, and status 'expired'
+   335→- Added `ResolvedPeticion.expirationTurns` and `expirationMinutes` fields
+   336→- Added `SolicitudActivationContext.currentTurn?: number` for turn-based expiration
+   337→- Added `StatsTriggerContext.currentTurn?: number` for turn-based expiration
+   338→- Updated both `resolved.push()` calls in solicitud-executor.ts to include expiration fields
+   339→- Updated both `storeActions.createSolicitud()` calls in `executePeticionActivation` to calculate and set `expiresAt` and `expiresAtTurn`
+   340→- Added `expireSolicitudes()` action to statsSlice interface and implementation
+   341→- Added `currentTurn` pass-through in stats-detector.ts checkStatsTriggers
+   342→- Updated `evaluateRequirements` call in solicitud-executor.ts to pass `requirementOperator`
+   343→- Added expiration fields UI to SolicitudDefinitionEditor in stats-editor.tsx (turnos + minutos inputs)
+   344→- Updated SolicitudesSidePanel to show expiration indicators with timer icon and urgency coloring
+   345→- Timer conditions evaluation updated to support OR logic
+   346→
+   347→Stage Summary:
+   348→- Solicitud expiration system fully implemented (turns + time based)
+   349→- Auto-expiration via `expireSolicitudes()` store action
+   350→- UI shows expiration countdown in solicitudes panel with urgency colors
+   351→- SolicitudDefinition editor has expiration config fields
+   352→- All lint checks pass, dev server compiles without errors
+   353→
+   354→---
+   355→Task ID: 3
+   356→Agent: Main Agent
+   357→Task: FASE 3 - Proactividad Inteligente
+   358→
+   359→Work Log:
+   360→- Extended `ProactiveMessagesConfig` with 5 new fields: nudgeTemplates, contextMessagesCount, thematicCooldownMinutes, groupChatEnabled, groupChatStrategy
+   361→- Extended `ProactiveMessageInfo` with nudgeIndex and topic fields for rotation/cooldown tracking
+   362→- Updated `DEFAULT_PROACTIVE_MESSAGES_CONFIG` with FASE 3 defaults
+   363→- Updated proactive API route (`/api/chat/proactive/route.ts`):
+   364→  - Accept new client fields: usedNudgeIndices, recentTopics, isGroupChat, groupChatSpeakerId
+   365→  - Implemented nudge template pool rotation: builds pool from nudgeTemplate + nudgeTemplates, selects random unused template
+   366→  - Implemented context injection: includes last N message pairs as [Contexto reciente] in nudge content
+   367→  - Implemented thematic cooldown: appends [Evita repetir estos temas] instruction when cooldown enabled
+   368→  - Added group chat proactive instruction variant (different from solo chat)
+   369→  - Sends selectedNudgeIndex in proactive_start SSE event for client-side rotation tracking
+   370→- Updated `use-proactive-messages.tsx` hook:
+   371→  - Added usedNudgeIndicesRef and recentTopicsRef for rotation/cooldown tracking
+   372→  - Modified inactiveReason logic: group_chat only blocks when groupChatEnabled is false
+   373→  - Passes FASE 3 data (usedNudgeIndices, recentTopics, isGroupChat) to API
+   374→  - Tracks nudge index from proactive_start event for rotation
+   375→  - Extracts topic from proactive message content using extractTopic() helper
+   376→  - Tracks topic timestamps for thematic cooldown
+   377→  - Restores recent topics from existing proactive messages on session initialization
+   378→  - Resets tracking refs on session change
+   379→- Added extractTopic() helper function for thematic cooldown
+   380→- Rewrote ProactiveMessagesPanel with 4 new UI sections:
+   381→  - Variación de Nudges: pool management with add/remove, quick-add suggestions from NUDGE_SUGGESTIONS
+   382→  - Contexto de Conversación: slider for context messages count (0-10)
+   383→  - Enfriamiento Temático: slider for cooldown minutes (0-60)
+   384→  - Proactividad en Chat Grupal: toggle + strategy selector (any_speaker, mentioned_only, emotional_reaction)
+   385→- Updated chat-panel.tsx group_chat inactive reason text
+   386→- Updated Status Summary with FASE 3 metrics row
+   387→- All lint checks pass, dev server compiles without errors
+   388→- Browser verified: all 4 FASE 3 sections render correctly in Proactivo tab
+   389→
+   390→Stage Summary:
+   391→- Nudge variation with rotation: Pool of nudge templates that rotate to avoid repetition
+   392→- Context injection: Last N messages included as context in proactive nudge for coherent responses
+   393→- Thematic cooldown: Character avoids repeating similar topics for configurable minutes
+   394→- Group chat proactivity: Enabled with 3 strategies (any_speaker, mentioned_only, emotional_reaction)
+   395→- All features configurable per character in the Proactivo tab
+   396→- Browser verification confirmed all UI sections render correctly
+   397→
+   398→---
+   399→Task ID: 4
+   400→Agent: Main Agent
+   401→Task: FASE 4 - Interrupciones y Reacciones en Tiempo Real
+   402→
+   403→Work Log:
+   404→- Extended `MessageMetadata` with `interruptInfo`, `microReactions`, and `isPartial` fields
+   405→- Created new types: `InterruptInfo`, `MicroReaction`, `MicroReactionConfig`, `DEFAULT_MICRO_REACTION_CONFIG`
+   406→- Added `microReactionConfig` to `CharacterCard` type
+   407→- Created `/api/chat/interrupt/route.ts` - New SSE endpoint for generating character reactions to interruption
+   408→  - Uses minimal LLM call (max 80 tokens, low temperature)
+   409→  - Takes character, partial content, recent messages as input
+   410→  - Generates brief in-character reaction (1-2 sentences or *action*)
+   411→  - Supports all LLM providers (ZAI, OpenAI, Anthropic, Ollama, Grok, etc.)
+   412→- Fixed critical bug: `handleStopGeneration` now properly calls `setGenerating(false)` and `setStreamingContent('')`
+   413→  - Previously: finally block skipped cleanup when `isStillActive()` was false, causing UI to stay stuck
+   414→  - Now: `handleStopGeneration` directly cleans up state + saves partial content as message
+   415→- Enhanced `handleStopGeneration` with interrupt reaction:
+   416→  - Saves partial message content with `isPartial: true` metadata and `interruptInfo`
+   417→  - Triggers background LLM call to `/api/chat/interrupt` for character reaction
+   418→  - Reaction is added as a separate short assistant message with `reactionGenerated: true`
+   419→  - Properly ends sprite generation state
+   420→- Created `/lib/micro-reactions.ts` utility:
+   421→  - `generateMicroReactions()` - Generates micro-reactions for group chat messages
+   422→  - Reaction pools by emotional category: positive, negative, surprised, neutral, concerned
+   423→  - Trigger types: mention (name detected), emotional (keyword-based), topic (random baseline)
+   424→  - Basic emotional tone detection via keyword matching
+   425→  - Character name mention detection with first-name and article-stripped variants
+   426→- Integrated micro-reactions into group chat `character_done` handler in chat-panel.tsx
+   427→  - Checks `character.microReactionConfig?.enabled` before generating
+   428→  - Adds `microReactions` to message metadata
+   429→- Added visual badges to `chat-message.tsx`:
+   430→  - 🟠 "Interrumpido" badge for partial/interrupted messages
+   431→  - 🔴 "Reacción" badge for interrupt reaction messages
+   432→  - 🟣 Micro-reaction badges showing reaction text (e.g., *suspira*, *sonríe*)
+   433→- Added `Micro-Reacciones (Chat Grupal)` UI section to ProactiveMessagesPanel:
+   434→  - Toggle enable/disable
+   435→  - Max reactions per message slider (1-5)
+   436→  - Reaction chance slider (10%-100%)
+   437→  - Trigger toggles: Mención, Emocional, Tema
+   438→- Updated character-editor.tsx to pass `microReactionConfig` to ProactiveMessagesPanel
+   439→- Added `streamingContentRef` for tracking streaming content in interrupt handler
+   440→- All lint checks pass, dev server compiles without errors
+   441→
+   442→Stage Summary:
+   443→- Interrupt system: When user stops generation, partial content is saved and character generates a brief reaction
+   444→- Critical bug fix: `setGenerating(false)` is now properly called on stop, preventing UI stuck state
+   445→- Micro-reactions: Other characters in group chats can react briefly when a character speaks
+   446→- All features configurable per character: interrupt reactions are automatic, micro-reactions via toggle
+   447→- New API endpoint: `/api/chat/interrupt` for generating character reactions
+   448→- New utility: `/lib/micro-reactions.ts` for group chat reaction generation
+   449→
+   450→---
+   451→Task ID: 5
+   452→Agent: Main Agent
+   453→Task: FASE 5 - Sistema de Estados Emocionales Autónomo
+   454→
+   455→Work Log:
+   456→- Added `EmotionalStateConfig` and `EmotionalEvaluation` types to `src/types/index.ts`
+   457→- Added `DEFAULT_EMOTIONAL_CONFIG` constant with default states: feliz, triste, enojado, asustado, sorprendido, neutral
+   458→- Extended `CharacterCard` with `emotionalConfig?: EmotionalStateConfig`
+   459→- Extended `CharacterSessionStats` with `emotionalState`, `emotionalStateLastEval`, `emotionalStateTurnCount` fields
+   460→- Created `src/lib/emotions/emotion-evaluator.ts` with:
+   461→  - `evaluateEmotionalState()` - LLM-based emotional state evaluation using lightweight call (max 20 tokens, temp 0.3)
+   462→  - `shouldEvaluateEmotion()` - Turn-based interval check for evaluation timing
+   463→  - `incrementEmotionalTurn()` - Turn counter management
+   464→  - Emotion cache system with 5-minute TTL and message hash-based invalidation
+   465→  - Fuzzy matching of LLM response against known states (exact, partial, word-by-word)
+   466→  - Support for all LLM providers (ZAI, OpenAI, Anthropic, Ollama, Grok, etc.)
+   467→- Created `/api/chat/emotion/route.ts` - POST endpoint for emotion evaluation
+   468→  - Returns evaluation result with shouldUpdate flag
+   469→  - Supports character, messages, llmConfig, currentState, personality in request body
+   470→- Modified stream route `/api/chat/stream/route.ts`:
+   471→  - Added `shouldEvaluateEmotion` flag to 'done' SSE event
+   472→  - Checks character's emotionalConfig.enabled and states.length > 0
+   473→- Modified prompt builder `src/lib/llm/prompt-builder.ts`:
+   474→  - Added emotional state injection as "Estado Emocional" prompt section after personality
+   475→  - Works in both single chat and group chat prompt building
+   476→  - Uses customizable `promptInjectionFormat` with `{estado}` placeholder
+   477→- Modified stats resolver `src/lib/stats/stats-resolver.ts`:
+   478→  - Added `emocion` key to `attributesMap` from `charStats.emotionalState` for `{{emocion}}` resolution
+   479→- Modified condition evaluator `src/lib/sprites/condition-evaluator.ts`:
+   480→  - Added fallback to `charStats.emotionalState` when `attributeKey === 'emocion'` is not in `attributeValues`
+   481→  - Enables sprite conditions to trigger based on emotional state
+   482→- Added store actions to `src/store/slices/statsSlice.ts`:
+   483→  - `updateEmotionalState()` - Updates emotional state + syncs to attributeValues['emocion'] + increments turn counter
+   484→  - `getEmotionalState()` - Reads current emotional state from session stats
+   485→  - Race condition prevention via `previousState` parameter check
+   486→  - Updated `initializeSessionStats()` to accept and initialize `emotionalConfig`
+   487→- Updated `src/store/slices/sessionSlice.ts`:
+   488→  - `initializeSessionStatsForCharacters()` now initializes emotional state from config
+   489→  - Sets `emotionalState`, `emotionalStateLastEval`, `emotionalStateTurnCount`, and `attributeValues['emocion']`
+   490→- Created `EmotionalStateEditor` component in `src/components/tavern/stats-editor.tsx`:
+   491→  - Toggle: "Evaluación Emocional Automática" enable/disable
+   492→  - States list with badge tags (removable), add input, quick-add suggestions
+   493→  - Initial state selector (dropdown)
+   494→  - Evaluation interval slider (1-5 turns)
+   495→  - Context messages count slider (2-16)
+   496→  - "Incluir en el Prompt" toggle with prompt format customization
+   497→  - Accordion section in Stats tab with Heart icon
+   498→- Added emotion badge to `src/components/tavern/chat-message.tsx`:
+   499→  - Heart icon + emotional state text badge for assistant messages
+   500→  - New `emotionalState` prop passed from chat panel
+   501→- Updated `src/components/tavern/novel-chat-box.tsx`:
+   502→  - Passes `emotionalState` from sessionStats to ChatMessageBubble
+   503→  - Only shows for characters with emotionalConfig.enabled
+   504→- Updated `src/components/tavern/character-editor.tsx`:
+   505→  - Passes `emotionalConfig` and `onEmotionalConfigChange` to StatsEditor
+   506→- Added `{{emocion}}` to usage help section in stats editor
+   507→- Added emotion evaluation SSE handling in `src/components/tavern/chat-panel.tsx`:
+   508→  - Single chat: After 'done' with shouldEvaluateEmotion, calls /api/chat/emotion and updates store
+   509→  - Group chat: Evaluates each character with emotional config after group response
+   510→  - Respects evaluation interval (turn-based) on client side
+   511→- All lint checks pass, dev server compiles without errors
+   512→- Browser verification confirmed all FASE 5 UI sections render correctly
+   513→
+   514→Stage Summary:
+   515→- Complete autonomous emotional state system for characters
+   516→- LLM-based evaluation after each response (configurable interval)
+   517→- {{emocion}} key resolves in prompts and sprite conditions
+   518→- Visual emotion badge (❤️ + state name) in chat messages
+   519→- Prompt injection: "Estado emocional actual: {estado}" automatically added
+   520→- Cache system prevents redundant evaluations
+   521→- Group chat support: evaluates all characters with emotional config
+   522→- All features configurable per character in Stats tab → Estados Emocionales section
+   523→
+   524→---
+   525→Task ID: 6
+   526→Agent: Main Agent
+   527→Task: FASE 6 - Migración Completa del Sistema Legacy de Triggers
+   528→
+   529→Work Log:
+   530→- Added missing legacy types to `src/types/index.ts`:
+   531→  - `CharacterSpriteTrigger` interface with @deprecated annotation (→ TriggerCollection)
+   532→  - `ReturnToMode` type alias with @deprecated annotation (→ TriggerFallbackMode)
+   533→  - `SpritePack` interface with @deprecated annotation (→ SpritePackV2)
+   534→  - `SpritePackItem` interface with @deprecated annotation (→ SpritePackEntryV2)
+   535→  - `SpriteLibraryEntry` interface with @deprecated annotation
+   536→  - `spriteTriggers?: CharacterSpriteTrigger[]` field on CharacterCard with @deprecated
+   537→  - `spritePacks?: SpritePack[]` field on CharacterCard with @deprecated
+   538→- Added @deprecated annotations to existing legacy types:
+   539→  - `CharacterSprite` (→ SpritePackEntryV2)
+   540→  - `SpriteConfig` (→ spritePacksV2 + stateCollectionsV2)
+   541→  - `StateCollectionEntry` (→ StateCollectionV2)
+   542→  - `StateSpriteCollection` (→ StateCollectionV2)
+   543→  - `CharacterCard.sprites` field (→ spritePacksV2 + stateCollectionsV2)
+   544→  - `CharacterCard.spriteConfig` field (→ spritePacksV2 + stateCollectionsV2)
+   545→- Added missing legacy types to `src/types/triggers.ts`:
+   546→  - `SpriteTrigger` interface with @deprecated (trigger store type)
+   547→  - `SpritePack` interface with @deprecated (trigger store type)
+   548→  - `SpritePackItem` interface with @deprecated (trigger store type)
+   549→- Created `src/lib/migration/deprecation-warnings.ts`:
+   550→  - `warnLegacyField()` - Console warning when legacy field is accessed (once per session)
+   551→  - `warnLegacyType()` - Console warning for legacy types (once per session)
+   552→  - `clearDeprecationWarnings()` - For testing
+   553→  - `hasWarnedField()` / `hasWarnedType()` - Check if already warned
+   554→- Enhanced `src/lib/migration/sprite-migration.ts` with comprehensive migration:
+   555→  - `migrateLegacySprites()` - CharacterSprite[] → SpritePackV2
+   556→  - `migrateLegacySpriteTrigger()` - CharacterSpriteTrigger → TriggerCollection
+   557→  - `migrateLegacyStateCollections()` - StateSpriteCollection → StateCollectionV2[] + SpritePackV2[]
+   558→  - `createStateCollectionsFromConfig()` - SpriteConfig.sprites → StateCollectionV2[] (preserved)
+   559→  - `migrateCharacterSprites()` - Full character migration with detailed report
+   560→  - `getMigrationStatus()` - Check what legacy data exists and what needs migration
+   561→  - `needsMigration()` - Quick check if character needs migration
+   562→  - `applyMigrationResult()` - Apply migration result to character card
+   563→  - `MigrationResult` / `MigrationReport` / `MigrationStatus` / `MigrationItem` types
+   564→  - All functions use crypto.randomUUID(), are idempotent, and preserve existing V2 data
+   565→- Created `src/components/tavern/legacy-migration-panel.tsx`:
+   566→  - Shows current migration status (legacy vs V2 data counts)
+   567→  - Lists legacy items that need migration with descriptions
+   568→  - "Migrar a V2" button triggers migration
+   569→  - Preview of what will be created (accordion section)
+   570→  - Success/warning messages after migration
+   571→  - Auto-migration checkbox
+   572→  - Progress bar
+   573→  - Status cards showing legacy vs V2 counts
+   574→  - Handles all 3 states: no data, legacy only, V2 active
+   575→- Updated `src/components/tavern/character-editor.tsx`:
+   576→  - Added "Migración" tab with Database icon
+   577→  - Integrated LegacyMigrationPanel component
+   578→  - Added renderMigrationTab() function
+   579→  - Added 'migration' case to tab content switch
+   580→- Updated `src/lib/character-card.ts`:
+   581→  - Added auto-migration on import via `autoMigrateOnImport()` function
+   582→  - Calls `migrateCharacterSprites()` when legacy data detected after import
+   583→  - Preserves existing V2 data (skipIfV2Exists: true)
+   584→  - Added @deprecated comments to legacy field preservation code
+   585→  - Import function refactored to support auto-migration step
+   586→- Updated `src/store/slices/characterSlice.ts`:
+   587→  - Added `autoMigrateCharacter()` function for auto-migration on character add
+   588→  - `addCharacter` action now auto-migrates legacy sprite data to V2
+   589→  - Uses needsMigration() + migrateCharacterSprites() + applyMigrationResult()
+   590→- All lint checks pass, dev server compiles without errors
+   591→
+   592→Stage Summary:
+   593→- Complete legacy → V2 migration system for all sprite data types
+   594→- Missing types (CharacterSpriteTrigger, ReturnToMode, SpritePack, SpritePackItem, SpriteLibraryEntry) added to types/index.ts
+   595→- All legacy types and fields marked with @deprecated annotations and migration guidance
+   596→- Runtime deprecation warnings via deprecation-warnings.ts (once per session)
+   597→- Comprehensive migration module with 6 migration functions + status checking
+   598→- Migration UI panel in character editor (new "Migración" tab)
+   599→- Auto-migration on character import and character add to store
+   600→- Idempotent migration preserving all existing V2 data
+   601→- Detailed migration reports with warnings and item counts
+   602→

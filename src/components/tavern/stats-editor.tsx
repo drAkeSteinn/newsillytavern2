@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -61,6 +62,7 @@ import {
   Pencil,
   ArrowUpNarrowWide,
   Layers,
+  Heart,
 } from 'lucide-react';
 import type {
   CharacterStatsConfig,
@@ -85,7 +87,8 @@ import type {
   SpritePackV2,
   ThresholdEffect,
 } from '@/types';
-import { DEFAULT_STATS_BLOCK_HEADERS, DEFAULT_STATS_CONFIG } from '@/types';
+import { DEFAULT_STATS_BLOCK_HEADERS, DEFAULT_STATS_CONFIG, DEFAULT_EMOTIONAL_CONFIG } from '@/types';
+import type { EmotionalStateConfig } from '@/types';
 import {
   createTriggerReward,
   createObjectiveReward,
@@ -116,6 +119,8 @@ interface StatsEditorProps {
     spritePacks?: Array<{ id: string; name: string; conditionalMode?: boolean; spriteCount: number }>;
   }[];
   spritePacksV2?: SpritePackV2[];  // for activate_sprite_pack reward
+  emotionalConfig?: import('@/types').EmotionalStateConfig;  // FASE 5: Emotional state config
+  onEmotionalConfigChange?: (config: import('@/types').EmotionalStateConfig) => void;  // FASE 5
 }
 
 // ============================================
@@ -885,6 +890,47 @@ function AttributeEditor({ attribute, index, onChange, onDelete, allAttributes, 
                     </div>
                   ))}
                   
+                  {/* AND/OR toggle for timer conditions */}
+                  {(attribute.timer?.condition || []).length >= 2 && (
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn(
+                          "h-5 px-1.5 text-[9px] transition-colors",
+                          (!attribute.timer?.conditionOperator || attribute.timer.conditionOperator === 'AND')
+                            ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
+                            : "bg-muted/30 text-muted-foreground border-transparent"
+                        )}
+                        onClick={() => {
+                          onChange(index, { timer: { ...attribute.timer!, conditionOperator: 'AND' } });
+                        }}
+                      >
+                        Y (AND)
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn(
+                          "h-5 px-1.5 text-[9px] transition-colors",
+                          attribute.timer?.conditionOperator === 'OR'
+                            ? "bg-purple-500/20 text-purple-400 border-purple-500/30"
+                            : "bg-muted/30 text-muted-foreground border-transparent"
+                        )}
+                        onClick={() => {
+                          onChange(index, { timer: { ...attribute.timer!, conditionOperator: 'OR' } });
+                        }}
+                      >
+                        O (OR)
+                      </Button>
+                      <span className="text-[9px] text-muted-foreground">
+                        {(!attribute.timer?.conditionOperator || attribute.timer.conditionOperator === 'AND')
+                          ? 'Todas deben cumplirse'
+                          : 'Al menos una debe cumplirse'}
+                      </span>
+                    </div>
+                  )}
+                  
                   <Button
                     variant="outline"
                     size="sm"
@@ -1096,6 +1142,56 @@ function AttributeHUDPreview({ attribute }: AttributeHUDPreviewProps) {
         </div>
       );
   }
+}
+
+// ============================================
+// Requirement Operator Toggle (AND/OR) Component
+// ============================================
+
+interface RequirementOperatorToggleProps {
+  operator: 'AND' | 'OR' | undefined;
+  onChange: (operator: 'AND' | 'OR') => void;
+  requirementCount: number;
+}
+
+function RequirementOperatorToggle({ operator, onChange, requirementCount }: RequirementOperatorToggleProps) {
+  if (requirementCount < 2) return null;
+
+  const currentOperator = operator || 'AND';
+
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          className={cn(
+            'px-2 py-0.5 text-xs rounded border transition-colors',
+            currentOperator === 'AND'
+              ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+              : 'bg-muted/30 text-muted-foreground border-transparent'
+          )}
+          onClick={() => onChange('AND')}
+        >
+          Y (AND)
+        </button>
+        <button
+          type="button"
+          className={cn(
+            'px-2 py-0.5 text-xs rounded border transition-colors',
+            currentOperator === 'OR'
+              ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+              : 'bg-muted/30 text-muted-foreground border-transparent'
+          )}
+          onClick={() => onChange('OR')}
+        >
+          O (OR)
+        </button>
+      </div>
+      <span className="text-[10px] text-muted-foreground">
+        {currentOperator === 'AND' ? 'Todas deben cumplirse' : 'Al menos una debe cumplirse'}
+      </span>
+    </div>
+  );
 }
 
 // ============================================
@@ -1751,6 +1847,43 @@ function ThresholdEffectDialog({ effect, open, onOpenChange, onSave, allAttribut
                 </div>
               </div>
             ))}
+
+            {/* AND/OR toggle for conditions */}
+            {localEffect.conditions.length >= 2 && (
+              <div className="flex items-center gap-1.5 pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    "h-6 px-2 text-[10px] transition-colors",
+                    (!localEffect.conditionOperator || localEffect.conditionOperator === 'AND')
+                      ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
+                      : "bg-muted/30 text-muted-foreground border-transparent"
+                  )}
+                  onClick={() => updateEffect({ conditionOperator: 'AND' })}
+                >
+                  Y (AND)
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    "h-6 px-2 text-[10px] transition-colors",
+                    localEffect.conditionOperator === 'OR'
+                      ? "bg-purple-500/20 text-purple-400 border-purple-500/30"
+                      : "bg-muted/30 text-muted-foreground border-transparent"
+                  )}
+                  onClick={() => updateEffect({ conditionOperator: 'OR' })}
+                >
+                  O (OR)
+                </Button>
+                <span className="text-[10px] text-muted-foreground">
+                  {(!localEffect.conditionOperator || localEffect.conditionOperator === 'AND')
+                    ? 'Todas deben cumplirse'
+                    : 'Al menos una debe cumplirse'}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Rewards Section */}
@@ -2794,6 +2927,11 @@ function SkillEditor({ skill, index, availableAttributes, availableObjectives = 
                 <p className="text-xs text-muted-foreground italic">Sin requisitos - siempre disponible</p>
               )}
             </div>
+            <RequirementOperatorToggle
+              operator={skill.requirementOperator}
+              onChange={(op) => onChange(index, { requirementOperator: op })}
+              requirementCount={skill.requirements.length}
+            />
           </div>
           
           {/* Activation Costs Section */}
@@ -4095,6 +4233,72 @@ function SolicitudDefinitionEditor({ solicitud, index, availableAttributes, avai
                 <p className="text-xs text-muted-foreground italic">Sin requisitos - siempre disponible para otros</p>
               )}
             </div>
+            <RequirementOperatorToggle
+              operator={solicitud.requirementOperator}
+              onChange={(op) => onChange(index, { requirementOperator: op })}
+              requirementCount={solicitud.requirements.length}
+            />
+          </div>
+
+          {/* Expiration Section */}
+          <div className="space-y-2 pt-2 border-t border-cyan-500/20">
+            <div className="flex items-center gap-2">
+              <Clock className="w-3.5 h-3.5 text-cyan-400" />
+              <Label className="text-xs font-medium text-cyan-400">Expiración</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>Configura cuándo expira la solicitud automáticamente.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">0 = sin expiración. Se puede usar turnos, minutos o ambos.</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Label className="text-xs">Expiración (turnos)</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>Número de turnos hasta que la solicitud expire. 0 = sin expiración</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <Input
+                  type="number"
+                  min={0}
+                  value={solicitud.expirationTurns ?? 0}
+                  onChange={(e) => onChange(index, { expirationTurns: parseInt(e.target.value) || 0 })}
+                  placeholder="0"
+                  className="h-8"
+                />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Label className="text-xs">Expiración (minutos)</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>Minutos hasta que la solicitud expire. 0 = sin expiración</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <Input
+                  type="number"
+                  min={0}
+                  value={solicitud.expirationMinutes ?? 0}
+                  onChange={(e) => onChange(index, { expirationMinutes: parseInt(e.target.value) || 0 })}
+                  placeholder="0"
+                  className="h-8"
+                />
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -4296,6 +4500,11 @@ function InvitationEditor({ invitation, index, availableAttributes, allCharacter
                 <p className="text-xs text-muted-foreground italic">Sin requisitos - siempre disponible</p>
               )}
             </div>
+            <RequirementOperatorToggle
+              operator={invitation.requirementOperator}
+              onChange={(op) => onChange(index, { requirementOperator: op })}
+              requirementCount={invitation.requirements.length}
+            />
           </div>
         </div>
       )}
@@ -4364,10 +4573,266 @@ function getAvailableSolicitudes(
 }
 
 // ============================================
+// FASE 5: Emotional State Editor Component
+// ============================================
+
+interface EmotionalStateEditorProps {
+  config: EmotionalStateConfig;
+  onChange: (config: EmotionalStateConfig) => void;
+}
+
+const EMOTION_SUGGESTIONS = [
+  'feliz', 'triste', 'enojado', 'asustado', 'sorprendido', 'neutral',
+  'emocionado', 'ansioso', 'calmado', 'confundido', 'curioso', 'decepcionado',
+  'esperanzado', 'frustrado', 'agradecido', 'orgulloso', 'avergonzado',
+  'celoso', 'nostálgico', 'preocupado', 'aliviado', 'indiferente',
+];
+
+function EmotionalStateEditor({ config, onChange }: EmotionalStateEditorProps) {
+  const [newStateInput, setNewStateInput] = useState('');
+
+  const updateConfig = (updates: Partial<EmotionalStateConfig>) => {
+    onChange({ ...config, ...updates });
+  };
+
+  const addState = (state: string) => {
+    const trimmed = state.trim().toLowerCase();
+    if (trimmed && !config.states.includes(trimmed)) {
+      updateConfig({ states: [...config.states, trimmed] });
+    }
+    setNewStateInput('');
+  };
+
+  const removeState = (state: string) => {
+    const newStates = config.states.filter(s => s !== state);
+    updateConfig({
+      states: newStates,
+      // If removing the initial state, reset to first available or 'neutral'
+      initialState: config.initialState === state
+        ? (newStates[0] || 'neutral')
+        : config.initialState,
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Enable/Disable Toggle */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Label className="text-sm font-medium">Evaluación Emocional Automática</Label>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <HelpCircle className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p>Cuando está activado, el sistema evalúa automáticamente el estado emocional del personaje después de cada respuesta del LLM.</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+        <Switch
+          checked={config.enabled}
+          onCheckedChange={(enabled) => updateConfig({ enabled })}
+        />
+      </div>
+
+      {config.enabled && (
+        <>
+          {/* Emotional States List */}
+          <div className="space-y-2">
+            <Label className="text-xs font-medium">Estados Posibles</Label>
+            <p className="text-xs text-muted-foreground">
+              Define los estados emocionales que el personaje puede experimentar. El LLM elegirá entre estos.
+            </p>
+            
+            {/* Current states as tags */}
+            <div className="flex flex-wrap gap-1.5">
+              {config.states.map((state) => (
+                <Badge
+                  key={state}
+                  variant={state === config.initialState ? 'default' : 'secondary'}
+                  className="flex items-center gap-1 pr-1 cursor-pointer"
+                >
+                  <span className="px-1">{state}</span>
+                  {state === config.initialState && (
+                    <span className="text-[10px] opacity-70 px-0.5">(inicial)</span>
+                  )}
+                  <button
+                    type="button"
+                    className="h-4 w-4 flex items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10"
+                    onClick={() => removeState(state)}
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+
+            {/* Add new state */}
+            <div className="flex gap-2">
+              <Input
+                value={newStateInput}
+                onChange={(e) => setNewStateInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newStateInput.trim()) {
+                    addState(newStateInput);
+                  }
+                }}
+                placeholder="Nuevo estado emocional..."
+                className="h-8 text-sm"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => newStateInput.trim() && addState(newStateInput)}
+                disabled={!newStateInput.trim()}
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+
+            {/* Quick add suggestions */}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">Sugerencias rápidas:</Label>
+              <div className="flex flex-wrap gap-1">
+                {EMOTION_SUGGESTIONS
+                  .filter(s => !config.states.includes(s))
+                  .slice(0, 10)
+                  .map(suggestion => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      className="text-[10px] px-1.5 py-0.5 rounded border border-dashed border-muted-foreground/30 hover:border-primary hover:text-primary transition-colors"
+                      onClick={() => addState(suggestion)}
+                    >
+                      + {suggestion}
+                    </button>
+                  ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Initial State */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">Estado Inicial</Label>
+            <p className="text-xs text-muted-foreground">
+              El estado emocional cuando inicia la sesión de chat.
+            </p>
+            <Select
+              value={config.initialState}
+              onValueChange={(value) => updateConfig({ initialState: value })}
+            >
+              <SelectTrigger className="h-8 text-sm">
+                <SelectValue placeholder="Seleccionar estado inicial" />
+              </SelectTrigger>
+              <SelectContent>
+                {config.states.map(state => (
+                  <SelectItem key={state} value={state}>
+                    {state}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Evaluation Interval */}
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <Label className="text-xs font-medium">Intervalo de Evaluación</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>Cada cuántos turnos se evalúa el estado emocional. 1 = cada turno, 2 = cada dos turnos, etc.</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <div className="flex items-center gap-3">
+              <Slider
+                value={[config.evaluationInterval]}
+                onValueChange={([value]) => updateConfig({ evaluationInterval: value })}
+                min={1}
+                max={5}
+                step={1}
+                className="flex-1"
+              />
+              <span className="text-sm font-medium w-16 text-right">
+                Cada {config.evaluationInterval} {config.evaluationInterval === 1 ? 'turno' : 'turnos'}
+              </span>
+            </div>
+          </div>
+
+          {/* Context Messages Count */}
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <Label className="text-xs font-medium">Mensajes de Contexto</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>Cuántos mensajes recientes se incluyen como contexto para la evaluación emocional. Más mensajes = evaluación más precisa pero más tokens.</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <div className="flex items-center gap-3">
+              <Slider
+                value={[config.contextMessagesCount]}
+                onValueChange={([value]) => updateConfig({ contextMessagesCount: value })}
+                min={2}
+                max={16}
+                step={1}
+                className="flex-1"
+              />
+              <span className="text-sm font-medium w-8 text-right">{config.contextMessagesCount}</span>
+            </div>
+          </div>
+
+          {/* Include in Prompt */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Label className="text-xs font-medium">Incluir en el Prompt</Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="w-3 h-3 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>Cuando está activado, se inyecta "Estado emocional actual: {'{estado}'}" en el prompt del personaje. Esto le da al LLM conciencia de su emoción para respuestas más coherentes.</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <Switch
+              checked={config.includeInPrompt}
+              onCheckedChange={(includeInPrompt) => updateConfig({ includeInPrompt })}
+            />
+          </div>
+
+          {/* Custom Prompt Format */}
+          {config.includeInPrompt && (
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Formato de Inyección</Label>
+              <p className="text-xs text-muted-foreground">
+                Usa <code className="bg-muted px-1 rounded">{'{estado}'}</code> como placeholder para el estado emocional.
+              </p>
+              <Input
+                value={config.promptInjectionFormat || 'Estado emocional actual: {estado}'}
+                onChange={(e) => updateConfig({ promptInjectionFormat: e.target.value })}
+                placeholder="Estado emocional actual: {estado}"
+                className="h-8 text-sm"
+              />
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ============================================
 // Main Stats Editor Component
 // ============================================
 
-export function StatsEditor({ statsConfig, onChange, allCharacters = [], questTemplates = [], questTemplateIds, availableTargets = [], spritePacksV2 }: StatsEditorProps) {
+export function StatsEditor({ statsConfig, onChange, allCharacters = [], questTemplates = [], questTemplateIds, availableTargets = [], spritePacksV2, emotionalConfig, onEmotionalConfigChange }: StatsEditorProps) {
   const config: CharacterStatsConfig = statsConfig || DEFAULT_STATS_CONFIG;
   
   const updateConfig = (updates: Partial<CharacterStatsConfig>) => {
@@ -4992,7 +5457,61 @@ export function StatsEditor({ statsConfig, onChange, allCharacters = [], questTe
           </Accordion>
           </>
         )}
-        
+
+        {/* FASE 5: Emotional States Section */}
+        {onEmotionalConfigChange && (
+          <div className="mt-4 border rounded-lg">
+            <Accordion type="multiple" defaultValue={['emotional']}>
+              <AccordionItem value="emotional" className="border-0">
+                <div className="flex items-center px-4">
+                  <AccordionTrigger className="px-0 hover:no-underline flex-1">
+                    <div className="flex items-center gap-2">
+                      <Heart className="w-4 h-4 text-rose-500" />
+                      <span>Estados Emocionales</span>
+                      <Badge variant="secondary" className="ml-2">
+                        {emotionalConfig?.enabled ? `${emotionalConfig.states.length} estados` : 'Desactivado'}
+                      </Badge>
+                    </div>
+                  </AccordionTrigger>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Info className="w-3.5 h-3.5 text-muted-foreground" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80">
+                      <div className="space-y-2">
+                        <h4 className="font-medium text-sm">Estados Emocionales Autónomos</h4>
+                        <p className="text-xs text-muted-foreground">
+                          Sistema que evalúa automáticamente el estado emocional del personaje basándose en la conversación.
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          El estado emocional se puede usar en:
+                        </p>
+                        <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-1">
+                          <li><code className="bg-muted px-1 rounded">{'{{emocion}}'}</code> — Se resuelve al estado actual en el prompt</li>
+                          <li>Condiciones de sprites — Para cambiar expresión según emoción</li>
+                          <li>Condiciones de atributos — Para habilitar/deshabilitar acciones</li>
+                        </ul>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <AccordionContent className="px-4 pb-4">
+                  <EmotionalStateEditor
+                    config={emotionalConfig || DEFAULT_EMOTIONAL_CONFIG}
+                    onChange={onEmotionalConfigChange}
+                  />
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </div>
+        )}
+
         {/* Usage Help */}
         <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg p-3 space-y-2">
           <p className="font-medium">Uso de keys en el personaje:</p>
@@ -5005,6 +5524,7 @@ export function StatsEditor({ statsConfig, onChange, allCharacters = [], questTe
             <p>• <code className="bg-muted px-1.5 py-0.5 rounded font-mono">{'{{solicitante}}'}</code> → Nombre del personaje que hizo la solicitud</p>
             <p>• <code className="bg-muted px-1.5 py-0.5 rounded font-mono">{'{{solicitado}}'}</code> → Nombre del personaje que recibe la solicitud</p>
             <p>• <code className="bg-muted px-1.5 py-0.5 rounded font-mono">{'{{eventos}}'}</code> → Estado reciente de eventos</p>
+            <p>• <code className="bg-muted px-1.5 py-0.5 rounded font-mono">{'{{emocion}}'}</code> → Estado emocional actual del personaje</p>
           </div>
           <p className="text-xs opacity-75 mt-2">
             Funcionan igual que <code className="bg-muted px-1 rounded">{'{{char}}'}</code> y <code className="bg-muted px-1 rounded">{'{{user}}'}</code> de SillyTavern.

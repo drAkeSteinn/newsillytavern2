@@ -1509,7 +1509,8 @@ Y cambiar mi expresión:
                     userName: effectiveUserName,
                     postHistoryInstructions: effectiveCharacter.postHistoryInstructions?.trim(),
                     embeddingsContext: embeddingsContext,
-                    exampleMessages: exampleMessages
+                    exampleMessages: exampleMessages,
+                    allCharacters: allCharacters  // Pass all characters for proper speaker attribution
                   });
                   generator = streamOllama(prompt, llmConfig);
                 }
@@ -1627,8 +1628,8 @@ Y cambiar mi expresión:
 
               case 'text-generation-webui':
               case 'koboldcpp': {
-                if (charShouldUseTools) {
-                  console.log(`[Stream] TextGenerationWebUI case: shouldUseTools=${charShouldUseTools}`);
+                if (shouldUseTools) {
+                  console.log(`[Stream] TextGenerationWebUI case: shouldUseTools=${shouldUseTools}`);
                   let chatMessages = buildChatMessages(
                     baseSystemPrompt || finalSystemPrompt,
                     allMessages,
@@ -1707,7 +1708,8 @@ Y cambiar mi expresión:
                     userName: effectiveUserName,
                     postHistoryInstructions: effectiveCharacter.postHistoryInstructions?.trim(),
                     embeddingsContext: embeddingsContext,
-                    exampleMessages: exampleMessages
+                    exampleMessages: exampleMessages,
+                    allCharacters: allCharacters  // Pass all characters for proper speaker attribution
                   });
                   generator = streamTextGenerationWebUI(prompt, llmConfig);
                 }
@@ -1722,7 +1724,8 @@ Y cambiar mi expresión:
                   userName: effectiveUserName,
                   postHistoryInstructions: effectiveCharacter.postHistoryInstructions?.trim(),
                   embeddingsContext: embeddingsContext,
-                  exampleMessages: exampleMessages
+                  exampleMessages: exampleMessages,
+                  allCharacters: allCharacters  // Pass all characters for proper speaker attribution
                 });
                 generator = streamTextGenerationWebUI(prompt, llmConfig);
                 break;
@@ -1842,12 +1845,29 @@ Y cambiar mi expresión:
 
           console.log(`[Memory] Normal chat extraction check: enabled=${extractionEnabled}, turns=${turnCount}, freq=${extractionFrequency}, contentLen=${accumulatedContent.length}, shouldExtract=${shouldExtract}`);
 
-          // Send done signal with shouldExtract flag so client can trigger extraction
+          // ========================================
+          // Emotional State Evaluation Check (FASE 5)
+          // Determine if the client should evaluate the character's emotional state
+          // after receiving the response. The client will call /api/chat/emotion.
+          // ========================================
+          const emotionalConfig = effectiveCharacter.emotionalConfig;
+          const shouldEvaluateEmotion =
+            !!emotionalConfig?.enabled &&
+            emotionalConfig.states.length > 0 &&
+            accumulatedContent.length > 20 &&
+            !!llmConfig;
+
+          if (shouldEvaluateEmotion) {
+            console.log(`[Emotion] Should evaluate emotion: enabled=${emotionalConfig.enabled}, states=${emotionalConfig.states.length}, interval=${emotionalConfig.evaluationInterval}`);
+          }
+
+          // Send done signal with shouldExtract flag and shouldEvaluateEmotion flag so client can trigger both
           controller.enqueue(createSSEJSON({ 
             type: 'done',
             toolsUsed: allToolsUsed,
             questActivations: allQuestActivations,
             shouldExtract,
+            shouldEvaluateEmotion,
           }));
           controller.close();
         } catch (error) {

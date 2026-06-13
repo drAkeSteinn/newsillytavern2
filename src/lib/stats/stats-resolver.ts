@@ -547,7 +547,7 @@ export function buildInvitationsBlock(
     // Check if target character meets the solicitud's requirements
     // (the target needs to have the required attributes to fulfill the request)
     const targetAttributeValues = sessionStats?.characterStats?.[targetCharacter.id]?.attributeValues || {};
-    const targetMeetsRequirements = evaluateRequirements(solicitud.requirements, targetAttributeValues);
+    const targetMeetsRequirements = evaluateRequirements(solicitud.requirements, targetAttributeValues, undefined, solicitud.requirementOperator);
 
     if (!targetMeetsRequirements) {
       // Target doesn't meet requirements - don't show this invitation
@@ -636,7 +636,7 @@ export function resolveInvitations(
 
     // Check if target meets solicitud requirements
     const targetAttributeValues = sessionStats?.characterStats?.[targetCharacter.id]?.attributeValues || {};
-    const targetMeetsRequirements = evaluateRequirements(solicitud.requirements, targetAttributeValues);
+    const targetMeetsRequirements = evaluateRequirements(solicitud.requirements, targetAttributeValues, undefined, solicitud.requirementOperator);
 
     if (!targetMeetsRequirements) {
       return;
@@ -775,6 +775,12 @@ export function resolveStats(
         attributesMap[key] = String(value);
       }
     }
+  }
+
+  // FASE 5: Include emotional state as {{emocion}} key
+  // This allows the emotion to be resolved in prompts and sprite conditions
+  if (charStats?.emotionalState && !('emocion' in attributesMap)) {
+    attributesMap['emocion'] = charStats.emotionalState;
   }
   
   // Build blocks with full key resolution context

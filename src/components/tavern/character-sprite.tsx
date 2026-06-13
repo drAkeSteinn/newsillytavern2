@@ -21,11 +21,20 @@ import {
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import type { SpriteState, CharacterCard, SpritePackV2, StateCollectionV2, SessionStats } from '@/types';
+import type { SpriteState, CharacterCard, SpritePackV2, StateCollectionV2, SessionStats, SpriteTransitionConfig, SpriteTransition, SpriteTransitionEasing, SpriteTransitionDirection } from '@/types';
 import { SpritePreview } from './sprite-preview';
+import { SpriteTransitionWrapper } from './sprite-transition-wrapper';
 import { useTavernStore } from '@/store';
 import { createDefaultCharacterState } from '@/store/slices/spriteSlice';
 import { evaluatePackConditionalSprites } from '@/lib/sprites/condition-evaluator';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Sparkles } from 'lucide-react';
 
 interface SpriteSettings {
   x: number;        // percentage (0-100) - horizontal position
@@ -435,6 +444,13 @@ export function CharacterSprite({
   const currentSpriteUrl = spriteResult.url;
   const currentSpriteLabel = spriteResult.label;
 
+  // FASE 7: Determine the active transition config
+  // If a trigger sprite is active, use the trigger's transition config
+  // Otherwise, use the character's default transition for state-based changes
+  const activeTransition: SpriteTransitionConfig | undefined = charSpriteState.triggerSpriteUrl
+    ? (charSpriteState.triggerTransition ?? undefined)
+    : (charSpriteState.defaultTransition ?? character?.defaultTransition ?? undefined);
+
   // Debug: Log when sprite data changes
   useEffect(() => {
     console.log('[CharacterSprite] Sprite data:', {
@@ -610,9 +626,10 @@ export function CharacterSprite({
     >
       {/* The actual sprite image/video */}
       {currentSpriteUrl ? (
-        <SpritePreview
+        <SpriteTransitionWrapper
           src={currentSpriteUrl}
           alt={characterName}
+          transition={activeTransition}
           className="w-full h-full drop-shadow-2xl select-none pointer-events-none"
         />
       ) : (
@@ -917,6 +934,72 @@ export function CharacterSprite({
                   >
                     Right
                   </Button>
+                </div>
+
+                {/* FASE 7: Default Sprite Transition */}
+                <div className="space-y-2 pt-2 border-t">
+                  <div className="flex items-center gap-1.5 text-xs font-medium">
+                    <Sparkles className="w-3 h-3 text-orange-500" />
+                    Default Sprite Transition
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Efecto visual al cambiar entre estados (idle/talk/thinking).
+                  </p>
+                  <div className="space-y-2">
+                    <div>
+                      <span className="text-[10px] text-muted-foreground">Tipo</span>
+                      <Select
+                        value={charSpriteState.defaultTransition?.type ?? character?.defaultTransition?.type ?? 'none'}
+                        onValueChange={(v) => {
+                          const store = useTavernStore.getState();
+                          const currentDefault = charSpriteState.defaultTransition ?? character?.defaultTransition;
+                          const newTransition: SpriteTransitionConfig = v === 'none'
+                            ? { type: 'none', duration: 0, easing: 'ease-in-out' }
+                            : {
+                                type: v as SpriteTransition,
+                                duration: currentDefault?.duration ?? 300,
+                                easing: currentDefault?.easing ?? 'ease-in-out',
+                                direction: currentDefault?.direction ?? 'left',
+                              };
+                          // Update in store per-character state
+                          store.setCharacterSpriteStateField?.(characterId, 'defaultTransition', v === 'none' ? null : newTransition);
+                        }}
+                      >
+                        <SelectTrigger className="h-7 text-xs mt-0.5">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Sin Transición</SelectItem>
+                          <SelectItem value="fade">Fade</SelectItem>
+                          <SelectItem value="slide">Slide</SelectItem>
+                          <SelectItem value="zoom">Zoom</SelectItem>
+                          <SelectItem value="bounce">Bounce</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {(charSpriteState.defaultTransition?.type ?? character?.defaultTransition?.type ?? 'none') !== 'none' && (
+                      <>
+                        <div>
+                          <div className="flex justify-between">
+                            <span className="text-[10px] text-muted-foreground">Duración</span>
+                            <span className="text-[10px] text-muted-foreground">{charSpriteState.defaultTransition?.duration ?? character?.defaultTransition?.duration ?? 300}ms</span>
+                          </div>
+                          <Slider
+                            value={[charSpriteState.defaultTransition?.duration ?? character?.defaultTransition?.duration ?? 300]}
+                            min={100}
+                            max={2000}
+                            step={50}
+                            onValueChange={([v]) => {
+                              const store = useTavernStore.getState();
+                              const current = charSpriteState.defaultTransition ?? character?.defaultTransition ?? { type: 'fade' as SpriteTransition, easing: 'ease-in-out' as SpriteTransitionEasing, direction: 'left' as SpriteTransitionDirection };
+                              store.setCharacterSpriteStateField?.(characterId, 'defaultTransition', { ...current, duration: v });
+                            }}
+                            className="mt-1"
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 <p className="text-xs text-muted-foreground pt-2">

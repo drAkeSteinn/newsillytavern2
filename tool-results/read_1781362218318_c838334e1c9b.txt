@@ -1,0 +1,2002 @@
+     1→'use client';
+     2→
+     3→import { useState, useMemo } from 'react';
+     4→import { Button } from '@/components/ui/button';
+     5→import { Input } from '@/components/ui/input';
+     6→import { Label } from '@/components/ui/label';
+     7→import { Switch } from '@/components/ui/switch';
+     8→import { Badge } from '@/components/ui/badge';
+     9→import { Slider } from '@/components/ui/slider';
+    10→import { ScrollArea } from '@/components/ui/scroll-area';
+    11→import { Textarea } from '@/components/ui/textarea';
+    12→import {
+    13→  Select,
+    14→  SelectContent,
+    15→  SelectItem,
+    16→  SelectTrigger,
+    17→  SelectValue,
+    18→} from '@/components/ui/select';
+    19→import {
+    20→  Dialog,
+    21→  DialogContent,
+    22→  DialogHeader,
+    23→  DialogTitle,
+    24→  DialogFooter,
+    25→} from '@/components/ui/dialog';
+    26→import {
+    27→  Accordion,
+    28→  AccordionContent,
+    29→  AccordionItem,
+    30→  AccordionTrigger,
+    31→} from '@/components/ui/accordion';
+    32→import { cn } from '@/lib/utils';
+    33→import {
+    34→  Plus,
+    35→  Trash2,
+    36→  Zap,
+    37→  Package,
+    38→  Crown,
+    39→  Shuffle,
+    40→  List,
+    41→  Timer,
+    42→  Settings2,
+    43→  ChevronDown,
+    44→  ChevronUp,
+    45→  Copy,
+    46→  Image as ImageIcon,
+    47→  Layers,
+    48→  Play,
+    49→  Volume2,
+    50→  ArrowRight,
+    51→  Info,
+    52→  TestTube,
+    53→  CheckCircle,
+    54→  GitBranch,
+    55→  SlidersHorizontal,
+    56→  Sparkles,
+    57→} from 'lucide-react';
+    58→import type { 
+    59→  CharacterCard,
+    60→  TriggerCollection,
+    61→  SpritePackV2,
+    62→  SpriteTriggerConfig,
+    63→  SpriteChain,
+    64→  SoundChain,
+    65→  TriggerFallbackMode,
+    66→  ConditionalSpriteEntry,
+    67→  StatRequirement,
+    68→  RequirementOperator,
+    69→  SessionStats,
+    70→  SpriteTransitionConfig,
+    71→  SpriteTransition,
+    72→  SpriteTransitionEasing,
+    73→  SpriteTransitionDirection,
+    74→} from '@/types';
+    75→import { SpritePreview } from './sprite-preview';
+    76→import { useTavernStore } from '@/store';
+    77→import { evaluateConditionalEntries, evaluateStatConditions, evaluateSingleCondition, getAttributeValueFromStats } from '@/lib/sprites/condition-evaluator';
+    78→const uuidv4 = () => crypto.randomUUID();
+    79→import { getLogger } from '@/lib/logger';
+    80→
+    81→const logger = getLogger('trigger-collection-editor');
+    82→
+    83→// Fallback mode options
+    84→const FALLBACK_MODES: { 
+    85→  value: TriggerFallbackMode; 
+    86→  label: string; 
+    87→  description: string 
+    88→}[] = [
+    89→  { 
+    90→    value: 'idle_collection', 
+    91→    label: 'Colección Idle', 
+    92→    description: 'Retorna al sprite de la colección Idle' 
+    93→  },
+    94→  { 
+    95→    value: 'custom_sprite', 
+    96→    label: 'Sprite Personalizado', 
+    97→    description: 'Retorna a un sprite específico' 
+    98→  },
+    99→  { 
+   100→    value: 'collection_default', 
+   101→    label: 'Default de Colección', 
+   102→    description: 'Usa el sprite principal de la colección' 
+   103→  },
+   104→];
+   105→
+   106→// Behavior options
+   107→const BEHAVIOR_OPTIONS: { 
+   108→  value: 'principal' | 'random' | 'list'; 
+   109→  label: string; 
+   110→  icon: React.ReactNode;
+   111→  description: string 
+   112→}[] = [
+   113→  { 
+   114→    value: 'principal', 
+   115→    label: 'Principal', 
+   116→    icon: <Crown className="w-3.5 h-3.5" />,
+   117→    description: 'Usa el sprite principal del pack' 
+   118→  },
+   119→  { 
+   120→    value: 'random', 
+   121→    label: 'Aleatorio', 
+   122→    icon: <Shuffle className="w-3.5 h-3.5" />,
+   123→    description: 'Selecciona un sprite aleatorio' 
+   124→  },
+   125→  { 
+   126→    value: 'list', 
+   127→    label: 'Lista', 
+   128→    icon: <List className="w-3.5 h-3.5" />,
+   129→    description: 'Rota entre sprites del pack' 
+   130→  },
+   131→];
+   132→
+   133→// Condition operator options
+   134→const OPERATOR_OPTIONS: {
+   135→  value: RequirementOperator;
+   136→  label: string;
+   137→}[] = [
+   138→  { value: '<', label: '< (menor que)' },
+   139→  { value: '<=', label: '≤ (menor o igual)' },
+   140→  { value: '>', label: '> (mayor que)' },
+   141→  { value: '>=', label: '≥ (mayor o igual)' },
+   142→  { value: '==', label: '== (igual)' },
+   143→  { value: '!=', label: '!= (diferente)' },
+   144→  { value: 'between', label: 'Entre (rango)' },
+   145→  { value: 'contains', label: 'Contiene' },
+   146→  { value: 'not_contains', label: 'No contiene' },
+   147→];
+   148→
+   149→// FASE 7: Transition type options
+   150→const TRANSITION_TYPE_OPTIONS: {
+   151→  value: SpriteTransition;
+   152→  label: string;
+   153→  description: string;
+   154→}[] = [
+   155→  { value: 'none', label: 'Sin Transición', description: 'Cambio instantáneo sin efecto' },
+   156→  { value: 'fade', label: 'Fade', description: 'Suave fundido de entrada/salida' },
+   157→  { value: 'slide', label: 'Slide', description: 'Desliza el sprite en una dirección' },
+   158→  { value: 'zoom', label: 'Zoom', description: 'Zoom in/out con fade' },
+   159→  { value: 'bounce', label: 'Bounce', description: 'Aparición con efecto rebote' },
+   160→];
+   161→
+   162→const TRANSITION_EASING_OPTIONS: {
+   163→  value: SpriteTransitionEasing;
+   164→  label: string;
+   165→}[] = [
+   166→  { value: 'ease', label: 'Ease' },
+   167→  { value: 'ease-in', label: 'Ease In' },
+   168→  { value: 'ease-out', label: 'Ease Out' },
+   169→  { value: 'ease-in-out', label: 'Ease In-Out' },
+   170→  { value: 'linear', label: 'Linear' },
+   171→];
+   172→
+   173→const TRANSITION_DIRECTION_OPTIONS: {
+   174→  value: SpriteTransitionDirection;
+   175→  label: string;
+   176→}[] = [
+   177→  { value: 'left', label: '← Izquierda' },
+   178→  { value: 'right', label: '→ Derecha' },
+   179→  { value: 'up', label: '↑ Arriba' },
+   180→  { value: 'down', label: '↓ Abajo' },
+   181→];
+   182→
+   183→interface TriggerCollectionEditorProps {
+   184→  character: CharacterCard;
+   185→  onChange: (updates: Partial<CharacterCard>) => void;
+   186→}
+   187→
+   188→export function TriggerCollectionEditor({ 
+   189→  character, 
+   190→  onChange 
+   191→}: TriggerCollectionEditorProps) {
+   192→  // Get collections and packs
+   193→  const triggerCollections: TriggerCollection[] = useMemo(() => {
+   194→    return character.triggerCollections || [];
+   195→  }, [character.triggerCollections]);
+   196→
+   197→  const spritePacksV2: SpritePackV2[] = useMemo(() => {
+   198→    return character.spritePacksV2 || [];
+   199→  }, [character.spritePacksV2]);
+   200→
+   201→  // Store actions for testing
+   202→  const applyTriggerForCharacter = useTavernStore((state) => state.applyTriggerForCharacter);
+   203→  const scheduleReturnToIdleForCharacter = useTavernStore((state) => state.scheduleReturnToIdleForCharacter);
+   204→  const cancelReturnToIdleForCharacter = useTavernStore((state) => state.cancelReturnToIdleForCharacter);
+   205→
+   206→  // State
+   207→  const [showEditor, setShowEditor] = useState(false);
+   208→  const [editingCollection, setEditingCollection] = useState<TriggerCollection | null>(null);
+   209→  const [testingCollectionId, setTestingCollectionId] = useState<string | null>(null);
+   210→  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+   211→    keys: true,
+   212→    behavior: true,
+   213→    fallback: true,
+   214→    chains: false,
+   215→    sprites: false,
+   216→  });
+   217→
+   218→  // Update collections
+   219→  const updateCollections = (newCollections: TriggerCollection[]) => {
+   220→    onChange({
+   221→      triggerCollections: newCollections,
+   222→    });
+   223→  };
+   224→
+   225→  // Test trigger - Apply the trigger sprite to the character
+   226→  const handleTestTrigger = (collection: TriggerCollection) => {
+   227→    const pack = spritePacksV2.find(p => p.id === collection.packId);
+   228→    if (!pack || pack.sprites.length === 0) {
+   229→      logger.warn('Cannot test: no sprites in pack', { collectionId: collection.id });
+   230→      return;
+   231→    }
+   232→
+   233→    // Get the sprite to show based on behavior
+   234→    let sprite;
+   235→    switch (collection.collectionBehavior) {
+   236→      case 'random':
+   237→        const randomIndex = Math.floor(Math.random() * pack.sprites.length);
+   238→        sprite = pack.sprites[randomIndex];
+   239→        break;
+   240→      case 'principal':
+   241→      case 'list':
+   242→      default:
+   243→        sprite = collection.principalSpriteId 
+   244→          ? pack.sprites.find(s => s.id === collection.principalSpriteId)
+   245→          : pack.sprites[0];
+   246→        break;
+   247→    }
+   248→
+   249→    if (!sprite) {
+   250→      logger.warn('Cannot test: no sprite found', { collectionId: collection.id });
+   251→      return;
+   252→    }
+   253→
+   254→    // Mark as testing
+   255→    setTestingCollectionId(collection.id);
+   256→    logger.info('Testing trigger', { 
+   257→      collectionId: collection.id, 
+   258→      spriteUrl: sprite.url,
+   259→      spriteLabel: sprite.label 
+   260→    });
+   261→
+   262→    // Apply the trigger sprite
+   263→    applyTriggerForCharacter(character.id, {
+   264→      spriteUrl: sprite.url,
+   265→      spriteLabel: sprite.label,
+   266→      returnToIdleMs: collection.fallbackDelayMs,
+   267→      packId: collection.packId,
+   268→      collectionId: collection.id,
+   269→      useTimelineSounds: collection.useTimelineSounds ?? false,
+   270→    });
+   271→
+   272→    // Note: Timeline sounds are now handled by useTimelineSpriteSounds hook
+   273→    // which watches for triggerSpriteUrl changes and checks useTimelineSounds
+   274→
+   275→    // Schedule fallback if configured
+   276→    if (collection.fallbackDelayMs > 0) {
+   277→      // Get fallback sprite based on mode
+   278→      let fallbackSpriteUrl: string | null = null;
+   279→      let returnToMode: 'idle' | 'talk' | 'thinking' | 'clear' = 'idle';
+   280→
+   281→      if (collection.fallbackMode === 'custom_sprite' && collection.fallbackSpriteId) {
+   282→        const fallbackSprite = pack.sprites.find(s => s.id === collection.fallbackSpriteId);
+   283→        fallbackSpriteUrl = fallbackSprite?.url || null;
+   284→        returnToMode = 'idle'; // Apply the custom sprite
+   285→      } else if (collection.fallbackMode === 'collection_default') {
+   286→        const principalSprite = collection.principalSpriteId
+   287→          ? pack.sprites.find(s => s.id === collection.principalSpriteId)
+   288→          : pack.sprites[0];
+   289→        fallbackSpriteUrl = principalSprite?.url || null;
+   290→        returnToMode = 'idle'; // Apply the collection default sprite
+   291→      } else if (collection.fallbackMode === 'idle_collection') {
+   292→        // For 'idle_collection', clear the trigger and let the normal state logic
+   293→        // (idle state from State Collections V2) determine what to show
+   294→        returnToMode = 'clear';
+   295→        // fallbackSpriteUrl can be empty for 'clear' mode
+   296→        fallbackSpriteUrl = '';
+   297→      }
+   298→
+   299→      // Always schedule fallback when delay > 0
+   300→      // For 'clear' mode, the empty string is fine (won't be used)
+   301→      scheduleReturnToIdleForCharacter(
+   302→        character.id,
+   303→        sprite.url,
+   304→        returnToMode,
+   305→        fallbackSpriteUrl || '',
+   306→        sprite.label,
+   307→        collection.fallbackDelayMs
+   308→      );
+   309→
+   310→      logger.info('Test trigger: fallback scheduled', {
+   311→        collectionId: collection.id,
+   312→        fallbackMode: collection.fallbackMode,
+   313→        returnToMode,
+   314→        fallbackDelayMs: collection.fallbackDelayMs,
+   315→      });
+   316→    }
+   317→
+   318→    // Clear testing indicator after a delay
+   319→    setTimeout(() => {
+   320→      setTestingCollectionId(null);
+   321→    }, 1000);
+   322→  };
+   323→
+   324→  // Create new collection
+   325→  const handleCreateCollection = () => {
+   326→    const now = new Date().toISOString();
+   327→    const newCollection: TriggerCollection = {
+   328→      id: uuidv4(),
+   329→      name: 'Nueva Colección de Triggers',
+   330→      active: true,
+   331→      priority: 1,
+   332→      packId: spritePacksV2[0]?.id || '',
+   333→      collectionKey: '',
+   334→      collectionKeys: [],
+   335→      collectionKeyRequirePipes: true,
+   336→      collectionKeyCaseSensitive: false,
+   337→      collectionBehavior: 'principal',
+   338→      principalSpriteId: undefined,
+   339→      fallbackMode: 'idle_collection',
+   340→      fallbackSpriteId: undefined,
+   341→      fallbackDelayMs: 3000,
+   342→      spriteChain: undefined,
+   343→      useTimelineSounds: false,
+   344→      cooldownMs: 1000,
+   345→      spriteConfigs: {},
+   346→      conditionalMode: false,
+   347→      conditionalEntries: [],
+   348→      defaultSpriteId: undefined,
+   349→      createdAt: now,
+   350→      updatedAt: now,
+   351→    };
+   352→
+   353→    setEditingCollection(newCollection);
+   354→    setShowEditor(true);
+   355→  };
+   356→
+   357→  // Edit collection
+   358→  const handleEditCollection = (collection: TriggerCollection) => {
+   359→    setEditingCollection({ ...collection });
+   360→    setShowEditor(true);
+   361→  };
+   362→
+   363→  // Delete collection
+   364→  const handleDeleteCollection = (id: string) => {
+   365→    const collection = triggerCollections.find(c => c.id === id);
+   366→    if (!collection) return;
+   367→
+   368→    if (!confirm(`¿Eliminar la colección "${collection.name}"?`)) return;
+   369→
+   370→    updateCollections(triggerCollections.filter(c => c.id !== id));
+   371→    logger.info('Deleted trigger collection', { collectionId: id });
+   372→  };
+   373→
+   374→  // Duplicate collection
+   375→  const handleDuplicateCollection = (collection: TriggerCollection) => {
+   376→    const now = new Date().toISOString();
+   377→    const newCollection: TriggerCollection = {
+   378→      ...collection,
+   379→      id: uuidv4(),
+   380→      name: `${collection.name} (copia)`,
+   381→      createdAt: now,
+   382→      updatedAt: now,
+   383→    };
+   384→
+   385→    updateCollections([...triggerCollections, newCollection]);
+   386→    logger.info('Duplicated trigger collection', { 
+   387→      originalId: collection.id, 
+   388→      newId: newCollection.id 
+   389→    });
+   390→  };
+   391→
+   392→  // Save collection
+   393→  const handleSaveCollection = () => {
+   394→    if (!editingCollection) return;
+   395→
+   396→    const now = new Date().toISOString();
+   397→    const updatedCollection: TriggerCollection = {
+   398→      ...editingCollection,
+   399→      updatedAt: now,
+   400→    };
+   401→
+   402→    const existingIndex = triggerCollections.findIndex(c => c.id === updatedCollection.id);
+   403→    
+   404→    if (existingIndex >= 0) {
+   405→      // Update existing
+   406→      const newCollections = [...triggerCollections];
+   407→      newCollections[existingIndex] = updatedCollection;
+   408→      updateCollections(newCollections);
+   409→    } else {
+   410→      // Add new
+   411→      updatedCollection.createdAt = now;
+   412→      updateCollections([...triggerCollections, updatedCollection]);
+   413→    }
+   414→
+   415→    setEditingCollection(null);
+   416→    setShowEditor(false);
+   417→    logger.info('Saved trigger collection', { collectionId: updatedCollection.id });
+   418→  };
+   419→
+   420→  // Toggle collection active
+   421→  const handleToggleActive = (id: string, active: boolean) => {
+   422→    updateCollections(triggerCollections.map(c =>
+   423→      c.id === id ? { ...c, active, updatedAt: new Date().toISOString() } : c
+   424→    ));
+   425→  };
+   426→
+   427→  // Get pack name
+   428→  const getPackName = (packId: string) => {
+   429→    const pack = spritePacksV2.find(p => p.id === packId);
+   430→    return pack?.name || 'Pack no encontrado';
+   431→  };
+   432→
+   433→  // Get pack sprites
+   434→  const getPackSprites = (packId: string) => {
+   435→    const pack = spritePacksV2.find(p => p.id === packId);
+   436→    return pack?.sprites || [];
+   437→  };
+   438→
+   439→  // Format time
+   440→  const formatTime = (ms: number) => {
+   441→    if (ms <= 0) return 'Nunca';
+   442→    if (ms < 1000) return `${ms}ms`;
+   443→    const seconds = Math.floor(ms / 1000);
+   444→    if (seconds < 60) return `${seconds}s`;
+   445→    const minutes = Math.floor(seconds / 60);
+   446→    const remainingSeconds = seconds % 60;
+   447→    return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+   448→  };
+   449→
+   450→  // Toggle section
+   451→  const toggleSection = (section: string) => {
+   452→    setExpandedSections(prev => ({
+   453→      ...prev,
+   454→      [section]: !prev[section],
+   455→    }));
+   456→  };
+   457→
+   458→  return (
+   459→    <div className="space-y-4">
+   460→      {/* Header */}
+   461→      <div className="flex items-center justify-between">
+   462→        <div>
+   463→          <h4 className="text-sm font-medium flex items-center gap-2">
+   464→            <Zap className="w-4 h-4 text-amber-500" />
+   465→            Trigger Collections
+   466→          </h4>
+   467→          <p className="text-xs text-muted-foreground">
+   468→            Colecciones de triggers con sistema de prioridades y cadenas.
+   469→          </p>
+   470→        </div>
+   471→        <Button
+   472→          size="sm"
+   473→          className="h-8"
+   474→          onClick={handleCreateCollection}
+   475→          disabled={spritePacksV2.length === 0}
+   476→        >
+   477→          <Plus className="w-4 h-4 mr-1" />
+   478→          Nueva Colección
+   479→        </Button>
+   480→      </div>
+   481→
+   482→      {/* Info Banner */}
+   483→      <div className="text-xs bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 space-y-2">
+   484→        <div className="flex items-center gap-2 font-medium text-amber-600">
+   485→          <Zap className="w-4 h-4" />
+   486→          Sistema de Trigger Collections
+   487→        </div>
+   488→        <p className="text-muted-foreground">
+   489→          Las colecciones de triggers usan <strong>prioridades</strong> para determinar qué trigger 
+   490→          se ejecuta. Puedes activar por <strong>key de colección</strong> (general) o por 
+   491→          <strong> keys individuales</strong> por sprite.
+   492→        </p>
+   493→        <div className="grid grid-cols-2 gap-2 mt-2">
+   494→          <div className="p-2 bg-background/50 rounded border">
+   495→            <div className="flex items-center gap-1 text-xs font-medium text-amber-600">
+   496→              <Crown className="w-3 h-3" />
+   497→              Prioridad
+   498→            </div>
+   499→            <p className="text-[10px] text-muted-foreground mt-0.5">
+   500→              Mayor número = mayor prioridad
+   501→            </p>
+   502→          </div>
+   503→          <div className="p-2 bg-background/50 rounded border">
+   504→            <div className="flex items-center gap-1 text-xs font-medium text-blue-600">
+   505→              <Play className="w-3 h-3" />
+   506→              Cadenas
+   507→            </div>
+   508→            <p className="text-[10px] text-muted-foreground mt-0.5">
+   509→              Secuencias de sprites/sonidos
+   510→            </p>
+   511→          </div>
+   512→        </div>
+   513→      </div>
+   514→
+   515→      {/* No packs warning */}
+   516→      {spritePacksV2.length === 0 && (
+   517→        <div className="text-center py-4 text-amber-600 bg-amber-500/5 border border-amber-500/20 rounded-lg">
+   518→          <Package className="w-6 h-6 mx-auto mb-2" />
+   519→          <p className="text-sm font-medium">No hay Sprite Packs creados</p>
+   520→          <p className="text-xs mt-1">
+   521→            Crea un Sprite Pack en la pestaña "Sprite Packs" antes de crear triggers.
+   522→          </p>
+   523→        </div>
+   524→      )}
+   525→
+   526→      {/* Collections List */}
+   527→      {triggerCollections.length > 0 ? (
+   528→        <Accordion type="multiple" className="w-full space-y-2">
+   529→          {triggerCollections
+   530→            .sort((a, b) => b.priority - a.priority)
+   531→            .map(collection => {
+   532→              const pack = spritePacksV2.find(p => p.id === collection.packId);
+   533→              const sprites = pack?.sprites || [];
+   534→
+   535→              return (
+   536→                <AccordionItem
+   537→                  key={collection.id}
+   538→                  value={collection.id}
+   539→                  className="border rounded-lg px-0"
+   540→                >
+   541→                  <AccordionTrigger className="px-4 py-3 hover:no-underline">
+   542→                    <div className="flex items-center gap-3 w-full">
+   543→                      <div className={cn(
+   544→                        "p-1.5 rounded",
+   545→                        collection.active ? "bg-amber-500/10" : "bg-muted"
+   546→                      )}>
+   547→                        <Zap className={cn(
+   548→                          "w-4 h-4",
+   549→                          collection.active ? "text-amber-500" : "text-muted-foreground"
+   550→                        )} />
+   551→                      </div>
+   552→                      <div className="flex-1 text-left">
+   553→                        <div className="flex items-center gap-2">
+   554→                          <span className="text-sm font-medium">{collection.name}</span>
+   555→                          <Badge variant="outline" className="text-xs">
+   556→                            Prioridad: {collection.priority}
+   557→                          </Badge>
+   558→                        </div>
+   559→                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+   560→                          <Package className="w-3 h-3" />
+   561→                          <span>{getPackName(collection.packId)}</span>
+   562→                          <span>•</span>
+   563→                          <span>{sprites.length} sprites</span>
+   564→                          {collection.collectionKey && (
+   565→                            <>
+   566→                              <span>•</span>
+   567→                              <code className="bg-muted px-1 rounded text-[10px]">
+   568→                                {collection.collectionKeyRequirePipes ? `|${collection.collectionKey}|` : collection.collectionKey}
+   569→                              </code>
+   570→                            </>
+   571→                          )}
+   572→                        </div>
+   573→                      </div>
+   574→                      {!collection.active && (
+   575→                        <Badge variant="secondary" className="text-xs">Inactivo</Badge>
+   576→                      )}
+   577→                      {collection.conditionalMode && (
+   578→                        <Badge variant="secondary" className="text-xs bg-teal-500/10 text-teal-600">
+   579→                          <GitBranch className="w-3 h-3 mr-1" />
+   580→                          Condicional
+   581→                        </Badge>
+   582→                      )}
+   583→                      {collection.conditionalMode && (collection.conditionalEntries?.length || 0) > 0 && (
+   584→                        <Badge variant="outline" className="text-xs">
+   585→                          {collection.conditionalEntries?.length} entradas
+   586→                        </Badge>
+   587→                      )}
+   588→                    </div>
+   589→                  </AccordionTrigger>
+   590→                  <AccordionContent className="px-4 pb-4">
+   591→                    <div className="space-y-3">
+   592→                      {/* Quick Info */}
+   593→                      <div className="grid grid-cols-3 gap-2 text-xs">
+   594→                        <div className="p-2 bg-muted/50 rounded border">
+   595→                          <div className="text-muted-foreground">Comportamiento</div>
+   596→                          <div className="font-medium mt-0.5 flex items-center gap-1">
+   597→                            {BEHAVIOR_OPTIONS.find(b => b.value === collection.collectionBehavior)?.icon}
+   598→                            {BEHAVIOR_OPTIONS.find(b => b.value === collection.collectionBehavior)?.label}
+   599→                          </div>
+   600→                        </div>
+   601→                        <div className="p-2 bg-muted/50 rounded border">
+   602→                          <div className="text-muted-foreground">Fallback</div>
+   603→                          <div className="font-medium mt-0.5">
+   604→                            {formatTime(collection.fallbackDelayMs)}
+   605→                          </div>
+   606→                        </div>
+   607→                        <div className="p-2 bg-muted/50 rounded border">
+   608→                          <div className="text-muted-foreground">Cooldown</div>
+   609→                          <div className="font-medium mt-0.5">
+   610→                            {formatTime(collection.cooldownMs)}
+   611→                          </div>
+   612→                        </div>
+   613→                      </div>
+   614→
+   615→                      {/* Chain indicators */}
+   616→                      {(collection.spriteChain?.enabled || collection.useTimelineSounds || collection.conditionalMode) && (
+   617→                        <div className="flex gap-2 flex-wrap">
+   618→                          {collection.spriteChain?.enabled && (
+   619→                            <Badge variant="secondary" className="text-xs bg-purple-500/10 text-purple-600">
+   620→                              <Play className="w-3 h-3 mr-1" />
+   621→                              Sprite Chain ({collection.spriteChain.steps.length} steps)
+   622→                            </Badge>
+   623→                          )}
+   624→                          {collection.useTimelineSounds && (
+   625→                            <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-600">
+   626→                              <Volume2 className="w-3 h-3 mr-1" />
+   627→                              Timeline Sounds
+   628→                            </Badge>
+   629→                          )}
+   630→                          {collection.conditionalMode && (
+   631→                            <Badge variant="secondary" className="text-xs bg-teal-500/10 text-teal-600">
+   632→                              <GitBranch className="w-3 h-3 mr-1" />
+   633→                              Condicional ({collection.conditionalEntries?.length || 0})
+   634→                            </Badge>
+   635→                          )}
+   636→                        </div>
+   637→                      )}
+   638→
+   639→                      {/* Sprite configs count */}
+   640→                      {Object.keys(collection.spriteConfigs).length > 0 && (
+   641→                        <div className="text-xs text-muted-foreground">
+   642→                          <Layers className="w-3 h-3 inline mr-1" />
+   643→                          {Object.keys(collection.spriteConfigs).length} sprites con configuración individual
+   644→                        </div>
+   645→                      )}
+   646→
+   647→                      {/* Actions */}
+   648→                      <div className="flex gap-2 flex-wrap">
+   649→                        {/* Test Button */}
+   650→                        <Button
+   651→                          variant={testingCollectionId === collection.id ? "default" : "outline"}
+   652→                          size="sm"
+   653→                          className={cn(
+   654→                            "h-7",
+   655→                            testingCollectionId === collection.id 
+   656→                              ? "bg-green-500 hover:bg-green-600 text-white" 
+   657→                              : "text-green-600 hover:text-green-700 hover:bg-green-50"
+   658→                          )}
+   659→                          onClick={() => handleTestTrigger(collection)}
+   660→                          disabled={!spritePacksV2.find(p => p.id === collection.packId)?.sprites?.length}
+   661→                        >
+   662→                          {testingCollectionId === collection.id ? (
+   663→                            <>
+   664→                              <CheckCircle className="w-3.5 h-3.5 mr-1" />
+   665→                              Aplicado
+   666→                            </>
+   667→                          ) : (
+   668→                            <>
+   669→                              <TestTube className="w-3.5 h-3.5 mr-1" />
+   670→                              Test
+   671→                            </>
+   672→                          )}
+   673→                        </Button>
+   674→                        <Button
+   675→                          variant="outline"
+   676→                          size="sm"
+   677→                          className="h-7"
+   678→                          onClick={() => handleEditCollection(collection)}
+   679→                        >
+   680→                          <Settings2 className="w-3.5 h-3.5 mr-1" />
+   681→                          Editar
+   682→                        </Button>
+   683→                        <Button
+   684→                          variant="outline"
+   685→                          size="sm"
+   686→                          className="h-7"
+   687→                          onClick={() => handleDuplicateCollection(collection)}
+   688→                        >
+   689→                          <Copy className="w-3.5 h-3.5 mr-1" />
+   690→                          Duplicar
+   691→                        </Button>
+   692→                        <Button
+   693→                          variant="outline"
+   694→                          size="sm"
+   695→                          className="h-7"
+   696→                          onClick={() => handleToggleActive(collection.id, !collection.active)}
+   697→                        >
+   698→                          {collection.active ? (
+   699→                            <>
+   700→                              <Zap className="w-3.5 h-3.5 mr-1 opacity-50" />
+   701→                              Desactivar
+   702→                            </>
+   703→                          ) : (
+   704→                            <>
+   705→                              <Zap className="w-3.5 h-3.5 mr-1" />
+   706→                              Activar
+   707→                            </>
+   708→                          )}
+   709→                        </Button>
+   710→                        <Button
+   711→                          variant="outline"
+   712→                          size="sm"
+   713→                          className="h-7 text-destructive hover:text-destructive"
+   714→                          onClick={() => handleDeleteCollection(collection.id)}
+   715→                        >
+   716→                          <Trash2 className="w-3.5 h-3.5 mr-1" />
+   717→                          Eliminar
+   718→                        </Button>
+   719→                      </div>
+   720→                    </div>
+   721→                  </AccordionContent>
+   722→                </AccordionItem>
+   723→              );
+   724→            })}
+   725→        </Accordion>
+   726→      ) : spritePacksV2.length > 0 && (
+   727→        <div className="text-center py-8 text-muted-foreground border rounded-lg bg-muted/20">
+   728→          <Zap className="w-10 h-10 mx-auto mb-2 opacity-30" />
+   729→          <p className="text-sm">No hay Trigger Collections</p>
+   730→          <p className="text-xs mt-1">Crea una colección para configurar triggers avanzados</p>
+   731→          <Button
+   732→            size="sm"
+   733→            className="mt-3"
+   734→            onClick={handleCreateCollection}
+   735→          >
+   736→            <Plus className="w-4 h-4 mr-1" />
+   737→            Crear Primera Colección
+   738→          </Button>
+   739→        </div>
+   740→      )}
+   741→
+   742→      {/* Edit Dialog */}
+   743→      <Dialog open={showEditor} onOpenChange={setShowEditor}>
+   744→        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+   745→          <DialogHeader>
+   746→            <DialogTitle>
+   747→              {editingCollection?.id && triggerCollections.find(c => c.id === editingCollection.id)
+   748→                ? 'Editar Trigger Collection'
+   749→                : 'Nueva Trigger Collection'}
+   750→            </DialogTitle>
+   751→          </DialogHeader>
+   752→
+   753→          {editingCollection && (
+   754→            <TriggerCollectionEditorForm
+   755→              collection={editingCollection}
+   756→              spritePacksV2={spritePacksV2}
+   757→              character={character}
+   758→              onChange={setEditingCollection}
+   759→            />
+   760→          )}
+   761→
+   762→          <DialogFooter>
+   763→            <Button variant="outline" onClick={() => setShowEditor(false)}>
+   764→              Cancelar
+   765→            </Button>
+   766→            <Button onClick={handleSaveCollection}>
+   767→              Guardar
+   768→            </Button>
+   769→          </DialogFooter>
+   770→        </DialogContent>
+   771→      </Dialog>
+   772→    </div>
+   773→  );
+   774→}
+   775→
+   776→// ============================================
+   777→// Conditional Simulator Component
+   778→// ============================================
+   779→
+   780→interface ConditionalSimulatorProps {
+   781→  collection: TriggerCollection;
+   782→  character: CharacterCard;
+   783→  packSprites: { id: string; label: string; url: string; thumbnail?: string }[];
+   784→}
+   785→
+   786→function ConditionalSimulator({
+   787→  collection,
+   788→  character,
+   789→  packSprites,
+   790→}: ConditionalSimulatorProps) {
+   791→  const [simValues, setSimValues] = useState<Record<string, number>>({});
+   792→  const [showSimulator, setShowSimulator] = useState(false);
+   793→
+   794→  // Get unique attribute keys from all conditional entries
+   795→  const uniqueAttributes = useMemo(() => {
+   796→    const keys = new Set<string>();
+   797→    (collection.conditionalEntries || []).forEach(entry => {
+   798→      entry.conditions.forEach(cond => {
+   799→        if (cond.attributeKey) keys.add(cond.attributeKey);
+   800→      });
+   801→    });
+   802→    return Array.from(keys);
+   803→  }, [collection.conditionalEntries]);
+   804→
+   805→  // Get attribute definitions from character stats config
+   806→  const attributeDefs = useMemo(() => {
+   807→    return character.statsConfig?.attributes || [];
+   808→  }, [character.statsConfig?.attributes]);
+   809→
+   810→  // Get attribute display info
+   811→  const getAttrInfo = (key: string) => {
+   812→    const def = attributeDefs.find(a => a.key === key);
+   813→    return {
+   814→      name: def?.name || key,
+   815→      min: def?.min ?? 0,
+   816→      max: def?.max ?? 100,
+   817→    };
+   818→  };
+   819→
+   820→  // Get session stats from store
+   821→  const sessionStats = useTavernStore((state) => {
+   822→    const activeSessionId = state.activeSessionId;
+   823→    if (!activeSessionId) return null;
+   824→    const session = state.sessions.find(s => s.id === activeSessionId);
+   825→    return session?.sessionStats ?? null;
+   826→  });
+   827→
+   828→  // Build simulated session stats
+   829→  const simulatedStats: SessionStats | null = useMemo(() => {
+   830→    if (!sessionStats) return null;
+   831→    // Override the character's attribute values with slider values
+   832→    const charStats = sessionStats.characterStats?.[character.id];
+   833→    if (!charStats) return sessionStats;
+   834→
+   835→    return {
+   836→      ...sessionStats,
+   837→      characterStats: {
+   838→        ...sessionStats.characterStats,
+   839→        [character.id]: {
+   840→          ...charStats,
+   841→          attributeValues: {
+   842→            ...charStats.attributeValues,
+   843→            ...simValues,
+   844→          },
+   845→        },
+   846→      },
+   847→    };
+   848→  }, [sessionStats, character.id, simValues]);
+   849→
+   850→  // Evaluate which entry wins
+   851→  const winner = useMemo(() => {
+   852→    if (!simulatedStats || !collection.conditionalEntries?.length) return null;
+   853→    return evaluateConditionalEntries(collection.conditionalEntries, simulatedStats, character.id);
+   854→  }, [collection.conditionalEntries, simulatedStats, character.id]);
+   855→
+   856→  // Get session value for an attribute
+   857→  const getSessionValue = (key: string): number | string | null => {
+   858→    if (!sessionStats) return null;
+   859→    return getAttributeValueFromStats(character.id, key, sessionStats);
+   860→  };
+   861→
+   862→  if (uniqueAttributes.length === 0) {
+   863→    return null;
+   864→  }
+   865→
+   866→  return (
+   867→    <div className="space-y-3 p-4 border rounded-lg bg-slate-500/5 border-slate-500/20">
+   868→      <div
+   869→        className="flex items-center justify-between cursor-pointer"
+   870→        onClick={() => setShowSimulator(!showSimulator)}
+   871→      >
+   872→        <div>
+   873→          <h4 className="text-sm font-medium flex items-center gap-2 text-slate-600">
+   874→            <SlidersHorizontal className="w-4 h-4" />
+   875→            Simulador de Condiciones
+   876→          </h4>
+   877→          <p className="text-xs text-muted-foreground mt-1">
+   878→            Ajusta los valores para ver qué sprite se mostraría.
+   879→          </p>
+   880→        </div>
+   881→        <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+   882→          {showSimulator ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+   883→        </Button>
+   884→      </div>
+   885→
+   886→      {showSimulator && (
+   887→        <div className="space-y-3">
+   888→          {/* Attribute Sliders */}
+   889→          {uniqueAttributes.map(key => {
+   890→            const info = getAttrInfo(key);
+   891→            const currentValue = simValues[key] ?? (getSessionValue(key) as number ?? info.min);
+   892→            const sessionVal = getSessionValue(key);
+   893→            return (
+   894→              <div key={key} className="space-y-1">
+   895→                <div className="flex items-center justify-between">
+   896→                  <Label className="text-xs font-medium">{info.name}</Label>
+   897→                  <div className="flex items-center gap-2">
+   898→                    <Input
+   899→                      type="number"
+   900→                      value={currentValue}
+   901→                      onChange={(e) => {
+   902→                        setSimValues(prev => ({
+   903→                          ...prev,
+   904→                          [key]: parseFloat(e.target.value) || 0,
+   905→                        }));
+   906→                      }}
+   907→                      className="h-6 w-16 text-xs text-center"
+   908→                    />
+   909→                    {sessionVal !== null && (
+   910→                      <span className="text-[10px] text-muted-foreground">
+   911→                        (sesión: {String(sessionVal)})
+   912→                      </span>
+   913→                    )}
+   914→                  </div>
+   915→                </div>
+   916→                <input
+   917→                  type="range"
+   918→                  min={info.min}
+   919→                  max={info.max}
+   920→                  value={currentValue}
+   921→                  onChange={(e) => {
+   922→                    setSimValues(prev => ({
+   923→                      ...prev,
+   924→                      [key]: parseFloat(e.target.value),
+   925→                    }));
+   926→                  }}
+   927→                  className="w-full h-1.5 bg-muted rounded-lg appearance-none cursor-pointer accent-teal-500"
+   928→                />
+   929→              </div>
+   930→            );
+   931→          })}
+   932→
+   933→          {/* Result */}
+   934→          <div className="p-3 bg-background rounded-lg border border-teal-500/20">
+   935→            {winner ? (
+   936→              <div className="space-y-2">
+   937→                <div className="flex items-center gap-2 text-sm font-medium text-teal-600">
+   938→                  <CheckCircle className="w-4 h-4" />
+   939→                  <span>Entrada activa: &quot;{winner.name}&quot; (P{winner.priority})</span>
+   940→                </div>
+   941→                <div className="flex items-center gap-2">
+   942→                  {(() => {
+   943→                    const sprite = packSprites.find(s => s.id === winner.spriteId);
+   944→                    return sprite ? (
+   945→                      <>
+   946→                        <div className="w-10 h-10 rounded overflow-hidden bg-muted/50">
+   947→                          <SpritePreview
+   948→                            src={sprite.url}
+   949→                            alt={sprite.label}
+   950→                            className="w-full h-full"
+   951→                            objectFit="contain"
+   952→                          />
+   953→                        </div>
+   954→                        <span className="text-xs">{sprite.label}</span>
+   955→                      </>
+   956→                    ) : (
+   957→                      <span className="text-xs text-muted-foreground">Sprite no encontrado</span>
+   958→                    );
+   959→                  })()}
+   960→                </div>
+   961→                {/* Show condition evaluation details */}
+   962→                {winner.conditions.map((cond, i) => {
+   963→                  const attrVal = simValues[cond.attributeKey] ?? getSessionValue(cond.attributeKey);
+   964→                  const passes = simulatedStats
+   965→                    ? evaluateStatConditions([cond], simulatedStats, character.id)
+   966→                    : false;
+   967→                  const operatorSymbol = cond.operator === '<=' ? '≤' : cond.operator === '>=' ? '≥' : cond.operator;
+   968→                  return (
+   969→                    <div key={i} className={cn(
+   970→                      "text-xs flex items-center gap-1",
+   971→                      passes ? "text-green-600" : "text-red-500"
+   972→                    )}>
+   973→                      {passes ? '✅' : '❌'}
+   974→                      <span>{cond.attributeKey} {operatorSymbol} {String(cond.value)}</span>
+   975→                      {cond.operator === 'between' && <span> a {cond.valueMax}</span>}
+   976→                      <span className="text-muted-foreground">→ {String(attrVal ?? '?')} {operatorSymbol} {String(cond.value)}</span>
+   977→                      <span>{passes ? '✓' : '✗'}</span>
+   978→                    </div>
+   979→                  );
+   980→                })}
+   981→              </div>
+   982→            ) : (
+   983→              <div className="space-y-1">
+   984→                <div className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+   985→                  <Info className="w-4 h-4" />
+   986→                  Ninguna condición coincide
+   987→                </div>
+   988→                {collection.defaultSpriteId ? (
+   989→                  <div className="flex items-center gap-2">
+   990→                    {(() => {
+   991→                      const sprite = packSprites.find(s => s.id === collection.defaultSpriteId);
+   992→                      return sprite ? (
+   993→                        <>
+   994→                          <div className="w-8 h-8 rounded overflow-hidden bg-muted/50">
+   995→                            <SpritePreview
+   996→                              src={sprite.url}
+   997→                              alt={sprite.label}
+   998→                              className="w-full h-full"
+   999→                              objectFit="contain"
+  1000→                            />
+  1001→                          </div>
+  1002→                          <span className="text-xs">Usando sprite por defecto: {sprite.label}</span>
+  1003→                        </>
+  1004→                      ) : (
+  1005→                        <span className="text-xs text-muted-foreground">Sprite por defecto no encontrado</span>
+  1006→                      );
+  1007→                    })()}
+  1008→                  </div>
+  1009→                ) : (
+  1010→                  <p className="text-xs text-muted-foreground">Se usará el comportamiento normal de la colección</p>
+  1011→                )}
+  1012→              </div>
+  1013→            )}
+  1014→          </div>
+  1015→        </div>
+  1016→      )}
+  1017→    </div>
+  1018→  );
+  1019→}
+  1020→
+  1021→// ============================================
+  1022→// Trigger Collection Editor Form
+  1023→// ============================================
+  1024→
+  1025→interface TriggerCollectionEditorFormProps {
+  1026→  collection: TriggerCollection;
+  1027→  spritePacksV2: SpritePackV2[];
+  1028→  character: CharacterCard;
+  1029→  onChange: (collection: TriggerCollection) => void;
+  1030→}
+  1031→
+  1032→function TriggerCollectionEditorForm({
+  1033→  collection,
+  1034→  spritePacksV2,
+  1035→  character,
+  1036→  onChange,
+  1037→}: TriggerCollectionEditorFormProps) {
+  1038→  const [expandedSprites, setExpandedSprites] = useState<Record<string, boolean>>({});
+  1039→
+  1040→  // Get pack sprites
+  1041→  const packSprites = useMemo(() => {
+  1042→    const pack = spritePacksV2.find(p => p.id === collection.packId);
+  1043→    return pack?.sprites || [];
+  1044→  }, [collection.packId, spritePacksV2]);
+  1045→
+  1046→  // Update field
+  1047→  const updateField = <K extends keyof TriggerCollection>(field: K, value: TriggerCollection[K]) => {
+  1048→    onChange({ ...collection, [field]: value });
+  1049→  };
+  1050→
+  1051→  // Format time
+  1052→  const formatTime = (ms: number) => {
+  1053→    if (ms <= 0) return 'Nunca';
+  1054→    if (ms < 1000) return `${ms}ms`;
+  1055→    const seconds = Math.floor(ms / 1000);
+  1056→    if (seconds < 60) return `${seconds}s`;
+  1057→    const minutes = Math.floor(seconds / 60);
+  1058→    const remainingSeconds = seconds % 60;
+  1059→    return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+  1060→  };
+  1061→
+  1062→  // Parse keys string
+  1063→  const parseKeysString = (keysStr: string): string[] => {
+  1064→    return keysStr.split(',').map(k => k.trim()).filter(Boolean);
+  1065→  };
+  1066→
+  1067→  // Keys to string
+  1068→  const keysToString = (keys: string[] | undefined): string => {
+  1069→    return (keys || []).join(', ');
+  1070→  };
+  1071→
+  1072→  return (
+  1073→    <div className="space-y-6 py-4">
+  1074→      {/* Basic Info */}
+  1075→      <div className="space-y-3">
+  1076→        <h4 className="text-sm font-medium flex items-center gap-2">
+  1077→          <Settings2 className="w-4 h-4" />
+  1078→          Información Básica
+  1079→        </h4>
+  1080→        
+  1081→        <div className="grid grid-cols-2 gap-4">
+  1082→          <div>
+  1083→            <Label className="text-xs">Nombre</Label>
+  1084→            <Input
+  1085→              value={collection.name}
+  1086→              onChange={(e) => updateField('name', e.target.value)}
+  1087→              placeholder="Nombre de la colección"
+  1088→              className="h-8 mt-1"
+  1089→            />
+  1090→          </div>
+  1091→          <div>
+  1092→            <Label className="text-xs">Prioridad</Label>
+  1093→            <Input
+  1094→              type="number"
+  1095→              value={collection.priority}
+  1096→              onChange={(e) => updateField('priority', parseInt(e.target.value) || 1)}
+  1097→              placeholder="1"
+  1098→              className="h-8 mt-1"
+  1099→            />
+  1100→          </div>
+  1101→        </div>
+  1102→
+  1103→        <div>
+  1104→          <Label className="text-xs">Sprite Pack</Label>
+  1105→          <Select
+  1106→            value={collection.packId}
+  1107→            onValueChange={(v) => updateField('packId', v)}
+  1108→          >
+  1109→            <SelectTrigger className="h-8 mt-1">
+  1110→              <SelectValue placeholder="Seleccionar pack..." />
+  1111→            </SelectTrigger>
+  1112→            <SelectContent>
+  1113→              {spritePacksV2.map(pack => (
+  1114→                <SelectItem key={pack.id} value={pack.id}>
+  1115→                  <div className="flex items-center gap-2">
+  1116→                    <Package className="w-3 h-3" />
+  1117→                    {pack.name} ({pack.sprites.length} sprites)
+  1118→                  </div>
+  1119→                </SelectItem>
+  1120→              ))}
+  1121→            </SelectContent>
+  1122→          </Select>
+  1123→        </div>
+  1124→
+  1125→        <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+  1126→          <div>
+  1127→            <Label className="text-xs font-medium">Activo</Label>
+  1128→            <p className="text-[10px] text-muted-foreground">
+  1129→              Si está inactivo, no se procesarán los triggers
+  1130→            </p>
+  1131→          </div>
+  1132→          <Switch
+  1133→            checked={collection.active}
+  1134→            onCheckedChange={(v) => updateField('active', v)}
+  1135→          />
+  1136→        </div>
+  1137→      </div>
+  1138→
+  1139→      {/* Collection Keys */}
+  1140→      <div className="space-y-3 p-4 border rounded-lg bg-cyan-500/5 border-cyan-500/20">
+  1141→        <h4 className="text-sm font-medium flex items-center gap-2 text-cyan-600">
+  1142→          <Zap className="w-4 h-4" />
+  1143→          Keys de Colección (General)
+  1144→        </h4>
+  1145→        <p className="text-xs text-muted-foreground">
+  1146→          Cuando se detecta esta key, se activa la colección usando el comportamiento configurado.
+  1147→        </p>
+  1148→
+  1149→        <div className="grid grid-cols-2 gap-4">
+  1150→          <div>
+  1151→            <Label className="text-xs">Key Principal</Label>
+  1152→            <Input
+  1153→              value={collection.collectionKey}
+  1154→              onChange={(e) => updateField('collectionKey', e.target.value)}
+  1155→              placeholder="Ej: spritewin, sprite:happy"
+  1156→              className="h-8 mt-1 font-mono text-sm"
+  1157→            />
+  1158→          </div>
+  1159→          <div>
+  1160→            <Label className="text-xs">Keys Alternativas (coma)</Label>
+  1161→            <Input
+  1162→              value={keysToString(collection.collectionKeys)}
+  1163→              onChange={(e) => updateField('collectionKeys', parseKeysString(e.target.value))}
+  1164→              placeholder="win, victory, triumph"
+  1165→              className="h-8 mt-1 font-mono text-sm"
+  1166→            />
+  1167→          </div>
+  1168→        </div>
+  1169→
+  1170→        <div className="grid grid-cols-2 gap-4">
+  1171→          <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg border">
+  1172→            <div>
+  1173→              <Label className="text-xs font-medium">Requiere |pipes|</Label>
+  1174→              <p className="text-[10px] text-muted-foreground">
+  1175→                Solo detecta entre | pipes |
+  1176→              </p>
+  1177→            </div>
+  1178→            <Switch
+  1179→              checked={collection.collectionKeyRequirePipes}
+  1180→              onCheckedChange={(v) => updateField('collectionKeyRequirePipes', v)}
+  1181→            />
+  1182→          </div>
+  1183→          <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg border">
+  1184→            <div>
+  1185→              <Label className="text-xs font-medium">Case Sensitive</Label>
+  1186→              <p className="text-[10px] text-muted-foreground">
+  1187→                Distingue mayúsculas
+  1188→              </p>
+  1189→            </div>
+  1190→            <Switch
+  1191→              checked={collection.collectionKeyCaseSensitive}
+  1192→              onCheckedChange={(v) => updateField('collectionKeyCaseSensitive', v)}
+  1193→            />
+  1194→          </div>
+  1195→        </div>
+  1196→
+  1197→        <div>
+  1198→          <Label className="text-xs">Cooldown</Label>
+  1199→          <div className="flex items-center gap-2 mt-1">
+  1200→            <Input
+  1201→              type="number"
+  1202→              value={collection.cooldownMs}
+  1203→              onChange={(e) => updateField('cooldownMs', Math.max(0, parseInt(e.target.value) || 0))}
+  1204→              className="h-8 w-24"
+  1205→            />
+  1206→            <span className="text-xs text-muted-foreground">
+  1207→              ms ({formatTime(collection.cooldownMs)})
+  1208→            </span>
+  1209→          </div>
+  1210→        </div>
+  1211→      </div>
+  1212→
+  1213→      {/* Behavior */}
+  1214→      <div className="space-y-3">
+  1215→        <h4 className="text-sm font-medium flex items-center gap-2">
+  1216→          <Crown className="w-4 h-4 text-amber-500" />
+  1217→          Comportamiento
+  1218→        </h4>
+  1219→        <p className="text-xs text-muted-foreground">
+  1220→          Cómo seleccionar el sprite cuando se activa la colección.
+  1221→        </p>
+  1222→
+  1223→        <Select
+  1224→          value={collection.collectionBehavior}
+  1225→          onValueChange={(v) => updateField('collectionBehavior', v as 'principal' | 'random' | 'list')}
+  1226→        >
+  1227→          <SelectTrigger className="h-8">
+  1228→            <SelectValue />
+  1229→          </SelectTrigger>
+  1230→          <SelectContent>
+  1231→            {BEHAVIOR_OPTIONS.map(opt => (
+  1232→              <SelectItem key={opt.value} value={opt.value}>
+  1233→                <div className="flex items-center gap-2">
+  1234→                  {opt.icon}
+  1235→                  <span>{opt.label}</span>
+  1236→                </div>
+  1237→              </SelectItem>
+  1238→            ))}
+  1239→          </SelectContent>
+  1240→        </Select>
+  1241→        <p className="text-xs text-muted-foreground">
+  1242→          {BEHAVIOR_OPTIONS.find(b => b.value === collection.collectionBehavior)?.description}
+  1243→        </p>
+  1244→
+  1245→        {collection.collectionBehavior === 'principal' && packSprites.length > 0 && (
+  1246→          <div className="space-y-2">
+  1247→            <Label className="text-xs flex items-center gap-1">
+  1248→              <Crown className="w-3 h-3 text-amber-500" />
+  1249→              Sprite Principal
+  1250→            </Label>
+  1251→            <Select
+  1252→              value={collection.principalSpriteId || '__first__'}
+  1253→              onValueChange={(v) => updateField('principalSpriteId', v === '__first__' ? undefined : v)}
+  1254→            >
+  1255→              <SelectTrigger className="h-8">
+  1256→                <SelectValue placeholder="Primero del pack" />
+  1257→              </SelectTrigger>
+  1258→              <SelectContent>
+  1259→                <SelectItem value="__first__">
+  1260→                  <span className="text-muted-foreground">Primero del pack (automático)</span>
+  1261→                </SelectItem>
+  1262→                {packSprites.map(sprite => (
+  1263→                  <SelectItem key={sprite.id} value={sprite.id}>
+  1264→                    <div className="flex items-center gap-2">
+  1265→                      <div className="w-5 h-5 rounded overflow-hidden bg-muted/50">
+  1266→                        <SpritePreview
+  1267→                          src={sprite.url}
+  1268→                          alt={sprite.label}
+  1269→                          className="w-full h-full"
+  1270→                          objectFit="contain"
+  1271→                        />
+  1272→                      </div>
+  1273→                      {sprite.label}
+  1274→                    </div>
+  1275→                  </SelectItem>
+  1276→                ))}
+  1277→              </SelectContent>
+  1278→            </Select>
+  1279→          </div>
+  1280→        )}
+  1281→      </div>
+  1282→
+  1283→      {/* Fallback */}
+  1284→      <div className="space-y-3 p-4 border rounded-lg bg-blue-500/5 border-blue-500/20">
+  1285→        <h4 className="text-sm font-medium flex items-center gap-2 text-blue-600">
+  1286→          <Timer className="w-4 h-4" />
+  1287→          Fallback
+  1288→        </h4>
+  1289→        <p className="text-xs text-muted-foreground">
+  1290→          Qué hacer después de mostrar el sprite.
+  1291→        </p>
+  1292→
+  1293→        <div className="grid grid-cols-2 gap-4">
+  1294→          <div>
+  1295→            <Label className="text-xs">Modo de Fallback</Label>
+  1296→            <Select
+  1297→              value={collection.fallbackMode}
+  1298→              onValueChange={(v) => updateField('fallbackMode', v as TriggerFallbackMode)}
+  1299→            >
+  1300→              <SelectTrigger className="h-8 mt-1">
+  1301→                <SelectValue />
+  1302→              </SelectTrigger>
+  1303→              <SelectContent>
+  1304→                {FALLBACK_MODES.map(mode => (
+  1305→                  <SelectItem key={mode.value} value={mode.value}>
+  1306→                    {mode.label}
+  1307→                  </SelectItem>
+  1308→                ))}
+  1309→              </SelectContent>
+  1310→            </Select>
+  1311→          </div>
+  1312→          <div>
+  1313→            <Label className="text-xs">Tiempo (0 = nunca)</Label>
+  1314→            <div className="flex items-center gap-2 mt-1">
+  1315→              <Input
+  1316→                type="number"
+  1317→                value={collection.fallbackDelayMs}
+  1318→                onChange={(e) => updateField('fallbackDelayMs', Math.max(0, parseInt(e.target.value) || 0))}
+  1319→                className="h-8"
+  1320→              />
+  1321→              <span className="text-xs text-muted-foreground">
+  1322→                {formatTime(collection.fallbackDelayMs)}
+  1323→              </span>
+  1324→            </div>
+  1325→          </div>
+  1326→        </div>
+  1327→
+  1328→        {collection.fallbackMode === 'custom_sprite' && packSprites.length > 0 && (
+  1329→          <div>
+  1330→            <Label className="text-xs">Sprite de Fallback</Label>
+  1331→            <Select
+  1332→              value={collection.fallbackSpriteId || ''}
+  1333→              onValueChange={(v) => updateField('fallbackSpriteId', v || undefined)}
+  1334→            >
+  1335→              <SelectTrigger className="h-8 mt-1">
+  1336→                <SelectValue placeholder="Seleccionar sprite..." />
+  1337→              </SelectTrigger>
+  1338→              <SelectContent>
+  1339→                {packSprites.map(sprite => (
+  1340→                  <SelectItem key={sprite.id} value={sprite.id}>
+  1341→                    <div className="flex items-center gap-2">
+  1342→                      <div className="w-5 h-5 rounded overflow-hidden bg-muted/50">
+  1343→                        <SpritePreview
+  1344→                          src={sprite.url}
+  1345→                          alt={sprite.label}
+  1346→                          className="w-full h-full"
+  1347→                          objectFit="contain"
+  1348→                        />
+  1349→                      </div>
+  1350→                      {sprite.label}
+  1351→                    </div>
+  1352→                  </SelectItem>
+  1353→                ))}
+  1354→              </SelectContent>
+  1355→            </Select>
+  1356→          </div>
+  1357→        )}
+  1358→      </div>
+  1359→
+  1360→      {/* Sprite Chains */}
+  1361→      <div className="space-y-3 p-4 border rounded-lg bg-purple-500/5 border-purple-500/20">
+  1362→        <div className="flex items-center justify-between">
+  1363→          <h4 className="text-sm font-medium flex items-center gap-2 text-purple-600">
+  1364→            <Play className="w-4 h-4" />
+  1365→            Sprite Chain
+  1366→          </h4>
+  1367→          <Switch
+  1368→            checked={collection.spriteChain?.enabled ?? false}
+  1369→            onCheckedChange={(enabled) => updateField('spriteChain', {
+  1370→              ...collection.spriteChain,
+  1371→              enabled,
+  1372→              steps: collection.spriteChain?.steps || [],
+  1373→              loop: collection.spriteChain?.loop ?? false,
+  1374→              interruptible: collection.spriteChain?.interruptible ?? true,
+  1375→            })}
+  1376→          />
+  1377→        </div>
+  1378→        
+  1379→        {collection.spriteChain?.enabled && (
+  1380→          <div className="space-y-3">
+  1381→            <p className="text-xs text-muted-foreground">
+  1382→              Secuencia de sprites que se reproducen en lugar de un tiempo de espera fijo.
+  1383→            </p>
+  1384→            
+  1385→            <div className="grid grid-cols-2 gap-4">
+  1386→              <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg border">
+  1387→                <div>
+  1388→                  <Label className="text-xs font-medium">Loop</Label>
+  1389→                  <p className="text-[10px] text-muted-foreground">
+  1390→                    Repetir la secuencia
+  1391→                  </p>
+  1392→                </div>
+  1393→                <Switch
+  1394→                  checked={collection.spriteChain?.loop ?? false}
+  1395→                  onCheckedChange={(loop) => updateField('spriteChain', {
+  1396→                    ...collection.spriteChain!,
+  1397→                    loop,
+  1398→                  })}
+  1399→                />
+  1400→              </div>
+  1401→              <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg border">
+  1402→                <div>
+  1403→                  <Label className="text-xs font-medium">Interrumpible</Label>
+  1404→                  <p className="text-[10px] text-muted-foreground">
+  1405→                    Permite cortar con nuevo trigger
+  1406→                  </p>
+  1407→                </div>
+  1408→                <Switch
+  1409→                  checked={collection.spriteChain?.interruptible ?? true}
+  1410→                  onCheckedChange={(interruptible) => updateField('spriteChain', {
+  1411→                    ...collection.spriteChain!,
+  1412→                    interruptible,
+  1413→                  })}
+  1414→                />
+  1415→              </div>
+  1416→            </div>
+  1417→
+  1418→            {/* Chain Steps */}
+  1419→            <div className="space-y-2">
+  1420→              <div className="flex items-center justify-between">
+  1421→                <Label className="text-xs">Steps ({collection.spriteChain?.steps.length || 0})</Label>
+  1422→                <Button
+  1423→                  variant="outline"
+  1424→                  size="sm"
+  1425→                  className="h-6 text-xs"
+  1426→                  onClick={() => {
+  1427→                    const steps = collection.spriteChain?.steps || [];
+  1428→                    const newStep = {
+  1429→                      spriteId: packSprites[0]?.id || '',
+  1430→                      durationMs: 1000,
+  1431→                      transition: 'none' as const,
+  1432→                    };
+  1433→                    updateField('spriteChain', {
+  1434→                      ...collection.spriteChain!,
+  1435→                      steps: [...steps, newStep],
+  1436→                    });
+  1437→                  }}
+  1438→                  disabled={packSprites.length === 0}
+  1439→                >
+  1440→                  <Plus className="w-3 h-3 mr-1" />
+  1441→                  Agregar Step
+  1442→                </Button>
+  1443→              </div>
+  1444→              
+  1445→              <ScrollArea className="h-32">
+  1446→                <div className="space-y-1 pr-2">
+  1447→                  {(collection.spriteChain?.steps || []).map((step, index) => {
+  1448→                    const sprite = packSprites.find(s => s.id === step.spriteId);
+  1449→                    return (
+  1450→                      <div
+  1451→                        key={index}
+  1452→                        className="flex items-center gap-2 p-2 bg-background rounded border"
+  1453→                      >
+  1454→                        <div className="w-8 h-8 rounded overflow-hidden bg-muted/50">
+  1455→                          {sprite ? (
+  1456→                            <SpritePreview
+  1457→                              src={sprite.url}
+  1458→                              alt={sprite.label}
+  1459→                              className="w-full h-full"
+  1460→                              objectFit="contain"
+  1461→                            />
+  1462→                          ) : (
+  1463→                            <ImageIcon className="w-4 h-4 m-auto text-muted-foreground" />
+  1464→                          )}
+  1465→                        </div>
+  1466→                        <Select
+  1467→                          value={step.spriteId}
+  1468→                          onValueChange={(v) => {
+  1469→                            const newSteps = [...(collection.spriteChain?.steps || [])];
+  1470→                            newSteps[index] = { ...newSteps[index], spriteId: v };
+  1471→                            updateField('spriteChain', {
+  1472→                              ...collection.spriteChain!,
+  1473→                              steps: newSteps,
+  1474→                            });
+  1475→                          }}
+  1476→                        >
+  1477→                          <SelectTrigger className="h-7 flex-1">
+  1478→                            <SelectValue placeholder="Sprite..." />
+  1479→                          </SelectTrigger>
+  1480→                          <SelectContent>
+  1481→                            {packSprites.map(s => (
+  1482→                              <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+  1483→                            ))}
+  1484→                          </SelectContent>
+  1485→                        </Select>
+  1486→                        <Input
+  1487→                          type="number"
+  1488→                          value={step.durationMs}
+  1489→                          onChange={(e) => {
+  1490→                            const newSteps = [...(collection.spriteChain?.steps || [])];
+  1491→                            newSteps[index] = { ...newSteps[index], durationMs: parseInt(e.target.value) || 1000 };
+  1492→                            updateField('spriteChain', {
+  1493→                              ...collection.spriteChain!,
+  1494→                              steps: newSteps,
+  1495→                            });
+  1496→                          }}
+  1497→                          className="h-7 w-20"
+  1498→                          placeholder="ms"
+  1499→                        />
+  1500→                        <Button
+  1501→                          variant="ghost"
+  1502→                          size="sm"
+  1503→                          className="h-7 w-7 p-0 text-destructive"
+  1504→                          onClick={() => {
+  1505→                            const newSteps = (collection.spriteChain?.steps || []).filter((_, i) => i !== index);
+  1506→                            updateField('spriteChain', {
+  1507→                              ...collection.spriteChain!,
+  1508→                              steps: newSteps,
+  1509→                            });
+  1510→                          }}
+  1511→                        >
+  1512→                          <Trash2 className="w-3 h-3" />
+  1513→                        </Button>
+  1514→                      </div>
+  1515→                    );
+  1516→                  })}
+  1517→                </div>
+  1518→              </ScrollArea>
+  1519→            </div>
+  1520→          </div>
+  1521→        )}
+  1522→      </div>
+  1523→
+  1524→      {/* Timeline Sounds */}
+  1525→      <div className="space-y-3 p-4 border rounded-lg bg-green-500/5 border-green-500/20">
+  1526→        <div className="flex items-center justify-between">
+  1527→          <div>
+  1528→            <h4 className="text-sm font-medium flex items-center gap-2 text-green-600">
+  1529→              <Volume2 className="w-4 h-4" />
+  1530→              Timeline Sounds
+  1531→            </h4>
+  1532→            <p className="text-xs text-muted-foreground mt-1">
+  1533→              Cuando está activado, reproduce los sonidos configurados en el timeline del sprite.
+  1534→            </p>
+  1535→          </div>
+  1536→          <Switch
+  1537→            checked={collection.useTimelineSounds ?? false}
+  1538→            onCheckedChange={(useTimelineSounds) => updateField('useTimelineSounds', useTimelineSounds)}
+  1539→          />
+  1540→        </div>
+  1541→
+  1542→        {collection.useTimelineSounds && (
+  1543→          <div className="text-xs bg-muted/30 p-3 rounded-lg">
+  1544→            <Info className="w-3 h-3 inline mr-1" />
+  1545→            Los sonidos se configuran en cada sprite individual del Sprite Pack.
+  1546→            Asegúrate de que los sprites tengan configurado su timeline con tracks de sonido.
+  1547→          </div>
+  1548→        )}
+  1549→      </div>
+  1550→
+  1551→      {/* FASE 7: Sprite Transition */}
+  1552→      <div className="space-y-3 p-4 border rounded-lg bg-orange-500/5 border-orange-500/20">
+  1553→        <div className="flex items-center justify-between">
+  1554→          <div>
+  1555→            <h4 className="text-sm font-medium flex items-center gap-2 text-orange-600">
+  1556→              <Sparkles className="w-4 h-4" />
+  1557→              Transición de Sprite
+  1558→            </h4>
+  1559→            <p className="text-xs text-muted-foreground mt-1">
+  1560→              Efecto visual al cambiar a este sprite desde otro.
+  1561→            </p>
+  1562→          </div>
+  1563→          <Switch
+  1564→            checked={collection.transition?.type !== 'none' && !!collection.transition}
+  1565→            onCheckedChange={(enabled) => {
+  1566→              if (enabled) {
+  1567→                updateField('transition', {
+  1568→                  type: 'fade',
+  1569→                  duration: 300,
+  1570→                  easing: 'ease-in-out',
+  1571→                  direction: 'left',
+  1572→                });
+  1573→              } else {
+  1574→                updateField('transition', undefined);
+  1575→              }
+  1576→            }}
+  1577→          />
+  1578→        </div>
+  1579→
+  1580→        {collection.transition && collection.transition.type !== 'none' && (
+  1581→          <div className="space-y-3">
+  1582→            <div className="grid grid-cols-2 gap-4">
+  1583→              <div>
+  1584→                <Label className="text-xs">Tipo de Transición</Label>
+  1585→                <Select
+  1586→                  value={collection.transition.type}
+  1587→                  onValueChange={(v) => updateField('transition', {
+  1588→                    ...collection.transition!,
+  1589→                    type: v as SpriteTransition,
+  1590→                  })}
+  1591→                >
+  1592→                  <SelectTrigger className="h-8 mt-1">
+  1593→                    <SelectValue />
+  1594→                  </SelectTrigger>
+  1595→                  <SelectContent>
+  1596→                    {TRANSITION_TYPE_OPTIONS.filter(o => o.value !== 'none').map(opt => (
+  1597→                      <SelectItem key={opt.value} value={opt.value}>
+  1598→                        {opt.label}
+  1599→                      </SelectItem>
+  1600→                    ))}
+  1601→                  </SelectContent>
+  1602→                </Select>
+  1603→                <p className="text-[10px] text-muted-foreground mt-1">
+  1604→                  {TRANSITION_TYPE_OPTIONS.find(o => o.value === collection.transition?.type)?.description}
+  1605→                </p>
+  1606→              </div>
+  1607→              <div>
+  1608→                <Label className="text-xs">Easing</Label>
+  1609→                <Select
+  1610→                  value={collection.transition.easing}
+  1611→                  onValueChange={(v) => updateField('transition', {
+  1612→                    ...collection.transition!,
+  1613→                    easing: v as SpriteTransitionEasing,
+  1614→                  })}
+  1615→                >
+  1616→                  <SelectTrigger className="h-8 mt-1">
+  1617→                    <SelectValue />
+  1618→                  </SelectTrigger>
+  1619→                  <SelectContent>
+  1620→                    {TRANSITION_EASING_OPTIONS.map(opt => (
+  1621→                      <SelectItem key={opt.value} value={opt.value}>
+  1622→                        {opt.label}
+  1623→                      </SelectItem>
+  1624→                    ))}
+  1625→                  </SelectContent>
+  1626→                </Select>
+  1627→              </div>
+  1628→            </div>
+  1629→
+  1630→            <div className="grid grid-cols-2 gap-4">
+  1631→              <div>
+  1632→                <Label className="text-xs">Duración: {collection.transition.duration}ms</Label>
+  1633→                <Slider
+  1634→                  value={[collection.transition.duration]}
+  1635→                  min={100}
+  1636→                  max={2000}
+  1637→                  step={50}
+  1638→                  onValueChange={([v]) => updateField('transition', {
+  1639→                    ...collection.transition!,
+  1640→                    duration: v,
+  1641→                  })}
+  1642→                  className="mt-2"
+  1643→                />
+  1644→              </div>
+  1645→              {collection.transition.type === 'slide' && (
+  1646→                <div>
+  1647→                  <Label className="text-xs">Dirección</Label>
+  1648→                  <Select
+  1649→                    value={collection.transition.direction || 'left'}
+  1650→                    onValueChange={(v) => updateField('transition', {
+  1651→                      ...collection.transition!,
+  1652→                      direction: v as SpriteTransitionDirection,
+  1653→                    })}
+  1654→                  >
+  1655→                    <SelectTrigger className="h-8 mt-1">
+  1656→                      <SelectValue />
+  1657→                    </SelectTrigger>
+  1658→                    <SelectContent>
+  1659→                      {TRANSITION_DIRECTION_OPTIONS.map(opt => (
+  1660→                        <SelectItem key={opt.value} value={opt.value}>
+  1661→                          {opt.label}
+  1662→                        </SelectItem>
+  1663→                      ))}
+  1664→                    </SelectContent>
+  1665→                  </Select>
+  1666→                </div>
+  1667→              )}
+  1668→            </div>
+  1669→
+  1670→            {/* Preview */}
+  1671→            <div className="p-3 bg-background/50 rounded-lg border">
+  1672→              <Label className="text-xs font-medium flex items-center gap-1 mb-2">
+  1673→                <TestTube className="w-3 h-3" />
+  1674→                Vista Previa
+  1675→              </Label>
+  1676→              <SpriteTransitionPreview transition={collection.transition} />
+  1677→            </div>
+  1678→          </div>
+  1679→        )}
+  1680→      </div>
+  1681→
+  1682→      {/* Conditional Mode */}
+  1683→      <div className="space-y-3 p-4 border rounded-lg bg-teal-500/5 border-teal-500/20">
+  1684→        <div className="flex items-center justify-between">
+  1685→          <div>
+  1686→            <h4 className="text-sm font-medium flex items-center gap-2 text-teal-600">
+  1687→              <GitBranch className="w-4 h-4" />
+  1688→              Modo Condicional
+  1689→            </h4>
+  1690→            <p className="text-xs text-muted-foreground mt-1">
+  1691→              Cuando se activa, evalúa condiciones de atributos para seleccionar el sprite.
+  1692→            </p>
+  1693→          </div>
+  1694→          <Switch
+  1695→            checked={collection.conditionalMode ?? false}
+  1696→            onCheckedChange={(enabled) => updateField('conditionalMode', enabled)}
+  1697→          />
+  1698→        </div>
+  1699→
+  1700→        {collection.conditionalMode && (
+  1701→          <div className="space-y-4">
+  1702→            {/* Conditional Entries */}
+  1703→            <div className="space-y-2">
+  1704→              <div className="flex items-center justify-between">
+  1705→                <Label className="text-xs font-medium text-teal-700">
+  1706→                  Entradas Condicionales
+  1707→                </Label>
+  1708→                <Button
+  1709→                  variant="outline"
+  1710→                  size="sm"
+  1711→                  className="h-7 text-xs border-teal-500/30 hover:bg-teal-500/10 hover:text-teal-600"
+  1712→                  onClick={() => {
+  1713→                    const entries = collection.conditionalEntries || [];
+  1714→                    const newEntry: ConditionalSpriteEntry = {
+  1715→                      id: crypto.randomUUID(),
+  1716→                      name: 'Nueva Entrada',
+  1717→                      enabled: true,
+  1718→                      priority: entries.length,
+  1719→                      conditions: [],
+  1720→                      spriteId: packSprites[0]?.id || '',
+  1721→                    };
+  1722→                    updateField('conditionalEntries', [...entries, newEntry]);
+  1723→                  }}
+  1724→                  disabled={packSprites.length === 0}
+  1725→                >
+  1726→                  <Plus className="w-3 h-3 mr-1" />
+  1727→                  Agregar Entrada
+  1728→                </Button>
+  1729→              </div>
+  1730→
+  1731→              {(collection.conditionalEntries || []).length === 0 && (
+  1732→                <div className="text-center py-4 text-muted-foreground bg-background/50 rounded-lg border border-dashed">
+  1733→                  <GitBranch className="w-5 h-5 mx-auto mb-1 opacity-40" />
+  1734→                  <p className="text-xs">No hay entradas condicionales</p>
+  1735→                  <p className="text-[10px] mt-0.5">Agrega entradas para seleccionar sprites según atributos</p>
+  1736→                </div>
+  1737→              )}
+  1738→
+  1739→              <ScrollArea className="max-h-96">
+  1740→                <div className="space-y-3 pr-2">
+  1741→                  {(collection.conditionalEntries || []).map((entry, entryIndex) => {
+  1742→                    const entrySprite = packSprites.find(s => s.id === entry.spriteId);
+  1743→                    return (
+  1744→                      <div
+  1745→                        key={entry.id}
+  1746→                        className="border rounded-lg overflow-hidden bg-background border-teal-500/20"
+  1747→                      >
+  1748→                        {/* Entry Header */}
+  1749→                        <div className="flex items-center gap-2 p-3 bg-teal-500/5">
+  1750→                          <div className="w-8 h-8 rounded overflow-hidden bg-muted/50 flex-shrink-0">
+  1751→                            {entrySprite ? (
+  1752→                              <SpritePreview
+  1753→                                src={entrySprite.url}
+  1754→                                alt={entrySprite.label}
+  1755→                                className="w-full h-full"
+  1756→                                objectFit="contain"
+  1757→                              />
+  1758→                            ) : (
+  1759→                              <ImageIcon className="w-4 h-4 m-auto text-muted-foreground" />
+  1760→                            )}
+  1761→                          </div>
+  1762→                          <div className="flex-1 min-w-0">
+  1763→                            <Input
+  1764→                              value={entry.name}
+  1765→                              onChange={(e) => {
+  1766→                                const entries = collection.conditionalEntries || [];
+  1767→                                updateField('conditionalEntries', entries.map(en =>
+  1768→                                  en.id === entry.id ? { ...en, name: e.target.value } : en
+  1769→                                ));
+  1770→                              }}
+  1771→                              className="h-7 text-sm font-medium border-transparent bg-transparent hover:border-border focus:border-border px-1"
+  1772→                              placeholder="Nombre de la entrada"
+  1773→                            />
+  1774→                          </div>
+  1775→                          <div className="flex items-center gap-1 flex-shrink-0">
+  1776→                            <Button
+  1777→                              variant="ghost"
+  1778→                              size="sm"
+  1779→                              className="h-7 w-7 p-0"
+  1780→                              onClick={() => {
+  1781→                                const entries = [...(collection.conditionalEntries || [])];
+  1782→                                if (entryIndex > 0) {
+  1783→                                  const temp = entries[entryIndex - 1];
+  1784→                                  entries[entryIndex - 1] = { ...entry, priority: temp.priority };
+  1785→                                  entries[entryIndex] = { ...temp, priority: entry.priority };
+  1786→                                  updateField('conditionalEntries', entries);
+  1787→                                }
+  1788→                              }}
+  1789→                              disabled={entryIndex === 0}
+  1790→                            >
+  1791→                              <ChevronUp className="w-3 h-3" />
+  1792→                            </Button>
+  1793→                            <Button
+  1794→                              variant="ghost"
+  1795→                              size="sm"
+  1796→                              className="h-7 w-7 p-0"
+  1797→                              onClick={() => {
+  1798→                                const entries = [...(collection.conditionalEntries || [])];
+  1799→                                if (entryIndex < entries.length - 1) {
+  1800→                                  const temp = entries[entryIndex + 1];
+  1801→                                  entries[entryIndex + 1] = { ...entry, priority: temp.priority };
+  1802→                                  entries[entryIndex] = { ...temp, priority: entry.priority };
+  1803→                                  updateField('conditionalEntries', entries);
+  1804→                                }
+  1805→                              }}
+  1806→                              disabled={entryIndex === (collection.conditionalEntries || []).length - 1}
+  1807→                            >
+  1808→                              <ChevronDown className="w-3 h-3" />
+  1809→                            </Button>
+  1810→                            <Button
+  1811→                              variant="ghost"
+  1812→                              size="sm"
+  1813→                              className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+  1814→                              onClick={() => {
+  1815→                                const entries = (collection.conditionalEntries || []).filter(e => e.id !== entry.id);
+  1816→                                updateField('conditionalEntries', entries);
+  1817→                              }}
+  1818→                            >
+  1819→                              <Trash2 className="w-3 h-3" />
+  1820→                            </Button>
+  1821→                          </div>
+  1822→                        </div>
+  1823→
+  1824→                        {/* Entry Body */}
+  1825→                        <div className="p-3 space-y-3">
+  1826→                          <div className="grid grid-cols-3 gap-3">
+  1827→                            <div>
+  1828→                              <Label className="text-[10px]">Prioridad</Label>
+  1829→                              <Input
+  1830→                                type="number"
+  1831→                                value={entry.priority}
+  1832→                                onChange={(e) => {
+  1833→                                  const entries = collection.conditionalEntries || [];
+  1834→                                  updateField('conditionalEntries', entries.map(en =>
+  1835→                                    en.id === entry.id ? { ...en, priority: parseInt(e.target.value) || 0 } : en
+  1836→                                  ));
+  1837→                                }}
+  1838→                                className="h-7 mt-1"
+  1839→                              />
+  1840→                            </div>
+  1841→                            <div className="flex items-center justify-between p-2 bg-muted/30 rounded-lg border col-span-1">
+  1842→                              <Label className="text-[10px] font-medium">Habilitado</Label>
+  1843→                              <Switch
+  1844→                                checked={entry.enabled}
+  1845→                                onCheckedChange={(enabled) => {
+  1846→                                  const entries = collection.conditionalEntries || [];
+  1847→                                  updateField('conditionalEntries', entries.map(en =>
+  1848→                                    en.id === entry.id ? { ...en, enabled } : en
+  1849→                                  ));
+  1850→                                }}
+  1851→                              />
+  1852→                            </div>
+  1853→                            <div>
+  1854→                              <Label className="text-[10px]">Sprite</Label>
+  1855→                              <Select
+  1856→                                value={entry.spriteId || '__none__'}
+  1857→                                onValueChange={(v) => {
+  1858→                                  const entries = collection.conditionalEntries || [];
+  1859→                                  updateField('conditionalEntries', entries.map(en =>
+  1860→                                    en.id === entry.id ? { ...en, spriteId: v === '__none__' ? '' : v } : en
+  1861→                                  ));
+  1862→                                }}
+  1863→                              >
+  1864→                                <SelectTrigger className="h-7 mt-1 text-xs">
+  1865→                                  <SelectValue placeholder="Seleccionar..." />
+  1866→                                </SelectTrigger>
+  1867→                                <SelectContent>
+  1868→                                  <SelectItem value="__none__">
+  1869→                                    <span className="text-muted-foreground">Ninguno</span>
+  1870→                                  </SelectItem>
+  1871→                                  {packSprites.map(sprite => (
+  1872→                                    <SelectItem key={sprite.id} value={sprite.id}>
+  1873→                                      <div className="flex items-center gap-2">
+  1874→                                        <div className="w-4 h-4 rounded overflow-hidden bg-muted/50">
+  1875→                                          <SpritePreview
+  1876→                                            src={sprite.url}
+  1877→                                            alt={sprite.label}
+  1878→                                            className="w-full h-full"
+  1879→                                            objectFit="contain"
+  1880→                                          />
+  1881→                                        </div>
+  1882→                                        {sprite.label}
+  1883→                                      </div>
+  1884→                                    </SelectItem>
+  1885→                                  ))}
+  1886→                                </SelectContent>
+  1887→                              </Select>
+  1888→                            </div>
+  1889→                          </div>
+  1890→
+  1891→                          {/* Conditions */}
+  1892→                          <div className="space-y-2">
+  1893→                            <div className="flex items-center justify-between">
+  1894→                              <Label className="text-[10px] font-medium text-teal-700">Condiciones</Label>
+  1895→                              <Button
+  1896→                                variant="ghost"
+  1897→                                size="sm"
+  1898→                                className="h-5 text-[10px] text-teal-600 hover:text-teal-700"
+  1899→                                onClick={() => {
+  1900→                                  const entries = collection.conditionalEntries || [];
+  1901→                                  const newCondition: StatRequirement = {
+  1902→                                    attributeKey: character.statsConfig?.attributes?.[0]?.key || '',
+  1903→                                    operator: '<=',
+  1904→                                    value: 0,
+  1905→                                  };
+  1906→                                  updateField('conditionalEntries', entries.map(en =>
+  1907→                                    en.id === entry.id
+  1908→                                      ? { ...en, conditions: [...en.conditions, newCondition] }
+  1909→                                      : en
+  1910→                                  ));
+  1911→                                }}
+  1912→                              >
+  1913→                                <Plus className="w-2.5 h-2.5 mr-0.5" />
+  1914→                                Agregar Condición
+  1915→                              </Button>
+  1916→                            </div>
+  1917→
+  1918→                            {entry.conditions.length === 0 && (
+  1919→                              <div className="text-center py-2 text-muted-foreground bg-muted/20 rounded border border-dashed">
+  1920→                                <p className="text-[10px]">Sin condiciones — siempre se cumple</p>
+  1921→                              </div>
+  1922→                            )}
+  1923→
+  1924→                            {entry.conditions.map((condition, condIndex) => (
+  1925→                              <div
+  1926→                                key={condIndex}
+  1927→                                className="flex items-center gap-2 p-2 bg-muted/20 rounded border"
+  1928→                              >
+  1929→                                {/* Attribute Key */}
+  1930→                                {character.statsConfig?.attributes && character.statsConfig.attributes.length > 0 ? (
+  1931→                                  <Select
+  1932→                                    value={condition.attributeKey}
+  1933→                                    onValueChange={(v) => {
+  1934→                                      const entries = collection.conditionalEntries || [];
+  1935→                                      updateField('conditionalEntries', entries.map(en =>
+  1936→                                        en.id === entry.id
+  1937→                                          ? {
+  1938→                                              ...en,
+  1939→                                              conditions: en.conditions.map((c, i) =>
+  1940→                                                i === condIndex ? { ...c, attributeKey: v } : c
+  1941→                                              ),
+  1942→                                            }
+  1943→                                          : en
+  1944→                                      ));
+  1945→                                    }}
+  1946→                                  >
+  1947→                                    <SelectTrigger className="h-7 w-28 text-xs">
+  1948→                                      <SelectValue placeholder="Atributo" />
+  1949→                                    </SelectTrigger>
+  1950→                                    <SelectContent>
+  1951→                                      {character.statsConfig.attributes.map(attr => (
+  1952→                                        <SelectItem key={attr.key} value={attr.key}>
+  1953→                                          {attr.name}
+  1954→                                        </SelectItem>
+  1955→                                      ))}
+  1956→                                    </SelectContent>
+  1957→                                  </Select>
+  1958→                                ) : (
+  1959→                                  <Input
+  1960→                                    value={condition.attributeKey}
+  1961→                                    onChange={(e) => {
+  1962→                                      const entries = collection.conditionalEntries || [];
+  1963→                                      updateField('conditionalEntries', entries.map(en =>
+  1964→                                        en.id === entry.id
+  1965→                                          ? {
+  1966→                                              ...en,
+  1967→                                              conditions: en.conditions.map((c, i) =>
+  1968→                                                i === condIndex ? { ...c, attributeKey: e.target.value } : c
+  1969→                                              ),
+  1970→                                            }
+  1971→                                          : en
+  1972→                                      ));
+  1973→                                    }}
+  1974→                                    className="h-7 w-28 text-xs"
+  1975→                                    placeholder="atributo"
+  1976→                                  />
+  1977→                                )}
+  1978→
+  1979→                                {/* Operator */}
+  1980→                                <Select
+  1981→                                  value={condition.operator}
+  1982→                                  onValueChange={(v) => {
+  1983→                                    const entries = collection.conditionalEntries || [];
+  1984→                                    updateField('conditionalEntries', entries.map(en =>
+  1985→                                      en.id === entry.id
+  1986→                                        ? {
+  1987→                                            ...en,
+  1988→                                            conditions: en.conditions.map((c, i) =>
+  1989→                                              i === condIndex ? { ...c, operator: v as RequirementOperator } : c
+  1990→                                            ),
+  1991→                                          }
+  1992→                                        : en
+  1993→                                    ));
+  1994→                                  }}
+  1995→                                >
+  1996→                                  <SelectTrigger className="h-7 w-20 text-xs">
+  1997→                                    <SelectValue />
+  1998→                                  </SelectTrigger>
+  1999→                                  <SelectContent>
+  2000→                                    {OPERATOR_OPTIONS.map(op => (
+
+[showing lines 1-2000 of 2659; use offset=2001 with limit to continue reading]

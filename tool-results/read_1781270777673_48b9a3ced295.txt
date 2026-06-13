@@ -1,0 +1,1016 @@
+     1→// ============================================
+     2→// Stats Handler - Pre-LLM resolution of stats keys
+     3→// ============================================
+     4→//
+     5→// This handler resolves {{key}} templates in character content
+     6→// and builds blocks for skills/intentions/invitations injection
+     7→//
+     8→// Keys resolved:
+     9→// - {{attributeKey}} → "AttributeName: value" (e.g., {{vida}} → "Vida: 50")
+    10→// - {{acciones}} → Block of available skills
+    11→// - {{intenciones}} → Block of available intentions
+    12→// - {{peticiones}} → Block of available invitations (from target's solicitudes)
+    13→// - {{solicitudes}} → Block of received requests
+    14→
+    15→import type {
+    16→  CharacterStatsConfig,
+    17→  SessionStats,
+    18→  CharacterSessionStats,
+    19→  AttributeDefinition,
+    20→  SkillDefinition,
+    21→  IntentionDefinition,
+    22→  InvitationDefinition,
+    23→  SolicitudDefinition,
+    24→  ResolvedStats,
+    25→  SolicitudInstance,
+    26→  CharacterCard,
+    27→  QuestTemplate,
+    28→} from '@/types';
+    29→import {
+    30→  evaluateRequirements,
+    31→  filterSkillsByRequirements,
+    32→  filterIntentionsByRequirements,
+    33→  filterInvitationsByRequirements,
+    34→} from '@/store/slices/statsSlice';
+    35→import {
+    36→  resolveAllKeys,
+    37→  buildKeyResolutionContext,
+    38→} from '@/lib/key-resolver';
+    39→
+    40→// ============================================
+    41→// Types
+    42→// ============================================
+    43→
+    44→export interface StatsResolutionContext {
+    45→  characterId: string;
+    46→  statsConfig: CharacterStatsConfig | undefined;
+    47→  sessionStats: SessionStats | undefined;
+    48→  // For resolving invitations - need access to other characters' solicitudDefinitions
+    49→  allCharacters?: CharacterCard[];
+    50→  // For resolving {{user}} and {{char}} in descriptions
+    51→  userName?: string;
+    52→  characterName?: string;
+    53→  // For resolving objective names in skill rewards
+    54→  questTemplates?: QuestTemplate[];
+    55→  // For comprehensive key resolution ({{userpersona}}, {{eventos}}, stat keys, etc.)
+    56→  personaDescription?: string;
+    57→  personaResolvedStats?: ResolvedStats | null;
+    58→  // Lorebook entry keys for resolving {{key}} in action descriptions
+    59→  // Built by buildLorebookEntryKeyMap() from active lorebooks
+    60→  lorebookEntryKeys?: Record<string, string>;
+    61→}
+    62→
+    63→export interface ResolvedAttribute {
+    64→  key: string;
+    65→  name: string;
+    66→  value: number | string;
+    67→  formatted: string;
+    68→}
+    69→
+    70→// Extended invitation for display (includes data from target's solicitudDefinition)
+    71→export interface ResolvedInvitation {
+    72→  id: string;
+    73→  name: string;
+    74→  peticionKey: string;               // Key to ACTIVATE the peticion (used by sender)
+    75→  solicitudKey: string;              // Key to COMPLETE the solicitud (used by receiver)
+    76→  peticionDescription: string;       // Description shown to SOLICITANTE (who asks)
+    77→  solicitudDescription: string;      // Description shown to SOLICITADO (who receives)
+    78→  completionDescription?: string;    // Description saved when completed
+    79→  targetCharacterId: string;
+    80→  targetCharacterName: string;
+    81→  solicitudId: string;
+    82→}
+    83→
+    84→// ============================================
+    85→// Main Resolution Functions
+    86→// ============================================
+    87→
+    88→/**
+    89→ * Get character session stats
+    90→ */
+    91→export function getCharacterSessionStats(
+    92→  sessionStats: SessionStats | undefined,
+    93→  characterId: string
+    94→): CharacterSessionStats | null {
+    95→  if (!sessionStats?.characterStats?.[characterId]) {
+    96→    return null;
+    97→  }
+    98→  return sessionStats.characterStats[characterId];
+    99→}
+   100→
+   101→/**
+   102→ * Get attribute value (from session or default)
+   103→ */
+   104→export function getAttributeValue(
+   105→  attribute: AttributeDefinition,
+   106→  sessionStats: CharacterSessionStats | null
+   107→): number | string {
+   108→  if (sessionStats?.attributeValues?.[attribute.key] !== undefined) {
+   109→    return sessionStats.attributeValues[attribute.key];
+   110→  }
+   111→  return attribute.defaultValue;
+   112→}
+   113→
+   114→/**
+   115→ * Format attribute value for prompt
+   116→ * 
+   117→ * Format:
+   118→ * - Number type: "Nombre: (valor/max)" e.g., "Resistencia física: (40/100)"
+   119→ * - Keyword/Text type: "Nombre: valor" e.g., "Detección: mágica"
+   120→ * - Custom outputFormat takes precedence if defined
+   121→ */
+   122→export function formatAttributeValue(
+   123→  attribute: AttributeDefinition,
+   124→  value: number | string
+   125→): string {
+   126→  // Use new outputFormat field first (custom format takes precedence)
+   127→  if (attribute.outputFormat) {
+   128→    return attribute.outputFormat.replace('{value}', String(value));
+   129→  }
+   130→  // Fallback to legacy keywordFormat for backward compatibility
+   131→  if (attribute.keywordFormat) {
+   132→    return attribute.keywordFormat.replace('{value}', String(value));
+   133→  }
+   134→  
+   135→  // Default formatting based on attribute type
+   136→  const attributeType = attribute.type || 'number';
+   137→  
+   138→  if (attributeType === 'number') {
+   139→    // For numeric attributes, show (current/max) format
+   140→    const max = attribute.max ?? 100;
+   141→    return `${attribute.name}: (${value}/${max})`;
+   142→  } else {
+   143→    // For keyword and text types, show just the value
+   144→    return `${attribute.name}: ${value}`;
+   145→  }
+   146→}
+   147→
+   148→/**
+   149→ * Resolve a single attribute key
+   150→ */
+   151→export function resolveAttributeKey(
+   152→  key: string,
+   153→  statsConfig: CharacterStatsConfig | undefined,
+   154→  sessionStats: CharacterSessionStats | null
+   155→): string | null {
+   156→  if (!statsConfig?.attributes) return null;
+   157→  
+   158→  const attribute = statsConfig.attributes.find(a => a.key === key);
+   159→  if (!attribute) return null;
+   160→  
+   161→  const value = getAttributeValue(attribute, sessionStats);
+   162→  return formatAttributeValue(attribute, value);
+   163→}
+   164→
+   165→/**
+   166→ * Resolve all attributes for a character
+   167→ */
+   168→export function resolveAllAttributes(
+   169→  statsConfig: CharacterStatsConfig | undefined,
+   170→  sessionStats: CharacterSessionStats | null
+   171→): ResolvedAttribute[] {
+   172→  if (!statsConfig?.attributes) return [];
+   173→  
+   174→  return statsConfig.attributes.map(attribute => {
+   175→    const value = getAttributeValue(attribute, sessionStats);
+   176→    return {
+   177→      key: attribute.key,
+   178→      name: attribute.name,
+   179→      value,
+   180→      formatted: formatAttributeValue(attribute, value),
+   181→    };
+   182→  });
+   183→}
+   184→
+   185→/**
+   186→ * Resolve template keys in text using the full key resolution pipeline
+   187→ * Now handles ALL key types: {{user}}, {{char}}, {{userpersona}}, {{eventos}},
+   188→ * {{solicitante}}, {{solicitado}}, stat attribute keys, etc.
+   189→ *
+   190→ * Falls back to basic regex replacement when full context is not available.
+   191→ */
+   192→function resolveTemplateKeys(
+   193→  text: string,
+   194→  userName?: string,
+   195→  characterName?: string,
+   196→  solicitanteName?: string,
+   197→  solicitadoName?: string,
+   198→  fullContext?: {
+   199→    characterName: string;
+   200→    userName: string;
+   201→    personaDescription?: string;
+   202→    sessionStats?: SessionStats;
+   203→    characterId?: string;
+   204→    resolvedStats?: import('@/types').ResolvedStats | null;
+   205→    personaResolvedStats?: import('@/types').ResolvedStats | null;
+   206→    lorebookEntryKeys?: Record<string, string>;
+   207→  }
+   208→): string {
+   209→  if (!text) return text;
+   210→
+   211→  // If full context is available, use the comprehensive resolver
+   212→  if (fullContext) {
+   213→    const keyContext = buildKeyResolutionContext(
+   214→      { id: '', name: fullContext.characterName } as import('@/types').CharacterCard,
+   215→      fullContext.userName,
+   216→      fullContext.personaDescription
+   217→        ? { name: fullContext.userName, description: fullContext.personaDescription } as import('@/types').Persona
+   218→        : undefined,
+   219→      fullContext.resolvedStats,
+   220→      fullContext.sessionStats,
+   221→      undefined, // soundTriggers
+   222→      undefined, // soundSettings
+   223→      fullContext.personaResolvedStats,
+   224→      undefined, // questTemplates
+   225→      undefined, // sessionQuests
+   226→      undefined, // questSettings
+   227→      undefined, // outletSections
+   228→      undefined, // lorebookAttributeKeys
+   229→      undefined, // inventoryData
+   230→      fullContext.lorebookEntryKeys
+   231→    );
+   232→    // Override characterId for event keys
+   233→    (keyContext as Record<string, unknown>).characterId = fullContext.characterId;
+   234→    return resolveAllKeys(text, keyContext);
+   235→  }
+   236→
+   237→  // Fallback: basic regex replacement for common keys
+   238→  let result = text;
+   239→  if (userName) {
+   240→    result = result.replace(/\{\{user\}\}/gi, userName);
+   241→  }
+   242→  if (characterName) {
+   243→    result = result.replace(/\{\{char\}\}/gi, characterName);
+   244→  }
+   245→  if (solicitanteName) {
+   246→    result = result.replace(/\{\{solicitante\}\}/gi, solicitanteName);
+   247→  }
+   248→  if (solicitadoName) {
+   249→    result = result.replace(/\{\{solicitado\}\}/gi, solicitadoName);
+   250→  }
+   251→  return result;
+   252→}
+   253→
+   254→/**
+   255→ * Find objective name by completion key
+   256→ */
+   257→function findObjectiveNameByKey(
+   258→  objectiveKey: string,
+   259→  questTemplates: { objectives?: { completion?: { key?: string; keys?: string[] }; description?: string }[] }[]
+   260→): string | null {
+   261→  const normalizedKey = objectiveKey.toLowerCase().trim();
+   262→  
+   263→  for (const template of questTemplates) {
+   264→    for (const objective of template.objectives || []) {
+   265→      const keys = [
+   266→        objective.completion?.key,
+   267→        ...(objective.completion?.keys || [])
+   268→      ].filter(Boolean);
+   269→      
+   270→      for (const key of keys) {
+   271→        if (key?.toLowerCase().trim() === normalizedKey) {
+   272→          return objective.description || null;
+   273→        }
+   274→      }
+   275→    }
+   276→  }
+   277→  
+   278→  return null;
+   279→}
+   280→
+   281→/**
+   282→ * Build skills/actions block for injection
+   283→ *
+   284→ * NEW READABLE FORMAT:
+   285→ * [ACCIONES DEL PERSONAJE]
+   286→ * El personaje puede realizar las siguientes acciones:
+   287→ *
+   288→ * • Examen psicológico
+   289→ *   Tipo: ejecución
+   290→  *   Descripción: Sabes aplicar examen psicológico...
+   291→  *   Resultado esperado: Completará "Analizar al usuario"
+   292→  */
+   293→export function buildSkillsBlock(
+   294→  skills: SkillDefinition[],
+   295→  attributeValues: Record<string, number | string>,
+   296→  header: string,
+   297→  questTemplates: { objectives?: { completion?: { key?: string; keys?: string[] }; description?: string }[] }[] = [],
+   298→  characterName?: string,
+   299→  sessionStats?: SessionStats,
+   300→  userName?: string,
+   301→  fullContext?: {
+   302→    characterId?: string;
+   303→    personaDescription?: string;
+   304→    resolvedStats?: import('@/types').ResolvedStats | null;
+   305→    personaResolvedStats?: import('@/types').ResolvedStats | null;
+   306→    userName?: string;
+   307→    characterName?: string;
+   308→    sessionStats?: SessionStats;
+   309→    lorebookEntryKeys?: Record<string, string>;
+   310→  }
+   311→): string {
+   312→  const availableSkills = filterSkillsByRequirements(skills, attributeValues, sessionStats);
+   313→
+   314→  if (availableSkills.length === 0) {
+   315→    return '';
+   316→  }
+   317→
+   318→  const charName = characterName || '{{char}}';
+   319→  
+   320→  // Build instruction text that goes BEFORE the header
+   321→  // This ensures the LLM sees the rules before the action list
+   322→  const introLines: string[] = [];
+   323→  if (header.includes('ACCIONES')) {
+   324→    introLines.push(`${charName} DEBE usar acciones SIEMPRE que realice algo significativo en el roleplay. Las acciones son la forma principal de interactuar con el mundo. Cada vez que ${charName} haga algo más allá de hablar (moverse, atacar, usar habilidades, reaccionar físicamente, etc.), DEBE usar la TOOL "manage_action" con la key correspondiente.`);
+   325→    introLines.push('');
+   326→    introLines.push('REGLAS DE USO DE ACCIONES:');
+   327→    introLines.push('- USA ACCIONES ACTIVAMENTE. No esperes a que haya objetivos o misiones para usarlas.');
+   328→    introLines.push('- Cada acción narrativa importante DEBE ir acompañada de un manage_action call.');
+   329→    introLines.push('- Si una acción describe algo que el personaje hace físicamente, úsala.');
+   330→    introLines.push('- Puedes usar múltiples acciones en una sola respuesta si la situación lo requiere.');
+   331→    introLines.push('- NUNCA dejes de usar una acción disponible cuando el personaje la podría realizar.');
+   332→    introLines.push('');
+   333→    introLines.push('Si una acción indica "Puede completar", usa la TOOL "manage_quest" o "manage_solicitud" con la key correspondiente para marcar como completado inmediatamente después de realizar la acción.');
+   334→  }
+   335→  const introText = introLines.length > 0 ? introLines.join('\n') : '';
+   336→
+   337→  // Build the block: instructions → header → action list
+   338→  const lines: string[] = [];
+   339→  if (introText) {
+   340→    lines.push(introText);
+   341→  }
+   342→  lines.push(header);
+   343→
+   344→  // Build full context for comprehensive key resolution if data is available
+   345→  const keyFullContext = (userName && characterName) ? {
+   346→    characterName,
+   347→    userName,
+   348→    personaDescription: fullContext?.personaDescription,
+   349→    sessionStats,
+   350→    characterId: fullContext?.characterId,
+   351→    resolvedStats: fullContext?.resolvedStats,
+   352→    personaResolvedStats: fullContext?.personaResolvedStats,
+   353→    lorebookEntryKeys: fullContext?.lorebookEntryKeys,
+   354→  } : undefined;
+   355→
+   356→  availableSkills.forEach((skill) => {
+   357→    // Resolve template keys in skill text fields using full key resolution
+   358→    const resolvedName = resolveTemplateKeys(skill.name, userName, characterName, undefined, undefined, keyFullContext);
+   359→    const resolvedDescription = resolveTemplateKeys(skill.description, userName, characterName, undefined, undefined, keyFullContext);
+   360→
+   361→    // Check for custom inject format first
+   362→    if (skill.injectFormat) {
+   363→      const resolvedInjectFormat = resolveTemplateKeys(skill.injectFormat, userName, characterName, undefined, undefined, keyFullContext);
+   364→      const formatted = resolvedInjectFormat
+   365→        .replace('{name}', resolvedName)
+   366→        .replace('{description}', resolvedDescription)
+   367→        .replace('{key}', skill.activationKey || skill.key || '');
+   368→      lines.push(`- ${formatted}`);
+   369→    } else {
+   370→      // New readable format
+   371→      lines.push(`- Nombre: ${resolvedName}`);
+   372→
+   373→      // Type (preparacion/ejecucion)
+   374→      if (skill.type) {
+   375→        const tipoLabel = skill.type === 'preparacion' ? 'preparación' : 'ejecución';
+   376→        lines.push(`  Tipo: ${tipoLabel}`);
+   377→      }
+   378→
+   379→      lines.push(`  Descripción: ${resolvedDescription}`);
+   380→
+   381→      // Collect objectives and solicitudes that this skill can complete
+   382→      const objectives: string[] = [];
+   383→      const solicitudes: string[] = [];
+   384→
+   385→      for (const reward of skill.activationRewards || []) {
+   386→        if (reward.type === 'objective' && reward.objective?.objectiveKey) {
+   387→          const objectiveName = findObjectiveNameByKey(reward.objective.objectiveKey, questTemplates);
+   388→          objectives.push(objectiveName || reward.objective.objectiveKey);
+   389→        } else if (reward.type === 'solicitud' && reward.solicitud?.solicitudKey) {
+   390→          solicitudes.push(reward.solicitud.solicitudName || reward.solicitud.solicitudKey);
+   391→        }
+   392→      }
+   393→
+   394→      // Build "Puede completar" section
+   395→      if (objectives.length > 0 || solicitudes.length > 0) {
+   396→        lines.push(`  Puede completar:`);
+   397→        for (const obj of objectives) {
+   398→          lines.push(`    - Objetivo: ${obj}`);
+   399→        }
+   400→        for (const sol of solicitudes) {
+   401→          lines.push(`    - Solicitud: ${sol}`);
+   402→        }
+   403→      }
+   404→    }
+   405→  });
+   406→
+   407→  return lines.join('\n');
+   408→}
+   409→
+   410→/**
+   411→ * Build intentions block for injection
+   412→ *
+   413→ * Format (same as skills):
+   414→ * 1) Intention Name
+   415→ *    - Descripción: description text
+   416→ *    - key de activación: activation_key (only if key exists)
+   417→ *
+   418→ * Numbers are dynamic based on available intentions count.
+   419→ */
+   420→export function buildIntentionsBlock(
+   421→  intentions: IntentionDefinition[],
+   422→  attributeValues: Record<string, number | string>,
+   423→  header: string,
+   424→  sessionStats?: SessionStats,
+   425→  userName?: string,
+   426→  characterName?: string,
+   427→  fullContext?: {
+   428→    characterId?: string;
+   429→    personaDescription?: string;
+   430→    resolvedStats?: import('@/types').ResolvedStats | null;
+   431→    personaResolvedStats?: import('@/types').ResolvedStats | null;
+   432→    userName?: string;
+   433→    characterName?: string;
+   434→    sessionStats?: SessionStats;
+   435→    lorebookEntryKeys?: Record<string, string>;
+   436→  }
+   437→): string {
+   438→  const availableIntentions = filterIntentionsByRequirements(intentions, attributeValues, sessionStats);
+   439→
+   440→  if (availableIntentions.length === 0) {
+   441→    return '';
+   442→  }
+   443→
+   444→  const lines: string[] = [header];
+   445→
+   446→  // Build full context for comprehensive key resolution if data is available
+   447→  const keyFullContext = (userName && characterName) ? {
+   448→    characterName,
+   449→    userName,
+   450→    personaDescription: fullContext?.personaDescription,
+   451→    sessionStats,
+   452→    characterId: fullContext?.characterId,
+   453→    resolvedStats: fullContext?.resolvedStats,
+   454→    personaResolvedStats: fullContext?.personaResolvedStats,
+   455→    lorebookEntryKeys: fullContext?.lorebookEntryKeys,
+   456→  } : undefined;
+   457→
+   458→  availableIntentions.forEach((intention, index) => {
+   459→    const intentionNumber = index + 1;
+   460→
+   461→    // Resolve template keys in intention text fields using full key resolution
+   462→    const resolvedName = resolveTemplateKeys(intention.name, userName, characterName, undefined, undefined, keyFullContext);
+   463→    const resolvedDescription = resolveTemplateKeys(intention.description, userName, characterName, undefined, undefined, keyFullContext);
+   464→
+   465→    // Check for custom inject format first
+   466→    if (intention.injectFormat) {
+   467→      const resolvedInjectFormat = resolveTemplateKeys(intention.injectFormat, userName, characterName, undefined, undefined, keyFullContext);
+   468→      const formatted = resolvedInjectFormat
+   469→        .replace('{name}', resolvedName)
+   470→        .replace('{description}', resolvedDescription)
+   471→        .replace('{key}', intention.key || '');
+   472→      lines.push(`${intentionNumber}) ${formatted}`);
+   473→    } else {
+   474→      // Default format with description and activation key
+   475→      lines.push(`${intentionNumber}) ${resolvedName}`);
+   476→      lines.push(`   - Descripción: ${resolvedDescription}`);
+   477→
+   478→      // Show activation key only if it exists
+   479→      if (intention.key) {
+   480→        lines.push(`   - key de activación: ${intention.key}`);
+   481→      }
+   482→    }
+   483→  });
+   484→
+   485→  return lines.join('\n');
+   486→}
+   487→
+   488→/**
+   489→ * Build invitations/peticiones block for injection
+   490→ *
+   491→ * NEW FORMAT - Gets key and description from target's solicitudDefinition:
+   492→ * [PETICIONES POSIBLES]
+   493→ * - key: pedir_madera
+   494→ *   dirigido_a: Carpintero
+   495→ *   descripcion: Solicitar madera para construcción
+   496→ *
+   497→ * The invitation must reference a solicitud from another character.
+   498→ * Only shows if the target character meets the requirements of their own solicitud.
+   499→ */
+   500→export function buildInvitationsBlock(
+   501→  invitations: InvitationDefinition[],
+   502→  attributeValues: Record<string, number | string>,
+   503→  header: string,
+   504→  allCharacters?: CharacterCard[],
+   505→  sessionStats?: SessionStats,
+   506→  userName?: string,
+   507→  characterName?: string,
+   508→  fullContext?: {
+   509→    characterId?: string;
+   510→    personaDescription?: string;
+   511→    resolvedStats?: import('@/types').ResolvedStats | null;
+   512→    personaResolvedStats?: import('@/types').ResolvedStats | null;
+   513→    userName?: string;
+   514→    characterName?: string;
+   515→    sessionStats?: SessionStats;
+   516→    lorebookEntryKeys?: Record<string, string>;
+   517→  }
+   518→): string {
+   519→  const availableInvitations = filterInvitationsByRequirements(invitations, attributeValues, sessionStats);
+   520→
+   521→  if (availableInvitations.length === 0) {
+   522→    return '';
+   523→  }
+   524→
+   525→  const lines: string[] = [header];
+   526→
+   527→  availableInvitations.forEach((invitation) => {
+   528→    // Skip if no target configured
+   529→    if (!invitation.objetivo?.characterId || !invitation.objetivo?.solicitudId) {
+   530→      return;
+   531→    }
+   532→
+   533→    // Find target character
+   534→    const targetCharacter = allCharacters?.find(c => c.id === invitation.objetivo!.characterId);
+   535→    if (!targetCharacter) {
+   536→      return;
+   537→    }
+   538→
+   539→    // Find the specific solicitud on the target
+   540→    const solicitud = targetCharacter.statsConfig?.solicitudDefinitions?.find(
+   541→      s => s.id === invitation.objetivo!.solicitudId
+   542→    );
+   543→    if (!solicitud) {
+   544→      return;
+   545→    }
+   546→
+   547→    // Check if target character meets the solicitud's requirements
+   548→    // (the target needs to have the required attributes to fulfill the request)
+   549→    const targetAttributeValues = sessionStats?.characterStats?.[targetCharacter.id]?.attributeValues || {};
+   550→    const targetMeetsRequirements = evaluateRequirements(solicitud.requirements, targetAttributeValues);
+   551→
+   552→    if (!targetMeetsRequirements) {
+   553→      // Target doesn't meet requirements - don't show this invitation
+   554→      return;
+   555→    }
+   556→
+   557→    // Build full context for comprehensive key resolution
+   558→    const invKeyFullContext = (userName && characterName) ? {
+   559→      characterName,
+   560→      userName,
+   561→      personaDescription: fullContext?.personaDescription,
+   562→      sessionStats,
+   563→      characterId: fullContext?.characterId,
+   564→      resolvedStats: fullContext?.resolvedStats,
+   565→      personaResolvedStats: fullContext?.personaResolvedStats,
+   566→      lorebookEntryKeys: fullContext?.lorebookEntryKeys,
+   567→    } : undefined;
+   568→
+   569→    // Resolve keys in description:
+   570→    // - {{solicitante}} = characterName (who makes the request - current character)
+   571→    // - {{solicitado}} = targetCharacter.name (who receives the request)
+   572→    const resolvedDescription = resolveTemplateKeys(
+   573→      solicitud.peticionDescription,
+   574→      userName,
+   575→      characterName,
+   576→      characterName,       // solicitante = current character (who asks)
+   577→      targetCharacter.name, // solicitado = target (who is asked)
+   578→      invKeyFullContext
+   579→    );
+   580→
+   581→    // Use custom inject format if available
+   582→    if (invitation.injectFormat) {
+   583→      const formatted = invitation.injectFormat
+   584→        .replace('{name}', invitation.name)
+   585→        .replace('{key}', solicitud.peticionKey)
+   586→        .replace('{descripcion}', resolvedDescription)
+   587→        .replace('{objetivo}', targetCharacter.name);
+   588→      lines.push(formatted);
+   589→    } else {
+   590→      // New YAML-like format
+   591→      lines.push(`- key: ${solicitud.peticionKey}`);
+   592→      lines.push(`  dirigido_a: ${targetCharacter.name}`);
+   593→      lines.push(`  descripcion: ${resolvedDescription}`);
+   594→    }
+   595→  });
+   596→
+   597→  // Return empty if no valid invitations after filtering
+   598→  if (lines.length === 1) {
+   599→    return '';
+   600→  }
+   601→
+   602→  return lines.join('\n');
+   603→}
+   604→
+   605→/**
+   606→ * Resolve invitations to get their actual keys and descriptions
+   607→ * (for use in detection system and UI components)
+   608→ */
+   609→export function resolveInvitations(
+   610→  invitations: InvitationDefinition[],
+   611→  attributeValues: Record<string, number | string>,
+   612→  allCharacters?: CharacterCard[],
+   613→  sessionStats?: SessionStats,
+   614→  userName?: string,
+   615→  characterName?: string
+   616→): ResolvedInvitation[] {
+   617→  const availableInvitations = filterInvitationsByRequirements(invitations, attributeValues, sessionStats);
+   618→  const resolved: ResolvedInvitation[] = [];
+   619→
+   620→  availableInvitations.forEach((invitation) => {
+   621→    if (!invitation.objetivo?.characterId || !invitation.objetivo?.solicitudId) {
+   622→      return;
+   623→    }
+   624→
+   625→    const targetCharacter = allCharacters?.find(c => c.id === invitation.objetivo!.characterId);
+   626→    if (!targetCharacter) {
+   627→      return;
+   628→    }
+   629→
+   630→    const solicitud = targetCharacter.statsConfig?.solicitudDefinitions?.find(
+   631→      s => s.id === invitation.objetivo!.solicitudId
+   632→    );
+   633→    if (!solicitud) {
+   634→      return;
+   635→    }
+   636→
+   637→    // Check if target meets solicitud requirements
+   638→    const targetAttributeValues = sessionStats?.characterStats?.[targetCharacter.id]?.attributeValues || {};
+   639→    const targetMeetsRequirements = evaluateRequirements(solicitud.requirements, targetAttributeValues);
+   640→
+   641→    if (!targetMeetsRequirements) {
+   642→      return;
+   643→    }
+   644→
+   645→    // Resolve keys in peticionDescription (shown to SOLICITANTE - who asks):
+   646→    // - {{solicitante}} = characterName (who makes the request - current character)
+   647→    // - {{solicitado}} = targetCharacter.name (who receives the request)
+   648→    const resolvedPeticionDescription = resolveTemplateKeys(
+   649→      solicitud.peticionDescription,
+   650→      userName,
+   651→      characterName,
+   652→      characterName,       // solicitante = current character (who asks)
+   653→      targetCharacter.name // solicitado = target (who is asked)
+   654→    );
+   655→
+   656→    // Resolve keys in solicitudDescription (shown to SOLICITADO - who receives):
+   657→    // - {{solicitante}} = characterName (who makes the request)
+   658→    // - {{solicitado}} = targetCharacter.name (current character who receives)
+   659→    const resolvedSolicitudDescription = resolveTemplateKeys(
+   660→      solicitud.solicitudDescription,
+   661→      userName,
+   662→      targetCharacter.name,
+   663→      characterName,        // solicitante = who makes the request
+   664→      targetCharacter.name  // solicitado = who receives
+   665→    );
+   666→
+   667→    // Resolve keys in completionDescription (saved when completed):
+   668→    const resolvedCompletionDescription = solicitud.completionDescription
+   669→      ? resolveTemplateKeys(
+   670→          solicitud.completionDescription,
+   671→          userName,
+   672→          targetCharacter.name,
+   673→          characterName,        // solicitante
+   674→          targetCharacter.name  // solicitado
+   675→        )
+   676→      : undefined;
+   677→
+   678→    resolved.push({
+   679→      id: invitation.id,
+   680→      name: invitation.name,
+   681→      peticionKey: solicitud.peticionKey,
+   682→      solicitudKey: solicitud.solicitudKey,  // Key for completing the solicitud
+   683→      peticionDescription: resolvedPeticionDescription,
+   684→      solicitudDescription: resolvedSolicitudDescription,
+   685→      completionDescription: resolvedCompletionDescription,
+   686→      targetCharacterId: targetCharacter.id,
+   687→      targetCharacterName: targetCharacter.name,
+   688→      solicitudId: solicitud.id,
+   689→    });
+   690→  });
+   691→
+   692→  return resolved;
+   693→}
+   694→
+   695→/**
+   696→ * Build solicitudes block for injection
+   697→ *
+   698→ * Shows requests received from other characters
+   699→ *
+   700→ * FORMAT:
+   701→ * [SOLICITUDES RECIBIDAS]
+   702→ * - key: preparar_troncos
+   703→ *   de: Aitana
+   704→ *   descripcion: Aitana necesita que dejes listos los troncos de abedul.
+   705→ */
+   706→export function buildSolicitudesBlock(
+   707→  solicitudes: SolicitudInstance[],
+   708→  header: string,
+   709→  userName?: string,
+   710→  characterName?: string
+   711→): string {
+   712→  // Filter only pending solicitudes
+   713→  const pendingSolicitudes = solicitudes.filter(s => s.status === 'pending');
+   714→
+   715→  if (pendingSolicitudes.length === 0) {
+   716→    return '';
+   717→  }
+   718→
+   719→  const lines: string[] = [header];
+   720→
+   721→  pendingSolicitudes.forEach((solicitud) => {
+   722→    // Resolve keys in description:
+   723→    // - {{solicitante}} = solicitud.fromCharacterName (who sent the request)
+   724→    // - {{solicitado}} = characterName (current character who receives)
+   725→    const resolvedDescription = resolveTemplateKeys(
+   726→      solicitud.description,
+   727→      userName,
+   728→      characterName,
+   729→      solicitud.fromCharacterName, // solicitante = who sent the request
+   730→      characterName                 // solicitado = current character (who receives)
+   731→    );
+   732→    lines.push(`- key: ${solicitud.key}`);
+   733→    lines.push(`  de: ${solicitud.fromCharacterName}`);
+   734→    lines.push(`  descripcion: ${resolvedDescription}`);
+   735→  });
+   736→
+   737→  return lines.join('\n');
+   738→}
+   739→
+   740→/**
+   741→ * Full stats resolution for a character
+   742→ */
+   743→export function resolveStats(
+   744→  context: StatsResolutionContext
+   745→): ResolvedStats | null {
+   746→  const { characterId, statsConfig, sessionStats } = context;
+   747→  
+   748→  if (!statsConfig || !statsConfig.enabled) {
+   749→    return null;
+   750→  }
+   751→  
+   752→  const charStats = getCharacterSessionStats(sessionStats, characterId);
+   753→  
+   754→  // Resolve all attributes
+   755→  const attributes = resolveAllAttributes(statsConfig, charStats);
+   756→  const attributeValues = charStats?.attributeValues || 
+   757→    Object.fromEntries(
+   758→      (statsConfig.attributes || []).map(a => [a.key, a.defaultValue])
+   759→    );
+   760→  
+   761→  // Build attribute map for template resolution
+   762→  const attributesMap: Record<string, string> = {};
+   763→  for (const attr of attributes) {
+   764→    attributesMap[attr.key] = attr.formatted;
+   765→  }
+   766→
+   767→  // Also include slot values and other dynamically-set attributes from session stats
+   768→  // that aren't already in statsConfig.attributes (e.g., equipment slot keys like {{cabeza}})
+   769→  if (charStats?.attributeValues) {
+   770→    for (const [key, value] of Object.entries(charStats.attributeValues)) {
+   771→      if (!(key in attributesMap) && value !== undefined && value !== null && value !== '') {
+   772→        attributesMap[key] = String(value);
+   773→      } else if (!(key in attributesMap) && value !== undefined && value !== null) {
+   774→        // Include even empty values so the key resolves (to empty string) rather than staying as {{key}}
+   775→        attributesMap[key] = String(value);
+   776→      }
+   777→    }
+   778→  }
+   779→  
+   780→  // Build blocks with full key resolution context
+   781→  // Include a partial resolvedStats with just the attributes map so that
+   782→  // stat attribute keys ({{vida}}, {{mana}}, etc.) in skill/intention descriptions get resolved
+   783→  const partialResolvedStats: ResolvedStats = {
+   784→    attributes: attributesMap,
+   785→    availableSkills: [],
+   786→    availableIntentions: [],
+   787→    availableInvitations: [],
+   788→    availableSolicitudes: [],
+   789→    skillsBlock: '',
+   790→    intentionsBlock: '',
+   791→    invitationsBlock: '',
+   792→    solicitudesBlock: '',
+   793→  };
+   794→
+   795→  const keyFullContext = {
+   796→    characterId,
+   797→    personaDescription: context.personaDescription,
+   798→    personaResolvedStats: context.personaResolvedStats,
+   799→    resolvedStats: partialResolvedStats,
+   800→    userName: context.userName,
+   801→    characterName: context.characterName,
+   802→    sessionStats,
+   803→    lorebookEntryKeys: context.lorebookEntryKeys,
+   804→  };
+   805→
+   806→  // Defensive access: statsConfig may have incomplete properties when sent from frontend
+   807→  // (e.g., only {enabled: true, attributes: [...]} without skills/intentions/blockHeaders)
+   808→  const skills = statsConfig.skills || [];
+   809→  const intentions = statsConfig.intentions || [];
+   810→  const invitations = statsConfig.invitations || [];
+   811→  const blockHeaders = statsConfig.blockHeaders || {};
+   812→
+   813→  const skillsBlock = buildSkillsBlock(
+   814→    skills,
+   815→    attributeValues,
+   816→    blockHeaders.skills || '[ACCIONES DISPONIBLES]',
+   817→    context.questTemplates || [],
+   818→    context.characterName,
+   819→    sessionStats,
+   820→    context.userName,
+   821→    keyFullContext
+   822→  );
+   823→  
+   824→  const intentionsBlock = buildIntentionsBlock(
+   825→    intentions,
+   826→    attributeValues,
+   827→    blockHeaders.intentions || 'Intenciones disponibles:',
+   828→    sessionStats,
+   829→    context.userName,
+   830→    context.characterName,
+   831→    keyFullContext
+   832→  );
+   833→  
+   834→  const invitationsBlock = buildInvitationsBlock(
+   835→    invitations,
+   836→    attributeValues,
+   837→    blockHeaders.invitations || '[PETICIONES DISPONIBLES]',
+   838→    context.allCharacters,
+   839→    sessionStats,
+   840→    context.userName,
+   841→    context.characterName,
+   842→    keyFullContext
+   843→  );
+   844→
+   845→  // Build solicitudes block (requests received from other characters)
+   846→  const solicitudes = sessionStats?.solicitudes?.characterSolicitudes?.[characterId] || [];
+   847→  const solicitudesBlock = buildSolicitudesBlock(
+   848→    solicitudes,
+   849→    blockHeaders.solicitudesRecibidas || '[SOLICITUDES RECIBIDAS]',
+   850→    context.userName,
+   851→    context.characterName
+   852→  );
+   853→
+   854→  // Filter available items
+   855→  const availableSkills = filterSkillsByRequirements(skills, attributeValues, sessionStats);
+   856→  const availableIntentions = filterIntentionsByRequirements(intentions, attributeValues, sessionStats);
+   857→  const availableInvitations = filterInvitationsByRequirements(invitations, attributeValues, sessionStats);
+   858→
+   859→  return {
+   860→    attributes: attributesMap,
+   861→    availableSkills,
+   862→    availableIntentions,
+   863→    availableInvitations,
+   864→    availableSolicitudes: solicitudes.filter(s => s.status === 'pending'),
+   865→    skillsBlock,
+   866→    intentionsBlock,
+   867→    invitationsBlock,
+   868→    solicitudesBlock,
+   869→  };
+   870→}
+   871→
+   872→// ============================================
+   873→// Template Resolution
+   874→// ============================================
+   875→
+   876→/**
+   877→ * Regex pattern for stats keys
+   878→ * Matches {{key}} where key is alphanumeric with underscores
+   879→ */
+   880→const STATS_KEY_PATTERN_SOURCE = '\\{\\{([a-zA-Z_][a-zA-Z0-9_]*)\\}\\}';
+   881→
+   882→/**
+   883→ * Check if a key is a block key (acciones, habilidades, intenciones, invitaciones, peticiones, solicitudes)
+   884→ * Also accepts alternate spellings for backward compatibility
+   885→ */
+   886→export function isBlockKey(key: string): boolean {
+   887→  return key === 'acciones' || key === 'habilidades' || 
+   888→         key === 'intenciones' || key === 'intensiones' || 
+   889→         key === 'invitaciones' || key === 'peticiones' || 
+   890→         key === 'solicitudes';
+   891→}
+   892→
+   893→/**
+   894→ * Resolve all stats keys in a text
+   895→ */
+   896→export function resolveStatsInText(
+   897→  text: string,
+   898→  resolvedStats: ResolvedStats | null
+   899→): string {
+   900→  const pattern = new RegExp(STATS_KEY_PATTERN_SOURCE, 'g');
+   901→  return text.replace(pattern, (match, key) => {
+   902→    // Block keys (acciones, habilidades, intenciones, invitaciones, peticiones, solicitudes)
+   903→    // Return empty string if stats disabled, empty, or no items available
+   904→    // Support both {{acciones}} (new) and {{habilidades}} (legacy)
+   905→    if (key === 'acciones' || key === 'habilidades') {
+   906→      return resolvedStats?.skillsBlock ?? '';
+   907→    }
+   908→    // Accept both "intenciones" (correct Spanish) and "intensiones" (typo, for backward compatibility)
+   909→    if (key === 'intenciones' || key === 'intensiones') {
+   910→      return resolvedStats?.intentionsBlock ?? '';
+   911→    }
+   912→    // Support both {{peticiones}} (new) and {{invitaciones}} (legacy)
+   913→    if (key === 'peticiones' || key === 'invitaciones') {
+   914→      return resolvedStats?.invitationsBlock ?? '';
+   915→    }
+   916→    // New {{solicitudes}} key - requests received from other characters
+   917→    if (key === 'solicitudes') {
+   918→      return resolvedStats?.solicitudesBlock ?? '';
+   919→    }
+   920→
+   921→    // Attribute keys - only replace if defined in stats config
+   922→    // If stats are disabled or attribute not defined, leave the key alone
+   923→    if (resolvedStats?.attributes && key in resolvedStats.attributes) {
+   924→      return resolvedStats.attributes[key];
+   925→    }
+   926→
+   927→    // Unknown key - leave it alone (might be handled by other template systems)
+   928→    return match;
+   929→  });
+   930→}
+   931→
+   932→/**
+   933→ * Get all stats keys from a text
+   934→ */
+   935→export function extractStatsKeys(text: string): string[] {
+   936→  const keys: string[] = [];
+   937→  let match;
+   938→  
+   939→  const pattern = new RegExp(STATS_KEY_PATTERN_SOURCE, 'g');
+   940→  
+   941→  while ((match = pattern.exec(text)) !== null) {
+   942→    if (!keys.includes(match[1])) {
+   943→      keys.push(match[1]);
+   944→    }
+   945→  }
+   946→  
+   947→  return keys;
+   948→}
+   949→
+   950→/**
+   951→ * Check if text contains stats keys
+   952→ */
+   953→export function hasStatsKeys(text: string): boolean {
+   954→  const pattern = new RegExp(STATS_KEY_PATTERN_SOURCE);
+   955→  return pattern.test(text);
+   956→}
+   957→
+   958→// ============================================
+   959→// Prompt Section Builder
+   960→// ============================================
+   961→
+   962→/**
+   963→ * Build prompt sections from resolved stats
+   964→ */
+   965→export function buildStatsPromptSections(
+   966→  resolvedStats: ResolvedStats | null,
+   967→  characterName: string
+   968→): Array<{ type: string; label: string; content: string; color: string }> {
+   969→  if (!resolvedStats) return [];
+   970→  
+   971→  const sections: Array<{ type: string; label: string; content: string; color: string }> = [];
+   972→  
+   973→  // Add attributes section if there are any
+   974→  const attrValues = Object.values(resolvedStats.attributes);
+   975→  if (attrValues.length > 0) {
+   976→    sections.push({
+   977→      type: 'stats',
+   978→      label: `${characterName} Stats`,
+   979→      content: attrValues.join('\n'),
+   980→      color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+   981→    });
+   982→  }
+   983→  
+   984→  // Add skills block if available
+   985→  if (resolvedStats.skillsBlock) {
+   986→    sections.push({
+   987→      type: 'skills',
+   988→      label: 'Habilidades',
+   989→      content: resolvedStats.skillsBlock,
+   990→      color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+   991→    });
+   992→  }
+   993→  
+   994→  // Add intentions block if available
+   995→  if (resolvedStats.intentionsBlock) {
+   996→    sections.push({
+   997→      type: 'intentions',
+   998→      label: 'Intenciones',
+   999→      content: resolvedStats.intentionsBlock,
+  1000→      color: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
+  1001→    });
+  1002→  }
+  1003→  
+  1004→  // Add invitations block if available
+  1005→  if (resolvedStats.invitationsBlock) {
+  1006→    sections.push({
+  1007→      type: 'invitations',
+  1008→      label: 'Invitaciones',
+  1009→      content: resolvedStats.invitationsBlock,
+  1010→      color: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
+  1011→    });
+  1012→  }
+  1013→  
+  1014→  return sections;
+  1015→}
+  1016→

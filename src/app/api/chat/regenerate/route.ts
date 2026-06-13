@@ -457,7 +457,8 @@ Y cambiar mi expresión:
                 userName: effectiveUserName,
                 postHistoryInstructions: processedCharacter.postHistoryInstructions,
                 embeddingsContext: embeddingsContext,  // Memory embeddings before chat history
-                exampleMessages: exampleMessages
+                exampleMessages: exampleMessages,
+                allCharacters: allCharacters  // Pass all characters for proper speaker attribution
               });
               generator = streamOllama(prompt, llmConfig);
               break;
@@ -493,7 +494,8 @@ Y cambiar mi expresión:
                 userName: effectiveUserName,
                 postHistoryInstructions: processedCharacter.postHistoryInstructions,
                 embeddingsContext: embeddingsContext,  // Memory embeddings before chat history
-                exampleMessages: exampleMessages
+                exampleMessages: exampleMessages,
+                allCharacters: allCharacters  // Pass all characters for proper speaker attribution
               });
               generator = streamTextGenerationWebUI(prompt, llmConfig);
               break;

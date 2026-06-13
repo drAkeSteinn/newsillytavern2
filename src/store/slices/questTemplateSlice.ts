@@ -15,6 +15,11 @@ import {
   QuestNotification,
   DEFAULT_QUEST_SETTINGS,
 } from '@/types';
+import {
+  processNotificationDedup,
+  generateNotificationDedupHash,
+  updateDedupCacheEntry,
+} from '@/lib/quest/notification-dedup';
 
 // ============================================
 // Re-exports
@@ -235,17 +240,60 @@ export const createQuestTemplateSlice: StateCreator<QuestTemplateSlice, [], [], 
   // Notifications
   // ============================================
 
-  addQuestNotification: (notification) => set((state) => ({
-    questNotifications: [
-      {
-        ...notification,
-        id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        timestamp: new Date().toISOString(),
-        read: false,
-      },
-      ...state.questNotifications,
-    ].slice(0, 50), // Keep last 50
-  })),
+  addQuestNotification: (notification) => set((state) => {
+    const dedupEnabled = state.questSettings.notificationDedupEnabled;
+    const dedupWindowMs = state.questSettings.notificationDedupWindowMs ?? 30000;
+    const dedupHash = generateNotificationDedupHash(
+      notification.questId,
+      notification.type,
+      (notification as any).objectiveId,
+    );
+
+    // Check for deduplication
+    if (dedupEnabled) {
+      const dedupResult = processNotificationDedup(
+        notification.questId,
+        notification.type,
+        (notification as any).objectiveId,
+        dedupWindowMs,
+      );
+
+      if (dedupResult.isDuplicate && dedupResult.existingNotificationId) {
+        // Update existing notification instead of creating a new one
+        const existingIdx = state.questNotifications.findIndex(
+          n => n.id === dedupResult.existingNotificationId
+        );
+        if (existingIdx !== -1) {
+          const existing = state.questNotifications[existingIdx];
+          const updated = {
+            ...existing,
+            duplicateCount: (existing.duplicateCount ?? 1) + 1,
+            timestamp: new Date().toISOString(),
+            read: false,
+          };
+          const newNotifications = [...state.questNotifications];
+          newNotifications[existingIdx] = updated;
+          return { questNotifications: newNotifications };
+        }
+      }
+    }
+
+    // Create new notification
+    const newNotification: QuestNotification = {
+      ...notification,
+      id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: new Date().toISOString(),
+      read: false,
+      dedupHash,
+    };
+
+    // Update dedup cache with actual notification ID (replaces provisional ID)
+    updateDedupCacheEntry(dedupHash, newNotification.id);
+
+    return {
+      questNotifications: [newNotification, ...state.questNotifications].slice(0, 50)
+    };
+  }),
 
   markNotificationRead: (id: string) => set((state) => ({
     questNotifications: state.questNotifications.map(n =>

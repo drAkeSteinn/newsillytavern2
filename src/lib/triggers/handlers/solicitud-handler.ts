@@ -47,6 +47,8 @@ export interface SolicitudTriggerContext extends TriggerContext {
   allCharacters: CharacterCard[];
   // Active persona for targeting __user__ in peticiones
   activePersona?: { id: string; name: string; statsConfig?: any } | null;
+  // Current turn for turn-based solicitud expiration
+  currentTurn?: number;
 }
 
 export interface SolicitudHandlerResult {
@@ -153,6 +155,7 @@ export function checkSolicitudTriggersInText(
     sessionStats,
     allCharacters,
     activePersona: context.activePersona,
+    currentTurn: context.currentTurn,
   }, storeActions);
 
   return {

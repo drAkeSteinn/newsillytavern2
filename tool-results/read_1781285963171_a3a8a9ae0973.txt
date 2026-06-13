@@ -1,0 +1,795 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect } from 'react';
+     4→import { Button } from '@/components/ui/button';
+     5→import { Input } from '@/components/ui/input';
+     6→import { Label } from '@/components/ui/label';
+     7→import { Switch } from '@/components/ui/switch';
+     8→import { Badge } from '@/components/ui/badge';
+     9→import { ScrollArea } from '@/components/ui/scroll-area';
+    10→import {
+    11→  Select,
+    12→  SelectContent,
+    13→  SelectItem,
+    14→  SelectTrigger,
+    15→  SelectValue,
+    16→} from '@/components/ui/select';
+    17→import {
+    18→  AlertDialog,
+    19→  AlertDialogAction,
+    20→  AlertDialogCancel,
+    21→  AlertDialogContent,
+    22→  AlertDialogDescription,
+    23→  AlertDialogFooter,
+    24→  AlertDialogHeader,
+    25→  AlertDialogTitle,
+    26→} from '@/components/ui/alert-dialog';
+    27→import { cn } from '@/lib/utils';
+    28→import {
+    29→  Plus,
+    30→  Trash2,
+    31→  Edit,
+    32→  Zap,
+    33→  Image as ImageIcon,
+    34→  Loader2,
+    35→  Timer,
+    36→  RefreshCw,
+    37→  ArrowRight,
+    38→  Key,
+    39→  Settings2,
+    40→  Info,
+    41→} from 'lucide-react';
+    42→import type { CharacterCard, SpriteState, CharacterSpriteTrigger, SpriteIndexEntry, ReturnToMode } from '@/types';
+    43→import { v4 as uuidv4 } from 'uuid';
+    44→import { SpritePreview } from './sprite-preview';
+    45→
+    46→interface CharacterTriggerEditorProps {
+    47→  character: CharacterCard;
+    48→  onChange: (updates: Partial<CharacterCard>) => void;
+    49→}
+    50→
+    51→const CUSTOM_SPRITE_VALUE = '__custom__';
+    52→
+    53→// Only standard states + custom sprite option
+    54→const SPRITE_STATES: { value: SpriteState | typeof CUSTOM_SPRITE_VALUE; label: string }[] = [
+    55→  { value: CUSTOM_SPRITE_VALUE, label: 'Personalizado (Sprite)' },
+    56→  { value: 'idle', label: 'Idle (reposo)' },
+    57→  { value: 'talk', label: 'Talk (hablando)' },
+    58→  { value: 'thinking', label: 'Thinking (pensando)' },
+    59→];
+    60→
+    61→// Return to mode options
+    62→const RETURN_TO_MODES: { value: ReturnToMode; label: string; description: string }[] = [
+    63→  { 
+    64→    value: 'idle_collection', 
+    65→    label: 'Colección Idle', 
+    66→    description: 'Retorna al sprite de la colección Idle (según su configuración: Principal, Aleatorio, Lista)' 
+    67→  },
+    68→  { 
+    69→    value: 'custom_sprite', 
+    70→    label: 'Sprite Personalizado', 
+    71→    description: 'Retorna a un sprite específico de la colección' 
+    72→  },
+    73→];
+    74→
+    75→/**
+    76→ * Get all keys from a trigger (main key + alternatives + legacy keywords)
+    77→ */
+    78→function getAllTriggerKeys(trigger: CharacterSpriteTrigger): string[] {
+    79→  const allKeys: string[] = [];
+    80→  
+    81→  // Main key
+    82→  if (trigger.key) {
+    83→    allKeys.push(trigger.key);
+    84→  }
+    85→  
+    86→  // Alternative keys
+    87→  if (trigger.keys && trigger.keys.length > 0) {
+    88→    allKeys.push(...trigger.keys);
+    89→  }
+    90→  
+    91→  // Legacy keywords support
+    92→  if (trigger.keywords && trigger.keywords.length > 0) {
+    93→    allKeys.push(...trigger.keywords);
+    94→  }
+    95→  
+    96→  return allKeys;
+    97→}
+    98→
+    99→/**
+   100→ * Parse keys from comma-separated string
+   101→ */
+   102→function parseKeysString(keysStr: string): string[] {
+   103→  return keysStr
+   104→    .split(',')
+   105→    .map(k => k.trim())
+   106→    .filter(Boolean);
+   107→}
+   108→
+   109→/**
+   110→ * Convert keys array to comma-separated string
+   111→ */
+   112→function keysToString(keys: string[] | undefined): string {
+   113→  return (keys || []).join(', ');
+   114→}
+   115→
+   116→export function CharacterTriggerEditor({ character, onChange }: CharacterTriggerEditorProps) {
+   117→  // Get triggers from character data
+   118→  const triggers: CharacterSpriteTrigger[] = character.spriteTriggers || [];
+   119→  
+   120→  const [editingTrigger, setEditingTrigger] = useState<CharacterSpriteTrigger | null>(null);
+   121→  const [showEditor, setShowEditor] = useState(false);
+   122→  const [availableSprites, setAvailableSprites] = useState<SpriteIndexEntry[]>([]);
+   123→  const [loadingSprites, setLoadingSprites] = useState(false);
+   124→  
+   125→  // Key fields state
+   126→  const [mainKey, setMainKey] = useState('');
+   127→  const [alternativeKeys, setAlternativeKeys] = useState('');
+   128→
+   129→  // Load available sprites from character's collection
+   130→  useEffect(() => {
+   131→    const loadSprites = async () => {
+   132→      setLoadingSprites(true);
+   133→      try {
+   134→        const response = await fetch('/api/sprites/index');
+   135→        const data = await response.json();
+   136→        
+   137→        // Filter by character's selected collection
+   138→        const collectionName = character.spriteConfig?.collection;
+   139→        if (collectionName && data.sprites) {
+   140→          setAvailableSprites(data.sprites.filter((s: SpriteIndexEntry) => s.pack === collectionName));
+   141→        } else {
+   142→          setAvailableSprites(data.sprites || []);
+   143→        }
+   144→      } catch (error) {
+   145→        console.error('Error loading sprites:', error);
+   146→        setAvailableSprites([]);
+   147→      } finally {
+   148→        setLoadingSprites(false);
+   149→      }
+   150→    };
+   151→
+   152→    if (showEditor) {
+   153→      loadSprites();
+   154→    }
+   155→  }, [showEditor, character.spriteConfig?.collection]);
+   156→
+   157→  const updateTriggers = (newTriggers: CharacterSpriteTrigger[]) => {
+   158→    onChange({
+   159→      spriteTriggers: newTriggers,
+   160→    });
+   161→  };
+   162→
+   163→  const handleAddTrigger = () => {
+   164→    const newTrigger: CharacterSpriteTrigger = {
+   165→      id: uuidv4(),
+   166→      title: 'Nuevo Trigger',
+   167→      active: true,
+   168→      key: '',
+   169→      keys: [],
+   170→      requirePipes: true,
+   171→      caseSensitive: false,
+   172→      spriteUrl: '',
+   173→      spriteState: '',
+   174→      returnToIdleMs: 3000,
+   175→      returnToMode: 'idle_collection',
+   176→      returnToSpriteUrl: '',
+   177→      cooldownMs: 1000,
+   178→      priority: 1,
+   179→    };
+   180→    setMainKey('');
+   181→    setAlternativeKeys('');
+   182→    setEditingTrigger(newTrigger);
+   183→    setShowEditor(true);
+   184→  };
+   185→
+   186→  const handleEditTrigger = (trigger: CharacterSpriteTrigger) => {
+   187→    // Initialize key fields from trigger
+   188→    setMainKey(trigger.key || '');
+   189→    
+   190→    // Get alternative keys (excluding main key from legacy keywords)
+   191→    const altKeys = trigger.keys || [];
+   192→    // If legacy keywords exist but keys doesn't, use keywords minus main key
+   193→    if (!trigger.keys && trigger.keywords && trigger.keywords.length > 0) {
+   194→      const legacyAltKeys = trigger.keywords.filter(k => k !== trigger.key);
+   195→      setAlternativeKeys(legacyAltKeys.join(', '));
+   196→    } else {
+   197→      setAlternativeKeys(keysToString(altKeys));
+   198→    }
+   199→    
+   200→    setEditingTrigger({ ...trigger });
+   201→    setShowEditor(true);
+   202→  };
+   203→
+   204→  const handleDeleteTrigger = (id: string) => {
+   205→    updateTriggers(triggers.filter(t => t.id !== id));
+   206→  };
+   207→
+   208→  const handleSaveTrigger = () => {
+   209→    if (!editingTrigger) return;
+   210→    
+   211→    // Build the trigger with keys
+   212→    const updatedTrigger: CharacterSpriteTrigger = {
+   213→      ...editingTrigger,
+   214→      key: mainKey.trim(),
+   215→      keys: parseKeysString(alternativeKeys),
+   216→      // Clear legacy keywords if we have new key system
+   217→      keywords: undefined,
+   218→    };
+   219→    
+   220→    const existingIndex = triggers.findIndex(t => t.id === updatedTrigger.id);
+   221→    if (existingIndex >= 0) {
+   222→      // Update existing
+   223→      const newTriggers = [...triggers];
+   224→      newTriggers[existingIndex] = updatedTrigger;
+   225→      updateTriggers(newTriggers);
+   226→    } else {
+   227→      // Add new
+   228→      updateTriggers([...triggers, updatedTrigger]);
+   229→    }
+   230→    
+   231→    setEditingTrigger(null);
+   232→    setShowEditor(false);
+   233→  };
+   234→
+   235→  // Get sprite preview URL from trigger
+   236→  const getSpritePreviewUrl = (trigger: CharacterSpriteTrigger) => {
+   237→    // If it's a state reference
+   238→    if (trigger.spriteState && trigger.spriteState !== CUSTOM_SPRITE_VALUE) {
+   239→      // Get from state collections first
+   240→      const stateCollection = character.spriteConfig?.stateCollections?.[trigger.spriteState as SpriteState];
+   241→      if (stateCollection && stateCollection.entries.length > 0) {
+   242→        // Return principal sprite URL
+   243→        const principal = stateCollection.entries.find(e => e.role === 'principal');
+   244→        if (principal) return principal.spriteUrl;
+   245→        return stateCollection.entries[0]?.spriteUrl;
+   246→      }
+   247→      // Fall back to legacy sprites
+   248→      if (character.spriteConfig?.sprites?.[trigger.spriteState as SpriteState]) {
+   249→        return character.spriteConfig.sprites[trigger.spriteState as SpriteState];
+   250→      }
+   251→    }
+   252→    // Custom sprite URL
+   253→    return trigger.spriteUrl;
+   254→  };
+   255→
+   256→  // Get sprite label for display
+   257→  const getSpriteLabel = (trigger: CharacterSpriteTrigger) => {
+   258→    if (trigger.spriteState && trigger.spriteState !== CUSTOM_SPRITE_VALUE) {
+   259→      return SPRITE_STATES.find(s => s.value === trigger.spriteState)?.label || trigger.spriteState;
+   260→    }
+   261→    if (trigger.spriteUrl) {
+   262→      // Find label from available sprites
+   263→      const sprite = availableSprites.find(s => s.url === trigger.spriteUrl);
+   264→      return sprite?.label || 'Sprite personalizado';
+   265→    }
+   266→    return 'Sin sprite';
+   267→  };
+   268→
+   269→  // Format time for display
+   270→  const formatTime = (ms: number) => {
+   271→    if (ms <= 0) return 'Nunca';
+   272→    if (ms < 1000) return `${ms}ms`;
+   273→    const seconds = Math.floor(ms / 1000);
+   274→    if (seconds < 60) return `${seconds}s`;
+   275→    const minutes = Math.floor(seconds / 60);
+   276→    const remainingSeconds = seconds % 60;
+   277→    return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+   278→  };
+   279→
+   280→  // Determine if we're in custom mode for trigger sprite
+   281→  const isCustomMode = !editingTrigger?.spriteState || editingTrigger.spriteState === '';
+   282→
+   283→  return (
+   284→    <div className="space-y-4">
+   285→      {/* Header */}
+   286→      <div className="flex items-center justify-between">
+   287→        <div>
+   288→          <h3 className="text-sm font-medium">Triggers Simples</h3>
+   289→          <p className="text-xs text-muted-foreground">
+   290→            Sistema básico: cuando se detecta <strong>cualquier key</strong>, muestra el sprite asignado.
+   291→          </p>
+   292→        </div>
+   293→        <Button size="sm" onClick={handleAddTrigger}>
+   294→          <Plus className="w-4 h-4 mr-1" />
+   295→          Agregar
+   296→        </Button>
+   297→      </div>
+   298→      
+   299→      {/* How it works */}
+   300→      <div className="text-xs bg-muted/50 border rounded-lg p-3 space-y-2">
+   301→        <div className="flex items-center gap-2 font-medium text-foreground">
+   302→          <Zap className="w-4 h-4 text-amber-500" />
+   303→          ¿Cómo funciona?
+   304→        </div>
+   305→        <div className="grid grid-cols-3 gap-2 text-center">
+   306→          <div className="p-2 bg-background rounded border">
+   307→            <div className="font-mono text-xs">|spritewin|</div>
+   308→            <div className="text-muted-foreground text-[10px] mt-1">Detectado en chat</div>
+   309→          </div>
+   310→          <div className="flex items-center justify-center text-muted-foreground">→</div>
+   311→          <div className="p-2 bg-background rounded border">
+   312→            <div className="font-mono text-xs">win.png</div>
+   313→            <div className="text-muted-foreground text-[10px] mt-1">Sprite mostrado</div>
+   314→          </div>
+   315→        </div>
+   316→        <p className="text-muted-foreground">
+   317→          Los triggers simples son ideales para emociones básicas. Para lógica más compleja, usa <strong>Packs</strong>.
+   318→        </p>
+   319→      </div>
+   320→
+   321→      {/* Triggers List */}
+   322→      {triggers.length === 0 ? (
+   323→        <div className="text-center py-8 text-muted-foreground border rounded-lg">
+   324→          <Zap className="w-10 h-10 mx-auto mb-2 opacity-30" />
+   325→          <p className="text-sm">No hay triggers configurados</p>
+   326→          <p className="text-xs mt-1">Los triggers permiten cambiar expresiones automáticamente</p>
+   327→        </div>
+   328→      ) : (
+   329→        <ScrollArea className="h-[300px]">
+   330→          <div className="space-y-2 pr-2">
+   331→            {triggers.map((trigger) => {
+   332→              const allKeys = getAllTriggerKeys(trigger);
+   333→              return (
+   334→                <div
+   335→                  key={trigger.id}
+   336→                  className={cn(
+   337→                    "flex items-center gap-3 p-3 border rounded-lg",
+   338→                    !trigger.active && "opacity-50"
+   339→                  )}
+   340→                >
+   341→                  {/* Sprite Preview */}
+   342→                  <div className="w-12 h-12 rounded border overflow-hidden bg-muted/50 flex items-center justify-center flex-shrink-0">
+   343→                    {getSpritePreviewUrl(trigger) ? (
+   344→                      <SpritePreview
+   345→                        src={getSpritePreviewUrl(trigger)!}
+   346→                        alt={trigger.title}
+   347→                        className="w-full h-full"
+   348→                        objectFit="contain"
+   349→                      />
+   350→                    ) : (
+   351→                      <ImageIcon className="w-5 h-5 text-muted-foreground" />
+   352→                    )}
+   353→                  </div>
+   354→
+   355→                  {/* Info */}
+   356→                  <div className="flex-1 min-w-0">
+   357→                    <div className="flex items-center gap-2">
+   358→                      <span className="font-medium text-sm truncate">{trigger.title}</span>
+   359→                      <Badge variant="outline" className="text-xs">
+   360→                        {getSpriteLabel(trigger)}
+   361→                      </Badge>
+   362→                    </div>
+   363→                    <div className="flex flex-wrap gap-1 mt-1">
+   364→                      {allKeys.slice(0, 4).map((k) => (
+   365→                        <Badge key={k} variant="secondary" className="text-xs font-mono">
+   366→                          {trigger.requirePipes ? `|${k}|` : k}
+   367→                        </Badge>
+   368→                      ))}
+   369→                      {allKeys.length > 4 && (
+   370→                        <Badge variant="secondary" className="text-xs">
+   371→                          +{allKeys.length - 4}
+   372→                        </Badge>
+   373→                      )}
+   374→                    </div>
+   375→                    {/* Return info */}
+   376→                    {trigger.returnToIdleMs > 0 && (
+   377→                      <div className="flex items-center gap-1 mt-1 text-[10px] text-muted-foreground">
+   378→                        <Timer className="w-3 h-3" />
+   379→                        <span>
+   380→                          Retorna en {formatTime(trigger.returnToIdleMs)} → 
+   381→                          {trigger.returnToMode === 'custom_sprite' ? ' Sprite personalizado' : ' Colección Idle'}
+   382→                        </span>
+   383→                      </div>
+   384→                    )}
+   385→                  </div>
+   386→
+   387→                  {/* Actions */}
+   388→                  <div className="flex items-center gap-1">
+   389→                    <Switch
+   390→                      checked={trigger.active}
+   391→                      onCheckedChange={(active) => {
+   392→                        const newTriggers = triggers.map(t =>
+   393→                          t.id === trigger.id ? { ...t, active } : t
+   394→                        );
+   395→                        updateTriggers(newTriggers);
+   396→                      }}
+   397→                    />
+   398→                    <Button
+   399→                      variant="ghost"
+   400→                      size="icon"
+   401→                      className="h-8 w-8"
+   402→                      onClick={() => handleEditTrigger(trigger)}
+   403→                    >
+   404→                      <Edit className="w-4 h-4" />
+   405→                    </Button>
+   406→                    <Button
+   407→                      variant="ghost"
+   408→                      size="icon"
+   409→                      className="h-8 w-8 text-destructive"
+   410→                      onClick={() => handleDeleteTrigger(trigger.id)}
+   411→                    >
+   412→                      <Trash2 className="w-4 h-4" />
+   413→                    </Button>
+   414→                  </div>
+   415→                </div>
+   416→              );
+   417→            })}
+   418→          </div>
+   419→        </ScrollArea>
+   420→      )}
+   421→
+   422→      {/* Info Box */}
+   423→      <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-lg space-y-1">
+   424→        <p>💡 <strong>Keys:</strong> Key principal + alternativas separadas por coma.</p>
+   425→        <p>💡 <strong>Pipes:</strong> Usa |key| para detectar solo cuando está entre pipes.</p>
+   426→        <p>💡 <strong>Prioridad:</strong> Los triggers con mayor prioridad tienen preferencia.</p>
+   427→      </div>
+   428→
+   429→      {/* Edit Dialog */}
+   430→      <AlertDialog open={showEditor} onOpenChange={setShowEditor}>
+   431→        <AlertDialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   432→          <AlertDialogHeader>
+   433→            <AlertDialogTitle>
+   434→              {editingTrigger?.id && triggers.find(t => t.id === editingTrigger.id)
+   435→                ? 'Editar Trigger'
+   436→                : 'Nuevo Trigger'}
+   437→            </AlertDialogTitle>
+   438→          </AlertDialogHeader>
+   439→
+   440→          {editingTrigger && (
+   441→            <div className="space-y-4 py-4">
+   442→              {/* Title */}
+   443→              <div>
+   444→                <Label className="text-xs">Título</Label>
+   445→                <Input
+   446→                  value={editingTrigger.title}
+   447→                  onChange={(e) => setEditingTrigger({ ...editingTrigger, title: e.target.value })}
+   448→                  placeholder="Nombre del trigger"
+   449→                  className="mt-1 h-8"
+   450→                />
+   451→              </div>
+   452→
+   453→              {/* Key Detection Section - HUD Style */}
+   454→              <div className="space-y-3 p-4 rounded-xl border border-border/60 bg-gradient-to-br from-muted/30 to-muted/10">
+   455→                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+   456→                  <div className="p-1.5 rounded-md bg-cyan-500/10">
+   457→                    <Key className="w-4 h-4 text-cyan-500" />
+   458→                  </div>
+   459→                  Detección de Keys
+   460→                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20">
+   461→                    Cómo se activa
+   462→                  </Badge>
+   463→                </div>
+   464→                
+   465→                {/* Primary Key */}
+   466→                <div className="space-y-2">
+   467→                  <Label className="text-xs text-muted-foreground">Key principal</Label>
+   468→                  <Input
+   469→                    value={mainKey}
+   470→                    onChange={(e) => setMainKey(e.target.value)}
+   471→                    placeholder="spritewin, sprite:win, happy..."
+   472→                    className="bg-background font-mono text-sm"
+   473→                  />
+   474→                </div>
+   475→                
+   476→                {/* Alternative Keys */}
+   477→                <div className="space-y-2">
+   478→                  <Label className="flex items-center gap-1 text-xs text-muted-foreground">
+   479→                    Keys alternativas (separadas por coma)
+   480→                    <span className="ml-1 text-muted-foreground cursor-help inline-flex items-center justify-center" title="Permite detectar variaciones de la key">
+   481→                      <Info className="w-3.5 h-3.5" />
+   482→                    </span>
+   483→                  </Label>
+   484→                  <Input
+   485→                    value={alternativeKeys}
+   486→                    onChange={(e) => setAlternativeKeys(e.target.value)}
+   487→                    placeholder="win, victory, triumph"
+   488→                    className="bg-background font-mono text-sm"
+   489→                  />
+   490→                  {alternativeKeys && (
+   491→                    <div className="flex flex-wrap gap-1">
+   492→                      {parseKeysString(alternativeKeys).map((k, i) => (
+   493→                        <Badge key={i} variant="secondary" className="text-xs font-mono bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
+   494→                          {k}
+   495→                        </Badge>
+   496→                      ))}
+   497→                    </div>
+   498→                  )}
+   499→                </div>
+   500→                
+   501→                {/* Case Sensitivity */}
+   502→                <div className="flex items-center justify-between p-3 rounded-lg bg-background/50 border border-border/40">
+   503→                  <div className="space-y-0.5">
+   504→                    <Label className="text-xs font-medium">Distinguir mayúsculas/minúsculas</Label>
+   505→                    <p className="text-[10px] text-muted-foreground">
+   506→                      Si está desactivado, "Win" y "win" serán equivalentes
+   507→                    </p>
+   508→                  </div>
+   509→                  <Switch
+   510→                    checked={editingTrigger.caseSensitive}
+   511→                    onCheckedChange={(caseSensitive) => setEditingTrigger({ ...editingTrigger, caseSensitive })}
+   512→                  />
+   513→                </div>
+   514→                
+   515→                {/* Require Pipes */}
+   516→                <div className="flex items-center justify-between p-3 rounded-lg bg-background/50 border border-border/40">
+   517→                  <div className="space-y-0.5">
+   518→                    <Label className="text-xs font-medium">Requiere |pipes|</Label>
+   519→                    <p className="text-[10px] text-muted-foreground">
+   520→                      Si está activo, solo detecta keys entre | pipes |
+   521→                    </p>
+   522→                  </div>
+   523→                  <Switch
+   524→                    checked={editingTrigger.requirePipes}
+   525→                    onCheckedChange={(requirePipes) => setEditingTrigger({ ...editingTrigger, requirePipes })}
+   526→                  />
+   527→                </div>
+   528→              </div>
+   529→
+   530→              {/* Cooldown */}
+   531→              <div className="flex items-center justify-between">
+   532→                <Label className="text-xs">Cooldown</Label>
+   533→                <div className="flex items-center gap-1">
+   534→                  <Input
+   535→                    type="number"
+   536→                    value={editingTrigger.cooldownMs}
+   537→                    onChange={(e) => setEditingTrigger({
+   538→                      ...editingTrigger,
+   539→                      cooldownMs: Math.max(0, parseInt(e.target.value) || 0),
+   540→                    })}
+   541→                    className="h-7 w-16 text-xs"
+   542→                  />
+   543→                  <span className="text-xs text-muted-foreground">ms</span>
+   544→                </div>
+   545→              </div>
+   546→
+   547→              {/* Sprite Selection */}
+   548→              <div className="space-y-2">
+   549→                <Label className="text-xs">Sprite a Mostrar</Label>
+   550→                <Select
+   551→                  value={editingTrigger.spriteState || CUSTOM_SPRITE_VALUE}
+   552→                  onValueChange={(value) => setEditingTrigger({
+   553→                    ...editingTrigger,
+   554→                    spriteState: value === CUSTOM_SPRITE_VALUE ? '' : (value as SpriteState),
+   555→                    spriteUrl: value === CUSTOM_SPRITE_VALUE ? '' : '',
+   556→                  })}
+   557→                >
+   558→                  <SelectTrigger className="h-8">
+   559→                    <SelectValue placeholder="Seleccionar sprite..." />
+   560→                  </SelectTrigger>
+   561→                  <SelectContent>
+   562→                    {SPRITE_STATES.map((state) => (
+   563→                      <SelectItem key={state.value} value={state.value}>
+   564→                        {state.label}
+   565→                      </SelectItem>
+   566→                    ))}
+   567→                  </SelectContent>
+   568→                </Select>
+   569→                
+   570→                {/* Custom Sprite Dropdown - appears when "Personalizado" is selected */}
+   571→                {isCustomMode && (
+   572→                  <div className="space-y-2">
+   573→                    <Label className="text-xs text-muted-foreground">
+   574→                      Colección: <strong>{character.spriteConfig?.collection || 'default'}</strong>
+   575→                    </Label>
+   576→                    {loadingSprites ? (
+   577→                      <div className="flex items-center justify-center py-4">
+   578→                        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+   579→                      </div>
+   580→                    ) : availableSprites.length === 0 ? (
+   581→                      <div className="text-xs text-muted-foreground text-center py-4 border rounded bg-muted/50">
+   582→                        No hay sprites en esta colección.
+   583→                      </div>
+   584→                    ) : (
+   585→                      <Select
+   586→                        value={editingTrigger.spriteUrl || ''}
+   587→                        onValueChange={(value) => setEditingTrigger({
+   588→                          ...editingTrigger,
+   589→                          spriteUrl: value,
+   590→                        })}
+   591→                      >
+   592→                        <SelectTrigger className="h-8">
+   593→                          <SelectValue placeholder="Seleccionar sprite..." />
+   594→                        </SelectTrigger>
+   595→                        <SelectContent>
+   596→                          {availableSprites.map((sprite) => (
+   597→                            <SelectItem key={sprite.label} value={sprite.url}>
+   598→                              <div className="flex items-center gap-2">
+   599→                                <div className="w-6 h-6 rounded overflow-hidden bg-muted/50 flex-shrink-0">
+   600→                                  <SpritePreview
+   601→                                    src={sprite.url}
+   602→                                    alt={sprite.label}
+   603→                                    className="w-full h-full"
+   604→                                    objectFit="contain"
+   605→                                  />
+   606→                                </div>
+   607→                                <span className="truncate">{sprite.label}</span>
+   608→                              </div>
+   609→                            </SelectItem>
+   610→                          ))}
+   611→                        </SelectContent>
+   612→                      </Select>
+   613→                    )}
+   614→                  </div>
+   615→                )}
+   616→              </div>
+   617→
+   618→              {/* Return to Idle Section */}
+   619→              <div className="space-y-3 p-3 border rounded-lg bg-muted/30">
+   620→                <div className="flex items-center gap-2">
+   621→                  <Timer className="w-4 h-4 text-blue-500" />
+   622→                  <Label className="text-xs font-medium">Retorno Automático</Label>
+   623→                </div>
+   624→                
+   625→                {/* Return Time */}
+   626→                <div>
+   627→                  <Label className="text-xs text-muted-foreground">Tiempo antes de retornar (0 = nunca)</Label>
+   628→                  <div className="flex items-center gap-2 mt-1">
+   629→                    <Input
+   630→                      type="number"
+   631→                      value={editingTrigger.returnToIdleMs}
+   632→                      onChange={(e) => setEditingTrigger({
+   633→                        ...editingTrigger,
+   634→                        returnToIdleMs: Math.max(0, parseInt(e.target.value) || 0),
+   635→                      })}
+   636→                      placeholder="0"
+   637→                      className="h-8 w-24"
+   638→                    />
+   639→                    <span className="text-xs text-muted-foreground">ms ({formatTime(editingTrigger.returnToIdleMs)})</span>
+   640→                  </div>
+   641→                </div>
+   642→
+   643→                {/* Return Mode - only show if return time > 0 */}
+   644→                {editingTrigger.returnToIdleMs > 0 && (
+   645→                  <>
+   646→                    <div>
+   647→                      <Label className="text-xs text-muted-foreground">¿A dónde retornar?</Label>
+   648→                      <Select
+   649→                        value={editingTrigger.returnToMode || 'idle_collection'}
+   650→                        onValueChange={(value: ReturnToMode) => setEditingTrigger({
+   651→                          ...editingTrigger,
+   652→                          returnToMode: value,
+   653→                          returnToSpriteUrl: value === 'idle_collection' ? '' : editingTrigger.returnToSpriteUrl,
+   654→                        })}
+   655→                      >
+   656→                        <SelectTrigger className="h-8 mt-1">
+   657→                          <SelectValue />
+   658→                        </SelectTrigger>
+   659→                        <SelectContent>
+   660→                          {RETURN_TO_MODES.map((mode) => (
+   661→                            <SelectItem key={mode.value} value={mode.value}>
+   662→                              <div>
+   663→                                <div className="font-medium">{mode.label}</div>
+   664→                              </div>
+   665→                            </SelectItem>
+   666→                          ))}
+   667→                        </SelectContent>
+   668→                      </Select>
+   669→                      <p className="text-[10px] text-muted-foreground mt-1">
+   670→                        {RETURN_TO_MODES.find(m => m.value === (editingTrigger.returnToMode || 'idle_collection'))?.description}
+   671→                      </p>
+   672→                    </div>
+   673→
+   674→                    {/* Custom Return Sprite - only show if return mode is 'custom_sprite' */}
+   675→                    {editingTrigger.returnToMode === 'custom_sprite' && (
+   676→                      <div className="space-y-2">
+   677→                        <Label className="text-xs text-muted-foreground">
+   678→                          Sprite de retorno: <strong>{character.spriteConfig?.collection || 'default'}</strong>
+   679→                        </Label>
+   680→                        {loadingSprites ? (
+   681→                          <div className="flex items-center justify-center py-2">
+   682→                            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+   683→                          </div>
+   684→                        ) : availableSprites.length === 0 ? (
+   685→                          <div className="text-xs text-muted-foreground text-center py-2 border rounded bg-muted/50">
+   686→                            No hay sprites disponibles
+   687→                          </div>
+   688→                        ) : (
+   689→                          <Select
+   690→                            value={editingTrigger.returnToSpriteUrl || ''}
+   691→                            onValueChange={(value) => setEditingTrigger({
+   692→                              ...editingTrigger,
+   693→                              returnToSpriteUrl: value,
+   694→                            })}
+   695→                          >
+   696→                            <SelectTrigger className="h-8">
+   697→                              <SelectValue placeholder="Seleccionar sprite de retorno..." />
+   698→                            </SelectTrigger>
+   699→                            <SelectContent>
+   700→                              {availableSprites.map((sprite) => (
+   701→                                <SelectItem key={`return-${sprite.label}`} value={sprite.url}>
+   702→                                  <div className="flex items-center gap-2">
+   703→                                    <div className="w-5 h-5 rounded overflow-hidden bg-muted/50 flex-shrink-0">
+   704→                                      <SpritePreview
+   705→                                        src={sprite.url}
+   706→                                        alt={sprite.label}
+   707→                                        className="w-full h-full"
+   708→                                        objectFit="contain"
+   709→                                      />
+   710→                                    </div>
+   711→                                    <ArrowRight className="w-3 h-3 text-muted-foreground" />
+   712→                                    <span className="truncate">{sprite.label}</span>
+   713→                                  </div>
+   714→                                </SelectItem>
+   715→                              ))}
+   716→                            </SelectContent>
+   717→                          </Select>
+   718→                        )}
+   719→                        
+   720→                        {/* Preview return sprite */}
+   721→                        {editingTrigger.returnToSpriteUrl && (
+   722→                          <div className="flex items-center gap-2 p-2 border rounded bg-background">
+   723→                            <div className="w-8 h-8 rounded overflow-hidden bg-muted/50">
+   724→                              <SpritePreview
+   725→                                src={editingTrigger.returnToSpriteUrl}
+   726→                                alt="Return sprite"
+   727→                                className="w-full h-full"
+   728→                                objectFit="contain"
+   729→                              />
+   730→                            </div>
+   731→                            <div className="text-xs">
+   732→                              <div className="font-medium">
+   733→                                {availableSprites.find(s => s.url === editingTrigger.returnToSpriteUrl)?.label}
+   734→                              </div>
+   735→                              <div className="text-muted-foreground text-[10px]">
+   736→                                Retorno después de {formatTime(editingTrigger.returnToIdleMs)}
+   737→                              </div>
+   738→                            </div>
+   739→                          </div>
+   740→                        )}
+   741→                      </div>
+   742→                    )}
+   743→
+   744→                    {/* Preview: what will happen */}
+   745→                    <div className="flex items-center gap-2 p-2 border rounded bg-blue-500/10 border-blue-500/20">
+   746→                      <RefreshCw className="w-3 h-3 text-blue-500" />
+   747→                      <span className="text-[10px] text-blue-600">
+   748→                        {editingTrigger.returnToMode === 'custom_sprite' ? (
+   749→                          <>
+   750→                            Después de {formatTime(editingTrigger.returnToIdleMs)} → 
+   751→                            cambiará a "{availableSprites.find(s => s.url === editingTrigger.returnToSpriteUrl)?.label || 'sprite seleccionado'}"
+   752→                          </>
+   753→                        ) : (
+   754→                          <>
+   755→                            Después de {formatTime(editingTrigger.returnToIdleMs)} → 
+   756→                            retornará a la Colección Idle (siguiendo su configuración: Principal/Aleatorio/Lista)
+   757→                          </>
+   758→                        )}
+   759→                      </span>
+   760→                    </div>
+   761→                  </>
+   762→                )}
+   763→              </div>
+   764→
+   765→              {/* Priority */}
+   766→              <div>
+   767→                <Label className="text-xs">Prioridad (mayor = más importante)</Label>
+   768→                <Input
+   769→                  type="number"
+   770→                  value={editingTrigger.priority}
+   771→                  onChange={(e) => setEditingTrigger({
+   772→                    ...editingTrigger,
+   773→                    priority: parseInt(e.target.value) || 1,
+   774→                  })}
+   775→                  placeholder="1"
+   776→                  className="mt-1 h-8"
+   777→                />
+   778→              </div>
+   779→            </div>
+   780→          )}
+   781→
+   782→          <AlertDialogFooter>
+   783→            <AlertDialogCancel onClick={() => setEditingTrigger(null)}>
+   784→              Cancelar
+   785→            </AlertDialogCancel>
+   786→            <AlertDialogAction onClick={handleSaveTrigger}>
+   787→              Guardar
+   788→            </AlertDialogAction>
+   789→          </AlertDialogFooter>
+   790→        </AlertDialogContent>
+   791→      </AlertDialog>
+   792→    </div>
+   793→  );
+   794→}
+   795→

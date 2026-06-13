@@ -5,6 +5,7 @@
  */
 
 import type { CharacterCard, CharacterCardV2 } from '@/types';
+import { migrateCharacterSprites, needsMigration, applyMigrationResult } from '@/lib/migration/sprite-migration';
 
 // PNG tEXt chunk header for character cards
 const PNG_CHUNK_HEADER = 'tEXt';
@@ -84,8 +85,10 @@ export async function parseCharacterCardFromPng(file: File): Promise<{
       return null;
     }
     
-    // Decode Base64 and parse JSON
-    const jsonStr = atob(characterData);
+    // Decode Base64 and parse JSON (UTF-8 safe)
+    const binaryStr = atob(characterData);
+    const bytes = Uint8Array.from(binaryStr, c => c.charCodeAt(0));
+    const jsonStr = new TextDecoder().decode(bytes);
     const jsonData = JSON.parse(jsonStr);
     
     // Parse the character data
@@ -126,6 +129,7 @@ function parseCharacterData(data: unknown): Partial<CharacterCard> {
       tags: v2Data.data.tags || [],
       // TavernFlow extended fields from extensions
       avatar: (extensions?.avatar as string) || '',
+      /** @deprecated Legacy sprites - preserved for migration */
       sprites: (extensions?.sprites as CharacterCard['sprites']) || [],
       // V2 Sprite System
       spritePacksV2: extensions?.spritePacksV2 as CharacterCard['spritePacksV2'],
@@ -133,9 +137,11 @@ function parseCharacterData(data: unknown): Partial<CharacterCard> {
       triggerCollections: extensions?.triggerCollections as CharacterCard['triggerCollections'],
       spriteLibraries: extensions?.spriteLibraries as CharacterCard['spriteLibraries'],
       spriteIndex: extensions?.spriteIndex as CharacterCard['spriteIndex'],
-      // Legacy sprite system
+      /** @deprecated Legacy sprite system - preserved for migration */
       spriteConfig: extensions?.spriteConfig as CharacterCard['spriteConfig'],
+      /** @deprecated Legacy sprite triggers - preserved for migration */
       spriteTriggers: extensions?.spriteTriggers as CharacterCard['spriteTriggers'],
+      /** @deprecated Legacy sprite packs - preserved for migration */
       spritePacks: extensions?.spritePacks as CharacterCard['spritePacks'],
       // Other extensions
       voice: extensions?.voice as CharacterCard['voice'],
@@ -150,6 +156,10 @@ function parseCharacterData(data: unknown): Partial<CharacterCard> {
       // Quick Replies & Proactive Messages
       quickReplies: extensions?.quickReplies as CharacterCard['quickReplies'],
       proactiveMessages: extensions?.proactiveMessages as CharacterCard['proactiveMessages'],
+      // Micro Reactions, Emotional Config, Default Transition
+      microReactionConfig: extensions?.microReactionConfig as CharacterCard['microReactionConfig'],
+      emotionalConfig: extensions?.emotionalConfig as CharacterCard['emotionalConfig'],
+      defaultTransition: extensions?.defaultTransition as CharacterCard['defaultTransition'],
     };
   }
   
@@ -172,6 +182,7 @@ function parseCharacterData(data: unknown): Partial<CharacterCard> {
       tags: (v1Data.tags as string[]) || [],
       // Extended fields
       avatar: (v1Data.avatar as string) || '',
+      /** @deprecated Legacy sprites - preserved for migration */
       sprites: (v1Data.sprites as CharacterCard['sprites']) || [],
       // V2 Sprite System
       spritePacksV2: v1Data.spritePacksV2 as CharacterCard['spritePacksV2'],
@@ -179,9 +190,11 @@ function parseCharacterData(data: unknown): Partial<CharacterCard> {
       triggerCollections: v1Data.triggerCollections as CharacterCard['triggerCollections'],
       spriteLibraries: v1Data.spriteLibraries as CharacterCard['spriteLibraries'],
       spriteIndex: v1Data.spriteIndex as CharacterCard['spriteIndex'],
-      // Legacy sprite system
+      /** @deprecated Legacy sprite system - preserved for migration */
       spriteConfig: v1Data.spriteConfig as CharacterCard['spriteConfig'],
+      /** @deprecated Legacy sprite triggers - preserved for migration */
       spriteTriggers: v1Data.spriteTriggers as CharacterCard['spriteTriggers'],
+      /** @deprecated Legacy sprite packs - preserved for migration */
       spritePacks: v1Data.spritePacks as CharacterCard['spritePacks'],
       // Other extensions
       voice: v1Data.voice as CharacterCard['voice'],
@@ -196,6 +209,10 @@ function parseCharacterData(data: unknown): Partial<CharacterCard> {
       // Quick Replies & Proactive Messages
       quickReplies: v1Data.quickReplies as CharacterCard['quickReplies'],
       proactiveMessages: v1Data.proactiveMessages as CharacterCard['proactiveMessages'],
+      // Micro Reactions, Emotional Config, Default Transition
+      microReactionConfig: v1Data.microReactionConfig as CharacterCard['microReactionConfig'],
+      emotionalConfig: v1Data.emotionalConfig as CharacterCard['emotionalConfig'],
+      defaultTransition: v1Data.defaultTransition as CharacterCard['defaultTransition'],
     };
   }
   
@@ -277,6 +294,10 @@ export async function parseCharacterCardFromJson(file: File): Promise<{
 
 /**
  * Import a character card from file (PNG or JSON)
+ * 
+ * After import, automatically migrates legacy sprite data to V2 if:
+ * - The character has legacy sprite data (sprites[], spriteConfig, spriteTriggers)
+ * - No V2 data exists yet (spritePacksV2, stateCollectionsV2, triggerCollections)
  */
 export async function importCharacterCard(file: File): Promise<{
   character: Partial<CharacterCard>;
@@ -285,12 +306,14 @@ export async function importCharacterCard(file: File): Promise<{
   const extension = file.name.split('.').pop()?.toLowerCase();
   
   try {
+    let importResult: { character: Partial<CharacterCard>; avatar: string } | null = null;
+
     if (extension === 'png' || file.type === 'image/png') {
       const result = await parseCharacterCardFromPng(file);
       if (result) {
         // Upload the avatar to the server instead of storing base64
         const avatarUrl = await uploadDataUrl(result.avatar, 'avatar');
-        return {
+        importResult = {
           character: result.character,
           avatar: avatarUrl
         };
@@ -307,19 +330,61 @@ export async function importCharacterCard(file: File): Promise<{
             avatarUrl = result.avatar;
           }
         }
-        return {
+        importResult = {
           character: result.character,
           avatar: avatarUrl
         };
       }
     }
+
+    // Auto-migrate legacy sprite data after import
+    if (importResult?.character) {
+      importResult.character = autoMigrateOnImport(importResult.character);
+    }
+
+    return importResult;
   } catch (error) {
     console.error('Error importing character card:', error);
     return null;
   }
+}
+
+/**
+ * Auto-migrate legacy sprite data to V2 on import.
+ * Only runs if legacy data exists and V2 data doesn't.
+ * Preserves all existing V2 data.
+ * 
+ * @deprecated This auto-migration is temporary during the deprecation period.
+ * Eventually, legacy fields will be removed and this won't be needed.
+ */
+function autoMigrateOnImport(character: Partial<CharacterCard>): Partial<CharacterCard> {
+  // We need enough data to check for migration
+  const minimalCard = character as CharacterCard;
   
-  console.error('Unsupported file format');
-  return null;
+  if (!needsMigration(minimalCard)) {
+    return character;
+  }
+
+  try {
+    const result = migrateCharacterSprites(minimalCard, {
+      defaultPackName: `${character.name || 'Character'} - Migrated`,
+      createDefaultStateCollections: true,
+      skipIfV2Exists: true, // Don't overwrite any V2 data that might have been imported
+    });
+
+    if (result.success && (result.report.packsCreated > 0 || result.report.triggerCollectionsCreated > 0 || result.report.stateCollectionsCreated > 0)) {
+      const migrationUpdates = applyMigrationResult(minimalCard, result);
+      return {
+        ...character,
+        ...migrationUpdates,
+      };
+    }
+  } catch (error) {
+    // Silently fail - migration is best-effort on import
+    console.warn('[TavernFlow] Auto-migration on import failed:', error);
+  }
+
+  return character;
 }
 
 /**
@@ -351,13 +416,14 @@ export async function exportCharacterCardAsPng(
       extensions: {
         // TavernFlow extended data - Core fields
         avatar: character.avatar,
+        /** @deprecated Legacy sprites - preserved for backward compatibility */
         sprites: character.sprites,
         // V2 Sprite System (NEW)
         spritePacksV2: character.spritePacksV2,
         stateCollectionsV2: character.stateCollectionsV2,
         triggerCollections: character.triggerCollections,
         spriteIndex: character.spriteIndex,
-        // Legacy sprite system
+        /** @deprecated Legacy sprite system - preserved for backward compatibility */
         spriteConfig: character.spriteConfig,
         spriteTriggers: character.spriteTriggers,
         spritePacks: character.spritePacks,
@@ -377,6 +443,13 @@ export async function exportCharacterCardAsPng(
         // Quick Replies & Proactive Messages
         quickReplies: character.quickReplies,
         proactiveMessages: character.proactiveMessages,
+        // Micro Reactions, Emotional Config, Default Transition
+        microReactionConfig: character.microReactionConfig,
+        emotionalConfig: character.emotionalConfig,
+        defaultTransition: character.defaultTransition,
+        // Character-level memory & stats
+        memory: character.memory,
+        chatStats: character.chatStats,
       }
     }
   };
@@ -428,9 +501,11 @@ async function createPngWithCharacterData(
   ihdrView.setUint8(12, 0); // interlace
   const ihdrChunk = createPngChunk('IHDR', ihdrData);
   
-  // tEXt chunk with character data
+  // tEXt chunk with character data (UTF-8 safe Base64)
   const jsonStr = JSON.stringify(data);
-  const base64Str = btoa(jsonStr);
+  const jsonBytes = new TextEncoder().encode(jsonStr);
+  const binaryStr = String.fromCharCode(...jsonBytes);
+  const base64Str = btoa(binaryStr);
   const textData = new TextEncoder().encode(`${TAVERN_CHAR_KEY}\x00${base64Str}`);
   const textChunk = createPngChunk('tEXt', textData);
   
@@ -494,9 +569,11 @@ async function injectCharacterDataIntoPng(
     !(c.type === 'tEXt' && isCharaChunk(c.data))
   );
   
-  // Create new tEXt chunk with character data
+  // Create new tEXt chunk with character data (UTF-8 safe Base64)
   const jsonStr = JSON.stringify(data);
-  const base64Str = btoa(jsonStr);
+  const jsonBytes = new TextEncoder().encode(jsonStr);
+  const binaryStr = String.fromCharCode(...jsonBytes);
+  const base64Str = btoa(binaryStr);
   const textData = new TextEncoder().encode(`${TAVERN_CHAR_KEY}\x00${base64Str}`);
   
   // Insert before IEND
@@ -618,13 +695,14 @@ export function exportCharacterCardAsJson(character: CharacterCard): string {
       extensions: {
         // TavernFlow extended data - Core fields
         avatar: character.avatar,
+        /** @deprecated Legacy sprites - preserved for backward compatibility */
         sprites: character.sprites,
         // V2 Sprite System (NEW)
         spritePacksV2: character.spritePacksV2,
         stateCollectionsV2: character.stateCollectionsV2,
         triggerCollections: character.triggerCollections,
         spriteIndex: character.spriteIndex,
-        // Legacy sprite system
+        /** @deprecated Legacy sprite system - preserved for backward compatibility */
         spriteConfig: character.spriteConfig,
         spriteTriggers: character.spriteTriggers,
         spritePacks: character.spritePacks,
@@ -644,6 +722,10 @@ export function exportCharacterCardAsJson(character: CharacterCard): string {
         // Quick Replies & Proactive Messages
         quickReplies: character.quickReplies,
         proactiveMessages: character.proactiveMessages,
+        // Micro Reactions, Emotional Config, Default Transition
+        microReactionConfig: character.microReactionConfig,
+        emotionalConfig: character.emotionalConfig,
+        defaultTransition: character.defaultTransition,
         // Character-level memory & stats
         memory: character.memory,
         chatStats: character.chatStats,
