@@ -602,7 +602,11 @@ export async function POST(request: NextRequest) {
     const characterMemoryMap: Record<string, CharacterMemory> = body.characterMemoryMap || {};
 
     // Determine if we should use per-character lorebooks
-    const useGroupLorebooks = lorebooks.length > 0;
+    // When characterLorebooksMap is present (group has no lorebooks), each character
+    // should only see their own lorebooks — NOT a merged plan from all characters.
+    // When characterLorebooksMap is null/empty, the group has its own lorebooks
+    // that are shared across all characters.
+    const useGroupLorebooks = !characterLorebooksMap || Object.keys(characterLorebooksMap).length === 0;
 
     // Extract narrator-related data
     const turnCount: number = body.turnCount || 0;
@@ -799,10 +803,12 @@ export async function POST(request: NextRequest) {
             }));
 
             // Determine lorebook plan for this character
-            let lorebookSectionForCharacter: LorebookInjectionPlan | null = groupLorebookPlan;
-            // Use group-level attribute keys by default, override with character-level if available
-            let lorebookAttributeKeys: Record<string, string> = groupLorebookAttributeKeys;
-            let lorebookEntryKeyMap: Record<string, string> = groupLorebookEntryKeyMap;
+            // When using group lorebooks (shared), start with the group plan.
+            // When using per-character lorebooks, start with null and let the
+            // per-character override below build the correct plan.
+            let lorebookSectionForCharacter: LorebookInjectionPlan | null = useGroupLorebooks ? groupLorebookPlan : null;
+            let lorebookAttributeKeys: Record<string, string> = useGroupLorebooks ? groupLorebookAttributeKeys : {};
+            let lorebookEntryKeyMap: Record<string, string> = useGroupLorebooks ? groupLorebookEntryKeyMap : {};
 
             // ========================================
             // Embeddings Context Retrieval (per-character)

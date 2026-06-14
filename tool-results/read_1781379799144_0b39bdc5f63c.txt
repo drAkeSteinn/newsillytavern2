@@ -1,0 +1,1441 @@
+     1→     1→'use client';
+     2→     2→
+     3→     3→import { useTavernStore } from '@/store/tavern-store';
+     4→     4→import { Button } from '@/components/ui/button';
+     5→     5→import { Input } from '@/components/ui/input';
+     6→     6→import { Label } from '@/components/ui/label';
+     7→     7→import { Textarea } from '@/components/ui/textarea';
+     8→     8→import { ScrollArea } from '@/components/ui/scroll-area';
+     9→     9→import { Switch } from '@/components/ui/switch';
+    10→    10→import { Slider } from '@/components/ui/slider';
+    11→    11→import {
+    12→    12→  Select,
+    13→    13→  SelectContent,
+    14→    14→  SelectItem,
+    15→    15→  SelectTrigger,
+    16→    16→  SelectValue,
+    17→    17→} from '@/components/ui/select';
+    18→    18→import { cn } from '@/lib/utils';
+    19→    19→import type {
+    20→    20→  Lorebook,
+    21→    21→  LorebookEntry,
+    22→    22→  LorebookEntryType,
+    23→    23→  LorebookAttributeConfig,
+    24→    24→  AttributeComparator,
+    25→    25→  AttributeEntryMode,
+    26→    26→  SillyTavernLorebook,
+    27→    27→} from '@/types';
+    28→    28→import { Badge } from '@/components/ui/badge';
+    29→    29→import {
+    30→    30→  Plus,
+    31→    31→  Trash2,
+    32→    32→  BookOpen,
+    33→    33→  Key,
+    34→    34→  FileText,
+    35→    35→  Download,
+    36→    36→  Upload,
+    37→    37→  Copy,
+    38→    38→  ToggleLeft,
+    39→    39→  ToggleRight,
+    40→    40→  AlertCircle,
+    41→    41→  ArrowLeft,
+    42→    42→  ChevronRight,
+    43→    43→  ChevronUp,
+    44→    44→  ChevronDown,
+    45→    45→  Sword,
+    46→    46→  User,
+    47→    47→  Users,
+    48→    48→} from 'lucide-react';
+    49→    49→import { useState, useRef, useMemo, useCallback } from 'react';
+    50→    50→import {
+    51→    51→  Dialog,
+    52→    52→  DialogContent,
+    53→    53→  DialogHeader,
+    54→    54→  DialogTitle,
+    55→    55→  DialogFooter,
+    56→    56→} from '@/components/ui/dialog';
+    57→    57→
+    58→    58→// ============================================
+    59→    59→// Constants
+    60→    60→// ============================================
+    61→    61→
+    62→    62→const POSITION_LABELS: Record<number, string> = {
+    63→    63→  0: 'Después del system',
+    64→    64→  1: 'Después del usuario',
+    65→    65→  2: 'Antes del usuario',
+    66→    66→  3: 'Después del asistente',
+    67→    67→  4: 'Antes del asistente',
+    68→    68→  5: 'Inicio del chat',
+    69→    69→  6: 'Final del chat',
+    70→    70→  7: 'Outlet'
+    71→    71→};
+    72→    72→
+    73→    73→const LOGIC_LABELS: Record<number, string> = {
+    74→    74→  0: 'AND ANY',
+    75→    75→  1: 'NOT ALL',
+    76→    76→  2: 'NOT ANY',
+    77→    77→  3: 'AND ALL'
+    78→    78→};
+    79→    79→
+    80→    80→const COMPARATOR_LABELS: Record<AttributeComparator, string> = {
+    81→    81→  '==': 'Igual a (=)',
+    82→    82→  '!=': 'Diferente de (!=)',
+    83→    83→  '<': 'Menor que (<)',
+    84→    84→  '<=': 'Menor o igual (<=)',
+    85→    85→  '>': 'Mayor que (>)',
+    86→    86→  '>=': 'Mayor o igual (>=)',
+    87→    87→  'contains': 'Contiene (sin mayúsc.)',
+    88→    88→  'not_contains': 'No contiene (sin mayúsc.)',
+    89→    89→};
+    90→    90→
+    91→    91→// Operators recommended for numeric attributes
+    92→    92→const NUMERIC_COMPARATORS: AttributeComparator[] = [
+    93→    93→  '==', '!=', '<', '<=', '>', '>=',
+    94→    94→];
+    95→    95→
+    96→    96→// Operators recommended for text/keyword attributes
+    97→    97→const TEXT_COMPARATORS: AttributeComparator[] = [
+    98→    98→  '==', '!=', 'contains', 'not_contains',
+    99→    99→];
+   100→   100→
+   101→   101→/**
+   102→   102→ * Returns the appropriate comparators based on attribute type.
+   103→   103→ * Falls back to showing all if type is unknown.
+   104→   104→ */
+   105→   105→function getComparatorsForType(attrType?: string): AttributeComparator[] {
+   106→   106→  if (attrType === 'number') return NUMERIC_COMPARATORS;
+   107→   107→  if (attrType === 'keyword' || attrType === 'text') return TEXT_COMPARATORS;
+   108→   108→  // Unknown type — show all
+   109→   109→  return Object.keys(COMPARATOR_LABELS) as AttributeComparator[];
+   110→   110→}
+   111→   111→
+   112→   112→const ENTRY_TYPE_LABELS: Record<LorebookEntryType, string> = {
+   113→   113→  'traditional': 'Tradicional',
+   114→   114→  'attribute': 'Atributo',
+   115→   115→};
+   116→   116→
+   117→   117→// ============================================
+   118→   118→// UUID Helper
+   119→   119→// ============================================
+   120→   120→
+   121→   121→function simpleId(): string {
+   122→   122→  return Math.random().toString(36).slice(2, 9);
+   123→   123→}
+   124→   124→
+   125→   125→// ============================================
+   126→   126→// Main LorebookPanel Component
+   127→   127→// ============================================
+   128→   128→
+   129→   129→export function LorebookPanel() {
+   130→   130→  const {
+   131→   131→    lorebooks,
+   132→   132→    activeLorebookIds,
+   133→   133→    characters,
+   134→   134→    activePersonaId,
+   135→   135→    personas,
+   136→   136→    addLorebook,
+   137→   137→    updateLorebook,
+   138→   138→    deleteLorebook,
+   139→   139→    toggleLorebook,
+   140→   140→    addLorebookEntry,
+   141→   141→    updateLorebookEntry,
+   142→   142→    deleteLorebookEntry,
+   143→   143→    duplicateLorebookEntry,
+   144→   144→    importSillyTavernLorebook,
+   145→   145→    exportSillyTavernLorebook
+   146→   146→  } = useTavernStore();
+   147→   147→
+   148→   148→  const [selectedLorebookId, setSelectedLorebookId] = useState<string | null>(null);
+   149→   149→  const [editingEntryUid, setEditingEntryUid] = useState<number | null>(null);
+   150→   150→  const [importDialogOpen, setImportDialogOpen] = useState(false);
+   151→   151→  const [importName, setImportName] = useState('');
+   152→   152→  const [importDescription, setImportDescription] = useState('');
+   153→   153→  const [importError, setImportError] = useState<string | null>(null);
+   154→   154→  const fileInputRef = useRef<HTMLInputElement>(null);
+   155→   155→  const [pendingImport, setPendingImport] = useState<SillyTavernLorebook | null>(null);
+   156→   156→
+   157→   157→  const selectedLorebook = lorebooks.find(l => l.id === selectedLorebookId);
+   158→   158→
+   159→   159→  // Get active persona
+   160→   160→  const activePersona = personas.find(p => p.id === activePersonaId);
+   161→   161→
+   162→   162→  // Create new lorebook
+   163→   163→  const handleCreateLorebook = () => {
+   164→   164→    const newLorebook = {
+   165→   165→      name: `Nuevo Lorebook ${lorebooks.length + 1}`,
+   166→   166→      description: '',
+   167→   167→      entries: [],
+   168→   168→      settings: {
+   169→   169→        scanDepth: 5,
+   170→   170→        caseSensitive: false,
+   171→   171→        matchWholeWords: false,
+   172→   172→        useGroupScoring: false,
+   173→   173→        automationId: '',
+   174→   174→        tokenBudget: 2048,
+   175→   175→        recursionLimit: 3
+   176→   176→      },
+   177→   177→      tags: [],
+   178→   178→      active: true
+   179→   179→    };
+   180→   180→    addLorebook(newLorebook);
+   181→   181→    setTimeout(() => {
+   182→   182→      const latestLorebook = useTavernStore.getState().lorebooks[useTavernStore.getState().lorebooks.length - 1];
+   183→   183→      if (latestLorebook) {
+   184→   184→        setSelectedLorebookId(latestLorebook.id);
+   185→   185→      }
+   186→   186→    }, 50);
+   187→   187→  };
+   188→   188→
+   189→   189→  // Handle file import
+   190→   190→  const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+   191→   191→    const file = e.target.files?.[0];
+   192→   192→    if (!file) return;
+   193→   193→
+   194→   194→    try {
+   195→   195→      const text = await file.text();
+   196→   196→      const json = JSON.parse(text);
+   197→   197→      
+   198→   198→      if (!json.entries || typeof json.entries !== 'object') {
+   199→   199→        throw new Error('Formato de lorebook inválido. Debe tener un campo "entries".');
+   200→   200→      }
+   201→   201→
+   202→   202→      setPendingImport(json);
+   203→   203→      setImportName(file.name.replace(/\.json$/i, ''));
+   204→   204→      setImportDescription('');
+   205→   205→      setImportError(null);
+   206→   206→      setImportDialogOpen(true);
+   207→   207→    } catch (error) {
+   208→   208→      setImportError(error instanceof Error ? error.message : 'Error al importar archivo');
+   209→   209→      setImportDialogOpen(true);
+   210→   210→    }
+   211→   211→
+   212→   212→    if (fileInputRef.current) {
+   213→   213→      fileInputRef.current.value = '';
+   214→   214→    }
+   215→   215→  };
+   216→   216→
+   217→   217→  // Confirm import
+   218→   218→  const handleConfirmImport = () => {
+   219→   219→    if (!pendingImport || !importName.trim()) return;
+   220→   220→
+   221→   221→    importSillyTavernLorebook(pendingImport, importName.trim(), importDescription);
+   222→   222→    setImportDialogOpen(false);
+   223→   223→    setPendingImport(null);
+   224→   224→    setImportName('');
+   225→   225→    setImportDescription('');
+   226→   226→  };
+   227→   227→
+   228→   228→  // Export lorebook
+   229→   229→  const handleExport = (lorebook: Lorebook) => {
+   230→   230→    const stLorebook = exportSillyTavernLorebook(lorebook.id);
+   231→   231→    if (!stLorebook) return;
+   232→   232→
+   233→   233→    const blob = new Blob([JSON.stringify(stLorebook, null, 2)], { type: 'application/json' });
+   234→   234→    const url = URL.createObjectURL(blob);
+   235→   235→    const a = document.createElement('a');
+   236→   236→    a.href = url;
+   237→   237→    a.download = `${lorebook.name.replace(/[^a-z0-9]/gi, '_')}.json`;
+   238→   238→    document.body.appendChild(a);
+   239→   239→    a.click();
+   240→   240→    document.body.removeChild(a);
+   241→   241→    URL.revokeObjectURL(url);
+   242→   242→  };
+   243→   243→
+   244→   244→  // Add new entry
+   245→   245→  const handleAddEntry = () => {
+   246→   246→    if (!selectedLorebookId) return;
+   247→   247→    addLorebookEntry(selectedLorebookId, {
+   248→   248→      key: [],
+   249→   249→      keysecondary: [],
+   250→   250→      comment: 'Nueva Entrada',
+   251→   251→      content: ''
+   252→   252→    });
+   253→   253→  };
+   254→   254→
+   255→   255→  return (
+   256→   256→    <div className="h-full flex flex-col gap-4">
+   257→   257→      {/* Header */}
+   258→   258→      <div className="flex items-center justify-between flex-shrink-0">
+   259→   259→        <div>
+   260→   260→          <h3 className="font-medium text-base">Lorebooks</h3>
+   261→   261→          <p className="text-sm text-muted-foreground">
+   262→   262→            Información del mundo inyectada según palabras clave o atributos
+   263→   263→          </p>
+   264→   264→        </div>
+   265→   265→        <div className="flex gap-2">
+   266→   266→          <input
+   267→   267→            ref={fileInputRef}
+   268→   268→            type="file"
+   269→   269→            accept=".json"
+   270→   270→            className="hidden"
+   271→   271→            onChange={handleFileImport}
+   272→   272→          />
+   273→   273→          <Button
+   274→   274→            size="sm"
+   275→   275→            variant="outline"
+   276→   276→            onClick={() => fileInputRef.current?.click()}
+   277→   277→          >
+   278→   278→            <Upload className="w-4 h-4 mr-1" />
+   279→   279→            Importar
+   280→   280→          </Button>
+   281→   281→          <Button size="sm" onClick={handleCreateLorebook}>
+   282→   282→            <Plus className="w-4 h-4 mr-1" />
+   283→   283→            Nuevo
+   284→   284→          </Button>
+   285→   285→        </div>
+   286→   286→      </div>
+   287→   287→
+   288→   288→      {/* Main Content */}
+   289→   289→      {lorebooks.length === 0 ? (
+   290→   290→        <div className="flex-1 flex items-center justify-center text-muted-foreground border rounded-lg">
+   291→   291→          <div className="text-center">
+   292→   292→            <BookOpen className="w-16 h-16 mx-auto mb-3 opacity-50" />
+   293→   293→            <p className="text-lg font-medium">No hay lorebooks creados</p>
+   294→   294→            <p className="text-sm mt-1">Crea un lorebook o importa uno de SillyTavern</p>
+   295→   295→            <Button className="mt-4" onClick={handleCreateLorebook}>
+   296→   296→              <Plus className="w-4 h-4 mr-2" />
+   297→   297→              Crear Lorebook
+   298→   298→            </Button>
+   299→   299→          </div>
+   300→   300→        </div>
+   301→   301→      ) : (
+   302→   302→        <div className="flex-1 grid grid-cols-[200px_1fr] md:grid-cols-[240px_1fr] lg:grid-cols-[280px_1fr] gap-4 min-h-0">
+   303→   303→          {/* Left: Lorebook List */}
+   304→   304→          <div className="flex flex-col border rounded-lg overflow-hidden">
+   305→   305→            <div className="p-2 border-b bg-muted/30 flex-shrink-0">
+   306→   306→              <Label className="text-xs text-muted-foreground">Lorebooks ({lorebooks.length})</Label>
+   307→   307→            </div>
+   308→   308→            <ScrollArea className="flex-1">
+   309→   309→              <div className="p-1.5 space-y-1">
+   310→   310→                {lorebooks.map((lorebook) => (
+   311→   311→                  <div
+   312→   312→                    key={lorebook.id}
+   313→   313→                    className={cn(
+   314→   314→                      'p-2 rounded-lg border cursor-pointer transition-colors',
+   315→   315→                      selectedLorebookId === lorebook.id
+   316→   316→                        ? 'border-primary bg-primary/10'
+   317→   317→                        : 'hover:bg-muted/50'
+   318→   318→                    )}
+   319→   319→                    onClick={() => setSelectedLorebookId(lorebook.id)}
+   320→   320→                  >
+   321→   321→                    <div className="flex items-center justify-between">
+   322→   322→                      <div className="flex items-center gap-2 min-w-0">
+   323→   323→                        <div
+   324→   324→                          className={cn(
+   325→   325→                            'w-2 h-2 rounded-full flex-shrink-0',
+   326→   326→                            activeLorebookIds.includes(lorebook.id)
+   327→   327→                              ? 'bg-green-500'
+   328→   328→                              : 'bg-muted-foreground'
+   329→   329→                          )}
+   330→   330→                        />
+   331→   331→                        <span className="font-medium truncate text-sm">{lorebook.name}</span>
+   332→   332→                      </div>
+   333→   333→                      <span className="text-xs text-muted-foreground flex-shrink-0 ml-1">
+   334→   334→                        {lorebook.entries.length}
+   335→   335→                      </span>
+   336→   336→                    </div>
+   337→   337→                    {lorebook.description && (
+   338→   338→                      <p className="text-xs text-muted-foreground mt-0.5 truncate pl-4">
+   339→   339→                        {lorebook.description}
+   340→   340→                      </p>
+   341→   341→                    )}
+   342→   342→                  </div>
+   343→   343→                ))}
+   344→   344→              </div>
+   345→   345→            </ScrollArea>
+   346→   346→          </div>
+   347→   347→
+   348→   348→          {/* Right: Lorebook Details */}
+   349→   349→          {selectedLorebook ? (
+   350→   350→            <div className="flex flex-col border rounded-lg overflow-hidden">
+   351→   351→              {/* Lorebook Header */}
+   352→   352→              <div className="p-2 border-b bg-muted/30 flex items-center justify-between gap-4 flex-shrink-0">
+   353→   353→                <div className="flex items-center gap-2 flex-1">
+   354→   354→                  <div
+   355→   355→                    className={cn(
+   356→   356→                      'w-2 h-2 rounded-full flex-shrink-0',
+   357→   357→                      activeLorebookIds.includes(selectedLorebook.id)
+   358→   358→                        ? 'bg-green-500'
+   359→   359→                        : 'bg-muted-foreground'
+   360→   360→                    )}
+   361→   361→                  />
+   362→   362→                  <Input
+   363→   363→                    value={selectedLorebook.name}
+   364→   364→                    onChange={(e) => updateLorebook(selectedLorebook.id, { name: e.target.value })}
+   365→   365→                    className="font-medium h-7 flex-1 max-w-[200px] text-sm"
+   366→   366→                  />
+   367→   367→                </div>
+   368→   368→                <div className="flex items-center gap-1 flex-shrink-0">
+   369→   369→                  <Button
+   370→   370→                    size="icon"
+   371→   371→                    variant="ghost"
+   372→   372→                    className="h-7 w-7"
+   373→   373→                    onClick={() => toggleLorebook(selectedLorebook.id)}
+   374→   374→                    title={activeLorebookIds.includes(selectedLorebook.id) ? 'Desactivar' : 'Activar'}
+   375→   375→                  >
+   376→   376→                    {activeLorebookIds.includes(selectedLorebook.id) ? (
+   377→   377→                      <ToggleRight className="w-4 h-4 text-green-500" />
+   378→   378→                    ) : (
+   379→   379→                      <ToggleLeft className="w-4 h-4 text-muted-foreground" />
+   380→   380→                    )}
+   381→   381→                  </Button>
+   382→   382→                  <Button
+   383→   383→                    size="icon"
+   384→   384→                    variant="ghost"
+   385→   385→                    className="h-7 w-7"
+   386→   386→                    onClick={() => handleExport(selectedLorebook)}
+   387→   387→                  >
+   388→   388→                    <Download className="w-3.5 h-3.5" />
+   389→   389→                  </Button>
+   390→   390→                  <Button
+   391→   391→                    size="icon"
+   392→   392→                    variant="ghost"
+   393→   393→                    className="h-7 w-7 text-destructive hover:text-destructive"
+   394→   394→                    onClick={() => {
+   395→   395→                      if (confirm('¿Estás seguro de que deseas eliminar este lorebook?')) {
+   396→   396→                        deleteLorebook(selectedLorebook.id);
+   397→   397→                        setSelectedLorebookId(null);
+   398→   398→                      }
+   399→   399→                    }}
+   400→   400→                  >
+   401→   401→                    <Trash2 className="w-3.5 h-3.5" />
+   402→   402→                  </Button>
+   403→   403→                </div>
+   404→   404→              </div>
+   405→   405→
+   406→   406→              {/* Settings Bar */}
+   407→   407→              <div className="p-2 border-b flex-shrink-0 bg-muted/10">
+   408→   408→                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+   409→   409→                  <div>
+   410→   410→                    <Label className="text-xs">Descripción</Label>
+   411→   411→                    <Input
+   412→   412→                      value={selectedLorebook.description}
+   413→   413→                      onChange={(e) => updateLorebook(selectedLorebook.id, { description: e.target.value })}
+   414→   414→                      placeholder="Opcional..."
+   415→   415→                      className="mt-1 h-7 text-sm"
+   416→   416→                    />
+   417→   417→                  </div>
+   418→   418→                  <div>
+   419→   419→                    <Label className="text-xs">Profundidad: {selectedLorebook.settings.scanDepth}</Label>
+   420→   420→                    <Slider
+   421→   421→                      value={[selectedLorebook.settings.scanDepth]}
+   422→   422→                      min={1}
+   423→   423→                      max={20}
+   424→   424→                      step={1}
+   425→   425→                      onValueChange={([value]) =>
+   426→   426→                        updateLorebook(selectedLorebook.id, {
+   427→   427→                          settings: { ...selectedLorebook.settings, scanDepth: value }
+   428→   428→                        })
+   429→   429→                      }
+   430→   430→                      className="mt-2"
+   431→   431→                    />
+   432→   432→                  </div>
+   433→   433→                  <div>
+   434→   434→                    <Label className="text-xs">Tokens: {selectedLorebook.settings.tokenBudget}</Label>
+   435→   435→                    <Slider
+   436→   436→                      value={[selectedLorebook.settings.tokenBudget]}
+   437→   437→                      min={256}
+   438→   438→                      max={8192}
+   439→   439→                      step={256}
+   440→   440→                      onValueChange={([value]) =>
+   441→   441→                        updateLorebook(selectedLorebook.id, {
+   442→   442→                          settings: { ...selectedLorebook.settings, tokenBudget: value }
+   443→   443→                        })
+   444→   444→                      }
+   445→   445→                      className="mt-2"
+   446→   446→                    />
+   447→   447→                  </div>
+   448→   448→                  <label className="flex items-center gap-1.5 text-xs cursor-pointer pb-1">
+   449→   449→                    <Switch
+   450→   450→                      checked={selectedLorebook.settings.caseSensitive}
+   451→   451→                      onCheckedChange={(checked) =>
+   452→   452→                        updateLorebook(selectedLorebook.id, {
+   453→   453→                          settings: { ...selectedLorebook.settings, caseSensitive: checked }
+   454→   454→                        })
+   455→   455→                      }
+   456→   456→                    />
+   457→   457→                    Mayúsculas
+   458→   458→                  </label>
+   459→   459→                  <label className="flex items-center gap-1.5 text-xs cursor-pointer pb-1">
+   460→   460→                    <Switch
+   461→   461→                      checked={selectedLorebook.settings.matchWholeWords}
+   462→   462→                      onCheckedChange={(checked) =>
+   463→   463→                        updateLorebook(selectedLorebook.id, {
+   464→   464→                          settings: { ...selectedLorebook.settings, matchWholeWords: checked }
+   465→   465→                        })
+   466→   466→                      }
+   467→   467→                    />
+   468→   468→                    Palabras completas
+   469→   469→                  </label>
+   470→   470→                </div>
+   471→   471→              </div>
+   472→   472→
+   473→   473→              {/* Content Area */}
+   474→   474→              <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+   475→   475→                <div className="p-3 space-y-3 flex-1 flex flex-col min-h-0">
+   476→   476→                  {/* Entries Section */}
+   477→   477→                  <div className="border rounded-lg overflow-hidden flex-1 flex flex-col min-h-0">
+   478→   478→                    <div className="p-2 border-b bg-muted/30 flex items-center justify-between shrink-0">
+   479→   479→                      <div className="flex items-center gap-2">
+   480→   480→                        {editingEntryUid !== null && (
+   481→   481→                          <Button
+   482→   482→                            size="sm"
+   483→   483→                            variant="ghost"
+   484→   484→                            className="h-6 text-xs"
+   485→   485→                            onClick={() => setEditingEntryUid(null)}
+   486→   486→                          >
+   487→   487→                            <ArrowLeft className="w-3 h-3 mr-1" />
+   488→   488→                            Entradas
+   489→   489→                          </Button>
+   490→   490→                        )}
+   491→   491→                        <Label className="text-xs">
+   492→   492→                          {editingEntryUid !== null 
+   493→   493→                            ? `Editando: ${selectedLorebook.entries.find(e => e.uid === editingEntryUid)?.comment || 'Sin título'}`
+   494→   494→                            : `Entradas (${selectedLorebook.entries.length})`
+   495→   495→                          }
+   496→   496→                        </Label>
+   497→   497→                      </div>
+   498→   498→                      {editingEntryUid === null && (
+   499→   499→                        <Button size="sm" variant="outline" className="h-6 text-xs" onClick={handleAddEntry}>
+   500→   500→                          <Plus className="w-3 h-3 mr-1" />
+   501→   501→                          Agregar
+   502→   502→                        </Button>
+   503→   503→                      )}
+   504→   504→                    </div>
+   505→   505→
+   506→   506→                    <div className="flex-1 overflow-y-auto min-h-0">
+   507→   507→                      {selectedLorebook.entries.length === 0 ? (
+   508→   508→                        <div className="p-4 text-center text-muted-foreground">
+   509→   509→                          <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
+   510→   510→                          <p className="text-sm">Sin entradas</p>
+   511→   511→                          <p className="text-xs">Agrega entradas para definir información del mundo</p>
+   512→   512→                        </div>
+   513→   513→                      ) : editingEntryUid !== null ? (
+   514→   514→                        // Full-width editor for selected entry
+   515→   515→                        <div className="p-4">
+   516→   516→                          {(() => {
+   517→   517→                            const entry = selectedLorebook.entries.find(e => e.uid === editingEntryUid);
+   518→   518→                            if (!entry) return null;
+   519→   519→                            return (
+   520→   520→                              <LorebookEntryEditor
+   521→   521→                                entry={entry}
+   522→   522→                                lorebookId={selectedLorebook.id}
+   523→   523→                                characters={characters}
+   524→   524→                                activePersona={activePersona}
+   525→   525→                                onUpdate={(updates) =>
+   526→   526→                                  updateLorebookEntry(selectedLorebook.id, entry.uid, updates)
+   527→   527→                                }
+   528→   528→                                onDelete={() => {
+   529→   529→                                  if (confirm('¿Eliminar esta entrada?')) {
+   530→   530→                                    deleteLorebookEntry(selectedLorebook.id, entry.uid);
+   531→   531→                                    setEditingEntryUid(null);
+   532→   532→                                  }
+   533→   533→                                }}
+   534→   534→                                onDuplicate={() =>
+   535→   535→                                  duplicateLorebookEntry(selectedLorebook.id, entry.uid)
+   536→   536→                                }
+   537→   537→                              />
+   538→   538→                            );
+   539→   539→                          })()}
+   540→   540→                        </div>
+   541→   541→                      ) : (
+   542→   542→                        // Compact entry list
+   543→   543→                        <div className="divide-y">
+   544→   544→                          {selectedLorebook.entries.map((entry) => (
+   545→   545→                            <button
+   546→   546→                              key={entry.uid}
+   547→   547→                              type="button"
+   548→   548→                              className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50 transition-colors text-left group"
+   549→   549→                              onClick={() => setEditingEntryUid(entry.uid)}
+   550→   550→                            >
+   551→   551→                              <div
+   552→   552→                                className={cn(
+   553→   553→                                  'w-2 h-2 rounded-full flex-shrink-0',
+   554→   554→                                  entry.disable ? 'bg-muted-foreground' : 'bg-green-500'
+   555→   555→                                )}
+   556→   556→                              />
+   557→   557→                              <div className="flex-1 min-w-0">
+   558→   558→                                <span className="font-medium text-sm truncate block">
+   559→   559→                                  {entry.comment || 'Sin título'}
+   560→   560→                                </span>
+   561→   561→                                {entry.entryType === 'attribute' && entry.attributeConfig ? (
+   562→   562→                                  <div className="flex items-center gap-1 mt-0.5">
+   563→   563→                                    <Sword className="w-2.5 h-2.5 text-orange-500" />
+   564→   564→                                    <span className="text-[10px] text-muted-foreground truncate">
+   565→   565→                                      {entry.attributeConfig.injectionKey || 'sin key'} → {entry.attributeConfig.attributeKey || '?'} ({entry.attributeConfig.mode === 'static' ? 'estático' : 'dinámico'})
+   566→   566→                                    </span>
+   567→   567→                                  </div>
+   568→   568→                                ) : entry.key.length > 0 ? (
+   569→   569→                                  <div className="flex items-center gap-1 mt-0.5">
+   570→   570→                                    <Key className="w-2.5 h-2.5 text-muted-foreground" />
+   571→   571→                                    <span className="text-[10px] text-muted-foreground truncate">
+   572→   572→                                      {entry.key.slice(0, 5).join(', ')}{entry.key.length > 5 ? '...' : ''}
+   573→   573→                                    </span>
+   574→   574→                                  </div>
+   575→   575→                                ) : null}
+   576→   576→                              </div>
+   577→   577→                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+   578→   578→                                {entry.entryType === 'attribute' ? (
+   579→   579→                                  <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 bg-orange-500/10 text-orange-600 border-orange-500/20">
+   580→   580→                                    {entry.attributeConfig?.injectionKey ? `{{${entry.attributeConfig.injectionKey}}}` : 'Atributo'}
+   581→   581→                                  </Badge>
+   582→   582→                                ) : (
+   583→   583→                                  <span className="bg-muted px-1.5 py-0.5 rounded">
+   584→   584→                                    {entry.key.length} claves
+   585→   585→                                  </span>
+   586→   586→                                )}
+   587→   587→                                {!entry.disable && entry.entryType !== 'attribute' && (
+   588→   588→                                  <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 bg-green-500/10 text-green-600 border-green-500/20">
+   589→   589→                                    {POSITION_LABELS[entry.position] || `Pos.${entry.position}`}
+   590→   590→                                  </Badge>
+   591→   591→                                )}
+   592→   592→                              </div>
+   593→   593→                              <ChevronRight className="w-4 h-4 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
+   594→   594→                            </button>
+   595→   595→                          ))}
+   596→   596→                        </div>
+   597→   597→                      )}
+   598→   598→                    </div>
+   599→   599→                  </div>
+   600→   600→                </div>
+   601→   601→              </div>
+   602→   602→            </div>
+   603→   603→          ) : (
+   604→   604→            <div className="flex-1 flex items-center justify-center border rounded-lg text-muted-foreground">
+   605→   605→              <div className="text-center">
+   606→   606→                <BookOpen className="w-12 h-12 mx-auto mb-2 opacity-50" />
+   607→   607→                <p>Selecciona un lorebook para editar</p>
+   608→   608→              </div>
+   609→   609→            </div>
+   610→   610→          )}
+   611→   611→        </div>
+   612→   612→      )}
+   613→   613→
+   614→   614→      {/* Import Dialog */}
+   615→   615→      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+   616→   616→        <DialogContent>
+   617→   617→          <DialogHeader>
+   618→   618→            <DialogTitle>Importar Lorebook</DialogTitle>
+   619→   619→          </DialogHeader>
+   620→   620→          {importError ? (
+   621→   621→            <div className="p-4 rounded-lg bg-destructive/10 text-destructive flex items-center gap-2">
+   622→   622→              <AlertCircle className="w-5 h-5" />
+   623→   623→              <div>
+   624→   624→                <p className="font-medium">Error al importar</p>
+   625→   625→                <p className="text-sm">{importError}</p>
+   626→   626→              </div>
+   627→   627→            </div>
+   628→   628→          ) : (
+   629→   629→            <div className="space-y-4">
+   630→   630→              <div>
+   631→   631→                <Label>Nombre del Lorebook</Label>
+   632→   632→                <Input
+   633→   633→                  value={importName}
+   634→   634→                  onChange={(e) => setImportName(e.target.value)}
+   635→   635→                  placeholder="Mi Lorebook"
+   636→   636→                  className="mt-1"
+   637→   637→                />
+   638→   638→              </div>
+   639→   639→              <div>
+   640→   640→                <Label>Descripción (opcional)</Label>
+   641→   641→                <Textarea
+   642→   642→                  value={importDescription}
+   643→   643→                  onChange={(e) => setImportDescription(e.target.value)}
+   644→   644→                  placeholder="Descripción del lorebook..."
+   645→   645→                  rows={3}
+   646→   646→                  className="mt-1"
+   647→   647→                />
+   648→   648→              </div>
+   649→   649→              {pendingImport && (
+   650→   650→                <div className="p-3 rounded-lg bg-muted text-sm">
+   651→   651→                  <p>
+   652→   652→                    <strong>{Object.keys(pendingImport.entries).length}</strong> entradas detectadas
+   653→   653→                  </p>
+   654→   654→                </div>
+   655→   655→              )}
+   656→   656→            </div>
+   657→   657→          )}
+   658→   658→          <DialogFooter>
+   659→   659→            <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+   660→   660→              Cancelar
+   661→   661→            </Button>
+   662→   662→            {!importError && (
+   663→   663→              <Button onClick={handleConfirmImport} disabled={!importName.trim()}>
+   664→   664→                Importar
+   665→   665→              </Button>
+   666→   666→            )}
+   667→   667→          </DialogFooter>
+   668→   668→        </DialogContent>
+   669→   669→      </Dialog>
+   670→   670→    </div>
+   671→   671→  );
+   672→   672→}
+   673→   673→
+   674→   674→// ============================================
+   675→   675→// Entry Editor Component
+   676→   676→// ============================================
+   677→   677→
+   678→   678→interface LorebookEntryEditorProps {
+   679→   679→  entry: LorebookEntry;
+   680→   680→  lorebookId: string;
+   681→   681→  characters: Array<{ id: string; name: string; statsConfig?: { attributes?: Array<{ key: string; name: string }> } }>;
+   682→   682→  activePersona?: { id: string; name: string; statsConfig?: { attributes?: Array<{ key: string; name: string }> } } | null;
+   683→   683→  onUpdate: (updates: Partial<LorebookEntry>) => void;
+   684→   684→  onDelete: () => void;
+   685→   685→  onDuplicate: () => void;
+   686→   686→}
+   687→   687→
+   688→   688→function LorebookEntryEditor({
+   689→   689→  entry,
+   690→   690→  characters,
+   691→   691→  activePersona,
+   692→   692→  onUpdate,
+   693→   693→  onDelete,
+   694→   694→  onDuplicate
+   695→   695→}: LorebookEntryEditorProps) {
+   696→   696→  const isAttribute = entry.entryType === 'attribute';
+   697→   697→  const config = entry.attributeConfig;
+   698→   698→
+   699→   699→  const parseKeywords = (value: string): string[] => {
+   700→   700→    return value
+   701→   701→      .split(',')
+   702→   702→      .map(k => k.trim())
+   703→   703→      .filter(k => k.length > 0);
+   704→   704→  };
+   705→   705→
+   706→   706→  const formatKeywords = (keywords: string[]): string => {
+   707→   707→    return keywords.join(', ');
+   708→   708→  };
+   709→   709→
+   710→   710→  // Get available attribute definitions based on selected character
+   711→   711→  const availableAttributes = useMemo(() => {
+   712→   712→    if (!isAttribute || !config) return [];
+   713→   713→
+   714→   714→    if (config.characterId === '__user__') {
+   715→   715→      return activePersona?.statsConfig?.attributes || [];
+   716→   716→    }
+   717→   717→
+   718→   718→    if (config.characterId === '__char__') {
+   719→   719→      // Return empty — will be resolved at runtime
+   720→   720→      return [];
+   721→   721→    }
+   722→   722→
+   723→   723→    const char = characters.find(c => c.id === config.characterId);
+   724→   724→    return char?.statsConfig?.attributes || [];
+   725→   725→  }, [isAttribute, config, characters, activePersona]);
+   726→   726→
+   727→   727→  // Determine the type of the currently selected attribute and filter comparators
+   728→   728→  const selectedAttributeType = useMemo(() => {
+   729→   729→    if (!config?.attributeKey || availableAttributes.length === 0) return undefined;
+   730→   730→    const attr = availableAttributes.find(a => a.key === config.attributeKey);
+   731→   731→    return attr?.type;
+   732→   732→  }, [config, availableAttributes]);
+   733→   733→
+   734→   734→  const filteredComparators = useMemo(() => {
+   735→   735→    return getComparatorsForType(selectedAttributeType);
+   736→   736→  }, [selectedAttributeType]);
+   737→   737→
+   738→   738→  // Auto-fix operator when switching attribute type (e.g., was using '<' on text attr)
+   739→   739→  const sanitizeOperator = useCallback((operator: AttributeComparator): AttributeComparator => {
+   740→   740→    if (filteredComparators.includes(operator)) return operator;
+   741→   741→    // Reset to a safe default for the type
+   742→   742→    return selectedAttributeType === 'number' ? '>' : '==';
+   743→   743→  }, [filteredComparators, selectedAttributeType]);
+   744→   744→
+   745→   745→  // Handle entry type change
+   746→   746→  const handleEntryTypeChange = (type: LorebookEntryType) => {
+   747→   747→    if (type === 'attribute') {
+   748→   748→      // Initialize default attribute config with injectionKey
+   749→   749→      const newConfig: LorebookAttributeConfig = {
+   750→   750→        characterId: '__user__',
+   751→   751→        attributeKey: '',
+   752→   752→        injectionKey: '',
+   753→   753→        mode: 'static',
+   754→   754→        staticCondition: { operator: '>', value: 0 },
+   755→   755→        dynamicConditions: [],
+   756→   756→      };
+   757→   757→      onUpdate({
+   758→   758→        entryType: 'attribute',
+   759→   759→        attributeConfig: newConfig,
+   760→   760→        constant: false,
+   761→   761→        key: [],
+   762→   762→        keysecondary: [],
+   763→   763→      });
+   764→   764→    } else {
+   765→   765→      // Switch to traditional
+   766→   766→      onUpdate({
+   767→   767→        entryType: 'traditional',
+   768→   768→        attributeConfig: undefined,
+   769→   769→      });
+   770→   770→    }
+   771→   771→  };
+   772→   772→
+   773→   773→  // Handle attribute config changes
+   774→   774→  const updateAttributeConfig = (partial: Partial<LorebookAttributeConfig>) => {
+   775→   775→    const currentConfig = config || {
+   776→   776→      characterId: '__user__',
+   777→   777→      attributeKey: '',
+   778→   778→      injectionKey: '',
+   779→   779→      mode: 'static' as AttributeEntryMode,
+   780→   780→      staticCondition: { operator: '>' as AttributeComparator, value: 0 },
+   781→   781→    };
+   782→   782→    onUpdate({ attributeConfig: { ...currentConfig, ...partial } });
+   783→   783→  };
+   784→   784→
+   785→   785→  // Handle mode change
+   786→   786→  const handleModeChange = (mode: AttributeEntryMode) => {
+   787→   787→    // Use a type-appropriate default operator
+   788→   788→    const defaultOp = selectedAttributeType === 'number' ? '>' : '==';
+   789→   789→    if (mode === 'static') {
+   790→   790→      updateAttributeConfig({
+   791→   791→        mode: 'static',
+   792→   792→        staticCondition: { operator: defaultOp, value: selectedAttributeType === 'number' ? 0 : '' },
+   793→   793→        dynamicConditions: undefined,
+   794→   794→        fallbackContent: undefined,
+   795→   795→      });
+   796→   796→    } else {
+   797→   797→      updateAttributeConfig({
+   798→   798→        mode: 'dynamic',
+   799→   799→        staticCondition: undefined,
+   800→   800→        dynamicConditions: [
+   801→   801→          { id: simpleId(), operator: defaultOp, value: selectedAttributeType === 'number' ? 0 : '', content: '' }
+   802→   802→        ],
+   803→   803→        fallbackContent: '',
+   804→   804→      });
+   805→   805→    }
+   806→   806→  };
+   807→   807→
+   808→   808→  // Handle static condition changes
+   809→   809→  const updateStaticCondition = (operator: AttributeComparator, value: number | string) => {
+   810→   810→    updateAttributeConfig({ staticCondition: { operator, value } });
+   811→   811→  };
+   812→   812→
+   813→   813→  // Handle dynamic condition changes
+   814→   814→  const updateDynamicCondition = (condId: string, partial: Partial<{ operator: AttributeComparator; value: number | string; content: string }>) => {
+   815→   815→    const conds = config?.dynamicConditions || [];
+   816→   816→    updateAttributeConfig({
+   817→   817→      dynamicConditions: conds.map(c => c.id === condId ? { ...c, ...partial } : c),
+   818→   818→    });
+   819→   819→  };
+   820→   820→
+   821→   821→  const addDynamicCondition = () => {
+   822→   822→    const conds = config?.dynamicConditions || [];
+   823→   823→    updateAttributeConfig({
+   824→   824→      dynamicConditions: [...conds, { id: simpleId(), operator: '>' as AttributeComparator, value: 0, content: '' }],
+   825→   825→    });
+   826→   826→  };
+   827→   827→
+   828→   828→  const removeDynamicCondition = (condId: string) => {
+   829→   829→    const conds = (config?.dynamicConditions || []).filter(c => c.id !== condId);
+   830→   830→    updateAttributeConfig({ dynamicConditions: conds.length > 0 ? conds : [{ id: simpleId(), operator: '>', value: 0, content: '' }] });
+   831→   831→  };
+   832→   832→
+   833→   833→  const moveDynamicCondition = (condId: string, direction: 'up' | 'down') => {
+   834→   834→    const conds = config?.dynamicConditions;
+   835→   835→    if (!conds || conds.length < 2) return;
+   836→   836→    const idx = conds.findIndex(c => c.id === condId);
+   837→   837→    if (idx === -1) return;
+   838→   838→    const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+   839→   839→    if (newIdx < 0 || newIdx >= conds.length) return;
+   840→   840→    const swapped = [...conds];
+   841→   841→    [swapped[idx], swapped[newIdx]] = [swapped[newIdx], swapped[idx]];
+   842→   842→    updateAttributeConfig({ dynamicConditions: swapped });
+   843→   843→  };
+   844→   844→
+   845→   845→  return (
+   846→   846→    <div className="space-y-3 pt-1">
+   847→   847→      {/* Row 1: Title, Entry Type, Active Toggle */}
+   848→   848→      <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3">
+   849→   849→        <div>
+   850→   850→          <Label className="text-xs">Título</Label>
+   851→   851→          <Input
+   852→   852→            value={entry.comment}
+   853→   853→            onChange={(e) => onUpdate({ comment: e.target.value })}
+   854→   854→            className="mt-1 h-7 text-sm"
+   855→   855→          />
+   856→   856→        </div>
+   857→   857→        <div>
+   858→   858→          <Label className="text-xs">Tipo</Label>
+   859→   859→          <Select
+   860→   860→            value={entry.entryType || 'traditional'}
+   861→   861→            onValueChange={(v) => handleEntryTypeChange(v as LorebookEntryType)}
+   862→   862→          >
+   863→   863→            <SelectTrigger className="mt-1 h-7 text-xs w-[130px]">
+   864→   864→              <SelectValue />
+   865→   865→            </SelectTrigger>
+   866→   866→            <SelectContent>
+   867→   867→              <SelectItem value="traditional" className="text-xs">
+   868→   868→                <span className="flex items-center gap-1.5">
+   869→   869→                  <Key className="w-3 h-3" />
+   870→   870→                  Tradicional
+   871→   871→                </span>
+   872→   872→              </SelectItem>
+   873→   873→              <SelectItem value="attribute" className="text-xs">
+   874→   874→                <span className="flex items-center gap-1.5">
+   875→   875→                  <Sword className="w-3 h-3" />
+   876→   876→                  Atributo
+   877→   877→                </span>
+   878→   878→              </SelectItem>
+   879→   879→            </SelectContent>
+   880→   880→          </Select>
+   881→   881→        </div>
+   882→   882→        <div className="flex items-end pb-1">
+   883→   883→          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+   884→   884→            <Switch
+   885→   885→              checked={!entry.disable}
+   886→   886→              onCheckedChange={(checked) => onUpdate({ disable: !checked })}
+   887→   887→            />
+   888→   888→            Activo
+   889→   889→          </label>
+   890→   890→        </div>
+   891→   891→      </div>
+   892→   892→
+   893→   893→      {/* ============================================ */}
+   894→   894→      {/* TRADITIONAL ENTRY FIELDS                   */}
+   895→   895→      {/* ============================================ */}
+   896→   896→      {!isAttribute && (
+   897→   897→        <>
+   898→   898→          {/* Primary Keys */}
+   899→   899→          <div className="space-y-1.5">
+   900→   900→            <div className="flex items-center gap-1.5">
+   901→   901→              <Key className="w-3 h-3 text-primary" />
+   902→   902→              <Label className="text-xs">Palabras Clave Primarias</Label>
+   903→   903→            </div>
+   904→   904→            <Input
+   905→   905→              value={formatKeywords(entry.key)}
+   906→   906→              onChange={(e) => onUpdate({ key: parseKeywords(e.target.value) })}
+   907→   907→              placeholder="palabra1, palabra2... o /regex/i"
+   908→   908→              className="h-7 text-sm"
+   909→   909→            />
+   910→   910→            <p className="text-[10px] text-muted-foreground">
+   911→   911→              Soporta regex: /patrón/flags (ej: /(?:clima|lluvia)/i)
+   912→   912→            </p>
+   913→   913→          </div>
+   914→   914→
+   915→   915→          {/* Secondary Keys */}
+   916→   916→          <div className="space-y-1.5">
+   917→   917→            <div className="flex items-center gap-1.5">
+   918→   918→              <Key className="w-3 h-3 text-muted-foreground" />
+   919→   919→              <Label className="text-xs">Palabras Clave Secundarias</Label>
+   920→   920→            </div>
+   921→   921→            <Input
+   922→   922→              value={formatKeywords(entry.keysecondary)}
+   923→   923→              onChange={(e) => onUpdate({ keysecondary: parseKeywords(e.target.value) })}
+   924→   924→              placeholder="adicional1, adicional2..."
+   925→   925→              className="h-7 text-sm"
+   926→   926→            />
+   927→   927→          </div>
+   928→   928→        </>
+   929→   929→      )}
+   930→   930→
+   931→   931→      {/* ============================================ */}
+   932→   932→      {/* ATTRIBUTE ENTRY FIELDS                     */}
+   933→   933→      {/* ============================================ */}
+   934→   934→      {isAttribute && config && (
+   935→   935→        <div className="space-y-3 p-3 border rounded-lg bg-muted/30">
+   936→   936→          <div className="flex items-center gap-2 text-xs font-medium text-orange-600 dark:text-orange-400">
+   937→   937→            <Sword className="w-4 h-4" />
+   938→   938→            Configuración de Atributo
+   939→   939→          </div>
+   940→   940→
+   941→   941→          {/* Injection Key */}
+   942→   942→          <div className="space-y-1.5">
+   943→   943→            <div className="flex items-center gap-1.5">
+   944→   944→              <Key className="w-3 h-3 text-orange-500" />
+   945→   945→              <Label className="text-xs">Key de Inyección</Label>
+   946→   946→            </div>
+   947→   947→            <Input
+   948→   948→              value={config.injectionKey || ''}
+   949→   949→              onChange={(e) => updateAttributeConfig({ injectionKey: e.target.value.replace(/[^a-zA-Z0-9_]/g, '') })}
+   950→   950→              placeholder="estadoHeroe"
+   951→   951→              className="h-7 text-sm font-mono"
+   952→   952→            />
+   953→   953→            <p className="text-[10px] text-muted-foreground">
+   954→   954→              Usa <code className="font-mono">{'{{' + (config.injectionKey || 'miKey') + '}}'}</code> en la descripción, system prompt, etc. para inyectar este contenido.
+   955→   955→            </p>
+   956→   956→          </div>
+   957→   957→
+   958→   958→          {/* Character selector */}
+   959→   959→          <div className="grid grid-cols-2 gap-3">
+   960→   960→            <div>
+   961→   961→              <Label className="text-xs">Personaje</Label>
+   962→   962→              <Select
+   963→   963→                value={config.characterId}
+   964→   964→                onValueChange={(v) => updateAttributeConfig({ characterId: v, attributeKey: '' })}
+   965→   965→              >
+   966→   966→                <SelectTrigger className="mt-1 h-7 text-xs">
+   967→   967→                  <SelectValue placeholder="Seleccionar..." />
+   968→   968→                </SelectTrigger>
+   969→   969→                <SelectContent>
+   970→   970→                  <SelectItem value="__user__" className="text-xs">
+   971→   971→                    <span className="flex items-center gap-1.5">
+   972→   972→                      <User className="w-3 h-3" />
+   973→   973→                      Usuario (Persona)
+   974→   974→                    </span>
+   975→   975→                  </SelectItem>
+   976→   976→                  <SelectItem value="__char__" className="text-xs">
+   977→   977→                    <span className="flex items-center gap-1.5">
+   978→   978→                      <Users className="w-3 h-3" />
+   979→   979→                      Personaje actual
+   980→   980→                    </span>
+   981→   981→                  </SelectItem>
+   982→   982→                  {characters.map(c => (
+   983→   983→                    <SelectItem key={c.id} value={c.id} className="text-xs">
+   984→   984→                      {c.name}
+   985→   985→                    </SelectItem>
+   986→   986→                  ))}
+   987→   987→                </SelectContent>
+   988→   988→              </Select>
+   989→   989→            </div>
+   990→   990→
+   991→   991→            {/* Attribute selector */}
+   992→   992→            <div>
+   993→   993→              <Label className="text-xs">Atributo</Label>
+   994→   994→              <Select
+   995→   995→                value={config.attributeKey}
+   996→   996→                onValueChange={(v) => updateAttributeConfig({ attributeKey: v })}
+   997→   997→              >
+   998→   998→                <SelectTrigger className="mt-1 h-7 text-xs">
+   999→   999→                  <SelectValue placeholder="Seleccionar..." />
+  1000→  1000→                </SelectTrigger>
+  1001→  1001→                <SelectContent>
+  1002→  1002→                  {availableAttributes.length === 0 && (
+  1003→  1003→                    <div className="px-2 py-1.5 text-xs text-muted-foreground">
+  1004→  1004→                      Sin atributos definidos
+  1005→  1005→                    </div>
+  1006→  1006→                  )}
+  1007→  1007→                  {availableAttributes.map(attr => (
+  1008→  1008→                    <SelectItem key={attr.key} value={attr.key} className="text-xs">
+  1009→  1009→                      {attr.name || attr.key}
+  1010→  1010→                    </SelectItem>
+  1011→  1011→                  ))}
+  1012→  1012→                </SelectContent>
+  1013→  1013→              </Select>
+  1014→  1014→            </div>
+  1015→  1015→          </div>
+  1016→  1016→
+  1017→  1017→          {/* Comparison mode */}
+  1018→  1018→          <div>
+  1019→  1019→            <Label className="text-xs">Modo de comparación</Label>
+  1020→  1020→            <div className="flex gap-2 mt-1">
+  1021→  1021→              <Button
+  1022→  1022→                size="sm"
+  1023→  1023→                variant={config.mode === 'static' ? 'default' : 'outline'}
+  1024→  1024→                className="h-7 text-xs"
+  1025→  1025→                onClick={() => handleModeChange('static')}
+  1026→  1026→              >
+  1027→  1027→                Estático
+  1028→  1028→              </Button>
+  1029→  1029→              <Button
+  1030→  1030→                size="sm"
+  1031→  1031→                variant={config.mode === 'dynamic' ? 'default' : 'outline'}
+  1032→  1032→                className="h-7 text-xs"
+  1033→  1033→                onClick={() => handleModeChange('dynamic')}
+  1034→  1034→              >
+  1035→  1035→                Dinámico
+  1036→  1036→              </Button>
+  1037→  1037→            </div>
+  1038→  1038→          </div>
+  1039→  1039→
+  1040→  1040→          {/* Static condition */}
+  1041→  1041→          {config.mode === 'static' && config.staticCondition && (
+  1042→  1042→            <div className="space-y-2 p-2.5 border rounded-md bg-background">
+  1043→  1043→              <Label className="text-xs font-medium">Condición</Label>
+  1044→  1044→              <p className="text-[10px] text-muted-foreground">
+  1045→  1045→                Si se cumple, se inyecta el contenido de abajo
+  1046→  1046→              </p>
+  1047→  1047→              <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-end">
+  1048→  1048→                <div>
+  1049→  1049→                  <Label className="text-[10px]">
+  1050→  1050→                    Comparador
+  1051→  1051→                    {selectedAttributeType && (
+  1052→  1052→                      <span className="ml-1 text-muted-foreground">
+  1053→  1053→                        ({selectedAttributeType === 'number' ? 'numérico' : 'texto'})
+  1054→  1054→                      </span>
+  1055→  1055→                    )}
+  1056→  1056→                  </Label>
+  1057→  1057→                  <Select
+  1058→  1058→                    value={sanitizeOperator(config.staticCondition.operator)}
+  1059→  1059→                    onValueChange={(v) => updateStaticCondition(v as AttributeComparator, config.staticCondition!.value)}
+  1060→  1060→                  >
+  1061→  1061→                    <SelectTrigger className="mt-0.5 h-7 text-xs">
+  1062→  1062→                      <SelectValue />
+  1063→  1063→                    </SelectTrigger>
+  1064→  1064→                    <SelectContent>
+  1065→  1065→                      {filteredComparators.map((comp) => (
+  1066→  1066→                        <SelectItem key={comp} value={comp} className="text-xs">
+  1067→  1067→                          {COMPARATOR_LABELS[comp]}
+  1068→  1068→                        </SelectItem>
+  1069→  1069→                      ))}
+  1070→  1070→                    </SelectContent>
+  1071→  1071→                  </Select>
+  1072→  1072→                </div>
+  1073→  1073→                <div className="pb-1 text-xs text-muted-foreground font-medium">
+  1074→  1074→                  valor
+  1075→  1075→                </div>
+  1076→  1076→                <div>
+  1077→  1077→                  <Label className="text-[10px]">Valor</Label>
+  1078→  1078→                  <Input
+  1079→  1079→                    value={String(config.staticCondition.value)}
+  1080→  1080→                    onChange={(e) => {
+  1081→  1081→                      const v = e.target.value;
+  1082→  1082→                      const num = parseFloat(v);
+  1083→  1083→                      updateStaticCondition(config.staticCondition!.operator, isNaN(num) ? v : num);
+  1084→  1084→                    }}
+  1085→  1085→                    placeholder="0"
+  1086→  1086→                    className="mt-0.5 h-7 text-xs"
+  1087→  1087→                  />
+  1088→  1088→                </div>
+  1089→  1089→              </div>
+  1090→  1090→            </div>
+  1091→  1091→          )}
+  1092→  1092→
+  1093→  1093→          {/* Dynamic conditions */}
+  1094→  1094→          {config.mode === 'dynamic' && config.dynamicConditions && (
+  1095→  1095→            <div className="space-y-2">
+  1096→  1096→              <div className="flex items-center justify-between">
+  1097→  1097→                <Label className="text-xs font-medium">Condiciones</Label>
+  1098→  1098→                <Button
+  1099→  1099→                  size="sm"
+  1100→  1100→                  variant="outline"
+  1101→  1101→                  className="h-6 text-[10px]"
+  1102→  1102→                  onClick={addDynamicCondition}
+  1103→  1103→                >
+  1104→  1104→                  <Plus className="w-3 h-3 mr-1" />
+  1105→  1105→                  Agregar condición
+  1106→  1106→                </Button>
+  1107→  1107→              </div>
+  1108→  1108→              <p className="text-[10px] text-muted-foreground">
+  1109→  1109→                Cada condición puede coincidir simultáneamente. Los contenidos se concatenan por prioridad.
+  1110→  1110→              </p>
+  1111→  1111→
+  1112→  1112→              {/* Resolution mode selector */}
+  1113→  1113→              <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/20">
+  1114→  1114→                <Label className="text-[10px] whitespace-nowrap">Resolución:</Label>
+  1115→  1115→                <div className="flex gap-1">
+  1116→  1116→                  <Button
+  1117→  1117→                    size="sm"
+  1118→  1118→                    variant={(!config.dynamicResolution || config.dynamicResolution === 'concat-all') ? 'default' : 'outline'}
+  1119→  1119→                    className="h-6 text-[10px] px-2"
+  1120→  1120→                    onClick={() => updateAttributeConfig({ dynamicResolution: 'concat-all' })}
+  1121→  1121→                  >
+  1122→  1122→                    Concatenar todo
+  1123→  1123→                  </Button>
+  1124→  1124→                  <Button
+  1125→  1125→                    size="sm"
+  1126→  1126→                    variant={config.dynamicResolution === 'first-match' ? 'default' : 'outline'}
+  1127→  1127→                    className="h-6 text-[10px] px-2"
+  1128→  1128→                    onClick={() => updateAttributeConfig({ dynamicResolution: 'first-match' })}
+  1129→  1129→                  >
+  1130→  1130→                    Solo mayor prioridad
+  1131→  1131→                  </Button>
+  1132→  1132→                </div>
+  1133→  1133→              </div>
+  1134→  1134→
+  1135→  1135→              <div className="space-y-2">
+  1136→  1136→                {config.dynamicConditions.map((cond, idx) => (
+  1137→  1137→                  <div key={cond.id} className="p-2.5 border rounded-md bg-background space-y-2">
+  1138→  1138→                    <div className="flex items-center justify-between">
+  1139→  1139→                      <div className="flex items-center gap-2">
+  1140→  1140→                        <span className="text-[10px] text-muted-foreground font-medium">
+  1141→  1141→                          Condición {idx + 1}
+  1142→  1142→                        </span>
+  1143→  1143→                        {/* Priority badge */}
+  1144→  1144→                        <div className="flex items-center gap-1">
+  1145→  1145→                          <Label className="text-[9px] text-muted-foreground">Prioridad:</Label>
+  1146→  1146→                          <Input
+  1147→  1147→                            type="number"
+  1148→  1148→                            value={cond.priority ?? 0}
+  1149→  1149→                            onChange={(e) => updateDynamicCondition(cond.id, { priority: parseInt(e.target.value) || 0 })}
+  1150→  1150→                            className="w-12 h-5 text-[10px] text-center px-1"
+  1151→  1151→                            min={0}
+  1152→  1152→                          />
+  1153→  1153→                        </div>
+  1154→  1154→                      </div>
+  1155→  1155→                      <div className="flex items-center gap-0.5">
+  1156→  1156→                        {/* Move up */}
+  1157→  1157→                        <Button
+  1158→  1158→                          size="icon"
+  1159→  1159→                          variant="ghost"
+  1160→  1160→                          className="h-5 w-5"
+  1161→  1161→                          disabled={idx === 0}
+  1162→  1162→                          onClick={() => moveDynamicCondition(cond.id, 'up')}
+  1163→  1163→                        >
+  1164→  1164→                          <ChevronUp className="w-3 h-3" />
+  1165→  1165→                        </Button>
+  1166→  1166→                        {/* Move down */}
+  1167→  1167→                        <Button
+  1168→  1168→                          size="icon"
+  1169→  1169→                          variant="ghost"
+  1170→  1170→                          className="h-5 w-5"
+  1171→  1171→                          disabled={idx === config.dynamicConditions!.length - 1}
+  1172→  1172→                          onClick={() => moveDynamicCondition(cond.id, 'down')}
+  1173→  1173→                        >
+  1174→  1174→                          <ChevronDown className="w-3 h-3" />
+  1175→  1175→                        </Button>
+  1176→  1176→                        {/* Delete */}
+  1177→  1177→                        {config.dynamicConditions!.length > 1 && (
+  1178→  1178→                          <Button
+  1179→  1179→                            size="icon"
+  1180→  1180→                            variant="ghost"
+  1181→  1181→                            className="h-5 w-5 text-destructive hover:text-destructive"
+  1182→  1182→                            onClick={() => removeDynamicCondition(cond.id)}
+  1183→  1183→                          >
+  1184→  1184→                            <Trash2 className="w-3 h-3" />
+  1185→  1185→                          </Button>
+  1186→  1186→                        )}
+  1187→  1187→                      </div>
+  1188→  1188→                    </div>
+  1189→  1189→                    <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-end">
+  1190→  1190→                      <div>
+  1191→  1191→                        <Label className="text-[10px]">
+  1192→  1192→                          Comparador
+  1193→  1193→                          {selectedAttributeType && (
+  1194→  1194→                            <span className="ml-1 text-muted-foreground">
+  1195→  1195→                              ({selectedAttributeType === 'number' ? 'numérico' : 'texto'})
+  1196→  1196→                            </span>
+  1197→  1197→                          )}
+  1198→  1198→                        </Label>
+  1199→  1199→                        <Select
+  1200→  1200→                          value={sanitizeOperator(cond.operator)}
+  1201→  1201→                          onValueChange={(v) => updateDynamicCondition(cond.id, { operator: v as AttributeComparator })}
+  1202→  1202→                        >
+  1203→  1203→                          <SelectTrigger className="mt-0.5 h-7 text-xs">
+  1204→  1204→                            <SelectValue />
+  1205→  1205→                          </SelectTrigger>
+  1206→  1206→                          <SelectContent>
+  1207→  1207→                            {filteredComparators.map((comp) => (
+  1208→  1208→                              <SelectItem key={comp} value={comp} className="text-xs">
+  1209→  1209→                                {COMPARATOR_LABELS[comp]}
+  1210→  1210→                              </SelectItem>
+  1211→  1211→                            ))}
+  1212→  1212→                          </SelectContent>
+  1213→  1213→                        </Select>
+  1214→  1214→                      </div>
+  1215→  1215→                      <div className="pb-1 text-xs text-muted-foreground font-medium">
+  1216→  1216→                        valor
+  1217→  1217→                      </div>
+  1218→  1218→                      <div>
+  1219→  1219→                        <Label className="text-[10px]">Valor</Label>
+  1220→  1220→                        <Input
+  1221→  1221→                          value={String(cond.value)}
+  1222→  1222→                          onChange={(e) => {
+  1223→  1223→                            const v = e.target.value;
+  1224→  1224→                            const num = parseFloat(v);
+  1225→  1225→                            updateDynamicCondition(cond.id, { value: isNaN(num) ? v : num });
+  1226→  1226→                          }}
+  1227→  1227→                          placeholder="0"
+  1228→  1228→                          className="mt-0.5 h-7 text-xs"
+  1229→  1229→                        />
+  1230→  1230→                      </div>
+  1231→  1231→                    </div>
+  1232→  1232→                    <div>
+  1233→  1233→                      <Label className="text-[10px]">Contenido a inyectar si se cumple</Label>
+  1234→  1234→                      <Textarea
+  1235→  1235→                        value={cond.content}
+  1236→  1236→                        onChange={(e) => updateDynamicCondition(cond.id, { content: e.target.value })}
+  1237→  1237→                        placeholder="Texto que se agregará al prompt cuando esta condición coincida..."
+  1238→  1238→                        rows={2}
+  1239→  1239→                        className="mt-0.5 font-mono text-xs"
+  1240→  1240→                      />
+  1241→  1241→                    </div>
+  1242→  1242→                  </div>
+  1243→  1243→                ))}
+  1244→  1244→              </div>
+  1245→  1245→              {/* Fallback content */}
+  1246→  1246→              <div className="space-y-1 p-2 border rounded-md bg-muted/30">
+  1247→  1247→                <Label className="text-xs">Contenido alternativo (si ninguna coincide)</Label>
+  1248→  1248→                <Textarea
+  1249→  1249→                  value={config.fallbackContent || ''}
+  1250→  1250→                  onChange={(e) => updateAttributeConfig({ fallbackContent: e.target.value })}
+  1251→  1251→                  placeholder="Opcional: texto cuando ninguna condición dinámica coincide..."
+  1252→  1252→                  rows={2}
+  1253→  1253→                  className="font-mono text-xs"
+  1254→  1254→                />
+  1255→  1255→              </div>
+  1256→  1256→            </div>
+  1257→  1257→          )}
+  1258→  1258→        </div>
+  1259→  1259→      )}
+  1260→  1260→
+  1261→  1261→      {/* Content - always visible (for static attribute mode, this is the injected content) */}
+  1262→  1262→      <div className="space-y-1.5">
+  1263→  1263→        <Label className="text-xs">
+  1264→  1264→          {isAttribute && config?.mode === 'static'
+  1265→  1265→            ? 'Contenido (se inyecta si la condición se cumple)'
+  1266→  1266→            : isAttribute && config?.mode === 'dynamic'
+  1267→  1267→              ? 'Contenido base (no usado en modo dinámico — usa los de cada condición)'
+  1268→  1268→              : 'Contenido'
+  1269→  1269→          }
+  1270→  1270→        </Label>
+  1271→  1271→        <Textarea
+  1272→  1272→          value={entry.content}
+  1273→  1273→          onChange={(e) => onUpdate({ content: e.target.value })}
+  1274→  1274→          placeholder="Información que se inyectará..."
+  1275→  1275→          rows={isAttribute && config?.mode === 'dynamic' ? 1 : 3}
+  1276→  1276→          className={cn('font-mono text-sm', isAttribute && config?.mode === 'dynamic' && 'opacity-50')}
+  1277→  1277→        />
+  1278→  1278→      </div>
+  1279→  1279→
+  1280→  1280→      {/* Options Grid - shared for traditional entries only */}
+  1281→  1281→      {!isAttribute && (
+  1282→  1282→        <>
+  1283→  1283→          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+  1284→  1284→            <div>
+  1285→  1285→              <Label className="text-xs">Posición</Label>
+  1286→  1286→              <Select
+  1287→  1287→                value={entry.position.toString()}
+  1288→  1288→                onValueChange={(value) => onUpdate({ position: parseInt(value) as LorebookEntry['position'] })}
+  1289→  1289→              >
+  1290→  1290→                <SelectTrigger className="mt-1 h-7 text-xs">
+  1291→  1291→                  <SelectValue />
+  1292→  1292→                </SelectTrigger>
+  1293→  1293→                <SelectContent>
+  1294→  1294→                  {Object.entries(POSITION_LABELS).map(([value, label]) => (
+  1295→  1295→                    <SelectItem key={value} value={value} className="text-xs">
+  1296→  1296→                      {label}
+  1297→  1297→                    </SelectItem>
+  1298→  1298→                  ))}
+  1299→  1299→                </SelectContent>
+  1300→  1300→              </Select>
+  1301→  1301→            </div>
+  1302→  1302→
+  1303→  1303→            <div>
+  1304→  1304→              <Label className="text-xs">Lógica</Label>
+  1305→  1305→              <Select
+  1306→  1306→                value={entry.selectLogic.toString()}
+  1307→  1307→                onValueChange={(value) => onUpdate({ selectLogic: parseInt(value) })}
+  1308→  1308→              >
+  1309→  1309→                <SelectTrigger className="mt-1 h-7 text-xs">
+  1310→  1310→                  <SelectValue />
+  1311→  1311→                </SelectTrigger>
+  1312→  1312→                <SelectContent>
+  1313→  1313→                  {Object.entries(LOGIC_LABELS).map(([value, label]) => (
+  1314→  1314→                    <SelectItem key={value} value={value} className="text-xs">
+  1315→  1315→                      {label}
+  1316→  1316→                    </SelectItem>
+  1317→  1317→                  ))}
+  1318→  1318→                </SelectContent>
+  1319→  1319→              </Select>
+  1320→  1320→            </div>
+  1321→  1321→
+  1322→  1322→            <div>
+  1323→  1323→              <Label className="text-xs">Grupo</Label>
+  1324→  1324→              <Input
+  1325→  1325→                value={entry.group}
+  1326→  1326→                onChange={(e) => onUpdate({ group: e.target.value })}
+  1327→  1327→                placeholder="-"
+  1328→  1328→                className="mt-1 h-7 text-xs"
+  1329→  1329→              />
+  1330→  1330→            </div>
+  1331→  1331→
+  1332→  1332→            <div>
+  1333→  1333→              <Label className="text-xs">Prof.</Label>
+  1334→  1334→              <Input
+  1335→  1335→                type="number"
+  1336→  1336→                min={0}
+  1337→  1337→                max={999}
+  1338→  1338→                value={entry.depth}
+  1339→  1339→                onChange={(e) => onUpdate({ depth: parseInt(e.target.value) || 0 })}
+  1340→  1340→                className="mt-1 h-7 text-xs"
+  1341→  1341→              />
+  1342→  1342→            </div>
+  1343→  1343→
+  1344→  1344→            <div>
+  1345→  1345→              <Label className="text-xs">Orden</Label>
+  1346→  1346→              <Input
+  1347→  1347→                type="number"
+  1348→  1348→                min={0}
+  1349→  1349→                value={entry.order}
+  1350→  1350→                onChange={(e) => onUpdate({ order: parseInt(e.target.value) || 0 })}
+  1351→  1351→                className="mt-1 h-7 text-xs"
+  1352→  1352→              />
+  1353→  1353→            </div>
+  1354→  1354→
+  1355→  1355→            <div>
+  1356→  1356→              <Label className="text-xs">Prob.%</Label>
+  1357→  1357→              <Input
+  1358→  1358→                type="number"
+  1359→  1359→                min={0}
+  1360→  1360→                max={100}
+  1361→  1361→                value={entry.probability}
+  1362→  1362→                onChange={(e) => onUpdate({ probability: parseInt(e.target.value) || 0 })}
+  1363→  1363→                className="mt-1 h-7 text-xs"
+  1364→  1364→              />
+  1365→  1365→            </div>
+  1366→  1366→          </div>
+  1367→  1367→
+  1368→  1368→          {/* Outlet Name - Only show when position is 7 */}
+  1369→  1369→          {entry.position === 7 && (
+  1370→  1370→            <div className="space-y-1.5 p-2 bg-muted/50 rounded border">
+  1371→  1371→              <div className="flex items-center gap-1.5">
+  1372→  1372→                <Label className="text-xs font-medium">Nombre del Outlet</Label>
+  1373→  1373→              </div>
+  1374→  1374→              <Input
+  1375→  1375→                value={entry.outletName || ''}
+  1376→  1376→                onChange={(e) => onUpdate({ outletName: e.target.value })}
+  1377→  1377→                placeholder="miOutlet"
+  1378→  1378→                className="h-7 text-sm"
+  1379→  1379→              />
+  1380→  1380→              <p className="text-[10px] text-muted-foreground">
+  1381→  1381→                Usa {'{{outlet::nombre}}'} en el prompt para insertar este contenido manualmente.
+  1382→  1382→              </p>
+  1383→  1383→            </div>
+  1384→  1384→          )}
+  1385→  1385→
+  1386→  1386→          {/* Toggles */}
+  1387→  1387→          <div className="grid grid-cols-2 xl:grid-cols-4 gap-1.5">
+  1388→  1388→            <label className="flex items-center justify-between p-1.5 rounded border text-xs cursor-pointer">
+  1389→  1389→              Siempre
+  1390→  1390→              <Switch
+  1391→  1391→                checked={entry.constant}
+  1392→  1392→                onCheckedChange={(checked) => onUpdate({ constant: checked })}
+  1393→  1393→              />
+  1394→  1394→            </label>
+  1395→  1395→            <label className="flex items-center justify-between p-1.5 rounded border text-xs cursor-pointer">
+  1396→  1396→              Prob.
+  1397→  1397→              <Switch
+  1398→  1398→                checked={entry.useProbability}
+  1399→  1399→                onCheckedChange={(checked) => onUpdate({ useProbability: checked })}
+  1400→  1400→              />
+  1401→  1401→            </label>
+  1402→  1402→            <label className="flex items-center justify-between p-1.5 rounded border text-xs cursor-pointer">
+  1403→  1403→              Exc.Rec.
+  1404→  1404→              <Switch
+  1405→  1405→                checked={entry.excludeRecursion}
+  1406→  1406→                onCheckedChange={(checked) => onUpdate({ excludeRecursion: checked })}
+  1407→  1407→              />
+  1408→  1408→            </label>
+  1409→  1409→            <label className="flex items-center justify-between p-1.5 rounded border text-xs cursor-pointer">
+  1410→  1410→              Prev.Rec.
+  1411→  1411→              <Switch
+  1412→  1412→                checked={entry.preventRecursion}
+  1413→  1413→                onCheckedChange={(checked) => onUpdate({ preventRecursion: checked })}
+  1414→  1414→              />
+  1415→  1415→            </label>
+  1416→  1416→          </div>
+  1417→  1417→        </>
+  1418→  1418→      )}
+  1419→  1419→
+  1420→  1420→      {/* Attribute entry info */}
+  1421→  1421→      {isAttribute && (
+  1422→  1422→        <div className="p-2 border rounded-md bg-muted/20 text-[10px] text-muted-foreground">
+  1423→  1423→          Las entradas de atributo se inyectan con {'{{key}}'} en lugar de posición. Coloca <code className="font-mono">{'{{' + (config?.injectionKey || 'miKey') + '}}'}</code> donde necesites el contenido.
+  1424→  1424→        </div>
+  1425→  1425→      )}
+  1426→  1426→
+  1427→  1427→      {/* Actions */}
+  1428→  1428→      <div className="flex gap-2 pt-1">
+  1429→  1429→        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onDuplicate}>
+  1430→  1430→          <Copy className="w-3 h-3 mr-1" />
+  1431→  1431→          Duplicar
+  1432→  1432→        </Button>
+  1433→  1433→        <Button variant="destructive" size="sm" className="h-7 text-xs" onClick={onDelete}>
+  1434→  1434→          <Trash2 className="w-3 h-3 mr-1" />
+  1435→  1435→          Eliminar
+  1436→  1436→        </Button>
+  1437→  1437→      </div>
+  1438→  1438→    </div>
+  1439→  1439→  );
+  1440→  1440→}
+  1441→  1441→

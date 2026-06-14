@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
-  allowedDevOrigins: ['127.0.0.1', 'localhost'],
+  allowedDevOrigins: ['127.0.0.1', 'localhost', '.space-z.ai'],
   serverExternalPackages: [
     '@lancedb/lancedb',
     '@lancedb/lancedb-win32-x64-msvc',

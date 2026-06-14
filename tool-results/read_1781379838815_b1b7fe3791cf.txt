@@ -1,0 +1,462 @@
+    50→  1550→                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id],
+    51→  1551→                        lorebooks
+    52→  1552→                      );
+    53→  1553→                      allQuestActivations = [...allQuestActivations, ...questActivations];
+    54→  1554→                      if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
+    55→  1555→                      if (shouldContinue) {
+    56→  1556→                        const toolResultPairs = accumulator.toolCalls.map(tc => ({
+    57→  1557→                          success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+    58→  1558→                        }));
+    59→  1559→                        const toolResultMessages = buildToolMessagesForOllama(accumulator.toolCalls, toolResultPairs);
+    60→  1560→                        const followUpMessages = [...ollamaMessages, ...toolResultMessages];
+    61→  1561→
+    62→  1562→                        // Buffer follow-up to clean model artifacts before streaming
+    63→  1563→                        fullContent = '';
+    64→  1564→                        const combinedPrompt = followUpMessages.map(m =>
+    65→  1565→                          `${(m as any).role}: ${(m as any).content}`
+    66→  1566→                        ).join('\n') + `\n${responder.name}:`;
+    67→  1567→                        let ollamaFollowUpContent = '';
+    68→  1568→                        for await (const chunk of streamOllama(combinedPrompt, llmConfig)) {
+    69→  1569→                          ollamaFollowUpContent += chunk;
+    70→  1570→                        }
+    71→  1571→                        const cleanedOllamaFollowUp = cleanModelArtifacts(ollamaFollowUpContent);
+    72→  1572→                        fullContent = cleanedOllamaFollowUp;
+    73→  1573→                        for (const chunk of splitIntoChunks(cleanedOllamaFollowUp)) {
+    74→  1574→                          controller.enqueue(createSSEJSON({
+    75→  1575→                            type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+    76→  1576→                          }));
+    77→  1577→                        }
+    78→  1578→                      }
+    79→  1579→                    } else if (mightContainToolCall(roundContent)) {
+    80→  1580→                      const textToolCalls = parseAllToolCallsFromText(roundContent);
+    81→  1581→                      if (textToolCalls.length > 0) {
+    82→  1582→                        console.log(`[GroupStream-Tools] ✓ Text-based tool call(s) detected (Ollama): ${textToolCalls.map(tc => tc.name).join(', ')}`);
+    83→  1583→                        const cleanContent = stripToolCallFromText(roundContent);
+    84→  1584→                        if (cleanContent.trim()) {
+    85→  1585→                          for (const chunk of splitIntoChunks(cleanContent)) {
+    86→  1586→                            controller.enqueue(createSSEJSON({
+    87→  1587→                              type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+    88→  1588→                            }));
+    89→  1589→                          }
+    90→  1590→                        }
+    91→  1591→                        const nativeCalls: NativeToolCall[] = textToolCalls.map((tc, idx) => ({
+    92→  1592→                          id: `text_call_${Date.now()}_${idx}`, name: tc.name,
+    93→  1593→                          arguments: tc.arguments, rawArguments: JSON.stringify(tc.arguments),
+    94→  1594→                        }));
+    95→  1595→                        const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
+    96→  1596→                          nativeCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
+    97→  1597→                        sessionQuests, questTemplates,
+    98→  1598→                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id],
+    99→  1599→                        lorebooks
+   100→  1600→                      );
+   101→  1601→                        allQuestActivations = [...allQuestActivations, ...questActivations];
+   102→  1602→                      if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
+   103→  1603→                        if (shouldContinue) {
+   104→  1604→                          fullContent = '';
+   105→  1605→                          const toolNames = textToolCalls.map(tc => tc.name).join(', ');
+   106→  1606→                          const followUpMessages = [
+   107→  1607→                            ...ollamaMessages,
+   108→  1608→                            { role: 'user', content: `[Resultado de herramientas: ${toolNames}]\n${displayMessages}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
+   109→  1609→                          ] as any;
+   110→  1610→                          const combinedPrompt = followUpMessages.map(m =>
+   111→  1611→                            `${(m as any).role}: ${(m as any).content}`
+   112→  1612→                          ).join('\n') + `\n${responder.name}:`;
+   113→  1613→                          // Buffer follow-up to clean model artifacts before streaming
+   114→  1614→                          let ollamaTextFollowUpContent = '';
+   115→  1615→                          for await (const chunk of streamOllama(combinedPrompt, llmConfig)) {
+   116→  1616→                            ollamaTextFollowUpContent += chunk;
+   117→  1617→                          }
+   118→  1618→                          const cleanedOllamaTextFollowUp = cleanModelArtifacts(ollamaTextFollowUpContent);
+   119→  1619→                          fullContent = cleanedOllamaTextFollowUp;
+   120→  1620→                          for (const chunk of splitIntoChunks(cleanedOllamaTextFollowUp)) {
+   121→  1621→                            controller.enqueue(createSSEJSON({
+   122→  1622→                              type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+   123→  1623→                            }));
+   124→  1624→                          }
+   125→  1625→                        }
+   126→  1626→                      } else {
+   127→  1627→                        // Content looked like tool call but couldn't parse - clean and stream as regular text
+   128→  1628→                        const cleanedContent = cleanModelArtifacts(roundContent);
+   129→  1629→                        for (const chunk of splitIntoChunks(cleanedContent)) {
+   130→  1630→                          controller.enqueue(createSSEJSON({
+   131→  1631→                            type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+   132→  1632→                          }));
+   133→  1633→                        }
+   134→  1634→                      }
+   135→  1635→                    } else {
+   136→  1636→                      // Regular text response - stream buffered content (clean artifacts)
+   137→  1637→                      const cleanedContent = cleanModelArtifacts(roundContent);
+   138→  1638→                      for (const chunk of splitIntoChunks(cleanedContent)) {
+   139→  1639→                        controller.enqueue(createSSEJSON({
+   140→  1640→                          type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+   141→  1641→                        }));
+   142→  1642→                      }
+   143→  1643→                    }
+   144→  1644→                  } else {
+   145→  1645→                    // Standard completion prompt (no tools)
+   146→  1646→                    const prompt = buildCompletionPrompt({
+   147→  1647→                      systemPrompt: finalSystemPrompt,
+   148→  1648→                      messages: messagesForPrompt,
+   149→  1649→                      character: responder,
+   150→  1650→                      userName: effectiveUserName,
+   151→  1651→                      postHistoryInstructions: resolvedPostHistoryInstructions,
+   152→  1652→                      embeddingsContext: embeddingsContext,
+   153→  1653→                      exampleMessages: exampleMessages,
+   154→  1654→                      allCharacters: characters  // Pass all characters for proper speaker attribution
+   155→  1655→                    });
+   156→  1656→                    generator = streamOllama(prompt, llmConfig);
+   157→  1657→                  }
+   158→  1658→                  break;
+   159→  1659→                }
+   160→  1660→
+   161→  1661→                case 'grok': {
+   162→  1662→                  console.log(`[GroupStream] Grok case: charShouldUseTools=${charShouldUseTools}`);
+   163→  1663→                  const grokMessages = finalChatMessages.map((m, idx) => ({
+   164→  1664→                    role: m.role === 'assistant' && idx === 0 ? 'system' : m.role,
+   165→  1665→                    content: m.content
+   166→  1666→                  }));
+   167→  1667→
+   168→  1668→                  if (charShouldUseTools) {
+   169→  1669→                    const accumulator = createToolCallAccumulator(charAvailableTools);
+   170→  1670→                    let roundContent = '';
+   171→  1671→
+   172→  1672→                    for await (const chunk of streamGrokWithTools(grokMessages as any, llmConfig, charAvailableTools, accumulator)) {
+   173→  1673→                      roundContent += chunk;
+   174→  1674→                      fullContent += chunk;
+   175→  1675→                    }
+   176→  1676→
+   177→  1677→                    console.log(`[Grok+Tools] Round buffered ${roundContent.length} chars, finishReason=${accumulator.finishReason}, toolCalls=${accumulator.toolCalls.length}`);
+   178→  1678→
+   179→  1679→                    if (hasToolCalls(accumulator) && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'stop')) {
+   180→  1680→                      if (roundContent.trim()) {
+   181→  1681→                        for (const chunk of splitIntoChunks(roundContent)) {
+   182→  1682→                          controller.enqueue(createSSEJSON({
+   183→  1683→                            type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+   184→  1684→                          }));
+   185→  1685→                        }
+   186→  1686→                      }
+   187→  1687→                      const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
+   188→  1688→                        accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
+   189→  1689→                        sessionQuests, questTemplates,
+   190→  1690→                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id],
+   191→  1691→                        lorebooks
+   192→  1692→                      );
+   193→  1693→                      allQuestActivations = [...allQuestActivations, ...questActivations];
+   194→  1694→                      if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
+   195→  1695→                      if (shouldContinue) {
+   196→  1696→                        const toolResultPairs = accumulator.toolCalls.map(tc => ({
+   197→  1697→                          success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+   198→  1698→                        }));
+   199→  1699→                        const toolMessages = buildToolMessagesForOpenAI(accumulator.toolCalls, toolResultPairs);
+   200→  1700→                        const followUpMessages = [...grokMessages, ...toolMessages];
+   201→  1701→                        
+   202→  1702→                        fullContent = '';
+   203→  1703→                        let grokFollowUpContent = '';
+   204→  1704→                        for await (const chunk of streamGrok(followUpMessages as any, llmConfig)) {
+   205→  1705→                          grokFollowUpContent += chunk;
+   206→  1706→                        }
+   207→  1707→                        const cleanedGrokFollowUp = cleanModelArtifacts(grokFollowUpContent);
+   208→  1708→                        fullContent = cleanedGrokFollowUp;
+   209→  1709→                        for (const chunk of splitIntoChunks(cleanedGrokFollowUp)) {
+   210→  1710→                          controller.enqueue(createSSEJSON({
+   211→  1711→                            type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+   212→  1712→                          }));
+   213→  1713→                        }
+   214→  1714→                      }
+   215→  1715→                    } else if (mightContainToolCall(roundContent)) {
+   216→  1716→                      const textToolCalls = parseAllToolCallsFromText(roundContent);
+   217→  1717→                      if (textToolCalls.length > 0) {
+   218→  1718→                        console.log(`[Grok+Tools] Text-based tool call(s) detected: ${textToolCalls.map(tc => tc.name).join(', ')}`);
+   219→  1719→                        const cleanContent = stripToolCallFromText(roundContent);
+   220→  1720→                        if (cleanContent.trim()) {
+   221→  1721→                          for (const chunk of splitIntoChunks(cleanContent)) {
+   222→  1722→                            controller.enqueue(createSSEJSON({
+   223→  1723→                              type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+   224→  1724→                            }));
+   225→  1725→                          }
+   226→  1726→                        }
+   227→  1727→                        const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
+   228→  1728→                          textToolCalls.map((tc, idx) => ({
+   229→  1729→                            id: `text_call_${Date.now()}_${idx}`,
+   230→  1730→                            name: tc.name,
+   231→  1731→                            arguments: tc.arguments,
+   232→  1732→                            rawArguments: JSON.stringify(tc.arguments)
+   233→  1733→                          })), charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
+   234→  1734→                        sessionQuests, questTemplates,
+   235→  1735→                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id],
+   236→  1736→                        lorebooks
+   237→  1737→                      );
+   238→  1738→                        allQuestActivations = [...allQuestActivations, ...questActivations];
+   239→  1739→                      if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
+   240→  1740→                        if (shouldContinue) {
+   241→  1741→                          fullContent = '';
+   242→  1742→                          const toolNames = textToolCalls.map(tc => tc.name).join(', ');
+   243→  1743→                          const followUpMessages = [
+   244→  1744→                            ...grokMessages,
+   245→  1745→                            { role: 'user', content: `[Resultado de herramientas: ${toolNames}]\n${displayMessages}\n\nResponde de forma natural usando esta información.` },
+   246→  1746→                          ] as any;
+   247→  1747→                          let grokTextFollowUpContent = '';
+   248→  1748→                          for await (const chunk of streamGrok(followUpMessages, llmConfig)) {
+   249→  1749→                            grokTextFollowUpContent += chunk;
+   250→  1750→                          }
+   251→  1751→                          const cleanedGrokTextFollowUp = cleanModelArtifacts(grokTextFollowUpContent);
+   252→  1752→                          fullContent = cleanedGrokTextFollowUp;
+   253→  1753→                          for (const chunk of splitIntoChunks(cleanedGrokTextFollowUp)) {
+   254→  1754→                            controller.enqueue(createSSEJSON({
+   255→  1755→                              type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+   256→  1756→                            }));
+   257→  1757→                          }
+   258→  1758→                        }
+   259→  1759→                      } else {
+   260→  1760→                        const cleanedContent = cleanModelArtifacts(roundContent);
+   261→  1761→                        for (const chunk of splitIntoChunks(cleanedContent)) {
+   262→  1762→                          controller.enqueue(createSSEJSON({
+   263→  1763→                            type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+   264→  1764→                          }));
+   265→  1765→                        }
+   266→  1766→                      }
+   267→  1767→                    } else {
+   268→  1768→                      const cleanedContent = cleanModelArtifacts(roundContent);
+   269→  1769→                      for (const chunk of splitIntoChunks(cleanedContent)) {
+   270→  1770→                        controller.enqueue(createSSEJSON({
+   271→  1771→                          type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+   272→  1772→                        }));
+   273→  1773→                      }
+   274→  1774→                    }
+   275→  1775→                  } else {
+   276→  1776→                    generator = streamGrok(grokMessages as any, llmConfig);
+   277→  1777→                  }
+   278→  1778→                  break;
+   279→  1779→                }
+   280→  1780→
+   281→  1781→                case 'text-generation-webui':
+   282→  1782→                case 'koboldcpp': {
+   283→  1783→                  console.log(`[GroupStream] TextGenerationWebUI case: charShouldUseTools=${charShouldUseTools}`);
+   284→  1784→                  const tgwuMessages = finalChatMessages.map((m, idx) => ({
+   285→  1785→                    role: m.role === 'assistant' && idx === 0 ? 'system' : m.role,
+   286→  1786→                    content: m.content
+   287→  1787→                  }));
+   288→  1788→
+   289→  1789→                  if (charShouldUseTools) {
+   290→  1790→                    const accumulator = createToolCallAccumulator(charAvailableTools);
+   291→  1791→                    let roundContent = '';
+   292→  1792→
+   293→  1793→                    for await (const chunk of streamTextGenerationWebUIWithTools(tgwuMessages as any, llmConfig, charAvailableTools, accumulator)) {
+   294→  1794→                      roundContent += chunk;
+   295→  1795→                      fullContent += chunk;
+   296→  1796→                    }
+   297→  1797→
+   298→  1798→                    console.log(`[TextGenWebUI+Tools] Round buffered ${roundContent.length} chars, finishReason=${accumulator.finishReason}, toolCalls=${accumulator.toolCalls.length}`);
+   299→  1799→
+   300→  1800→                    if (hasToolCalls(accumulator) && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'stop')) {
+   301→  1801→                      if (roundContent.trim()) {
+   302→  1802→                        for (const chunk of splitIntoChunks(roundContent)) {
+   303→  1803→                          controller.enqueue(createSSEJSON({
+   304→  1804→                            type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+   305→  1805→                          }));
+   306→  1806→                        }
+   307→  1807→                      }
+   308→  1808→                      const { results: displayMessages, shouldContinue, questActivations, toolsUsed: charToolsUsed } = await executeGroupToolCalls(
+   309→  1809→                        accumulator.toolCalls, charAvailableTools, responder, sessionId || '', effectiveUserName, controller,
+   310→  1810→                        sessionQuests, questTemplates,
+   311→  1811→                        responder.statsConfig, sessionStats, allCharacters, characterMemoryMap[responder.id],
+   312→  1812→                        lorebooks
+   313→  1813→                      );
+   314→  1814→                      allQuestActivations = [...allQuestActivations, ...questActivations];
+   315→  1815→                      if (charToolsUsed) allToolsUsed = [...allToolsUsed, ...charToolsUsed];
+   316→  1816→                      if (shouldContinue) {
+   317→  1817→                        const toolResultPairs = accumulator.toolCalls.map(tc => ({
+   318→  1818→                          success: true, displayMessage: displayMessages || `[${tc.name} ejecutada]`
+   319→  1819→                        }));
+   320→  1820→                        const toolMessages = buildToolMessagesForOpenAI(accumulator.toolCalls, toolResultPairs);
+   321→  1821→                        const followUpMessages = [...tgwuMessages, ...toolMessages];
+   322→  1822→                        
+   323→  1823→                        fullContent = '';
+   324→  1824→                        let tgwuFollowUpContent = '';
+   325→  1825→                        for await (const chunk of streamTextGenerationWebUIWithTools(followUpMessages as any, llmConfig, [], accumulator)) {
+   326→  1826→                          tgwuFollowUpContent += chunk;
+   327→  1827→                        }
+   328→  1828→                        const cleanedTgwufollowUp = cleanModelArtifacts(tgwuFollowUpContent);
+   329→  1829→                        fullContent = cleanedTgwufollowUp;
+   330→  1830→                        for (const chunk of splitIntoChunks(cleanedTgwufollowUp)) {
+   331→  1831→                          controller.enqueue(createSSEJSON({
+   332→  1832→                            type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+   333→  1833→                          }));
+   334→  1834→                        }
+   335→  1835→                      }
+   336→  1836→                    } else {
+   337→  1837→                      const cleanedContent = cleanModelArtifacts(roundContent);
+   338→  1838→                      for (const chunk of splitIntoChunks(cleanedContent)) {
+   339→  1839→                        controller.enqueue(createSSEJSON({
+   340→  1840→                          type: 'token', characterId: responder.id, characterName: responder.name, content: chunk
+   341→  1841→                        }));
+   342→  1842→                      }
+   343→  1843→                    }
+   344→  1844→                  } else {
+   345→  1845→                    const prompt = buildCompletionPrompt({
+   346→  1846→                      systemPrompt: finalSystemPrompt,
+   347→  1847→                      messages: messagesForPrompt,
+   348→  1848→                      character: responder,
+   349→  1849→                      userName: effectiveUserName,
+   350→  1850→                      postHistoryInstructions: resolvedPostHistoryInstructions,
+   351→  1851→                      embeddingsContext: embeddingsContext,
+   352→  1852→                      exampleMessages: exampleMessages,
+   353→  1853→                      allCharacters: characters  // Pass all characters for proper speaker attribution
+   354→  1854→                    });
+   355→  1855→                    generator = streamTextGenerationWebUI(prompt, llmConfig);
+   356→  1856→                  }
+   357→  1857→                  break;
+   358→  1858→                }
+   359→  1859→
+   360→  1860→                default: {
+   361→  1861→                  const prompt = buildCompletionPrompt({
+   362→  1862→                    systemPrompt: finalSystemPrompt,
+   363→  1863→                    messages: messagesForPrompt,
+   364→  1864→                    character: responder,
+   365→  1865→                    userName: effectiveUserName,
+   366→  1866→                    postHistoryInstructions: resolvedPostHistoryInstructions,
+   367→  1867→                    embeddingsContext: embeddingsContext,
+   368→  1868→                    exampleMessages: exampleMessages,
+   369→  1869→                    allCharacters: characters  // Pass all characters for proper speaker attribution
+   370→  1870→                  });
+   371→  1871→                  generator = streamTextGenerationWebUI(prompt, llmConfig);
+   372→  1872→                  break;
+   373→  1873→                }
+   374→  1874→              }
+   375→  1875→
+   376→  1876→              // Stream the response (for providers that don't handle tool calling inline)
+   377→  1877→              if (generator) {
+   378→  1878→                for await (const chunk of generator) {
+   379→  1879→                  fullContent += chunk;
+   380→  1880→                  // Stream token to client
+   381→  1881→                  controller.enqueue(createSSEJSON({
+   382→  1882→                    type: 'token',
+   383→  1883→                    characterId: responder.id,
+   384→  1884→                    characterName: responder.name,
+   385→  1885→                    content: chunk
+   386→  1886→                  }));
+   387→  1887→                }
+   388→  1888→              }
+   389→  1889→
+   390→  1890→              // Clean up the response (remove character name prefix if present)
+   391→  1891→              const cleanedContent = cleanResponseContent(fullContent, responder.name);
+   392→  1892→
+   393→  1893→              // Store response for next character's context
+   394→  1894→              responsesThisTurn.push({
+   395→  1895→                characterId: responder.id,
+   396→  1896→                characterName: responder.name,
+   397→  1897→                content: cleanedContent
+   398→  1898→              });
+   399→  1899→
+   400→  1900→              // Send character_done event with prompt sections (including chat history)
+   401→  1901→              // Include isNarrator flag so frontend can tag the message appropriately
+   402→  1902→              controller.enqueue(createSSEJSON({
+   403→  1903→                type: 'character_done',
+   404→  1904→                characterId: responder.id,
+   405→  1905→                characterName: responder.name,
+   406→  1906→                fullContent: cleanedContent,
+   407→  1907→                promptSections: allPromptSections,
+   408→  1908→                isNarrator: isResponderNarrator
+   409→  1909→              }));
+   410→  1910→
+   411→  1911→            } catch (charError) {
+   412→  1912→              // Send character_error event but continue with other characters
+   413→  1913→              controller.enqueue(createSSEJSON({
+   414→  1914→                type: 'character_error',
+   415→  1915→                characterId: responder.id,
+   416→  1916→                characterName: responder.name,
+   417→  1917→                error: charError instanceof Error ? charError.message : 'Unknown error'
+   418→  1918→              }));
+   419→  1919→            }
+   420→  1920→          }
+   421→  1921→
+   422→  1922→          // ========================================
+   423→  1923→          // Memory Reinforcement
+   424→  1924→          // Check if responders referenced any existing memories and boost their importance
+   425→  1925→          // ========================================
+   426→  1926→          if (responsesThisTurn.length > 0) {
+   427→  1927→            const reinforcementEnabled = isReinforcementEnabled(effectiveEmbeddingsChatForReinforcement);
+   428→  1928→            if (reinforcementEnabled) {
+   429→  1929→              // Build memory namespaces from session context
+   430→  1930→              const memoryNamespaces: string[] = [];
+   431→  1931→              if (sessionId) {
+   432→  1932→                // Add per-character memory namespaces for each responder
+   433→  1933→                for (const r of responsesThisTurn) {
+   434→  1934→                  memoryNamespaces.push(`memory-character-${r.characterId}-${sessionId}`);
+   435→  1935→                }
+   436→  1936→                if (group.id) memoryNamespaces.push(`memory-group-${group.id}-${sessionId}`);
+   437→  1937→              }
+   438→  1938→
+   439→  1939→              if (memoryNamespaces.length > 0) {
+   440→  1940→                // Combine all responses this turn for reinforcement check
+   441→  1941→                const allResponseContent = responsesThisTurn
+   442→  1942→                  .map(r => r.content)
+   443→  1943→                  .filter(c => c && c.length > 50)
+   444→  1944→                  .join('\n');
+   445→  1945→
+   446→  1946→                if (allResponseContent.length > 50) {
+   447→  1947→                  // Fire and forget - don't block the response
+   448→  1948→                  setTimeout(async () => {
+   449→  1949→                    try {
+   450→  1950→                      const threshold = effectiveEmbeddingsChatForReinforcement.memoryReinforcementThreshold || 0.7;
+   451→  1951→                      const result = await processResponseAndReinforceMemories(
+   452→  1952→                        allResponseContent,
+   453→  1953→                        memoryNamespaces,
+   454→  1954→                        true,
+   455→  1955→                        threshold
+   456→  1956→                      );
+   457→  1957→                      if (result.reinforced > 0) {
+   458→  1958→                        console.log(`[MemoryReinforcement] Group: Reinforced ${result.reinforced} memories`);
+   459→  1959→                      }
+   460→  1960→                    } catch (err) {
+   461→  1961→                      console.warn('[MemoryReinforcement] Group failed:', err);
+   462→  1962→                    }
+   463→  1963→                  }, 0);
+   464→  1964→                }
+   465→  1965→              }
+   466→  1966→            }
+   467→  1967→          }
+   468→  1968→
+   469→  1969→          // Check if memory extraction should trigger
+   470→  1970→          // Count by TURNS (user messages) instead of individual messages.
+   471→  1971→          // The client will handle the actual extraction call after receiving 'done'.
+   472→  1972→          const userMessages = messages.filter(m => m.role === 'user' && !m.isDeleted);
+   473→  1973→          const turnCount = userMessages.length;
+   474→  1974→          const extractionFrequency = embeddingsChat.memoryExtractionFrequency || 5;
+   475→  1975→          const extractionEnabled = embeddingsChat.memoryExtractionEnabled === true;
+   476→  1976→          const shouldExtractGroupMemory =
+   477→  1977→            extractionEnabled &&
+   478→  1978→            responsesThisTurn.length > 0 &&
+   479→  1979→            turnCount > 0 &&
+   480→  1980→            turnCount % extractionFrequency === 0 &&
+   481→  1981→            !!llmConfig;
+   482→  1982→
+   483→  1983→          console.log(`[Memory] Group chat extraction check: enabled=${extractionEnabled}, turns=${turnCount}, freq=${extractionFrequency}, responders=${responsesThisTurn.length}, shouldExtract=${shouldExtractGroupMemory}`);
+   484→  1984→
+   485→  1985→          // Send final done event with shouldExtract flag so client can trigger extraction
+   486→  1986→          controller.enqueue(createSSEJSON({
+   487→  1987→            type: 'done',
+   488→  1988→            responses: responsesThisTurn,
+   489→  1989→            questActivations: allQuestActivations,
+   490→  1990→            toolsUsed: allToolsUsed,
+   491→  1991→            shouldExtract: shouldExtractGroupMemory,
+   492→  1992→          }));
+   493→  1993→          controller.close();
+   494→  1994→
+   495→  1995→        } catch (error) {
+   496→  1996→          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+   497→  1997→          controller.enqueue(createSSEJSON({ type: 'error', error: errorMessage }));
+   498→  1998→          controller.close();
+   499→  1999→        }
+   500→  2000→      }
+   501→  2001→    });
+   502→  2002→
+   503→  2003→    return createSSEStreamResponse(stream);
+   504→  2004→  } catch (error) {
+   505→  2005→    return createErrorResponse(
+   506→  2006→      error instanceof Error ? error.message : 'Failed to stream group response',
+   507→  2007→      500
+   508→  2008→    );
+   509→  2009→  }
+   510→  2010→}
+   511→  2011→

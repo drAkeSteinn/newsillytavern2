@@ -1,0 +1,857 @@
+     1→     1→'use client';
+     2→     2→
+     3→     3→import { useTavernStore } from '@/store/tavern-store';
+     4→     4→import { Button } from '@/components/ui/button';
+     5→     5→import { Input } from '@/components/ui/input';
+     6→     6→import { Label } from '@/components/ui/label';
+     7→     7→import { Textarea } from '@/components/ui/textarea';
+     8→     8→import { Switch } from '@/components/ui/switch';
+     9→     9→import { Badge } from '@/components/ui/badge';
+    10→    10→import { Separator } from '@/components/ui/separator';
+    11→    11→import {
+    12→    12→  Select,
+    13→    13→  SelectContent,
+    14→    14→  SelectItem,
+    15→    15→  SelectTrigger,
+    16→    16→  SelectValue,
+    17→    17→} from '@/components/ui/select';
+    18→    18→import { cn } from '@/lib/utils';
+    19→    19→import type {
+    20→    20→  LorebookEntry,
+    21→    21→  AttributeRequirement,
+    22→    22→  AttributeOperator,
+    23→    23→  AttributeEntryConfig,
+    24→    24→  DynamicContentRule,
+    25→    25→  DynamicContentConfig,
+    26→    26→  StaticContentConfig,
+    27→    27→  AttributeContentType,
+    28→    28→  AttributeTargetType,
+    29→    29→  AttributeRequirementLogic,
+    30→    30→} from '@/types';
+    31→    31→import {
+    32→    32→  OPERATORS_BY_ATTR_TYPE,
+    33→    33→  ATTRIBUTE_OPERATOR_LABELS,
+    34→    34→  OPERATOR_REQUIRES_VALUE,
+    35→    35→  OPERATOR_REQUIRES_SECONDARY_VALUE,
+    36→    36→} from '@/types';
+    37→    37→import {
+    38→    38→  Plus,
+    39→    39→  Trash2,
+    40→    40→  Link2,
+    41→    41→  Eye,
+    42→    42→  ChevronDown,
+    43→    43→  ChevronRight,
+    44→    44→  AlertTriangle,
+    45→    45→  CheckCircle2,
+    46→    46→  XCircle,
+    47→    47→} from 'lucide-react';
+    48→    48→import { useState, useMemo } from 'react';
+    49→    49→
+    50→    50→// ============================================
+    51→    51→// Main Component
+    52→    52→// ============================================
+    53→    53→
+    54→    54→interface AttributeEntryEditorProps {
+    55→    55→  entry: LorebookEntry;
+    56→    56→  onUpdate: (updates: Partial<LorebookEntry>) => void;
+    57→    57→}
+    58→    58→
+    59→    59→export function AttributeEntryEditor({ entry, onUpdate }: AttributeEntryEditorProps) {
+    60→    60→  const config = useMemo((): AttributeEntryConfig => {
+    61→    61→    const existing = entry.extensions?.attributeConfig as AttributeEntryConfig | undefined;
+    62→    62→    return existing || getDefaultConfig();
+    63→    63→  }, [entry.extensions]);
+    64→    64→
+    65→    65→  const updateConfig = (newConfig: Partial<AttributeEntryConfig>) => {
+    66→    66→    const merged: AttributeEntryConfig = { ...config, ...newConfig };
+    67→    67→    onUpdate({
+    68→    68→      extensions: { ...entry.extensions, attributeConfig: merged },
+    69→    69→    });
+    70→    70→  };
+    71→    71→
+    72→    72→  const contentType = config.content.type;
+    73→    73→  const setContentType = (type: AttributeContentType) => {
+    74→    74→    if (type === 'static') {
+    75→    75→      updateConfig({
+    76→    76→        content: {
+    77→    77→          type: 'static',
+    78→    78→          content: (config.content as DynamicContentConfig)?.defaultContent || '',
+    79→    79→        } as StaticContentConfig,
+    80→    80→      });
+    81→    81→    } else {
+    82→    82→      updateConfig({
+    83→    83→        content: {
+    84→    84→          type: 'dynamic',
+    85→    85→          rules: [],
+    86→    86→          defaultContent: (config.content as StaticContentConfig)?.content || '',
+    87→    87→        } as DynamicContentConfig,
+    88→    88→      });
+    89→    89→    }
+    90→    90→  };
+    91→    91→
+    92→    92→  return (
+    93→    93→    <div className="space-y-4 p-3 border rounded-lg bg-muted/20">
+    94→    94→      {/* Template Key */}
+    95→    95→      <div className="space-y-1.5">
+    96→    96→        <div className="flex items-center gap-1.5">
+    97→    97→          <Link2 className="w-3.5 h-3.5 text-primary" />
+    98→    98→          <Label className="text-xs font-medium">Key de la entrada</Label>
+    99→    99→        </div>
+   100→   100→        <div className="flex items-center gap-2">
+   101→   101→          <span className="text-sm text-muted-foreground flex-shrink-0">{'{{'}</span>
+   102→   102→          <Input
+   103→   103→            value={config.templateKey}
+   104→   104→            onChange={(e) => updateConfig({ templateKey: e.target.value.replace(/\s/g, '') })}
+   105→   105→            placeholder="miKey"
+   106→   106→            className="h-7 text-sm font-mono"
+   107→   107→          />
+   108→   108→          <span className="text-sm text-muted-foreground flex-shrink-0">{'}'}</span>
+   109→   109→        </div>
+   110→   110→        <p className="text-[10px] text-muted-foreground">
+   111→   111→          Coloca {'{{' + (config.templateKey || 'miKey') + '}'}  en cualquier sección del personaje para inyectar el contenido.
+   112→   112→        </p>
+   113→   113→      </div>
+   114→   114→
+   115→   115→      <Separator />
+   116→   116→
+   117→   117→      {/* Requirement Logic */}
+   118→   118→      <div className="flex items-center gap-3">
+   119→   119→        <Label className="text-xs font-medium">Requisitos</Label>
+   120→   120→        <Select
+   121→   121→          value={config.requirementLogic || 'AND'}
+   122→   122→          onValueChange={(v) => updateConfig({ requirementLogic: v as AttributeRequirementLogic })}
+   123→   123→        >
+   124→   124→          <SelectTrigger className="h-6 w-20 text-xs">
+   125→   125→            <SelectValue />
+   126→   126→          </SelectTrigger>
+   127→   127→          <SelectContent>
+   128→   128→            <SelectItem value="AND" className="text-xs">AND (Todos)</SelectItem>
+   129→   129→            <SelectItem value="OR" className="text-xs">OR (Cualquiera)</SelectItem>
+   130→   130→          </SelectContent>
+   131→   131→        </Select>
+   132→   132→        <label className="flex items-center gap-1.5 text-xs cursor-pointer ml-auto">
+   133→   133→          <Switch
+   134→   134→            checked={config.isFallback ?? false}
+   135→   135→            onCheckedChange={(checked) => updateConfig({ isFallback: checked })}
+   136→   136→          />
+   137→   137→          Fallback
+   138→   138→        </label>
+   139→   139→      </div>
+   140→   140→
+   141→   141→      {/* Requirements List */}
+   142→   142→      <div className="space-y-2">
+   143→   143→        {config.requirements.map((req, index) => (
+   144→   144→          <RequirementRow
+   145→   145→            key={req.id}
+   146→   146→            requirement={req}
+   147→   147→            index={index}
+   148→   148→            onUpdate={(updated) => {
+   149→   149→              const newReqs = [...config.requirements];
+   150→   150→              newReqs[index] = updated;
+   151→   151→              updateConfig({ requirements: newReqs });
+   152→   152→            }}
+   153→   153→            onRemove={() => {
+   154→   154→              updateConfig({
+   155→   155→                requirements: config.requirements.filter((_, i) => i !== index),
+   156→   156→              });
+   157→   157→            }}
+   158→   158→          />
+   159→   159→        ))}
+   160→   160→
+   161→   161→        {!config.isFallback && (
+   162→   162→          <Button
+   163→   163→            size="sm"
+   164→   164→            variant="outline"
+   165→   165→            className="h-7 text-xs w-full border-dashed"
+   166→   166→            onClick={() => {
+   167→   167→              const newReq: AttributeRequirement = {
+   168→   168→                id: crypto.randomUUID(),
+   169→   169→                targetId: '',
+   170→   170→                targetName: '',
+   171→   171→                targetType: 'character',
+   172→   172→                attributeKey: '',
+   173→   173→                attributeName: '',
+   174→   174→                attributeType: 'text',
+   175→   175→                operator: 'equals',
+   176→   176→                value: '',
+   177→   177→              };
+   178→   178→              updateConfig({
+   179→   179→                requirements: [...config.requirements, newReq],
+   180→   180→              });
+   181→   181→            }}
+   182→   182→          >
+   183→   183→            <Plus className="w-3 h-3 mr-1" />
+   184→   184→            Agregar requisito
+   185→   185→          </Button>
+   186→   186→        )}
+   187→   187→      </div>
+   188→   188→
+   189→   189→      {config.isFallback && (
+   190→   190→        <div className="flex items-center gap-2 p-2 bg-amber-50 dark:bg-amber-900/20 rounded border border-amber-200 dark:border-amber-800">
+   191→   191→          <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+   192→   192→          <span className="text-[11px] text-amber-700 dark:text-amber-400">
+   193→   193→            Modo fallback: esta entrada se activará siempre que ninguna otra entrada con la misma key cumpla sus requisitos.
+   194→   194→          </span>
+   195→   195→        </div>
+   196→   196→      )}
+   197→   197→
+   198→   198→      <Separator />
+   199→   199→
+   200→   200→      {/* Content Type */}
+   201→   201→      <div className="flex items-center gap-3">
+   202→   202→        <Label className="text-xs font-medium">Tipo de contenido</Label>
+   203→   203→        <Select value={contentType} onValueChange={(v) => setContentType(v as AttributeContentType)}>
+   204→   204→          <SelectTrigger className="h-6 w-28 text-xs">
+   205→   205→            <SelectValue />
+   206→   206→          </SelectTrigger>
+   207→   207→          <SelectContent>
+   208→   208→            <SelectItem value="static" className="text-xs">Estático</SelectItem>
+   209→   209→            <SelectItem value="dynamic" className="text-xs">Dinámico</SelectItem>
+   210→   210→          </SelectContent>
+   211→   211→        </Select>
+   212→   212→      </div>
+   213→   213→
+   214→   214→      {/* Content */}
+   215→   215→      {contentType === 'static' ? (
+   216→   216→        <div className="space-y-1.5">
+   217→   217→          <Label className="text-xs">Contenido estático</Label>
+   218→   218→          <Textarea
+   219→   219→            value={(config.content as StaticContentConfig).content}
+   220→   220→            onChange={(e) =>
+   221→   221→              updateConfig({
+   222→   222→                content: { type: 'static', content: e.target.value } as StaticContentConfig,
+   223→   223→              })
+   224→   224→            }
+   225→   225→            placeholder="Contenido que se inyectará cuando los requisitos se cumplan..."
+   226→   226→            rows={3}
+   227→   227→            className="font-mono text-sm"
+   228→   228→          />
+   229→   229→        </div>
+   230→   230→      ) : (
+   231→   231→        <DynamicContentEditor
+   232→   232→          config={config.content as DynamicContentConfig}
+   233→   233→          requirements={config.requirements}
+   234→   234→          onUpdate={(newContent) => updateConfig({ content: newContent })}
+   235→   235→        />
+   236→   236→      )}
+   237→   237→
+   238→   238→      {/* Priority */}
+   239→   239→      <div className="flex items-center gap-3">
+   240→   240→        <Label className="text-xs">Prioridad</Label>
+   241→   241→        <Input
+   242→   242→          type="number"
+   243→   243→          min={0}
+   244→   244→          value={config.priority ?? 0}
+   245→   245→          onChange={(e) => updateConfig({ priority: parseInt(e.target.value) || 0 })}
+   246→   246→          className="h-6 w-20 text-xs"
+   247→   247→        />
+   248→   248→        <p className="text-[10px] text-muted-foreground">
+   249→   249→          Mayor = se evalúa primero (útil cuando múltiples entradas usan la misma key)
+   250→   250→        </p>
+   251→   251→      </div>
+   252→   252→    </div>
+   253→   253→  );
+   254→   254→}
+   255→   255→
+   256→   256→// ============================================
+   257→   257→// Requirement Row Component
+   258→   258→// ============================================
+   259→   259→
+   260→   260→interface RequirementRowProps {
+   261→   261→  requirement: AttributeRequirement;
+   262→   262→  index: number;
+   263→   263→  onUpdate: (updated: AttributeRequirement) => void;
+   264→   264→  onRemove: () => void;
+   265→   265→}
+   266→   266→
+   267→   267→function RequirementRow({ requirement, index, onUpdate, onRemove }: RequirementRowProps) {
+   268→   268→  const { characters, personas } = useTavernStore();
+   269→   269→
+   270→   270→  const [expanded, setExpanded] = useState(true);
+   271→   271→
+   272→   272→  // Get available targets
+   273→   273→  const characterOptions = useMemo(() =>
+   274→   274→    characters.map(c => ({
+   275→   275→      id: c.id,
+   276→   276→      name: c.name,
+   277→   277→      type: 'character' as AttributeTargetType,
+   278→   278→    })),
+   279→   279→    [characters]
+   280→   280→  );
+   281→   281→
+   282→   282→  const personaOptions = useMemo(() =>
+   283→   283→    personas.map(p => ({
+   284→   284→      id: p.id,
+   285→   285→      name: p.name,
+   286→   286→      type: 'persona' as AttributeTargetType,
+   287→   287→    })),
+   288→   288→    [personas]
+   289→   289→  );
+   290→   290→
+   291→   291→  // Find the selected target to get attributes
+   292→   292→  const selectedTarget = useMemo(() => {
+   293→   293→    if (!requirement.targetId) return null;
+   294→   294→    if (requirement.targetType === 'persona') {
+   295→   295→      return personas.find(p => p.id === requirement.targetId);
+   296→   296→    }
+   297→   297→    return characters.find(c => c.id === requirement.targetId);
+   298→   298→  }, [requirement.targetId, requirement.targetType, characters, personas]);
+   299→   299→
+   300→   300→  // Get attribute definitions for selected target
+   301→   301→  const attributeDefs = useMemo(() => {
+   302→   302→    if (!selectedTarget?.statsConfig?.attributes) return [];
+   303→   303→    return selectedTarget.statsConfig.attributes;
+   304→   304→  }, [selectedTarget]);
+   305→   305→
+   306→   306→  // Get available operators based on attribute type
+   307→   307→  const availableOperators = useMemo(() => {
+   308→   308→    const typeKey = requirement.attributeType || 'text';
+   309→   309→    return OPERATORS_BY_ATTR_TYPE[typeKey] || OPERATORS_BY_ATTR_TYPE.text || [];
+   310→   310→  }, [requirement.attributeType]);
+   311→   311→
+   312→   312→  return (
+   313→   313→    <div className="border rounded-lg overflow-hidden">
+   314→   314→      {/* Header */}
+   315→   315→      <div
+   316→   316→        className="flex items-center gap-2 px-2.5 py-1.5 bg-muted/50 cursor-pointer hover:bg-muted/80 transition-colors"
+   317→   317→        onClick={() => setExpanded(!expanded)}
+   318→   318→      >
+   319→   319→        {expanded ? (
+   320→   320→          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+   321→   321→        ) : (
+   322→   322→          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+   323→   323→        )}
+   324→   324→        <Badge variant="outline" className="text-[9px] px-1 py-0 h-4">
+   325→   325→          #{index + 1}
+   326→   326→        </Badge>
+   327→   327→        {requirement.targetName && (
+   328→   328→          <span className="text-xs font-medium truncate flex-1">
+   329→   329→            {requirement.targetName}
+   330→   330→            {requirement.attributeName ? ` → ${requirement.attributeName}` : ''}
+   331→   331→          </span>
+   332→   332→        )}
+   333→   333→        {!requirement.targetName && (
+   334→   334→          <span className="text-xs text-muted-foreground italic">Sin configurar</span>
+   335→   335→        )}
+   336→   336→        <Button
+   337→   337→          size="icon"
+   338→   338→          variant="ghost"
+   339→   339→          className="h-5 w-5 text-destructive hover:text-destructive"
+   340→   340→          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+   341→   341→        >
+   342→   342→          <Trash2 className="w-3 h-3" />
+   343→   343→        </Button>
+   344→   344→      </div>
+   345→   345→
+   346→   346→      {/* Expanded Content */}
+   347→   347→      {expanded && (
+   348→   348→        <div className="p-2.5 space-y-2 border-t">
+   349→   349→          {/* Row 1: Target selector */}
+   350→   350→          <div className="grid grid-cols-2 gap-2">
+   351→   351→            <div className="space-y-1">
+   352→   352→              <Label className="text-[10px] text-muted-foreground">Objetivo</Label>
+   353→   353→              <Select
+   354→   354→                value={requirement.targetId || '__none__'}
+   355→   355→                onValueChange={(v) => {
+   356→   356→                  if (v === '__none__') {
+   357→   357→                    onUpdate({ ...requirement, targetId: '', targetName: '', attributeKey: '', attributeName: '' });
+   358→   358→                    return;
+   359→   359→                  }
+   360→   360→                  const isPersona = personaOptions.some(p => p.id === v);
+   361→   361→                  const isChar = characterOptions.some(c => c.id === v);
+   362→   362→                  const target = isChar
+   363→   363→                    ? characterOptions.find(c => c.id === v)
+   364→   364→                    : personaOptions.find(p => p.id === v);
+   365→   365→                  if (target) {
+   366→   366→                    onUpdate({
+   367→   367→                      ...requirement,
+   368→   368→                      targetId: target.id,
+   369→   369→                      targetName: target.name,
+   370→   370→                      targetType: target.type,
+   371→   371→                      attributeKey: '',
+   372→   372→                      attributeName: '',
+   373→   373→                    });
+   374→   374→                  }
+   375→   375→                }}
+   376→   376→              >
+   377→   377→                <SelectTrigger className="h-7 text-xs">
+   378→   378→                  <SelectValue placeholder="Seleccionar..." />
+   379→   379→                </SelectTrigger>
+   380→   380→                <SelectContent>
+   381→   381→                  {characterOptions.length > 0 && (
+   382→   382→                    <>
+   383→   383→                      <div className="px-2 py-1 text-[10px] text-muted-foreground font-medium">Personajes</div>
+   384→   384→                      {characterOptions.map(c => (
+   385→   385→                        <SelectItem key={c.id} value={c.id} className="text-xs">
+   386→   386→                          {c.name}
+   387→   387→                        </SelectItem>
+   388→   388→                      ))}
+   389→   389→                    </>
+   390→   390→                  )}
+   391→   391→                  {personaOptions.length > 0 && (
+   392→   392→                    <>
+   393→   393→                      <div className="px-2 py-1 text-[10px] text-muted-foreground font-medium mt-1">Personas</div>
+   394→   394→                      {personaOptions.map(p => (
+   395→   395→                        <SelectItem key={p.id} value={p.id} className="text-xs">
+   396→   396→                          {p.name}
+   397→   397→                        </SelectItem>
+   398→   398→                      ))}
+   399→   399→                    </>
+   400→   400→                  )}
+   401→   401→                </SelectContent>
+   402→   402→              </Select>
+   403→   403→            </div>
+   404→   404→
+   405→   405→            {/* Attribute selector */}
+   406→   406→            <div className="space-y-1">
+   407→   407→              <Label className="text-[10px] text-muted-foreground">Atributo</Label>
+   408→   408→              <Select
+   409→   409→                value={requirement.attributeKey || '__none__'}
+   410→   410→                onValueChange={(v) => {
+   411→   411→                  if (v === '__none__') {
+   412→   412→                    onUpdate({ ...requirement, attributeKey: '', attributeName: '', attributeType: 'text' });
+   413→   413→                    return;
+   414→   414→                  }
+   415→   415→                  const attrDef = attributeDefs.find(a => a.key === v);
+   416→   416→                  if (attrDef) {
+   417→   417→                    onUpdate({
+   418→   418→                      ...requirement,
+   419→   419→                      attributeKey: attrDef.key,
+   420→   420→                      attributeName: attrDef.name,
+   421→   421→                      attributeType: attrDef.type as any,
+   422→   422→                    });
+   423→   423→                  }
+   424→   424→                }}
+   425→   425→                disabled={!requirement.targetId}
+   426→   426→              >
+   427→   427→                <SelectTrigger className="h-7 text-xs">
+   428→   428→                  <SelectValue placeholder="Seleccionar..." />
+   429→   429→                </SelectTrigger>
+   430→   430→                <SelectContent>
+   431→   431→                  {attributeDefs.length === 0 && (
+   432→   432→                    <div className="px-2 py-1 text-[10px] text-muted-foreground italic">
+   433→   433→                      Sin atributos definidos
+   434→   434→                    </div>
+   435→   435→                  )}
+   436→   436→                  {attributeDefs.map(attr => (
+   437→   437→                    <SelectItem key={attr.key} value={attr.key} className="text-xs">
+   438→   438→                      {attr.name}
+   439→   439→                      <Badge variant="outline" className="ml-1 text-[8px] px-0.5 h-3">
+   440→   440→                        {attr.type}
+   441→   441→                      </Badge>
+   442→   442→                    </SelectItem>
+   443→   443→                  ))}
+   444→   444→                </SelectContent>
+   445→   445→              </Select>
+   446→   446→            </div>
+   447→   447→          </div>
+   448→   448→
+   449→   449→          {/* Row 2: Operator and values */}
+   450→   450→          <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2">
+   451→   451→            {/* Operator */}
+   452→   452→            <div className="space-y-1">
+   453→   453→              <Label className="text-[10px] text-muted-foreground">Operador</Label>
+   454→   454→              <Select
+   455→   455→                value={requirement.operator}
+   456→   456→                onValueChange={(v) => onUpdate({ ...requirement, operator: v as AttributeOperator })}
+   457→   457→              >
+   458→   458→                <SelectTrigger className="h-7 text-xs">
+   459→   459→                  <SelectValue />
+   460→   460→                </SelectTrigger>
+   461→   461→                <SelectContent>
+   462→   462→                  {availableOperators.map(op => (
+   463→   463→                    <SelectItem key={op} value={op} className="text-xs">
+   464→   464→                      {ATTRIBUTE_OPERATOR_LABELS[op]}
+   465→   465→                    </SelectItem>
+   466→   466→                  ))}
+   467→   467→                </SelectContent>
+   468→   468→              </Select>
+   469→   469→            </div>
+   470→   470→
+   471→   471→            {/* Value */}
+   472→   472→            {OPERATOR_REQUIRES_VALUE[requirement.operator] && (
+   473→   473→              <div className="space-y-1">
+   474→   474→                <Label className="text-[10px] text-muted-foreground">Valor</Label>
+   475→   475→                <Input
+   476→   476→                  value={requirement.value}
+   477→   477→                  onChange={(e) => onUpdate({ ...requirement, value: e.target.value })}
+   478→   478→                  placeholder="..."
+   479→   479→                  className="h-7 text-xs"
+   480→   480→                />
+   481→   481→              </div>
+   482→   482→            )}
+   483→   483→
+   484→   484→            {/* Secondary Value (for "between", "one_of", "none_of") */}
+   485→   485→            {OPERATOR_REQUIRES_SECONDARY_VALUE[requirement.operator] && (
+   486→   486→              <div className="space-y-1">
+   487→   487→                <Label className="text-[10px] text-muted-foreground">
+   488→   488→                  {requirement.operator === 'between' ? 'Valor máx.' : 'Lista (CSV)'}
+   489→   489→                </Label>
+   490→   490→                <Input
+   491→   491→                  value={requirement.valueSecondary || ''}
+   492→   492→                  onChange={(e) => onUpdate({ ...requirement, valueSecondary: e.target.value })}
+   493→   493→                  placeholder={requirement.operator === 'between' ? '10' : 'a, b, c'}
+   494→   494→                  className="h-7 text-xs"
+   495→   495→                />
+   496→   496→              </div>
+   497→   497→            )}
+   498→   498→
+   499→   499→            {/* Spacer when no values needed */}
+   500→   500→            {!OPERATOR_REQUIRES_VALUE[requirement.operator] && (
+   501→   501→              <div />
+   502→   502→            )}
+   503→   503→          </div>
+   504→   504→        </div>
+   505→   505→      )}
+   506→   506→    </div>
+   507→   507→  );
+   508→   508→}
+   509→   509→
+   510→   510→// ============================================
+   511→   511→// Dynamic Content Editor
+   512→   512→// ============================================
+   513→   513→
+   514→   514→interface DynamicContentEditorProps {
+   515→   515→  config: DynamicContentConfig;
+   516→   516→  requirements: AttributeRequirement[];
+   517→   517→  onUpdate: (content: DynamicContentConfig) => void;
+   518→   518→}
+   519→   519→
+   520→   520→function DynamicContentEditor({ config, requirements, onUpdate }: DynamicContentEditorProps) {
+   521→   521→  const addRule = () => {
+   522→   522→    const newRule: DynamicContentRule = {
+   523→   523→      id: crypto.randomUUID(),
+   524→   524→      conditions: [],
+   525→   525→      content: '',
+   526→   526→    };
+   527→   527→    onUpdate({ ...config, rules: [...config.rules, newRule] });
+   528→   528→  };
+   529→   529→
+   530→   530→  const updateRule = (index: number, updated: DynamicContentRule) => {
+   531→   531→    const newRules = [...config.rules];
+   532→   532→    newRules[index] = updated;
+   533→   533→    onUpdate({ ...config, rules: newRules });
+   534→   534→  };
+   535→   535→
+   536→   536→  const removeRule = (index: number) => {
+   537→   537→    onUpdate({ ...config, rules: config.rules.filter((_, i) => i !== index) });
+   538→   538→  };
+   539→   539→
+   540→   540→  return (
+   541→   541→    <div className="space-y-2">
+   542→   542→      {/* Rules */}
+   543→   543→      {config.rules.map((rule, index) => (
+   544→   544→        <DynamicRuleEditor
+   545→   545→          key={rule.id}
+   546→   546→          rule={rule}
+   547→   547→          ruleIndex={index}
+   548→   548→          requirements={requirements}
+   549→   549→          onUpdate={(updated) => updateRule(index, updated)}
+   550→   550→          onRemove={() => removeRule(index)}
+   551→   551→        />
+   552→   552→      ))}
+   553→   553→
+   554→   554→      <Button
+   555→   555→        size="sm"
+   556→   556→        variant="outline"
+   557→   557→        className="h-7 text-xs w-full border-dashed"
+   558→   558→        onClick={addRule}
+   559→   559→      >
+   560→   560→        <Plus className="w-3 h-3 mr-1" />
+   561→   561→        Agregar regla condicional
+   562→   562→      </Button>
+   563→   563→
+   564→   564→      {/* Default Content */}
+   565→   565→      <div className="space-y-1.5">
+   566→   566→        <Label className="text-xs">Contenido por defecto (si ninguna regla coincide)</Label>
+   567→   567→        <Textarea
+   568→   568→          value={config.defaultContent || ''}
+   569→   569→          onChange={(e) => onUpdate({ ...config, defaultContent: e.target.value })}
+   570→   570→          placeholder="Contenido por defecto..."
+   571→   571→          rows={2}
+   572→   572→          className="font-mono text-sm"
+   573→   573→        />
+   574→   574→      </div>
+   575→   575→    </div>
+   576→   576→  );
+   577→   577→}
+   578→   578→
+   579→   579→// ============================================
+   580→   580→// Dynamic Rule Editor
+   581→   581→// ============================================
+   582→   582→
+   583→   583→interface DynamicRuleEditorProps {
+   584→   584→  rule: DynamicContentRule;
+   585→   585→  ruleIndex: number;
+   586→   586→  requirements: AttributeRequirement[];
+   587→   587→  onUpdate: (updated: DynamicContentRule) => void;
+   588→   588→  onRemove: () => void;
+   589→   589→}
+   590→   590→
+   591→   591→function DynamicRuleEditor({ rule, ruleIndex, requirements, onUpdate, onRemove }: DynamicRuleEditorProps) {
+   592→   592→  const [expanded, setExpanded] = useState(true);
+   593→   593→
+   594→   594→  const addCondition = () => {
+   595→   595→    const newCondition = {
+   596→   596→      requirementIndex: 0,
+   597→   597→      operator: 'equals' as AttributeOperator,
+   598→   598→      value: '',
+   599→   599→    };
+   600→   600→    onUpdate({ ...rule, conditions: [...rule.conditions, newCondition] });
+   601→   601→  };
+   602→   602→
+   603→   603→  const updateCondition = (condIndex: number, updated: typeof rule.conditions[0]) => {
+   604→   604→    const newConditions = [...rule.conditions];
+   605→   605→    newConditions[condIndex] = updated;
+   606→   606→    onUpdate({ ...rule, conditions: newConditions });
+   607→   607→  };
+   608→   608→
+   609→   609→  const removeCondition = (condIndex: number) => {
+   610→   610→    onUpdate({ ...rule, conditions: rule.conditions.filter((_, i) => i !== condIndex) });
+   611→   611→  };
+   612→   612→
+   613→   613→  // Get available operators for the referenced requirement's attribute type
+   614→   614→  const getAvailableOperators = (reqIndex: number): AttributeOperator[] => {
+   615→   615→    const req = requirements[reqIndex];
+   616→   616→    if (!req) return OPERATORS_BY_ATTR_TYPE.text || [];
+   617→   617→    const typeKey = req.attributeType || 'text';
+   618→   618→    return OPERATORS_BY_ATTR_TYPE[typeKey] || OPERATORS_BY_ATTR_TYPE.text || [];
+   619→   619→  };
+   620→   620→
+   621→   621→  return (
+   622→   622→    <div className="border rounded-lg overflow-hidden">
+   623→   623→      {/* Header */}
+   624→   624→      <div
+   625→   625→        className="flex items-center gap-2 px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors"
+   626→   626→        onClick={() => setExpanded(!expanded)}
+   627→   627→      >
+   628→   628→        {expanded ? (
+   629→   629→          <ChevronDown className="w-3.5 h-3.5" />
+   630→   630→        ) : (
+   631→   631→          <ChevronRight className="w-3.5 h-3.5" />
+   632→   632→        )}
+   633→   633→        <Badge className="text-[9px] px-1 py-0 h-4 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800">
+   634→   634→          Regla {ruleIndex + 1}
+   635→   635→        </Badge>
+   636→   636→        <span className="text-xs text-muted-foreground truncate flex-1">
+   637→   637→          {rule.conditions.length} condición(es)
+   638→   638→        </span>
+   639→   639→        <Button
+   640→   640→          size="icon"
+   641→   641→          variant="ghost"
+   642→   642→          className="h-5 w-5 text-destructive hover:text-destructive"
+   643→   643→          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+   644→   644→        >
+   645→   645→          <Trash2 className="w-3 h-3" />
+   646→   646→        </Button>
+   647→   647→      </div>
+   648→   648→
+   649→   649→      {expanded && (
+   650→   650→        <div className="p-2.5 space-y-2 border-t">
+   651→   651→          {/* Conditions */}
+   652→   652→          {rule.conditions.map((cond, condIndex) => {
+   653→   653→            const refReq = requirements[cond.requirementIndex];
+   654→   654→            const ops = getAvailableOperators(cond.requirementIndex);
+   655→   655→
+   656→   656→            return (
+   657→   657→              <div key={condIndex} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end">
+   658→   658→                {/* Requirement reference */}
+   659→   659→                <div className="space-y-0.5">
+   660→   660→                  <Label className="text-[10px] text-muted-foreground">Atributo</Label>
+   661→   661→                  <Select
+   662→   662→                    value={String(cond.requirementIndex)}
+   663→   663→                    onValueChange={(v) =>
+   664→   664→                      updateCondition(condIndex, { ...cond, requirementIndex: parseInt(v) })
+   665→   665→                    }
+   666→   666→                  >
+   667→   667→                    <SelectTrigger className="h-6 text-[11px]">
+   668→   668→                      <SelectValue />
+   669→   669→                    </SelectTrigger>
+   670→   670→                    <SelectContent>
+   671→   671→                      {requirements.map((req, ri) => (
+   672→   672→                        <SelectItem key={ri} value={String(ri)} className="text-[11px]">
+   673→   673→                          #{ri + 1}: {req.targetName} → {req.attributeName || '?'}
+   674→   674→                        </SelectItem>
+   675→   675→                      ))}
+   676→   676→                    </SelectContent>
+   677→   677→                  </Select>
+   678→   678→                </div>
+   679→   679→
+   680→   680→                {/* Operator */}
+   681→   681→                <div className="space-y-0.5">
+   682→   682→                  <Label className="text-[10px] text-muted-foreground">Condición</Label>
+   683→   683→                  <Select
+   684→   684→                    value={cond.operator}
+   685→   685→                    onValueChange={(v) =>
+   686→   686→                      updateCondition(condIndex, { ...cond, operator: v as AttributeOperator })
+   687→   687→                    }
+   688→   688→                  >
+   689→   689→                    <SelectTrigger className="h-6 text-[11px]">
+   690→   690→                      <SelectValue />
+   691→   691→                    </SelectTrigger>
+   692→   692→                    <SelectContent>
+   693→   693→                      {ops.map(op => (
+   694→   694→                        <SelectItem key={op} value={op} className="text-[11px]">
+   695→   695→                          {ATTRIBUTE_OPERATOR_LABELS[op]}
+   696→   696→                        </SelectItem>
+   697→   697→                      ))}
+   698→   698→                    </SelectContent>
+   699→   699→                  </Select>
+   700→   700→                </div>
+   701→   701→
+   702→   702→                {/* Value */}
+   703→   703→                {OPERATOR_REQUIRES_VALUE[cond.operator] && (
+   704→   704→                  <div className="space-y-0.5">
+   705→   705→                    <Label className="text-[10px] text-muted-foreground">Valor</Label>
+   706→   706→                    <Input
+   707→   707→                      value={cond.value}
+   708→   708→                      onChange={(e) =>
+   709→   709→                        updateCondition(condIndex, { ...cond, value: e.target.value })
+   710→   710→                      }
+   711→   711→                      placeholder="..."
+   712→   712→                      className="h-6 text-[11px]"
+   713→   713→                    />
+   714→   714→                  </div>
+   715→   715→                )}
+   716→   716→
+   717→   717→                {!OPERATOR_REQUIRES_VALUE[cond.operator] && <div />}
+   718→   718→
+   719→   719→                <Button
+   720→   720→                  size="icon"
+   721→   721→                  variant="ghost"
+   722→   722→                  className="h-6 w-6 text-destructive hover:text-destructive"
+   723→   723→                  onClick={() => removeCondition(condIndex)}
+   724→   724→                >
+   725→   725→                  <Trash2 className="w-3 h-3" />
+   726→   726→                </Button>
+   727→   727→              </div>
+   728→   728→            );
+   729→   729→          })}
+   730→   730→
+   731→   731→          <Button
+   732→   732→            size="sm"
+   733→   733→            variant="ghost"
+   734→   734→            className="h-6 text-[11px] w-full border-dashed border"
+   735→   735→            onClick={addCondition}
+   736→   736→          >
+   737→   737→            <Plus className="w-3 h-3 mr-1" />
+   738→   738→            Agregar condición
+   739→   739→          </Button>
+   740→   740→
+   741→   741→          {/* Rule Content */}
+   742→   742→          <div className="space-y-1">
+   743→   743→            <Label className="text-[11px]">Contenido si se cumple</Label>
+   744→   744→            <Textarea
+   745→   745→              value={rule.content}
+   746→   746→              onChange={(e) => onUpdate({ ...rule, content: e.target.value })}
+   747→   747→              placeholder="Texto que aparecerá cuando se cumplan todas las condiciones..."
+   748→   748→              rows={2}
+   749→   749→              className="font-mono text-[11px]"
+   750→   750→            />
+   751→   751→          </div>
+   752→   752→        </div>
+   753→   753→      )}
+   754→   754→    </div>
+   755→   755→  );
+   756→   756→}
+   757→   757→
+   758→   758→// ============================================
+   759→   759→// Default Config
+   760→   760→// ============================================
+   761→   761→
+   762→   762→function getDefaultConfig(): AttributeEntryConfig {
+   763→   763→  return {
+   764→   764→    requirements: [],
+   765→   765→    requirementLogic: 'AND',
+   766→   766→    templateKey: '',
+   767→   767→    content: {
+   768→   768→      type: 'static',
+   769→   769→      content: '',
+   770→   770→    },
+   771→   771→    priority: 0,
+   772→   772→    isFallback: false,
+   773→   773→  };
+   774→   774→}
+   775→   775→
+   776→   776→// ============================================
+   777→   777→// Live Preview Component
+   778→   778→// ============================================
+   779→   779→
+   780→   780→interface AttributeEntryPreviewProps {
+   781→   781→  entry: LorebookEntry;
+   782→   782→}
+   783→   783→
+   784→   784→export function AttributeEntryPreview({ entry }: AttributeEntryPreviewProps) {
+   785→   785→  const { characters, personas } = useTavernStore();
+   786→   786→  const { sessionStats } = useTavernStore();
+   787→   787→
+   788→   788→  const config = useMemo((): AttributeEntryConfig | null => {
+   789→   789→    if (entry.entryType !== 'attribute') return null;
+   790→   790→    return (entry.extensions?.attributeConfig as AttributeEntryConfig) || null;
+   791→   791→  }, [entry]);
+   792→   792→
+   793→   793→  if (!config) return null;
+   794→   794→
+   795→   795→  // Get current attribute values
+   796→   796→  const getAttrValue = (req: AttributeRequirement) => {
+   797→   797→    let values: Record<string, number | string> = {};
+   798→   798→    if (req.targetType === 'character') {
+   799→   799→      values = sessionStats?.characterStats?.[req.targetId]?.attributeValues || {};
+   800→   800→    } else {
+   801→   801→      values = sessionStats?.characterStats?.['__user__']?.attributeValues || {};
+   802→   802→    }
+   803→   803→    return values[req.attributeKey];
+   804→   804→  };
+   805→   805→
+   806→   806→  return (
+   807→   807→    <div className="p-3 border rounded-lg bg-muted/10 space-y-2">
+   808→   808→      <div className="flex items-center gap-1.5">
+   809→   809→        <Eye className="w-3.5 h-3.5 text-primary" />
+   810→   810→        <span className="text-xs font-medium">Preview (valores actuales)</span>
+   811→   811→      </div>
+   812→   812→
+   813→   813→      {/* Requirements evaluation */}
+   814→   814→      {config.requirements.length > 0 && (
+   815→   815→        <div className="space-y-1">
+   816→   816→          {config.requirements.map((req, i) => {
+   817→   817→            const val = getAttrValue(req);
+   818→   818→            const hasVal = val !== undefined && val !== null;
+   819→   819→
+   820→   820→            return (
+   821→   821→              <div key={req.id} className="flex items-center gap-2 text-[11px]">
+   822→   822→                {hasVal ? (
+   823→   823→                  <CheckCircle2 className="w-3 h-3 text-green-500" />
+   824→   824→                ) : (
+   825→   825→                  <XCircle className="w-3 h-3 text-muted-foreground" />
+   826→   826→                )}
+   827→   827→                <span className="text-muted-foreground">
+   828→   828→                  {req.targetName} → {req.attributeName}:
+   829→   829→                </span>
+   830→   830→                <span className="font-medium">{hasVal ? String(val) : 'sin valor'}</span>
+   831→   831→              </div>
+   832→   832→            );
+   833→   833→          })}
+   834→   834→        </div>
+   835→   835→      )}
+   836→   836→
+   837→   837→      {/* Key */}
+   838→   838→      {config.templateKey && (
+   839→   839→        <div className="text-[11px]">
+   840→   840→          <span className="text-muted-foreground">Key: </span>
+   841→   841→          <code className="bg-muted px-1 py-0.5 rounded font-mono text-primary">
+   842→   842→            {'{{' + config.templateKey + '}}'}
+   843→   843→          </code>
+   844→   844→        </div>
+   845→   845→      )}
+   846→   846→
+   847→   847→      {/* Content preview */}
+   848→   848→      <div className="text-[11px] text-muted-foreground">
+   849→   849→        <span>Tipo de contenido: </span>
+   850→   850→        <Badge variant="outline" className="text-[9px] px-1 py-0 h-3">
+   851→   851→          {config.content.type === 'static' ? 'Estático' : `Dinámico (${config.content.rules?.length || 0} reglas)`}
+   852→   852→        </Badge>
+   853→   853→      </div>
+   854→   854→    </div>
+   855→   855→  );
+   856→   856→}
+   857→   857→

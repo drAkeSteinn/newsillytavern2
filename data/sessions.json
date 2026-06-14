@@ -1415,7 +1415,7 @@
       }
     ],
     "createdAt": "2026-06-05T10:13:31.682Z",
-    "updatedAt": "2026-06-13T16:41:15.013Z",
+    "updatedAt": "2026-06-13T19:27:31.289Z",
     "sessionStats": {
       "characterStats": {
         "33bbd96a-3533-43b9-84b8-653f401db619": {
@@ -1427,11 +1427,11 @@
             "sensibilidad_pezones": 0
           },
           "lastUpdated": {
-            "lujuria": 1781368874948,
-            "exigencia": 1781368874969,
-            "adiccion_pezones": 1781368874977,
-            "hentaistyle": 1781368874987,
-            "sensibilidad_pezones": 1781368874998
+            "lujuria": 1781378851220,
+            "exigencia": 1781378851240,
+            "adiccion_pezones": 1781378851255,
+            "hentaistyle": 1781378851266,
+            "sensibilidad_pezones": 1781378851277
           },
           "changeLog": [
             {
@@ -2045,6 +2045,51 @@
               "newValue": 0,
               "reason": "timer",
               "timestamp": 1781368874998
+            },
+            {
+              "attributeId": "attr-decemone-lujuria",
+              "attributeKey": "lujuria",
+              "attributeName": "Lujuria",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781378851221
+            },
+            {
+              "attributeId": "attr-decemone-exigencia",
+              "attributeKey": "exigencia",
+              "attributeName": "Exigencia",
+              "oldValue": 100,
+              "newValue": 100,
+              "reason": "timer",
+              "timestamp": 1781378851240
+            },
+            {
+              "attributeId": "attr-decemone-adiccion",
+              "attributeKey": "adiccion_pezones",
+              "attributeName": "Adicción a la penetración de pezones",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781378851255
+            },
+            {
+              "attributeId": "attr-1780195604316",
+              "attributeKey": "hentaistyle",
+              "attributeName": "Hentai Style",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781378851266
+            },
+            {
+              "attributeId": "attr-1780522037234",
+              "attributeKey": "sensibilidad_pezones",
+              "attributeName": "Sensibilidad de Pezones",
+              "oldValue": 0,
+              "newValue": 0,
+              "reason": "timer",
+              "timestamp": 1781378851277
             }
           ]
         },
@@ -2081,8 +2126,8 @@
         "lastModified": 1781364936876
       },
       "initialized": true,
-      "lastModified": 1781368875013,
-      "lastTimerUpdate": 1781368836876,
+      "lastModified": 1781378851289,
+      "lastTimerUpdate": 1781378736876,
       "keywordCycleIndex": {}
     },
     "sessionQuests": [],
