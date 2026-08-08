@@ -99,7 +99,10 @@ export async function searchMemoryExecutor(
       namespaces.push(`group-${context.groupId}`);
     }
     
-    // Also search default namespaces
+    // Also search default knowledge namespaces (lorebooks, world-building).
+    // Note: chat-context.ts does NOT auto-inject these — it only searches
+    // character/session namespaces. This tool is intentionally broader since
+    // the LLM explicitly requests the search.
     namespaces.push('default', 'world');
     
     // Remove duplicates

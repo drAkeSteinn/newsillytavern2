@@ -8,6 +8,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { EmbeddingsConfig } from './types';
+import { resolveModelContextLength } from './types';
 
 const CONFIG_DIR = path.join(process.cwd(), 'data');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'embeddings-config.json');
@@ -18,6 +19,7 @@ const DEFAULT_CONFIG: EmbeddingsConfig = {
   dimension: 1024,
   similarityThreshold: 0.5,
   maxResults: 5,
+  modelContextLength: undefined,
   updatedAt: new Date().toISOString(),
 };
 
@@ -47,6 +49,7 @@ export function loadConfig(): EmbeddingsConfig {
       if (config.similarityThreshold === undefined) config.similarityThreshold = DEFAULT_CONFIG.similarityThreshold;
       if (config.maxResults === undefined) config.maxResults = DEFAULT_CONFIG.maxResults;
       if (config.dimension === undefined) config.dimension = DEFAULT_CONFIG.dimension;
+      // modelContextLength is optional — keep it as-is (undefined is valid)
 
       cachedConfig = config;
       return cachedConfig;
@@ -103,6 +106,15 @@ export function getMaxResults(): number {
 
 export function invalidateConfigCache(): void {
   cachedConfig = null;
+}
+
+/**
+ * Get the effective model context length from config.
+ * Priority: 1) config.modelContextLength (auto-detected), 2) hardcoded map, 3) DEFAULT_CONTEXT_LENGTH (512)
+ */
+export function getModelContextLength(): number {
+  const config = getConfig();
+  return resolveModelContextLength(config.model, config.modelContextLength);
 }
 
 export function resetConfig(): EmbeddingsConfig {

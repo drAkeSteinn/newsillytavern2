@@ -104,6 +104,8 @@ export interface EmbeddingsConfig {
   dimension: number;
   similarityThreshold: number;
   maxResults: number;
+  /** Auto-detected model context length in tokens (from Ollama /api/show) */
+  modelContextLength?: number;
   timeout?: number;
   retryCount?: number;
   retryDelay?: number;
@@ -166,3 +168,18 @@ export const DEFAULT_CONTEXT_LENGTH = 512;
 
 /** Conservative chars-per-token ratio for mixed/Spanish text */
 export const CHARS_PER_TOKEN = 3.5;
+
+/**
+ * Resolve the effective context length for an embedding model.
+ * Priority: 1) config value (auto-detected), 2) hardcoded map, 3) DEFAULT_CONTEXT_LENGTH
+ */
+export function resolveModelContextLength(
+  model: string,
+  configContextLength?: number,
+): number {
+  if (configContextLength && configContextLength > 0) return configContextLength;
+  if (MODEL_CONTEXT_LENGTHS[model]) return MODEL_CONTEXT_LENGTHS[model];
+  const baseModel = model.split(':')[0];
+  if (MODEL_CONTEXT_LENGTHS[baseModel]) return MODEL_CONTEXT_LENGTHS[baseModel];
+  return DEFAULT_CONTEXT_LENGTH;
+}

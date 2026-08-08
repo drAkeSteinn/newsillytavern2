@@ -1,0 +1,1460 @@
+     1→'use client';
+     2→
+     3→import { useTavernStore } from '@/store/tavern-store';
+     4→import { Button } from '@/components/ui/button';
+     5→import { Input } from '@/components/ui/input';
+     6→import { Label } from '@/components/ui/label';
+     7→import { Switch } from '@/components/ui/switch';
+     8→import { Slider } from '@/components/ui/slider';
+     9→import { Textarea } from '@/components/ui/textarea';
+    10→import { Separator } from '@/components/ui/separator';
+    11→import {
+    12→  Card,
+    13→  CardContent,
+    14→  CardDescription,
+    15→  CardHeader,
+    16→  CardTitle,
+    17→} from '@/components/ui/card';
+    18→import {
+    19→  Collapsible,
+    20→  CollapsibleContent,
+    21→  CollapsibleTrigger,
+    22→} from '@/components/ui/collapsible';
+    23→import {
+    24→  AlertDialog,
+    25→  AlertDialogAction,
+    26→  AlertDialogCancel,
+    27→  AlertDialogContent,
+    28→  AlertDialogDescription,
+    29→  AlertDialogFooter,
+    30→  AlertDialogHeader,
+    31→  AlertDialogTitle,
+    32→  AlertDialogTrigger,
+    33→} from '@/components/ui/alert-dialog';
+    34→import {
+    35→  Select,
+    36→  SelectContent,
+    37→  SelectItem,
+    38→  SelectTrigger,
+    39→  SelectValue,
+    40→} from '@/components/ui/select';
+    41→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    42→import {
+    43→  Brain,
+    44→  MessageSquare,
+    45→  Users,
+    46→  Settings2,
+    47→  RotateCcw,
+    48→  ChevronDown,
+    49→  FileText,
+    50→  Save,
+    51→  Sparkles,
+    52→  Clock,
+    53→  Info,
+    54→  Database,
+    55→  User,
+    56→  Layers,
+    57→  Settings,
+    58→  Pencil,
+    59→  Eye,
+    60→} from 'lucide-react';
+    61→import { useState, useCallback } from 'react';
+    62→import { cn } from '@/lib/utils';
+    63→import { DEFAULT_SUMMARY_SETTINGS } from '@/types';
+    64→import { DEFAULT_MEMORY_EXTRACTION_PROMPT, DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT } from '@/lib/embeddings/memory-extraction-prompts';
+    65→import { DEFAULT_EMBEDDINGS_CHAT } from '@/lib/embeddings/constants';
+    66→import { CharacterMemoryEditor } from '@/components/memory/character-memory-editor';
+    67→import { SummaryViewer } from '@/components/memory/summary-viewer';
+    68→
+    69→// ============================================
+    70→// Preview data for extraction prompts
+    71→// ============================================
+    72→
+    73→const NORMAL_PREVIEW = {
+    74→  characterName: 'Alvar',
+    75→  chatContext: 'Contexto reciente de la conversación:\n  Jugador: "Me acabo de mudar a la costa, tengo un gato llamado Milo"\n  Personaje: "¡Qué genial! ¿Y cómo te va adaptando?"\n',
+    76→  lastMessage: '"Milo se lleva súper bien con los vecinos."',
+    77→};
+    78→
+    79→const GROUP_PREVIEW = {
+    80→  characterName: 'Kai',
+    81→  chatContext: 'Contexto reciente del grupo:\n  Jugador: "¿Qué opinan del plan de Luna?"\n  Luna: "Yo creo que deberíamos ir por la ruta norte, es más segura."\n  Rex: "No me fío, la última vez que fuimos por ahí casi nos atrapan."\n',
+    82→  lastMessage: '"Rex tiene razón en desconfiar, pero yo prefiero arriesgarme. Además, Kai tiene contactos en el norte que podrían ayudarnos."',
+    83→};
+    84→
+    85→// ============================================
+    86→// Sub-tab 1: Resúmenes
+    87→// ============================================
+    88→
+    89→function ResumenesTab() {
+    90→  const summarySettings = useTavernStore((s) => s.summarySettings);
+    91→  const setSummarySettings = useTavernStore((s) => s.setSummarySettings);
+    92→  const activeSessionId = useTavernStore((s) => s.activeSessionId);
+    93→
+    94→  const [promptEditorOpen, setPromptEditorOpen] = useState(false);
+    95→
+    96→  // Ensure promptTemplate exists with default fallback
+    97→  const promptTemplate = summarySettings.promptTemplate ?? DEFAULT_SUMMARY_SETTINGS.promptTemplate ?? '';
+    98→  const [localPrompt, setLocalPrompt] = useState(promptTemplate);
+    99→
+   100→  // Update local prompt when settings change
+   101→  const handlePromptSave = useCallback(() => {
+   102→    setSummarySettings({ promptTemplate: localPrompt });
+   103→    setPromptEditorOpen(false);
+   104→  }, [localPrompt, setSummarySettings]);
+   105→
+   106→  // Reset prompt to default
+   107→  const handleResetPrompt = useCallback(() => {
+   108→    const defaultPrompt = DEFAULT_SUMMARY_SETTINGS.promptTemplate ?? '';
+   109→    setLocalPrompt(defaultPrompt);
+   110→    setSummarySettings({ promptTemplate: defaultPrompt });
+   111→  }, [setSummarySettings]);
+   112→
+   113→  return (
+   114→    <div className="space-y-6">
+   115→      {/* Summary Viewer */}
+   116→      <SummaryViewer sessionId={activeSessionId ?? undefined} />
+   117→
+   118→      {/* Main Enable/Disable */}
+   119→      <Card className="border-2">
+   120→        <CardHeader className="pb-3">
+   121→          <CardTitle className="flex items-center gap-2 text-lg">
+   122→            <Brain className="w-5 h-5 text-purple-500" />
+   123→            Sistema de Memoria y Resúmenes
+   124→          </CardTitle>
+   125→          <CardDescription>
+   126→            Genera resúmenes automáticos de la conversación para mantener contexto en chats largos.
+   127→          </CardDescription>
+   128→        </CardHeader>
+   129→        <CardContent>
+   130→          <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+   131→            <div className="space-y-0.5">
+   132→              <Label className="text-base font-medium">Activar Memoria</Label>
+   133→              <p className="text-sm text-muted-foreground">
+   134→                Genera resúmenes automáticos cuando la conversación alcance el límite configurado.
+   135→              </p>
+   136→            </div>
+   137→            <Switch
+   138→              checked={summarySettings.enabled}
+   139→              onCheckedChange={(enabled) => setSummarySettings({ enabled })}
+   140→            />
+   141→          </div>
+   142→        </CardContent>
+   143→      </Card>
+   144→
+   145→      {/* Message Interval Settings */}
+   146→      <Card>
+   147→        <CardHeader className="pb-3">
+   148→          <CardTitle className="flex items-center gap-2 text-base">
+   149→            <Clock className="w-4 h-4 text-blue-500" />
+   150→            Intervalo de Resúmenes
+   151→          </CardTitle>
+   152→          <CardDescription>
+   153→            Define cada cuántos mensajes se generarán resúmenes automáticamente.
+   154→          </CardDescription>
+   155→        </CardHeader>
+   156→        <CardContent className="space-y-6">
+   157→          {/* Normal Chat Interval */}
+   158→          <div className="space-y-3">
+   159→            <div className="flex items-center justify-between">
+   160→              <div className="flex items-center gap-2">
+   161→                <MessageSquare className="w-4 h-4 text-muted-foreground" />
+   162→                <Label className="font-medium">Chat Normal</Label>
+   163→              </div>
+   164→              <span className="text-sm font-mono bg-muted px-2 py-0.5 rounded">
+   165→                {summarySettings.normalChatInterval} mensajes
+   166→              </span>
+   167→            </div>
+   168→            <Slider
+   169→              value={[summarySettings.normalChatInterval]}
+   170→              min={5}
+   171→              max={50}
+   172→              step={5}
+   173→              disabled={!summarySettings.enabled}
+   174→              onValueChange={([normalChatInterval]) =>
+   175→                setSummarySettings({ normalChatInterval })
+   176→              }
+   177→            />
+   178→            <p className="text-xs text-muted-foreground">
+   179→              Se generará un resumen cada {summarySettings.normalChatInterval} mensajes en chats individuales.
+   180→            </p>
+   181→          </div>
+   182→
+   183→          {/* Group Chat Interval */}
+   184→          <div className="space-y-3">
+   185→            <div className="flex items-center justify-between">
+   186→              <div className="flex items-center gap-2">
+   187→                <Users className="w-4 h-4 text-muted-foreground" />
+   188→                <Label className="font-medium">Chat Grupal</Label>
+   189→              </div>
+   190→              <span className="text-sm font-mono bg-muted px-2 py-0.5 rounded">
+   191→                {summarySettings.groupChatInterval} mensajes
+   192→              </span>
+   193→            </div>
+   194→            <Slider
+   195→              value={[summarySettings.groupChatInterval]}
+   196→              min={5}
+   197→              max={40}
+   198→              step={5}
+   199→              disabled={!summarySettings.enabled}
+   200→              onValueChange={([groupChatInterval]) =>
+   201→                setSummarySettings({ groupChatInterval })
+   202→              }
+   203→            />
+   204→            <p className="text-xs text-muted-foreground">
+   205→              Se generará un resumen cada {summarySettings.groupChatInterval} mensajes en chats grupales.
+   206→            </p>
+   207→          </div>
+   208→        </CardContent>
+   209→      </Card>
+   210→
+   211→      {/* Summary Settings */}
+   212→      <Card>
+   213→        <CardHeader className="pb-3">
+   214→          <CardTitle className="flex items-center gap-2 text-base">
+   215→            <Settings2 className="w-4 h-4 text-green-500" />
+   216→            Configuración de Resumen
+   217→          </CardTitle>
+   218→        </CardHeader>
+   219→        <CardContent className="space-y-4">
+   220→          {/* Messages to keep */}
+   221→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   222→            <div className="space-y-2">
+   223→              <Label className="text-sm">Mensajes recientes a conservar</Label>
+   224→              <Input
+   225→                type="number"
+   226→                value={summarySettings.keepRecentMessages}
+   227→                onChange={(e) =>
+   228→                  setSummarySettings({ keepRecentMessages: parseInt(e.target.value) || 10 })
+   229→                }
+   230→                disabled={!summarySettings.enabled}
+   231→                min={5}
+   232→                max={50}
+   233→                className="h-9"
+   234→              />
+   235→              <p className="text-xs text-muted-foreground">
+   236→                Estos mensajes no se incluirán en el resumen.
+   237→              </p>
+   238→            </div>
+   239→            <div className="space-y-2">
+   240→              <Label className="text-sm">Tokens máx. del resumen</Label>
+   241→              <Input
+   242→                type="number"
+   243→                value={summarySettings.maxSummaryTokens}
+   244→                onChange={(e) =>
+   245→                  setSummarySettings({ maxSummaryTokens: parseInt(e.target.value) || 500 })
+   246→                }
+   247→                disabled={!summarySettings.enabled}
+   248→                min={100}
+   249→                max={2000}
+   250→                step={100}
+   251→                className="h-9"
+   252→              />
+   253→              <p className="text-xs text-muted-foreground">
+   254→                Límite de tokens para el resumen generado.
+   255→              </p>
+   256→            </div>
+   257→          </div>
+   258→
+   259→          {/* Behavior toggles */}
+   260→          <div className="space-y-3 pt-2">
+   261→            <label className="flex items-center justify-between p-3 rounded-lg border cursor-pointer hover:bg-muted/50">
+   262→              <div className="space-y-0.5">
+   263→                <Label className="text-sm">Resumir al fin de turno</Label>
+   264→                <p className="text-xs text-muted-foreground">
+   265→                  Generar resumen después de que todos los personajes respondan (grupos).
+   266→                </p>
+   267→              </div>
+   268→              <Switch
+   269→                checked={summarySettings.summarizeOnTurnEnd}
+   270→                onCheckedChange={(summarizeOnTurnEnd) =>
+   271→                  setSummarySettings({ summarizeOnTurnEnd })
+   272→                }
+   273→                disabled={!summarySettings.enabled}
+   274→              />
+   275→            </label>
+   276→
+   277→            <label className="flex items-center justify-between p-3 rounded-lg border cursor-pointer hover:bg-muted/50">
+   278→              <div className="space-y-0.5">
+   279→                <Label className="text-sm">Incluir pensamientos internos</Label>
+   280→                <p className="text-xs text-muted-foreground">
+   281→                  Incluir pensamientos y reflexiones de los personajes en el resumen.
+   282→                </p>
+   283→              </div>
+   284→              <Switch
+   285→                checked={summarySettings.includeCharacterThoughts}
+   286→                onCheckedChange={(includeCharacterThoughts) =>
+   287→                  setSummarySettings({ includeCharacterThoughts })
+   288→                }
+   289→                disabled={!summarySettings.enabled}
+   290→              />
+   291→            </label>
+   292→
+   293→            <label className="flex items-center justify-between p-3 rounded-lg border cursor-pointer hover:bg-muted/50">
+   294→              <div className="space-y-0.5">
+   295→                <Label className="text-sm">Preservar momentos emocionales</Label>
+   296→                <p className="text-xs text-muted-foreground">
+   297→                  Destacar momentos emocionales importantes en el resumen.
+   298→                </p>
+   299→              </div>
+   300→              <Switch
+   301→                checked={summarySettings.preserveEmotionalMoments}
+   302→                onCheckedChange={(preserveEmotionalMoments) =>
+   303→                  setSummarySettings({ preserveEmotionalMoments })
+   304→                }
+   305→                disabled={!summarySettings.enabled}
+   306→              />
+   307→            </label>
+   308→          </div>
+   309→        </CardContent>
+   310→      </Card>
+   311→
+   312→      {/* Prompt Template Editor */}
+   313→      <Card>
+   314→        <CardHeader className="pb-3">
+   315→          <CardTitle className="flex items-center gap-2 text-base">
+   316→            <FileText className="w-4 h-4 text-orange-500" />
+   317→            Prompt de Resumen
+   318→          </CardTitle>
+   319→          <CardDescription>
+   320→            Personaliza el prompt que se envía al LLM para generar resúmenes.
+   321→          </CardDescription>
+   322→        </CardHeader>
+   323→        <CardContent>
+   324→          <Collapsible open={promptEditorOpen} onOpenChange={setPromptEditorOpen}>
+   325→            <CollapsibleTrigger asChild>
+   326→              <Button
+   327→                variant="outline"
+   328→                className="w-full justify-between"
+   329→                disabled={!summarySettings.enabled}
+   330→              >
+   331→                <span className="flex items-center gap-2">
+   332→                  <Sparkles className="w-4 h-4" />
+   333→                  Editar Prompt Personalizado
+   334→                </span>
+   335→                <ChevronDown className={cn(
+   336→                  "w-4 h-4 transition-transform",
+   337→                  promptEditorOpen && "rotate-180"
+   338→                )} />
+   339→              </Button>
+   340→            </CollapsibleTrigger>
+   341→            <CollapsibleContent className="mt-4 space-y-4">
+   342→              <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-sm">
+   343→                <div className="flex items-start gap-2">
+   344→                  <Info className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
+   345→                  <div className="text-xs text-blue-600 dark:text-blue-400 space-y-1">
+   346→                    <p><strong>Variables disponibles:</strong></p>
+   347→                    <ul className="list-disc list-inside space-y-0.5">
+   348→                      <li><code className="bg-blue-500/20 px-1 rounded">{'{{conversation}}'}</code> - Se reemplaza con la conversación a resumir</li>
+   349→                    </ul>
+   350→                  </div>
+   351→                </div>
+   352→              </div>
+   353→
+   354→              <Textarea
+   355→                value={localPrompt}
+   356→                onChange={(e) => setLocalPrompt(e.target.value)}
+   357→                disabled={!summarySettings.enabled}
+   358→                placeholder="Escribe tu prompt personalizado..."
+   359→                className="min-h-[200px] font-mono text-sm"
+   360→              />
+   361→
+   362→              <div className="flex items-center justify-between">
+   363→                <AlertDialog>
+   364→                  <AlertDialogTrigger asChild>
+   365→                    <Button
+   366→                      variant="outline"
+   367→                      size="sm"
+   368→                      disabled={!summarySettings.enabled}
+   369→                    >
+   370→                      <RotateCcw className="w-4 h-4 mr-2" />
+   371→                      Restaurar Default
+   372→                    </Button>
+   373→                  </AlertDialogTrigger>
+   374→                  <AlertDialogContent>
+   375→                    <AlertDialogHeader>
+   376→                      <AlertDialogTitle>¿Restaurar prompt por defecto?</AlertDialogTitle>
+   377→                      <AlertDialogDescription>
+   378→                        Esto reemplazará tu prompt personalizado con el prompt por defecto. Esta acción no se puede deshacer.
+   379→                      </AlertDialogDescription>
+   380→                    </AlertDialogHeader>
+   381→                    <AlertDialogFooter>
+   382→                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+   383→                      <AlertDialogAction onClick={handleResetPrompt}>
+   384→                        Restaurar
+   385→                      </AlertDialogAction>
+   386→                    </AlertDialogFooter>
+   387→                  </AlertDialogContent>
+   388→                </AlertDialog>
+   389→
+   390→                <Button
+   391→                  size="sm"
+   392→                  onClick={handlePromptSave}
+   393→                  disabled={!summarySettings.enabled || localPrompt === promptTemplate}
+   394→                >
+   395→                  <Save className="w-4 h-4 mr-2" />
+   396→                  Guardar Cambios
+   397→                </Button>
+   398→              </div>
+   399→            </CollapsibleContent>
+   400→          </Collapsible>
+   401→
+   402→          {/* Prompt Preview */}
+   403→          {!promptEditorOpen && (
+   404→            <div className="mt-3">
+   405→              <Label className="text-xs text-muted-foreground mb-2 block">Vista previa del prompt:</Label>
+   406→              <div className="p-3 rounded-lg bg-muted/50 text-xs font-mono max-h-[100px] overflow-y-auto text-muted-foreground">
+   407→                {promptTemplate.length > 300
+   408→                  ? `${promptTemplate.slice(0, 300)}...`
+   409→                  : promptTemplate
+   410→                }
+   411→              </div>
+   412→            </div>
+   413→          )}
+   414→        </CardContent>
+   415→      </Card>
+   416→    </div>
+   417→  );
+   418→}
+   419→
+   420→// ============================================
+   421→// Sub-tab 2: Personaje
+   422→// ============================================
+   423→
+   424→function PersonajeTab() {
+   425→  const activeCharacterId = useTavernStore((s) => s.activeCharacterId);
+   426→  const characters = useTavernStore((s) => s.characters);
+   427→  const activeCharacter = characters.find((c: any) => c.id === activeCharacterId);
+   428→
+   429→  if (!activeCharacterId || !activeCharacter) {
+   430→    return (
+   431→      <Card className="border-dashed">
+   432→        <CardContent className="py-12 text-center">
+   433→          <User className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
+   434→          <p className="text-muted-foreground text-sm">
+   435→            Selecciona un personaje en el panel derecho para editar su memoria.
+   436→          </p>
+   437→          <p className="text-muted-foreground/70 text-xs mt-1">
+   438→            Los eventos, relaciones y notas del personaje aparecerán aquí.
+   439→          </p>
+   440→        </CardContent>
+   441→      </Card>
+   442→    );
+   443→  }
+   444→
+   445→  const characterName = activeCharacter.name || activeCharacter.data?.name || 'Personaje';
+   446→
+   447→  return (
+   448→    <CharacterMemoryEditor
+   449→      characterId={activeCharacterId}
+   450→      characterName={characterName}
+   451→    />
+   452→  );
+   453→}
+   454→
+   455→// ============================================
+   456→// Sub-tab 3: Extracción
+   457→// ============================================
+   458→
+   459→function ExtraccionTab() {
+   460→  const settings = useTavernStore((s) => s.settings);
+   461→  const embeddingsChat = settings.embeddingsChat ?? DEFAULT_EMBEDDINGS_CHAT;
+   462→  const updateSettings = useTavernStore((state) => state.updateSettings);
+   463→
+   464→  // Context settings with defaults
+   465→  const contextSettings = settings.context ?? {
+   466→    maxMessages: 50,
+   467→    maxTokens: 4096,
+   468→    keepFirstN: 1,
+   469→    keepLastN: 20,
+   470→  };
+   471→
+   472→  // Update context settings helper
+   473→  const updateContextSettings = useCallback((updates: Partial<typeof contextSettings>) => {
+   474→    updateSettings({
+   475→      context: { ...contextSettings, ...updates }
+   476→    });
+   477→  }, [contextSettings, updateSettings]);
+   478→
+   479→  // Prompt editor state
+   480→  const [activePromptTab, setActivePromptTab] = useState<'normal' | 'group'>('normal');
+   481→  const [localPrompt, setLocalPrompt] = useState(() => embeddingsChat.memoryExtractionPrompt || DEFAULT_MEMORY_EXTRACTION_PROMPT);
+   482→  const [localGroupPrompt, setLocalGroupPrompt] = useState(() => embeddingsChat.groupMemoryExtractionPrompt || DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT);
+   483→  const [showPreview, setShowPreview] = useState(false);
+   484→
+   485→  const isNormal = activePromptTab === 'normal';
+   486→  const currentPrompt = isNormal ? localPrompt : localGroupPrompt;
+   487→  const currentStored = isNormal
+   488→    ? (embeddingsChat.memoryExtractionPrompt || DEFAULT_MEMORY_EXTRACTION_PROMPT)
+   489→    : (embeddingsChat.groupMemoryExtractionPrompt || DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT);
+   490→  const previewData = isNormal ? NORMAL_PREVIEW : GROUP_PREVIEW;
+   491→
+   492→  const handleSavePrompt = () => {
+   493→    if (isNormal) {
+   494→      updateSettings({ embeddingsChat: { ...embeddingsChat, memoryExtractionPrompt: localPrompt } });
+   495→    } else {
+   496→      updateSettings({ embeddingsChat: { ...embeddingsChat, groupMemoryExtractionPrompt: localGroupPrompt } });
+   497→    }
+   498→  };
+   499→
+   500→  const handleRestoreDefault = () => {
+   501→    if (isNormal) {
+   502→      setLocalPrompt(DEFAULT_MEMORY_EXTRACTION_PROMPT);
+   503→      updateSettings({ embeddingsChat: { ...embeddingsChat, memoryExtractionPrompt: DEFAULT_MEMORY_EXTRACTION_PROMPT } });
+   504→    } else {
+   505→      setLocalGroupPrompt(DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT);
+   506→      updateSettings({ embeddingsChat: { ...embeddingsChat, groupMemoryExtractionPrompt: DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT } });
+   507→    }
+   508→  };
+   509→
+   510→  const handleChange = (value: string) => {
+   511→    if (isNormal) setLocalPrompt(value);
+   512→    else setLocalGroupPrompt(value);
+   513→  };
+   514→
+   515→  const previewText = currentPrompt
+   516→    .replace('{characterName}', previewData.characterName)
+   517→    .replace('{chatContext}', previewData.chatContext)
+   518→    .replace('{lastMessage}', previewData.lastMessage);
+   519→
+   520→  const hasChanges = currentPrompt !== currentStored;
+   521→
+   522→  return (
+   523→    <div className="space-y-6">
+   524→      {/* Note about needing Embeddings enabled */}
+   525→      <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-4">
+   526→        <div className="flex items-start gap-2">
+   527→          <Info className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+   528→          <div className="space-y-1">
+   529→            <p className="text-sm font-medium text-amber-600 dark:text-amber-400">Requiere Embeddings</p>
+   530→            <p className="text-xs text-muted-foreground">
+   531→              Estos ajustes requieren que Embeddings esté activado. Configúralo en la pestaña <strong>Base de Conocimiento</strong>.
+   532→            </p>
+   533→          </div>
+   534→        </div>
+   535→      </div>
+   536→
+   537→      {/* Memory Extraction Section */}
+   538→      <Card>
+   539→        <CardHeader className="pb-3">
+   540→          <CardTitle className="flex items-center gap-2 text-base">
+   541→            <Brain className="w-4 h-4 text-violet-500" />
+   542→            Extracción Automática de Memoria
+   543→          </CardTitle>
+   544→          <CardDescription>
+   545→            Extrae hechos memorables de las respuestas del personaje y los guarda como embeddings
+   546→          </CardDescription>
+   547→        </CardHeader>
+   548→        <CardContent className="space-y-4">
+   549→          <div className="flex items-center justify-between">
+   550→            <div className="space-y-0.5">
+   551→              <Label className="text-sm">Activar Extracción</Label>
+   552→              <p className="text-[10px] text-muted-foreground">
+   553→                Extrae automáticamente hechos memorables tras cada respuesta del personaje
+   554→              </p>
+   555→            </div>
+   556→            <Switch
+   557→              checked={!!embeddingsChat.memoryExtractionEnabled}
+   558→              onCheckedChange={(enabled) => {
+   559→                updateSettings({
+   560→                  embeddingsChat: { ...embeddingsChat, memoryExtractionEnabled: enabled },
+   561→                });
+   562→              }}
+   563→            />
+   564→          </div>
+   565→
+   566→          {embeddingsChat.memoryExtractionEnabled && (
+   567→            <div className="space-y-3 pl-1 border-l-2 border-violet-300/30">
+   568→              <div className="space-y-2">
+   569→                <Label className="text-xs">Frecuencia: cada {embeddingsChat.memoryExtractionFrequency || 5} turnos</Label>
+   570→                <Slider
+   571→                  value={[embeddingsChat.memoryExtractionFrequency || 5]}
+   572→                  min={1}
+   573→                  max={20}
+   574→                  step={1}
+   575→                  onValueChange={([v]) => {
+   576→                    updateSettings({
+   577→                      embeddingsChat: { ...embeddingsChat, memoryExtractionFrequency: v },
+   578→                    });
+   579→                  }}
+   580→                />
+   581→                <p className="text-[10px] text-muted-foreground">
+   582→                  Un turno = 1 mensaje del usuario + respuesta(s). Más frecuente = más contexto, pero más uso del LLM.
+   583→                </p>
+   584→              </div>
+   585→
+   586→              <div className="space-y-2">
+   587→                <Label className="text-xs">Importancia mínima: {embeddingsChat.memoryExtractionMinImportance || 2}/5</Label>
+   588→                <Slider
+   589→                  value={[embeddingsChat.memoryExtractionMinImportance || 2]}
+   590→                  min={1}
+   591→                  max={5}
+   592→                  step={1}
+   593→                  onValueChange={([v]) => {
+   594→                    updateSettings({
+   595→                      embeddingsChat: { ...embeddingsChat, memoryExtractionMinImportance: v },
+   596→                    });
+   597→                  }}
+   598→                />
+   599→                <p className="text-[10px] text-muted-foreground">
+   600→                  Solo se guardan hechos con importancia igual o mayor. Más alto = solo lo más relevante.
+   601→                </p>
+   602→              </div>
+   603→
+   604→              <div className="space-y-2">
+   605→                <Label className="text-xs">Profundidad de contexto: {embeddingsChat.memoryExtractionContextDepth ?? 2} mensajes</Label>
+   606→                <Slider
+   607→                  value={[embeddingsChat.memoryExtractionContextDepth ?? 2]}
+   608→                  min={0}
+   609→                  max={5}
+   610→                  step={1}
+   611→                  onValueChange={([v]) => {
+   612→                    updateSettings({
+   613→                      embeddingsChat: { ...embeddingsChat, memoryExtractionContextDepth: v },
+   614→                    });
+   615→                  }}
+   616→                />
+   617→                <p className="text-[10px] text-muted-foreground">
+   618→                  Cuántos mensajes recientes incluir como contexto para el LLM. 0 = solo la respuesta del personaje. Más contexto = mejor comprensión de referencias, pero más tokens.
+   619→                </p>
+   620→              </div>
+   621→
+   622→              <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
+   623→                <div className="flex items-start gap-2">
+   624→                  <Brain className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+   625→                  <div className="space-y-1">
+   626→                    <p className="text-xs font-medium text-amber-600 dark:text-amber-400">Memoria con Contexto</p>
+   627→                    <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
+   628→                      <li>Se incluyen los últimos N mensajes como contexto para que el LLM entienda referencias implícitas</li>
+   629→                      <li>En grupo, cada personaje ve las respuestas de los demás para capturar dinámicas de conversación</li>
+   630→                      <li>La extracción es asíncrona — no afecta la velocidad de respuesta</li>
+   631→                    </ul>
+   632→                  </div>
+   633→                </div>
+   634→              </div>
+   635→
+   636→              {/* User Message Extraction Toggle */}
+   637→              <div className="flex items-center justify-between pt-2">
+   638→                <div className="space-y-0.5">
+   639→                  <Label className="text-sm">Extraer también de mensajes del usuario</Label>
+   640→                  <p className="text-[10px] text-muted-foreground">
+   641→                    Captura hechos, preferencias y datos personales que el jugador comparte en sus mensajes
+   642→                  </p>
+   643→                </div>
+   644→                <Switch
+   645→                  checked={!!embeddingsChat.memoryExtractionFromUserEnabled}
+   646→                  onCheckedChange={(enabled) => {
+   647→                    updateSettings({
+   648→                      embeddingsChat: { ...embeddingsChat, memoryExtractionFromUserEnabled: enabled },
+   649→                    });
+   650→                  }}
+   651→                />
+   652→              </div>
+   653→
+   654→              {embeddingsChat.memoryExtractionFromUserEnabled && (
+   655→                <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-lg p-3">
+   656→                  <div className="flex items-start gap-2">
+   657→                    <User className="w-4 h-4 text-cyan-500 mt-0.5 shrink-0" />
+   658→                    <div className="space-y-1">
+   659→                      <p className="text-xs font-medium text-cyan-600 dark:text-cyan-400">Memoria del Usuario</p>
+   660→                      <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
+   661→                        <li>Se extraen hechos del último mensaje del jugador (nombre, preferencias, datos personales)</li>
+   662→                        <li>Solo se procesan mensajes con más de 20 caracteres (se ignoran respuestas cortas)</li>
+   663→                        <li>Las memorias del usuario se marcan con sujeto "usuario" para distinguirlas</li>
+   664→                      </ul>
+   665→                    </div>
+   666→                  </div>
+   667→                </div>
+   668→              )}
+   669→            </div>
+   670→          )}
+   671→        </CardContent>
+   672→      </Card>
+   673→
+   674→      {/* Separate Extraction Model Section */}
+   675→      {embeddingsChat.memoryExtractionEnabled && (
+   676→        <Card>
+   677→          <CardHeader className="pb-3">
+   678→            <CardTitle className="flex items-center gap-2 text-base">
+   679→              <Settings className="w-4 h-4 text-teal-500" />
+   680→              Modelo de Extracción Separado
+   681→            </CardTitle>
+   682→            <CardDescription>
+   683→              Usa un modelo diferente (más rápido/barato) para extracción y consolidación de memoria
+   684→            </CardDescription>
+   685→          </CardHeader>
+   686→          <CardContent className="space-y-4">
+   687→            <div className="flex items-center justify-between">
+   688→              <div className="space-y-0.5">
+   689→                <Label className="text-sm">Usar modelo separado</Label>
+   690→                <p className="text-[10px] text-muted-foreground">
+   691→                  Desvía la carga de extracción a un modelo más eficiente
+   692→                </p>
+   693→              </div>
+   694→              <Switch
+   695→                checked={!!embeddingsChat.extractionModelEnabled}
+   696→                onCheckedChange={(enabled) => {
+   697→                  updateSettings({
+   698→                    embeddingsChat: { ...embeddingsChat, extractionModelEnabled: enabled },
+   699→                  });
+   700→                }}
+   701→              />
+   702→            </div>
+   703→
+   704→            {embeddingsChat.extractionModelEnabled && (
+   705→              <div className="space-y-3 pl-1 border-l-2 border-teal-300/30">
+   706→                <div className="space-y-2">
+   707→                  <Label className="text-xs">Proveedor</Label>
+   708→                  <Select
+   709→                    value={embeddingsChat.extractionModelProvider || 'ollama'}
+   710→                    onValueChange={(v) => {
+   711→                      updateSettings({
+   712→                        embeddingsChat: { ...embeddingsChat, extractionModelProvider: v },
+   713→                      });
+   714→                    }}
+   715→                  >
+   716→                    <SelectTrigger className="h-8 text-sm">
+   717→                      <SelectValue />
+   718→                    </SelectTrigger>
+   719→                    <SelectContent>
+   720→                      <SelectItem value="ollama">Ollama (Local)</SelectItem>
+   721→                      <SelectItem value="openai">OpenAI</SelectItem>
+   722→                      <SelectItem value="grok">Grok (xAI)</SelectItem>
+   723→                      <SelectItem value="anthropic">Anthropic</SelectItem>
+   724→                      <SelectItem value="z-ai">Z-AI</SelectItem>
+   725→                      <SelectItem value="lm-studio">LM Studio</SelectItem>
+   726→                      <SelectItem value="text-generation-webui">Text Generation WebUI</SelectItem>
+   727→                      <SelectItem value="custom">Custom</SelectItem>
+   728→                    </SelectContent>
+   729→                  </Select>
+   730→                </div>
+   731→
+   732→                {/* Endpoint (for providers that need it) */}
+   733→                {!['z-ai'].includes(embeddingsChat.extractionModelProvider || 'ollama') && (
+   734→                  <div className="space-y-2">
+   735→                    <Label className="text-xs">Endpoint</Label>
+   736→                    <Input
+   737→                      type="text"
+   738→                      value={embeddingsChat.extractionModelEndpoint || 'http://localhost:11434'}
+   739→                      onChange={(e) => {
+   740→                        updateSettings({
+   741→                          embeddingsChat: { ...embeddingsChat, extractionModelEndpoint: e.target.value },
+   742→                        });
+   743→                      }}
+   744→                      className="h-8 text-sm"
+   745→                      placeholder="http://localhost:11434"
+   746→                    />
+   747→                    <p className="text-[10px] text-muted-foreground">
+   748→                      URL del servidor del modelo de extracción
+   749→                    </p>
+   750→                  </div>
+   751→                )}
+   752→
+   753→                {/* API Key (for providers that need it) */}
+   754→                {['openai', 'grok', 'anthropic', 'custom'].includes(embeddingsChat.extractionModelProvider || 'ollama') && (
+   755→                  <div className="space-y-2">
+   756→                    <Label className="text-xs">API Key</Label>
+   757→                    <Input
+   758→                      type="password"
+   759→                      value={embeddingsChat.extractionModelApiKey || ''}
+   760→                      onChange={(e) => {
+   761→                        updateSettings({
+   762→                          embeddingsChat: { ...embeddingsChat, extractionModelApiKey: e.target.value },
+   763→                        });
+   764→                      }}
+   765→                      className="h-8 text-sm"
+   766→                      placeholder="sk-..."
+   767→                    />
+   768→                    <p className="text-[10px] text-muted-foreground">
+   769→                      Clave API para el proveedor seleccionado
+   770→                    </p>
+   771→                  </div>
+   772→                )}
+   773→
+   774→                {/* Model name */}
+   775→                <div className="space-y-2">
+   776→                  <Label className="text-xs">Modelo</Label>
+   777→                  <Input
+   778→                    type="text"
+   779→                    value={embeddingsChat.extractionModelName || 'llama3.1:8b'}
+   780→                    onChange={(e) => {
+   781→                      updateSettings({
+   782→                        embeddingsChat: { ...embeddingsChat, extractionModelName: e.target.value },
+   783→                      });
+   784→                    }}
+   785→                    className="h-8 text-sm"
+   786→                    placeholder="llama3.1:8b"
+   787→                  />
+   788→                  <p className="text-[10px] text-muted-foreground">
+   789→                    Nombre del modelo para extracción. Se recomienda un modelo rápido y barato (ej: llama3.1:8b, gpt-4o-mini)
+   790→                  </p>
+   791→                </div>
+   792→
+   793→                <div className="bg-teal-500/5 border border-teal-500/20 rounded-lg p-3">
+   794→                  <div className="flex items-start gap-2">
+   795→                    <Settings className="w-4 h-4 text-teal-500 mt-0.5 shrink-0" />
+   796→                    <div className="space-y-1">
+   797→                      <p className="text-xs font-medium text-teal-600 dark:text-teal-400">Modelo Separado</p>
+   798→                      <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
+   799→                        <li>La extracción y consolidación de memoria usan este modelo en lugar del modelo de chat</li>
+   800→                        <li>Ideal para usar un modelo local (Ollama) o barato (gpt-4o-mini) para tareas de fondo</li>
+   801→                        <li>Ahorra tokens y costo al no usar el modelo principal de chat para extracción</li>
+   802→                        <li>El modelo de extracción solo necesita entender texto y generar JSON</li>
+   803→                      </ul>
+   804→                    </div>
+   805→                  </div>
+   806→                </div>
+   807→              </div>
+   808→            )}
+   809→          </CardContent>
+   810→        </Card>
+   811→      )}
+   812→
+   813→      {/* Memory Consolidation Section */}
+   814→      <Card>
+   815→        <CardHeader className="pb-3">
+   816→          <CardTitle className="flex items-center gap-2 text-base">
+   817→            <Layers className="w-4 h-4 text-violet-500" />
+   818→            Consolidación de Memoria
+   819→          </CardTitle>
+   820→          <CardDescription>
+   821→            Comprime memorias antiguas cuando un namespace excede el límite
+   822→          </CardDescription>
+   823→        </CardHeader>
+   824→        <CardContent className="space-y-4">
+   825→          <div className="flex items-center justify-between">
+   826→            <div className="space-y-0.5">
+   827→              <Label className="text-sm">Activar Consolidación</Label>
+   828→              <p className="text-[10px] text-muted-foreground">
+   829→                Comprime automáticamente memorias antiguas para ahorrar espacio
+   830→              </p>
+   831→            </div>
+   832→            <Switch
+   833→              checked={!!embeddingsChat.memoryConsolidationEnabled}
+   834→              onCheckedChange={(enabled) => {
+   835→                updateSettings({
+   836→                  embeddingsChat: { ...embeddingsChat, memoryConsolidationEnabled: enabled },
+   837→                });
+   838→              }}
+   839→            />
+   840→          </div>
+   841→
+   842→          {embeddingsChat.memoryConsolidationEnabled && (
+   843→            <div className="space-y-3 pl-1 border-l-2 border-violet-300/30">
+   844→              <div className="space-y-2">
+   845→                <Label className="text-xs">Umbral de consolidación: {embeddingsChat.memoryConsolidationThreshold || 50} embeddings</Label>
+   846→                <Slider
+   847→                  value={[embeddingsChat.memoryConsolidationThreshold || 50]}
+   848→                  min={20}
+   849→                  max={200}
+   850→                  step={10}
+   851→                  onValueChange={([v]) => {
+   852→                    updateSettings({
+   853→                      embeddingsChat: { ...embeddingsChat, memoryConsolidationThreshold: v },
+   854→                    });
+   855→                  }}
+   856→                />
+   857→                <p className="text-[10px] text-muted-foreground">
+   858→                  Cuando un namespace supera esta cantidad, se consolida automáticamente
+   859→                </p>
+   860→              </div>
+   861→
+   862→              <div className="space-y-2">
+   863→                <Label className="text-xs">Memorias recientes protegidas: {embeddingsChat.memoryConsolidationKeepRecent || 10}</Label>
+   864→                <Slider
+   865→                  value={[embeddingsChat.memoryConsolidationKeepRecent || 10]}
+   866→                  min={3}
+   867→                  max={30}
+   868→                  step={1}
+   869→                  onValueChange={([v]) => {
+   870→                    updateSettings({
+   871→                      embeddingsChat: { ...embeddingsChat, memoryConsolidationKeepRecent: v },
+   872→                    });
+   873→                  }}
+   874→                />
+   875→                <p className="text-[10px] text-muted-foreground">
+   876→                  Las N memorias más recientes nunca se consolidan
+   877→                </p>
+   878→              </div>
+   879→
+   880→              <div className="space-y-2">
+   881→                <Label className="text-xs">Proteger importancia ≥ {embeddingsChat.memoryConsolidationKeepHighImportance || 4}/5</Label>
+   882→                <Slider
+   883→                  value={[embeddingsChat.memoryConsolidationKeepHighImportance || 4]}
+   884→                  min={2}
+   885→                  max={5}
+   886→                  step={1}
+   887→                  onValueChange={([v]) => {
+   888→                    updateSettings({
+   889→                      embeddingsChat: { ...embeddingsChat, memoryConsolidationKeepHighImportance: v },
+   890→                    });
+   891→                  }}
+   892→                />
+   893→                <p className="text-[10px] text-muted-foreground">
+   894→                  Memorias con esta importancia o mayor nunca se consolidan
+   895→                </p>
+   896→              </div>
+   897→
+   898→              <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-3">
+   899→                <div className="flex items-start gap-2">
+   900→                  <Layers className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+   901→                  <div className="space-y-1">
+   902→                    <p className="text-xs font-medium text-blue-600 dark:text-blue-400">Consolidación Inteligente</p>
+   903→                    <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
+   904→                      <li>Agrupa memorias antiguas por tipo (hechos, eventos, relaciones...)</li>
+   905→                      <li>El LLM combina hechos relacionados en resúmenes concisos</li>
+   906→                      <li>Las memorias de alta importancia y recientes siempre se preservan</li>
+   907→                      <li>Se ejecuta automáticamente después de cada extracción que supera el umbral</li>
+   908→                    </ul>
+   909→                  </div>
+   910→                </div>
+   911→              </div>
+   912→            </div>
+   913→          )}
+   914→        </CardContent>
+   915→      </Card>
+   916→
+   917→      {/* Memory Reinforcement Section */}
+   918→      <Card>
+   919→        <CardHeader className="pb-3">
+   920→          <CardTitle className="flex items-center gap-2 text-base">
+   921→            <Sparkles className="w-4 h-4 text-amber-500" />
+   922→            Refuerzo de Memorias
+   923→          </CardTitle>
+   924→          <CardDescription>
+   925→            Incrementa importancia cuando el LLM menciona memorias existentes
+   926→          </CardDescription>
+   927→        </CardHeader>
+   928→        <CardContent className="space-y-4">
+   929→          <div className="flex items-center justify-between">
+   930→            <div className="space-y-0.5">
+   931→              <Label className="text-sm">Activar Refuerzo</Label>
+   932→              <p className="text-[10px] text-muted-foreground">
+   933→                Las memorias mencionadas se refuerzan automáticamente
+   934→              </p>
+   935→            </div>
+   936→            <Switch
+   937→              checked={!!embeddingsChat.memoryReinforcementEnabled}
+   938→              onCheckedChange={(enabled) => {
+   939→                updateSettings({
+   940→                  embeddingsChat: { ...embeddingsChat, memoryReinforcementEnabled: enabled },
+   941→                });
+   942→              }}
+   943→            />
+   944→          </div>
+   945→
+   946→          {embeddingsChat.memoryReinforcementEnabled && (
+   947→            <div className="space-y-3 pl-1 border-l-2 border-amber-300/30">
+   948→              <div className="space-y-2">
+   949→                <Label className="text-xs">Umbral de similitud: {Math.round((embeddingsChat.memoryReinforcementThreshold || 0.7) * 100)}%</Label>
+   950→                <Slider
+   951→                  value={[embeddingsChat.memoryReinforcementThreshold || 0.7]}
+   952→                  min={0.3}
+   953→                  max={0.95}
+   954→                  step={0.05}
+   955→                  onValueChange={([v]) => {
+   956→                    updateSettings({
+   957→                      embeddingsChat: { ...embeddingsChat, memoryReinforcementThreshold: v },
+   958→                    });
+   959→                  }}
+   960→                />
+   961→                <p className="text-[10px] text-muted-foreground">
+   962→                  Cuánta similitud para considerar que una memoria fue mencionada. Más bajo = más memorias refuerzo, pero puede haber falsos positivos.
+   963→                </p>
+   964→              </div>
+   965→              <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
+   966→                <div className="flex items-start gap-2">
+   967→                  <Sparkles className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+   968→                  <div className="space-y-1">
+   969→                    <p className="text-xs font-medium text-amber-600 dark:text-amber-400">Refuerzo por Repetición</p>
+   970→                    <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
+   971→                      <li>Cuando el LLM menciona o parafrasea una memoria existente</li>
+   972→                      <li>La importancia de esa memoria aumenta automáticamente</li>
+   973→                      <li>Las memorias más reforzadas se preservan mejor en la consolidación</li>
+   974→                      <li>Ayuda a que el sistema priorice memorias que el personaje "recuerda"</li>
+   975→                    </ul>
+   976→                  </div>
+   977→                </div>
+   978→              </div>
+   979→            </div>
+   980→          )}
+   981→        </CardContent>
+   982→      </Card>
+   983→
+   984→      {/* Group Dynamics Extraction */}
+   985→      <Card>
+   986→        <CardHeader className="pb-3">
+   987→          <CardTitle className="flex items-center gap-2 text-base">
+   988→            <Layers className="w-4 h-4 text-fuchsia-500" />
+   989→            Dinámicas Grupales
+   990→          </CardTitle>
+   991→          <CardDescription>
+   992→            Extrae relaciones entre personajes en chats de grupo
+   993→          </CardDescription>
+   994→        </CardHeader>
+   995→        <CardContent className="space-y-4">
+   996→          <div className="flex items-center justify-between">
+   997→            <div className="space-y-0.5">
+   998→              <Label className="text-sm">Activar Dinámicas Grupales</Label>
+   999→              <p className="text-[10px] text-muted-foreground">
+  1000→                Detecta automáticamente interacciones y relaciones entre personajes
+  1001→              </p>
+  1002→            </div>
+  1003→            <Switch
+  1004→              checked={!!embeddingsChat.groupDynamicsExtraction}
+  1005→              onCheckedChange={(enabled) => {
+  1006→                updateSettings({
+  1007→                  embeddingsChat: { ...embeddingsChat, groupDynamicsExtraction: enabled },
+  1008→                });
+  1009→              }}
+  1010→            />
+  1011→          </div>
+  1012→
+  1013→          {embeddingsChat.groupDynamicsExtraction && (
+  1014→            <div className="bg-fuchsia-500/5 border border-fuchsia-500/20 rounded-lg p-3">
+  1015→              <div className="flex items-start gap-2">
+  1016→                <Layers className="w-4 h-4 text-fuchsia-500 mt-0.5 shrink-0" />
+  1017→                <div className="space-y-1">
+  1018→                  <p className="text-xs font-medium text-fuchsia-600 dark:text-fuchsia-400">Dinámicas de Grupo</p>
+  1019→                  <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
+  1020→                    <li>Analiza todo el turno de conversación para detectar interacciones entre personajes</li>
+  1021→                    <li>Extrae alianzas, conflictos, y tendencias de relación</li>
+  1022→                    <li>Se ejecuta automáticamente cuando 2+ personajes responden en el mismo turno</li>
+  1023→                    <li>Las dinámicas se guardan en el namespace del grupo</li>
+  1024→                  </ul>
+  1025→                </div>
+  1026→              </div>
+  1027→            </div>
+  1028→          )}
+  1029→        </CardContent>
+  1030→      </Card>
+  1031→
+  1032→      {/* Search Context Depth */}
+  1033→      <Card>
+  1034→        <CardHeader className="pb-3">
+  1035→          <CardTitle className="flex items-center gap-2 text-base">
+  1036→            <MessageSquare className="w-4 h-4 text-cyan-500" />
+  1037→            Contexto de Búsqueda
+  1038→          </CardTitle>
+  1039→          <CardDescription>
+  1040→            Configura cuánto contexto se usa al buscar embeddings relevantes
+  1041→          </CardDescription>
+  1042→        </CardHeader>
+  1043→        <CardContent className="space-y-4">
+  1044→          <div className="space-y-2">
+  1045→            <Label className="text-xs">Contexto de búsqueda: {embeddingsChat.searchContextDepth ?? 1} mensajes</Label>
+  1046→            <Slider
+  1047→              value={[embeddingsChat.searchContextDepth ?? 1]}
+  1048→              min={0}
+  1049→              max={5}
+  1050→              step={1}
+  1051→              onValueChange={([v]) => {
+  1052→                updateSettings({
+  1053→                  embeddingsChat: { ...embeddingsChat, searchContextDepth: v },
+  1054→                });
+  1055→              }}
+  1056→            />
+  1057→            <p className="text-[10px] text-muted-foreground">
+  1058→              Mensajes recientes que se agregan a tu pregunta para enriquecer la búsqueda de embeddings. 0 = solo tu mensaje. Valores altos = mejores resultados con referencias implícitas ("¿recuerdas eso?").
+  1059→            </p>
+  1060→          </div>
+  1061→        </CardContent>
+  1062→      </Card>
+  1063→
+  1064→      {/* How it works info box */}
+  1065→      <div className="bg-violet-500/5 border border-violet-500/20 rounded-lg p-3">
+  1066→        <div className="flex items-start gap-2">
+  1067→          <Brain className="w-4 h-4 text-violet-500 mt-0.5 shrink-0" />
+  1068→          <div className="space-y-1">
+  1069→            <p className="text-xs font-medium text-violet-600 dark:text-violet-400">Cómo funciona</p>
+  1070→            <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
+  1071→              <li>Cuando envías un mensaje, el sistema genera un vector embedding de tu texto</li>
+  1072→              <li>Si hay contexto de búsqueda, se concatena con tu mensaje para encontrar resultados más relevantes</li>
+  1073→              <li>Busca en los namespaces seleccionados embeddings similares</li>
+  1074→              <li>Los mejores resultados se inyectan en el prompt de la IA como contexto</li>
+  1075→              <li>La IA usa este contexto para generar respuestas más informadas</li>
+  1076→            </ul>
+  1077→          </div>
+  1078→        </div>
+  1079→      </div>
+  1080→
+  1081→      {/* Prompts Editor */}
+  1082→      <Card>
+  1083→        <CardHeader className="pb-3">
+  1084→          <CardTitle className="flex items-center gap-2 text-base">
+  1085→            <Pencil className="w-4 h-4 text-violet-500" />
+  1086→            Prompts de Extracción
+  1087→          </CardTitle>
+  1088→          <CardDescription>
+  1089→            Personaliza los prompts que el LLM usa para extraer hechos memorables
+  1090→          </CardDescription>
+  1091→        </CardHeader>
+  1092→        <CardContent className="space-y-4">
+  1093→          {/* Prompt type info */}
+  1094→          <div className="bg-violet-500/5 border border-violet-500/20 rounded-lg p-3">
+  1095→            <div className="flex items-start gap-2">
+  1096→              <Pencil className="w-4 h-4 text-violet-500 mt-0.5 shrink-0" />
+  1097→              <div className="space-y-1">
+  1098→                <p className="text-xs font-medium text-violet-600 dark:text-violet-400">Prompts de Extracción de Memoria</p>
+  1099→                <p className="text-[10px] text-muted-foreground">
+  1100→                  Personaliza los prompts que el LLM usa para extraer hechos memorables. Puedes configurar un prompt diferente para chat normal y chats de grupo.
+  1101→                </p>
+  1102→              </div>
+  1103→            </div>
+  1104→          </div>
+  1105→
+  1106→          {/* Sub-tabs for normal vs group */}
+  1107→          <div className="flex gap-1 p-1 bg-muted rounded-lg">
+  1108→            <button
+  1109→              className={cn(
+  1110→                'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
+  1111→                isNormal ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+  1112→              )}
+  1113→              onClick={() => setActivePromptTab('normal')}
+  1114→            >
+  1115→              <MessageSquare className="w-3 h-3" />
+  1116→              Chat Normal
+  1117→              {embeddingsChat.memoryExtractionPrompt && embeddingsChat.memoryExtractionPrompt !== DEFAULT_MEMORY_EXTRACTION_PROMPT && (
+  1118→                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Personalizado" />
+  1119→              )}
+  1120→            </button>
+  1121→            <button
+  1122→              className={cn(
+  1123→                'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
+  1124→                !isNormal ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+  1125→              )}
+  1126→              onClick={() => setActivePromptTab('group')}
+  1127→            >
+  1128→              <Layers className="w-3 h-3" />
+  1129→              Chat Grupo
+  1130→              {embeddingsChat.groupMemoryExtractionPrompt && embeddingsChat.groupMemoryExtractionPrompt !== DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT && (
+  1131→                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Personalizado" />
+  1132→              )}
+  1133→            </button>
+  1134→          </div>
+  1135→
+  1136→          {/* Info box for current prompt type */}
+  1137→          {isNormal ? (
+  1138→            <div className="text-[10px] text-muted-foreground space-y-1 bg-blue-500/5 border border-blue-500/20 rounded-lg p-2.5">
+  1139→              <p className="font-medium text-blue-600 dark:text-blue-400">Chat Normal (1:1)</p>
+  1140→              <p>Optimizado para la relación entre el jugador y un único personaje. Se enfoca en hechos sobre el usuario, preferencias y eventos compartidos.</p>
+  1141→              <p>Variables: <code className="bg-muted px-1 py-0.5 rounded">{'{characterName}'}</code> <code className="bg-muted px-1 py-0.5 rounded">{'{lastMessage}'}</code> <code className="bg-muted px-1 py-0.5 rounded">{'{chatContext}'}</code></p>
+  1142→            </div>
+  1143→          ) : (
+  1144→            <div className="text-[10px] text-muted-foreground space-y-1 bg-fuchsia-500/5 border border-fuchsia-500/20 rounded-lg p-2.5">
+  1145→              <p className="font-medium text-fuchsia-600 dark:text-fuchsia-400">Chat Grupo (individual por personaje)</p>
+  1146→              <p>Optimizado para capturar interacciones entre personajes. Presta atención a reacciones, opiniones sobre otros y dinámicas interpersonales del contexto grupal.</p>
+  1147→              <p>Variables: <code className="bg-muted px-1 py-0.5 rounded">{'{characterName}'}</code> <code className="bg-muted px-1 py-0.5 rounded">{'{lastMessage}'}</code> <code className="bg-muted px-1 py-0.5 rounded">{'{chatContext}'}</code> (incluye respuestas de otros personajes)</p>
+  1148→            </div>
+  1149→          )}
+  1150→
+  1151→          <div className="space-y-2">
+  1152→            <div className="flex items-center justify-between">
+  1153→              <Label className="text-xs">Prompt personalizado</Label>
+  1154→              <div className="flex gap-1.5">
+  1155→                <Button
+  1156→                  size="sm"
+  1157→                  variant="ghost"
+  1158→                  className="h-7 text-[10px] px-2"
+  1159→                  onClick={() => setShowPreview(!showPreview)}
+  1160→                >
+  1161→                  <Eye className="w-3 h-3 mr-1" />
+  1162→                  {showPreview ? 'Ocultar Vista Previa' : 'Vista Previa'}
+  1163→                </Button>
+  1164→                <Button
+  1165→                  size="sm"
+  1166→                  variant="ghost"
+  1167→                  className="h-7 text-[10px] px-2 text-muted-foreground hover:text-foreground"
+  1168→                  onClick={handleRestoreDefault}
+  1169→                >
+  1170→                  <RotateCcw className="w-3 h-3 mr-1" />
+  1171→                  Restaurar Predeterminado
+  1172→                </Button>
+  1173→              </div>
+  1174→            </div>
+  1175→            <Textarea
+  1176→              value={currentPrompt}
+  1177→              onChange={(e) => handleChange(e.target.value)}
+  1178→              rows={18}
+  1179→              className="text-xs font-mono leading-relaxed"
+  1180→              placeholder={isNormal ? "Escribe el prompt personalizado para extracción de memoria en chat normal..." : "Escribe el prompt personalizado para extracción de memoria en chat de grupo..."}
+  1181→            />
+  1182→            <div className="flex items-center justify-between">
+  1183→              <p className="text-[10px] text-muted-foreground">
+  1184→                {currentPrompt.length} caracteres
+  1185→                {hasChanges && (
+  1186→                  <span className="text-amber-500 ml-2">● Sin guardar</span>
+  1187→                )}
+  1188→              </p>
+  1189→              <Button
+  1190→                size="sm"
+  1191→                disabled={!hasChanges}
+  1192→                onClick={handleSavePrompt}
+  1193→              >
+  1194→                Guardar Prompt
+  1195→              </Button>
+  1196→            </div>
+  1197→          </div>
+  1198→
+  1199→          {showPreview && (
+  1200→            <div className="space-y-2">
+  1201→              <Label className="text-xs flex items-center gap-1.5">
+  1202→                <Eye className="w-3 h-3" />
+  1203→                Vista Previa — {isNormal ? 'Chat Normal' : 'Chat Grupo'} (con variables reemplazadas)
+  1204→              </Label>
+  1205→              <div className="p-3 rounded-lg border bg-muted/30 max-h-96 overflow-y-auto">
+  1206→                <pre className="text-xs font-mono whitespace-pre-wrap text-muted-foreground">{previewText}</pre>
+  1207→              </div>
+  1208→              <p className="text-[10px] text-muted-foreground">
+  1209→                Variables reemplazadas: <code className="bg-muted px-1 py-0.5 rounded text-[10px]">{'{characterName}'}</code> → &quot;{previewData.characterName}&quot;,
+  1210→                <code className="bg-muted px-1 py-0.5 rounded text-[10px] ml-1">{'{chatContext}'}</code> → contexto de ejemplo,
+  1211→                <code className="bg-muted px-1 py-0.5 rounded text-[10px] ml-1">{'{lastMessage}'}</code> → un mensaje de ejemplo.
+  1212→              </p>
+  1213→            </div>
+  1214→          )}
+  1215→        </CardContent>
+  1216→      </Card>
+  1217→
+  1218→      {/* Límites de Contexto — moved from old ContextoTab */}
+  1219→      <Card>
+  1220→        <CardHeader className="pb-3">
+  1221→          <CardTitle className="flex items-center gap-2 text-base">
+  1222→            <Database className="w-4 h-4 text-cyan-500" />
+  1223→            Límites de Contexto
+  1224→          </CardTitle>
+  1225→          <CardDescription>
+  1226→            Controla cuántos mensajes se envían al LLM. Un contexto más pequeño ahorra tokens,
+  1227→            mientras que un contexto más grande mantiene más historial.
+  1228→          </CardDescription>
+  1229→        </CardHeader>
+  1230→        <CardContent className="space-y-4">
+  1231→          {/* Max Messages Slider */}
+  1232→          <div className="space-y-2">
+  1233→            <div className="flex justify-between text-sm">
+  1234→              <Label>Máximo de Mensajes</Label>
+  1235→              <span className="text-muted-foreground">{contextSettings.maxMessages}</span>
+  1236→            </div>
+  1237→            <Slider
+  1238→              value={[contextSettings.maxMessages]}
+  1239→              min={10}
+  1240→              max={200}
+  1241→              step={5}
+  1242→              onValueChange={([maxMessages]) => updateContextSettings({ maxMessages })}
+  1243→            />
+  1244→            <p className="text-xs text-muted-foreground">
+  1245→              Ventana deslizante de mensajes. Los mensajes más antiguos se excluyen.
+  1246→            </p>
+  1247→          </div>
+  1248→
+  1249→          {/* Max Tokens Slider */}
+  1250→          <div className="space-y-2">
+  1251→            <div className="flex justify-between text-sm">
+  1252→              <Label>Límite de Tokens</Label>
+  1253→              <span className="text-muted-foreground">{contextSettings.maxTokens}</span>
+  1254→            </div>
+  1255→            <Slider
+  1256→              value={[contextSettings.maxTokens]}
+  1257→              min={1024}
+  1258→              max={128000}
+  1259→              step={512}
+  1260→              onValueChange={([maxTokens]) => updateContextSettings({ maxTokens })}
+  1261→            />
+  1262→            <p className="text-xs text-muted-foreground">
+  1263→              Presupuesto de tokens para el historial. Se ajusta según el proveedor.
+  1264→            </p>
+  1265→          </div>
+  1266→
+  1267→          {/* Keep First/Last N */}
+  1268→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  1269→            <div className="space-y-2">
+  1270→              <Label className="text-xs">Conservar Primeros N</Label>
+  1271→              <Input
+  1272→                type="number"
+  1273→                value={contextSettings.keepFirstN}
+  1274→                onChange={(e) => updateContextSettings({ keepFirstN: parseInt(e.target.value) || 1 })}
+  1275→                min={0}
+  1276→                max={10}
+  1277→                className="h-9"
+  1278→              />
+  1279→              <p className="text-xs text-muted-foreground">Mensaje de saludo</p>
+  1280→            </div>
+  1281→            <div className="space-y-2">
+  1282→              <Label className="text-xs">Conservar Últimos N</Label>
+  1283→              <Input
+  1284→                type="number"
+  1285→                value={contextSettings.keepLastN}
+  1286→                onChange={(e) => updateContextSettings({ keepLastN: parseInt(e.target.value) || 20 })}
+  1287→                min={5}
+  1288→                max={50}
+  1289→                className="h-9"
+  1290→              />
+  1291→              <p className="text-xs text-muted-foreground">Mensajes recientes</p>
+  1292→            </div>
+  1293→          </div>
+  1294→
+  1295→          {/* Info box */}
+  1296→          <div className="p-3 rounded-lg bg-muted/30 text-xs space-y-1">
+  1297→            <p className="font-medium">¿Cómo funciona la ventana deslizante?</p>
+  1298→            <ul className="text-muted-foreground space-y-1">
+  1299→              <li>• Los mensajes se excluyen del centro cuando exceden el límite.</li>
+  1300→              <li>• El mensaje de saludo siempre se conserva.</li>
+  1301→              <li>• Los últimos N mensajes recientes siempre se incluyen.</li>
+  1302→              <li>• El límite de tokens tiene prioridad sobre el conteo de mensajes.</li>
+  1303→            </ul>
+  1304→          </div>
+  1305→        </CardContent>
+  1306→      </Card>
+  1307→
+  1308→      {/* Contexto de Embeddings en Chat — moved from old ContextoTab */}
+  1309→      <Card>
+  1310→        <CardHeader className="pb-3">
+  1311→          <CardTitle className="flex items-center gap-2 text-base">
+  1312→            <Brain className="w-4 h-4 text-purple-500" />
+  1313→            Contexto de Embeddings en Chat
+  1314→          </CardTitle>
+  1315→          <CardDescription>
+  1316→            Recupera automáticamente embeddings relevantes al chatear y los inyecta como contexto en el prompt de la IA.
+  1317→          </CardDescription>
+  1318→        </CardHeader>
+  1319→        <CardContent className="space-y-4">
+  1320→          <div className="flex items-center justify-between">
+  1321→            <div className="space-y-0.5">
+  1322→              <Label className="text-sm">Activar en Chat</Label>
+  1323→              <p className="text-[10px] text-muted-foreground">
+  1324→                Busca embeddings en cada mensaje y agrega contexto al prompt
+  1325→              </p>
+  1326→            </div>
+  1327→            <Switch
+  1328→              checked={embeddingsChat.enabled}
+  1329→              onCheckedChange={(enabled) => {
+  1330→                updateSettings({
+  1331→                  embeddingsChat: { ...embeddingsChat, enabled },
+  1332→                });
+  1333→              }}
+  1334→            />
+  1335→          </div>
+  1336→
+  1337→          {embeddingsChat.enabled && (
+  1338→            <>
+  1339→              <Separator />
+  1340→
+  1341→              <div className="space-y-2">
+  1342→                <Label className="text-xs">Estrategia de Búsqueda por Namespace</Label>
+  1343→                <Select
+  1344→                  value={embeddingsChat.namespaceStrategy}
+  1345→                  onValueChange={(v) => {
+  1346→                    updateSettings({
+  1347→                      embeddingsChat: { ...embeddingsChat, namespaceStrategy: v as 'global' | 'character' | 'session' },
+  1348→                    });
+  1349→                  }}
+  1350→                >
+  1351→                  <SelectTrigger className="h-8 text-sm">
+  1352→                    <SelectValue />
+  1353→                  </SelectTrigger>
+  1354→                  <SelectContent>
+  1355→                    <SelectItem value="character">
+  1356→                      <div className="flex flex-col">
+  1357→                        <span>Por Personaje</span>
+  1358→                        <span className="text-[10px] text-muted-foreground">Busca namespaces específicos del personaje + default + mundo</span>
+  1359→                      </div>
+  1360→                    </SelectItem>
+  1361→                    <SelectItem value="session">
+  1362→                      <div className="flex flex-col">
+  1363→                        <span>Por Sesión</span>
+  1364→                        <span className="text-[10px] text-muted-foreground">Busca namespaces de sesión + personaje + default</span>
+  1365→                      </div>
+  1366→                    </SelectItem>
+  1367→                    <SelectItem value="global">
+  1368→                      <div className="flex flex-col">
+  1369→                        <span>Global (Todos)</span>
+  1370→                        <span className="text-[10px] text-muted-foreground">Busca todos los namespaces sin importar personaje o sesión</span>
+  1371→                      </div>
+  1372→                    </SelectItem>
+  1373→                  </SelectContent>
+  1374→                </Select>
+  1375→              </div>
+  1376→
+  1377→              <div className="space-y-2">
+  1378→                <Label className="text-xs">Presupuesto de Tokens de Contexto: ~{embeddingsChat.maxTokenBudget} tokens</Label>
+  1379→                <Slider
+  1380→                  value={[embeddingsChat.maxTokenBudget]}
+  1381→                  min={128}
+  1382→                  max={4096}
+  1383→                  step={128}
+  1384→                  onValueChange={([v]) => {
+  1385→                    updateSettings({
+  1386→                      embeddingsChat: { ...embeddingsChat, maxTokenBudget: v },
+  1387→                    });
+  1388→                  }}
+  1389→                />
+  1390→                <p className="text-[10px] text-muted-foreground">
+  1391→                  Limita cuántos tokens de contexto de embeddings se agregan al prompt. Valores más altos dan más contexto pero usan más de la ventana de contexto.
+  1392→                </p>
+  1393→              </div>
+  1394→
+  1395→              {/* How it works info box for context retrieval */}
+  1396→              <div className="bg-violet-500/5 border border-violet-500/20 rounded-lg p-3">
+  1397→                <div className="flex items-start gap-2">
+  1398→                  <Brain className="w-4 h-4 text-violet-500 mt-0.5 shrink-0" />
+  1399→                  <div className="space-y-1">
+  1400→                    <p className="text-xs font-medium text-violet-600 dark:text-violet-400">Cómo funciona la recuperación de contexto</p>
+  1401→                    <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
+  1402→                      <li>Cuando envías un mensaje, el sistema genera un vector embedding de tu texto</li>
+  1403→                      <li>Si hay contexto de búsqueda, se concatena con tu mensaje para encontrar resultados más relevantes</li>
+  1404→                      <li>Busca en los namespaces seleccionados embeddings similares</li>
+  1405→                      <li>Los mejores resultados se inyectan en el prompt de la IA como contexto</li>
+  1406→                      <li>La IA usa este contexto para generar respuestas más informadas</li>
+  1407→                    </ul>
+  1408→                  </div>
+  1409→                </div>
+  1410→              </div>
+  1411→            </>
+  1412→          )}
+  1413→        </CardContent>
+  1414→      </Card>
+  1415→    </div>
+  1416→  );
+  1417→}
+  1418→
+  1419→// ============================================
+  1420→// Main Panel Component
+  1421→// ============================================
+  1422→
+  1423→export function MemorySettingsPanel() {
+  1424→  return (
+  1425→    <div className="space-y-4">
+  1426→      <Tabs defaultValue="resumenes" className="w-full">
+  1427→        <TabsList className="grid w-full grid-cols-3">
+  1428→          <TabsTrigger value="resumenes" className="flex items-center gap-1.5 text-xs sm:text-sm">
+  1429→            <FileText className="w-3.5 h-3.5" />
+  1430→            <span className="hidden sm:inline">Resúmenes</span>
+  1431→            <span className="sm:hidden">Resum.</span>
+  1432→          </TabsTrigger>
+  1433→          <TabsTrigger value="personaje" className="flex items-center gap-1.5 text-xs sm:text-sm">
+  1434→            <User className="w-3.5 h-3.5" />
+  1435→            <span className="hidden sm:inline">Personaje</span>
+  1436→            <span className="sm:hidden">Pers.</span>
+  1437→          </TabsTrigger>
+  1438→          <TabsTrigger value="extraccion" className="flex items-center gap-1.5 text-xs sm:text-sm">
+  1439→            <Brain className="w-3.5 h-3.5" />
+  1440→            <span className="hidden sm:inline">Extracción y Contexto</span>
+  1441→            <span className="sm:hidden">Ext. Ctx.</span>
+  1442→          </TabsTrigger>
+  1443→        </TabsList>
+  1444→
+  1445→        <TabsContent value="resumenes" className="mt-4">
+  1446→          <ResumenesTab />
+  1447→        </TabsContent>
+  1448→
+  1449→        <TabsContent value="personaje" className="mt-4">
+  1450→          <PersonajeTab />
+  1451→        </TabsContent>
+  1452→
+  1453→        <TabsContent value="extraccion" className="mt-4">
+  1454→          <ExtraccionTab />
+  1455→        </TabsContent>
+  1456→      </Tabs>
+  1457→    </div>
+  1458→  );
+  1459→}
+  1460→

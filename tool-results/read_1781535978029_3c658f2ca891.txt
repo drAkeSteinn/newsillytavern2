@@ -1,0 +1,2002 @@
+     1→'use client';
+     2→
+     3→import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+     4→import { useTavernStore } from '@/store/tavern-store';
+     5→import { BackgroundWithOverlays } from './background-layer';
+     6→import { NovelChatBox } from './novel-chat-box';
+     7→import { CharacterSprite } from './character-sprite';
+     8→// Unified Trigger System - Single import for all triggers
+     9→import { useTriggerSystem } from '@/lib/triggers';
+    10→import { useBackgroundTriggers } from '@/hooks/use-background-triggers';
+    11→import { useTTS, useTTSAutoGeneration } from '@/hooks/use-tts';
+    12→import { useTimelineSpriteSounds } from '@/hooks/use-timeline-sprite-sounds';
+    13→import { useProactiveMessages } from '@/hooks/use-proactive-messages';
+    14→import { GroupSprites } from './group-sprites';
+    15→import { HUDDisplay } from './hud-display';
+    16→import { QuestNotifications } from './quest-notifications';
+    17→import { InventoryHUD } from '@/components/inventory/inventory-hud';
+    18→import { TTSFloatingIndicator } from './tts-playback-controls';
+    19→import { ComicSoundOverlay } from './comic-sound-overlay';
+    20→import { Sparkles } from 'lucide-react';
+    21→import type { CharacterCard, SummaryData, ChatMessage, CharacterMemory, MicroReaction } from '@/types';
+    22→import { generateMicroReactions } from '@/lib/micro-reactions';
+    23→import { EmbeddingsContextContainer } from '@/components/embeddings/embeddings-context-indicator';
+    24→import { ToolCallNotification, type ToolCallPhase } from '@/components/tools/tool-call-notification';
+    25→import { toast } from 'sonner';
+    26→import { t } from '@/lib/i18n';
+    27→import { chatLogger } from '@/lib/logger';
+    28→import { generateId } from '@/lib/utils';
+    29→
+    30→export function ChatPanel() {
+    31→  const [streamingContent, setStreamingContent] = useState('');
+    32→  const [streamingCharacter, setStreamingCharacter] = useState<CharacterCard | null>(null);
+    33→  const [streamingProgress, setStreamingProgress] = useState<{ current: number; total: number } | null>(null);
+    34→  const [embeddingsContexts, setEmbeddingsContexts] = useState<Array<{
+    35→    count: number;
+    36→    namespaces: string[];
+    37→    topResults: Array<{ content: string; similarity: number; namespace: string; source_type?: string }>;
+    38→    characterId?: string;
+    39→    characterName?: string;
+    40→  }>>([]);
+    41→  const [memoryExtractingInfo, setMemoryExtractingInfo] = useState<{ active: boolean; characterNames: string }>({ active: false, characterNames: '' });
+    42→  const [toolCallInfo, setToolCallInfo] = useState<{
+    43→    active: boolean;
+    44→    toolName?: string;
+    45→    toolLabel?: string;
+    46→    toolIcon?: string;
+    47→    params?: Record<string, unknown>;
+    48→    result?: { success: boolean; displayMessage: string; duration: number };
+    49→    phase: ToolCallPhase;
+    50→    callId?: string;
+    51→  }>({ active: false, phase: 'idle' });
+    52→
+    53→  // FASE 4: Interrupt reaction state
+    54→  const [interruptReaction, setInterruptReaction] = useState<{
+    55→    content: string;
+    56→    characterId: string;
+    57→    characterName: string;
+    58→  } | null>(null);
+    59→  const [isGeneratingInterrupt, setIsGeneratingInterrupt] = useState(false);
+    60→  const streamingContentRef = useRef<string>(''); // Track streaming content for interrupt
+    61→
+    62→  // Use proper selectors to subscribe to store changes
+    63→  const activeSessionId = useTavernStore((state) => state.activeSessionId);
+    64→  const activeCharacterId = useTavernStore((state) => state.activeCharacterId);
+    65→  const activeGroupId = useTavernStore((state) => state.activeGroupId);
+    66→  const sessions = useTavernStore((state) => state.sessions);
+    67→  const characters = useTavernStore((state) => state.characters);
+    68→  const groups = useTavernStore((state) => state.groups);
+    69→  const settings = useTavernStore((state) => state.settings);
+    70→  const isGenerating = useTavernStore((state) => state.isGenerating);
+    71→  const activeBackground = useTavernStore((state) => state.activeBackground);
+    72→  const activeOverlayBack = useTavernStore((state) => state.activeOverlayBack);
+    73→  const activeOverlayFront = useTavernStore((state) => state.activeOverlayFront);
+    74→  const personas = useTavernStore((state) => state.personas);
+    75→  const activePersonaId = useTavernStore((state) => state.activePersonaId);
+    76→  const hudTemplates = useTavernStore((state) => state.hudTemplates);
+    77→  const hudSessionState = useTavernStore((state) => state.hudSessionState);
+    78→  const setActiveHUD = useTavernStore((state) => state.setActiveHUD);
+    79→  // Lorebooks for prompt injection
+    80→  const lorebooks = useTavernStore((state) => state.lorebooks);
+    81→  const activeLorebookIds = useTavernStore((state) => state.activeLorebookIds);
+    82→  
+    83→  // Quests for prompt injection
+    84→  const questTemplates = useTavernStore((state) => state.questTemplates);
+    85→  const questSettings = useTavernStore((state) => state.questSettings);
+    86→  const loadQuestTemplates = useTavernStore((state) => state.loadTemplates);
+    87→  
+    88→  // Ensure quest templates are loaded (needed for action reward → objective completion)
+    89→  useEffect(() => {
+    90→    if (questTemplates.length === 0) {
+    91→      loadQuestTemplates();
+    92→    }
+    93→  }, []); // Run once on mount
+    94→
+    95→  // Ensure memory namespaces exist when session is restored from localStorage
+    96→  // setActiveSession calls ensure-namespace, but on app restore the session is already
+    97→  // active without calling setActiveSession, so we ensure namespaces here
+    98→  useEffect(() => {
+    99→    if (!activeSessionId) return;
+   100→
+   101→    const ensureNamespaces = async () => {
+   102→      try {
+   103→        const session = useTavernStore.getState().getSessionById(activeSessionId);
+   104→        if (!session) return;
+   105→
+   106→        const state = useTavernStore.getState();
+   107→        let memberIds: string[] = [];
+   108→        let memberNames: string[] = [];
+   109→
+   110→        if (session.groupId) {
+   111→          const group = state.getGroupById?.(session.groupId);
+   112→          if (group?.members) {
+   113→            const groupCharacters = group.members
+   114→              .map((m: any) => state.getCharacterById(m.characterId))
+   115→              .filter((c: any) => c !== undefined);
+   116→            memberIds = groupCharacters.map((c: any) => c.id);
+   117→            memberNames = groupCharacters.map((c: any) => c.name);
+   118→          }
+   119→        }
+   120→
+   121→        const resp = await fetch('/api/embeddings/ensure-namespace', {
+   122→          method: 'POST',
+   123→          headers: { 'Content-Type': 'application/json' },
+   124→          body: JSON.stringify({
+   125→            characterId: session.characterId,
+   126→            characterName: session.characterId ? state.getCharacterById?.(session.characterId)?.name : '',
+   127→            groupId: session.groupId,
+   128→            groupName: session.groupId ? state.getGroupById?.(session.groupId)?.name : undefined,
+   129→            memberIds,
+   130→            memberNames,
+   131→            sessionId: activeSessionId,
+   132→          }),
+   133→        });
+   134→
+   135→        if (resp.ok) {
+   136→          console.log(`[ChatPanel] Ensured memory namespaces for restored session ${activeSessionId.slice(0, 8)}`);
+   137→        }
+   138→      } catch (err) {
+   139→        // Non-blocking — namespaces are created on-demand anyway
+   140→        console.warn('[ChatPanel] Failed to ensure namespaces on restore:', err);
+   141→      }
+   142→    };
+   143→
+   144→    ensureNamespaces();
+   145→  }, [activeSessionId]);
+   146→
+   147→  // Garbage collection: Clean up orphaned memory namespaces on mount
+   148→  // Orphaned = memory-* namespaces whose session no longer exists in the store
+   149→  useEffect(() => {
+   150→    const cleanupOrphanedNamespaces = async () => {
+   151→      try {
+   152→        const state = useTavernStore.getState();
+   153→        const sessions = state.sessions || [];
+   154→        const activeSessionIds = sessions.map((s: any) => s.id);
+   155→
+   156→        const resp = await fetch('/api/embeddings/cleanup-orphaned', {
+   157→          method: 'POST',
+   158→          headers: { 'Content-Type': 'application/json' },
+   159→          body: JSON.stringify({ activeSessionIds }),
+   160→        });
+   161→
+   162→        if (resp.ok) {
+   163→          const data = await resp.json();
+   164→          if (data.data?.deletedCount > 0) {
+   165→            console.log(`[ChatPanel] Cleaned up ${data.data.deletedCount} orphaned namespace(s)`);
+   166→          }
+   167→        }
+   168→      } catch (err) {
+   169→        // Non-blocking — orphaned namespaces don't break functionality
+   170→        console.warn('[ChatPanel] Failed to cleanup orphaned namespaces:', err);
+   171→      }
+   172→    };
+   173→
+   174→    cleanupOrphanedNamespaces();
+   175→  }, []); // Run once on mount
+   176→  
+   177→  // Sound triggers for {{sonidos}} key resolution
+   178→  const soundTriggers = useTavernStore((state) => state.soundTriggers);
+   179→  
+   180→  const setGenerating = useTavernStore((state) => state.setGenerating);
+   181→  const addMessage = useTavernStore((state) => state.addMessage);
+   182→  const deleteMessage = useTavernStore((state) => state.deleteMessage);
+   183→  const updateMessage = useTavernStore((state) => state.updateMessage);
+   184→  const updateSession = useTavernStore((state) => state.updateSession);
+   185→  const addSwipeAlternative = useTavernStore((state) => state.addSwipeAlternative);
+   186→  // UNIFIED SPRITE SYSTEM: Use per-character sprite state management
+   187→  const startSpriteGenerationForCharacter = useTavernStore((state) => state.startGenerationForCharacter);
+   188→  const endSpriteGenerationForCharacter = useTavernStore((state) => state.endGenerationForCharacter);
+   189→  const endSpriteGenerationForCharacterWithTTS = useTavernStore((state) => state.endGenerationForCharacterWithTTS);
+   190→  
+   191→  // Memory & Summary System - Track messages and generate summaries
+   192→  const summarySettings = useTavernStore((state) => state.summarySettings);
+   193→  const incrementMessageCount = useTavernStore((state) => state.incrementMessageCount);
+   194→  const shouldGenerateSummary = useTavernStore((state) => state.shouldGenerateSummary);
+   195→  const setSessionSummary = useTavernStore((state) => state.setSessionSummary);
+   196→  const resetMessageCount = useTavernStore((state) => state.resetMessageCount);
+   197→  const initSessionTracking = useTavernStore((state) => state.initSessionTracking);
+   198→  const getCharacterMemory = useTavernStore((state) => state.getCharacterMemory);
+   199→  const deleteMessagesUpTo = useTavernStore((state) => state.deleteMessagesUpTo);
+   200→
+   201→  // Ref to track ongoing generation and prevent race conditions
+   202→  const generationIdRef = useRef<string | null>(null);
+   203→  const isGenerationInProgressRef = useRef(false);
+   204→  
+   205→  // Get derived values from subscribed state
+   206→  const activeSession = sessions.find((s) => s.id === activeSessionId);
+   207→  const activeCharacter = characters.find((c) => c.id === activeCharacterId);
+   208→  const activeGroup = groups.find((g) => g.id === activeGroupId);
+   209→  const activePersona = personas.find((p) => p.id === activePersonaId);
+   210→  
+   211→  // Determine if we're in group mode
+   212→  const isGroupMode = !!activeGroupId && !!activeGroup;
+   213→
+   214→  // ============================================
+   215→  // LOREBOOK SELECTION LOGIC
+   216→  // ============================================
+   217→  // Normal Chat:
+   218→  //   - Character has lorebooks → use those
+   219→  //   - Character has NO lorebooks → use empty (no fallback to global)
+   220→  //
+   221→  // Group Chat:
+   222→  //   - Group has lorebooks → use ONLY those (for all characters)
+   223→  //   - Group has NO lorebooks → each character uses their own
+   224→  //   - Characters without lorebooks get empty (no fallback)
+   225→  // ============================================
+   226→  
+   227→  // Get effective lorebook IDs based on character or group
+   228→  const effectiveLorebookIds = useMemo(() => {
+   229→    if (isGroupMode) {
+   230→      // Group mode: group lorebooks take priority
+   231→      if (activeGroup?.lorebookIds && activeGroup.lorebookIds.length > 0) {
+   232→        // Group has lorebooks → use only those
+   233→        return activeGroup.lorebookIds;
+   234→      }
+   235→      // Group has NO lorebooks → return empty (will be handled per-character in API)
+   236→      return [];
+   237→    } else {
+   238→      // Normal chat: character lorebooks only, no fallback
+   239→      if (activeCharacter?.lorebookIds && activeCharacter.lorebookIds.length > 0) {
+   240→        return activeCharacter.lorebookIds;
+   241→      }
+   242→      // No lorebooks for this character
+   243→      return [];
+   244→    }
+   245→  }, [isGroupMode, activeGroup?.lorebookIds, activeCharacter?.lorebookIds]);
+   246→
+   247→  // For group chat without group lorebooks: build per-character lorebook map
+   248→  const characterLorebooksMap = useMemo(() => {
+   249→    if (!isGroupMode) return null;
+   250→    
+   251→    // If group has lorebooks, all characters use those (handled by effectiveLorebookIds)
+   252→    if (activeGroup?.lorebookIds && activeGroup.lorebookIds.length > 0) {
+   253→      return null;
+   254→    }
+   255→    
+   256→    // Group has NO lorebooks → build per-character map
+   257→    const map: Record<string, string[]> = {};
+   258→    const groupCharacterIds = activeGroup?.characterIds ?? [];
+   259→    
+   260→    for (const charId of groupCharacterIds) {
+   261→      const char = characters.find(c => c.id === charId);
+   262→      map[charId] = char?.lorebookIds ?? []; // Empty if no lorebooks
+   263→    }
+   264→    
+   265→    return map;
+   266→  }, [isGroupMode, activeGroup, characters]);
+   267→
+   268→  // ============================================
+   269→  // UNIFIED TRIGGER SYSTEM
+   270→  // Single hook for all triggers (sound + sprite)
+   271→  // This replaces separate useSoundTriggers and useSpriteTriggers hooks
+   272→  // ============================================
+   273→  const {
+   274→    processStreamingContent: processTriggers,
+   275→    resetForNewMessage: resetTriggers,
+   276→    clearAllState: clearAllTriggerState,
+   277→    completePartialMatches: completeTriggersPartialMatches,
+   278→  } = useTriggerSystem({
+   279→    soundEnabled: settings.sound?.enabled ?? true,
+   280→    spriteEnabled: settings.chatLayout.showCharacterSprite,
+   281→    maxSoundsPerMessage: settings.sound?.maxSoundsPerMessage ?? 10,
+   282→    activePersona: activePersona,
+   283→  });
+   284→  
+   285→  // Background triggers hook (separate for now, will be integrated later)
+   286→  const { scanForBackgroundTriggers, resetDetection: resetBgDetection } = useBackgroundTriggers();
+   287→  
+   288→  // Timeline Sprite Sounds - plays sounds when sprites with timeline sounds are activated
+   289→  useTimelineSpriteSounds();
+   290→  
+   291→  // TTS hook for text-to-speech functionality
+   292→  const { 
+   293→    speakWithDualVoice, 
+   294→    speak, 
+   295→    stop: stopTTS, 
+   296→    isPlaying: isTTSPlaying,
+   297→    ttsConfig,
+   298→    isConnected: isTTSConnected,
+   299→  } = useTTS();
+   300→  
+   301→  // Auto-generation TTS - automatically plays TTS for new assistant messages
+   302→  // Pass TTS functions and config from parent to avoid creating new instances
+   303→  // Use useMemo to stabilize the messages array reference and prevent unnecessary re-renders
+   304→  const messages = useMemo(() => {
+   305→    return activeSession?.messages.filter(m => !m.isDeleted) || [];
+   306→  }, [activeSession?.messages]);
+   307→  useTTSAutoGeneration(messages, {
+   308→    enabled: true,
+   309→    delay: 500,
+   310→    speak,
+   311→    speakWithDualVoice,
+   312→    ttsConfig,
+   313→    isPlaying: isTTSPlaying,
+   314→    isConnected: isTTSConnected,
+   315→  });
+   316→
+   317→  // ============================================
+   318→  // PROACTIVE MESSAGES SYSTEM
+   319→  // Characters can send messages without user speaking first
+   320→  // ============================================
+   321→  const {
+   322→    isActive: isProactiveActive,
+   323→    isConfigured: isProactiveConfigured,
+   324→    inactiveReason: proactiveInactiveReason,
+   325→    nextIn: proactiveNextIn,
+   326→    sessionCount: proactiveSessionCount,
+   327→    isGeneratingProactive,
+   328→    triggerNow: triggerProactiveNow,
+   329→  } = useProactiveMessages({
+   330→    isGenerating,
+   331→    onProactiveStreamStart: useCallback((characterId: string, characterName: string) => {
+   332→      // Find the character and set streaming state
+   333→      const char = characters.find(c => c.id === characterId) || activeCharacter;
+   334→      if (char) {
+   335→        setStreamingCharacter(char);
+   336→        setStreamingContent('');
+   337→      }
+   338→    }, [characters, activeCharacter]),
+   339→    onProactiveStreamToken: useCallback((token: string) => {
+   340→      setStreamingContent(prev => prev + token);
+   341→    }, []),
+   342→    onProactiveStreamEnd: useCallback(() => {
+   343→      setStreamingContent('');
+   344→      setStreamingCharacter(null);
+   345→    }, []),
+   346→  });
+   347→  
+   348→  // Track current streaming message key for triggers
+   349→  const streamingMessageKeyRef = useRef<string>('');
+   350→
+   351→  // ============================================
+   352→  // HUD SYNCHRONIZATION
+   353→  // Auto-activate HUD based on character/group
+   354→  // ============================================
+   355→  useEffect(() => {
+   356→    // Determine the HUD template to use
+   357→    const hudTemplateId = isGroupMode
+   358→      ? activeGroup?.hudTemplateId
+   359→      : activeCharacter?.hudTemplateId;
+   360→
+   361→    // Only update if different from current
+   362→    if (hudTemplateId !== hudSessionState.activeTemplateId) {
+   363→      setActiveHUD(hudTemplateId || null);
+   364→    }
+   365→  }, [isGroupMode, activeGroup?.hudTemplateId, activeCharacter?.hudTemplateId, hudSessionState.activeTemplateId, setActiveHUD]);
+   366→
+   367→  // Get active HUD context for prompt injection
+   368→  const activeHUDContext = useMemo(() => {
+   369→    const activeTemplate = hudTemplates.find(t => t.id === hudSessionState.activeTemplateId);
+   370→    if (activeTemplate?.context?.enabled && activeTemplate.context.content.trim()) {
+   371→      return activeTemplate.context;
+   372→    }
+   373→    return undefined;
+   374→  }, [hudTemplates, hudSessionState.activeTemplateId]);
+   375→
+   376→  // Pending item message (inventory → chat injection)
+   377→  const pendingItemMessage = useTavernStore((state) => state.pendingItemMessage);
+   378→  const clearPendingItemMessage = useTavernStore((state) => state.clearPendingItemMessage);
+   379→
+   380→  // Sync ref with store state
+   381→  useEffect(() => {
+   382→    if (!isGenerating && isGenerationInProgressRef.current) {
+   383→      // Store says not generating but we think we are - cleanup
+   384→      isGenerationInProgressRef.current = false;
+   385→      generationIdRef.current = null;
+   386→    }
+   387→  }, [isGenerating]);
+   388→
+   389→  // FASE 4: Keep streamingContentRef in sync with streaming content
+   390→  useEffect(() => {
+   391→    streamingContentRef.current = streamingContent;
+   392→  }, [streamingContent]);
+   393→
+   394→  // ============================================
+   395→  // MEMORY & SUMMARY INTEGRATION
+   396→  // Generates summaries when threshold is reached
+   397→  // ============================================
+   398→  
+   399→  // Initialize session tracking when session changes
+   400→  useEffect(() => {
+   401→    if (activeSessionId && summarySettings.enabled) {
+   402→      initSessionTracking(activeSessionId, isGroupMode);
+   403→    }
+   404→  }, [activeSessionId, summarySettings.enabled, isGroupMode, initSessionTracking]);
+   405→
+   406→  // ============================================
+   407→  // TIMER INTEGRATION
+   408→  // Start timer when session changes or on app reload
+   409→  // ============================================
+   410→  useEffect(() => {
+   411→    if (!activeSessionId) return;
+   412→    
+   413→    const store = useTavernStore.getState() as any;
+   414→    
+   415→    // Start timer for the active session (handles app reload / session restore)
+   416→    if (!isGroupMode && activeCharacter?.statsConfig?.timerEnabled) {
+   417→      store.startSessionTimer?.(activeSessionId, activeCharacter.id, activeCharacter.statsConfig);
+   418→    } else if (isGroupMode && activeGroup?.members) {
+   419→      for (const member of activeGroup.members) {
+   420→        const char = store.getCharacterById?.(member.characterId);
+   421→        if (char?.statsConfig?.timerEnabled) {
+   422→          store.startSessionTimer?.(activeSessionId, char.id, char.statsConfig);
+   423→        }
+   424→      }
+   425→    }
+   426→  }, [activeSessionId, isGroupMode, activeCharacter?.id, activeCharacter?.statsConfig?.timerEnabled, activeGroup?.members]);
+   427→
+   428→  // FASE 2: Time-based solicitud expiration checker
+   429→  // Checks every 30 seconds for solicitudes that have expired by time
+   430→  useEffect(() => {
+   431→    if (!activeSessionId) return;
+   432→
+   433→    const expirationInterval = setInterval(() => {
+   434→      const store = useTavernStore.getState();
+   435→      const turnCount = store.getTurnCount?.(activeSessionId!) || 0;
+   436→      store.expireSolicitudes?.(activeSessionId!, turnCount);
+   437→    }, 30000); // Check every 30 seconds
+   438→
+   439→    return () => clearInterval(expirationInterval);
+   440→  }, [activeSessionId]);
+   441→
+   442→  // Function to generate summary when threshold is reached
+   443→  const generateSummaryIfNeeded = useCallback(async () => {
+   444→    if (!activeSessionId || !summarySettings.enabled || !summarySettings.autoSummarize) {
+   445→      return;
+   446→    }
+   447→
+   448→    // Check if we should generate a summary
+   449→    if (!shouldGenerateSummary(activeSessionId)) {
+   450→      return;
+   451→    }
+   452→
+   453→    try {
+   454→      chatLogger.info('[Memory] Generating summary for session', { sessionId: activeSessionId });
+   455→
+   456→      // Get the current session's messages
+   457→      const currentSession = useTavernStore.getState().sessions.find(s => s.id === activeSessionId);
+   458→      const messages = currentSession?.messages || [];
+   459→      const visibleMessages = messages.filter(m => !m.isDeleted);
+   460→
+   461→      // Get the messages to summarize (all except recent ones to keep)
+   462→      const messagesToSummarize = visibleMessages.slice(0, -summarySettings.keepRecentMessages);
+   463→      
+   464→      if (messagesToSummarize.length === 0) {
+   465→        return;
+   466→      }
+   467→
+   468→      // Get the current summary from the session for incremental update
+   469→      const previousSummary = currentSession?.summary?.content;
+   470→
+   471→      // Get LLM config for summary generation
+   472→      const { llmConfigs } = useTavernStore.getState();
+   473→      const activeLLMConfig = llmConfigs.find(c => c.isActive);
+   474→      
+   475→      if (!activeLLMConfig) {
+   476→        chatLogger.warn('[Memory] No active LLM config for summary generation');
+   477→        return;
+   478→      }
+   479→
+   480→      // Get character name(s) for summary
+   481→      const characterName = isGroupMode 
+   482→        ? activeGroup?.name || 'Group'
+   483→        : activeCharacter?.name || 'Character';
+   484→
+   485→      // Call summary API
+   486→      const response = await fetch('/api/chat/summary', {
+   487→        method: 'POST',
+   488→        headers: { 'Content-Type': 'application/json' },
+   489→        body: JSON.stringify({
+   490→          messages: messagesToSummarize,
+   491→          characterName,
+   492→          userName: activePersona?.name || 'User',
+   493→          settings: summarySettings,
+   494→          previousSummary,
+   495→          apiConfig: {
+   496→            provider: activeLLMConfig.provider,
+   497→            endpoint: activeLLMConfig.endpoint || '',
+   498→            apiKey: activeLLMConfig.apiKey,
+   499→            model: summarySettings.model || activeLLMConfig.model,
+   500→          }
+   501→        })
+   502→      });
+   503→
+   504→      if (!response.ok) {
+   505→        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+   506→        throw new Error(`Summary generation failed: ${errorData.error || response.statusText}`);
+   507→      }
+   508→
+   509→      const data = await response.json();
+   510→
+   511→      if (data.success && data.summary) {
+   512→        // Save summary directly to session (overwrites previous)
+   513→        setSessionSummary(activeSessionId, {
+   514→          content: data.summary.content,
+   515→          messageRange: data.summary.messageRange,
+   516→          tokens: data.summary.tokens,
+   517→          createdAt: data.summary.createdAt,
+   518→          model: data.summary.model,
+   519→        });
+   520→        
+   521→        // Delete old messages that were summarized (keep recent ones + first message)
+   522→        deleteMessagesUpTo(activeSessionId, summarySettings.keepRecentMessages);
+   523→        
+   524→        // Reset message count after successful summary
+   525→        resetMessageCount(activeSessionId);
+   526→        
+   527→        chatLogger.info('[Memory] Summary generated successfully', { 
+   528→          sessionId: activeSessionId,
+   529→          tokens: data.summary.tokens,
+   530→          messagesDeleted: messagesToSummarize.length
+   531→        });
+   532→      } else if (data.error) {
+   533→        chatLogger.warn('[Memory] Summary generation returned error', { error: data.error });
+   534→      }
+   535→    } catch (error) {
+   536→      const errorMessage = error instanceof Error ? error.message : String(error);
+   537→      chatLogger.error('[Memory] Summary generation error', { error: errorMessage });
+   538→    }
+   539→  }, [
+   540→    activeSessionId, 
+   541→    summarySettings, 
+   542→    shouldGenerateSummary, 
+   543→    activeSession,
+   544→    setSessionSummary, 
+   545→    resetMessageCount,
+   546→    deleteMessagesUpTo,
+   547→    isGroupMode,
+   548→    activeGroup,
+   549→    activeCharacter,
+   550→    activePersona
+   551→  ]);
+   552→
+   553→  const handleSend = useCallback(async (userMessage: string) => {
+   554→    // Double-check using both state and ref to prevent race conditions
+   555→    if (!userMessage.trim()) return;
+   556→    if (isGenerating || isGenerationInProgressRef.current) return;
+   557→    if (!activeSessionId) return;
+   558→    
+   559→    // Process timer ticks before sending message (lazy evaluation of elapsed time)
+   560→    try {
+   561→      const store = useTavernStore.getState() as any;
+   562→      if (activeSessionId) {
+   563→        if (!isGroupMode && activeCharacter?.statsConfig?.timerEnabled) {
+   564→          store.processTimerTicks?.(activeSessionId, activeCharacter.id, activeCharacter.statsConfig);
+   565→        } else if (isGroupMode && activeGroup?.members) {
+   566→          for (const member of activeGroup.members) {
+   567→            const char = store.getCharacterById?.(member.characterId);
+   568→            if (char?.statsConfig?.timerEnabled) {
+   569→              store.processTimerTicks?.(activeSessionId, char.id, char.statsConfig);
+   570→            }
+   571→          }
+   572→        }
+   573→      }
+   574→    } catch { /* non-critical timer tick processing */ }
+   575→
+   576→    // For group mode, we don't need activeCharacter
+   577→    if (!isGroupMode && !activeCharacter) return;
+   578→
+   579→    // Ensure quest templates are loaded before building the prompt
+   580→    // This prevents race condition where templates aren't available on first message
+   581→    if (questTemplates.length === 0) {
+   582→      try {
+   583→        await loadQuestTemplates();
+   584→      } catch {}
+   585→    }
+   586→    // CRITICAL: Always re-read quest data from the store to avoid stale closures
+   587→    // The React hook selector captures values at render time, but handleSend is async
+   588→    const latestQuestTemplates = useTavernStore.getState().questTemplates;
+   589→    const latestQuestSettings = useTavernStore.getState().questSettings;
+   590→
+   591→    // Generate a unique ID for this generation
+   592→    const generationId = `gen_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+   593→    generationIdRef.current = generationId;
+   594→    isGenerationInProgressRef.current = true;
+   595→
+   596→    setGenerating(true);
+   597→    setStreamingContent('');
+   598→    setStreamingCharacter(null);
+   599→    setStreamingProgress(null);
+   600→    setEmbeddingsContexts([]);
+   601→    
+   602→    // Generate a unique message key for this streaming session
+   603→    const messageKey = `stream_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+   604→    streamingMessageKeyRef.current = messageKey;
+   605→    resetBgDetection(messageKey);
+   606→    // Reset trigger system state for new message (important for peticiones/solicitudes detection)
+   607→    resetTriggers(messageKey, activeCharacter);
+   608→    
+   609→    // Start sprite generation for the character (single mode)
+   610→    // This initializes the per-character state for proper sprite tracking
+   611→    if (!isGroupMode && activeCharacter) {
+   612→      startSpriteGenerationForCharacter(activeCharacter.id);
+   613→    }
+   614→
+   615→    // Add user message
+   616→    addMessage(activeSessionId, {
+   617→      characterId: activeCharacter?.id || 'user',
+   618→      role: 'user',
+   619→      content: userMessage.trim(),
+   620→      isDeleted: false,
+   621→      swipeId: generateId(),
+   622→      swipeIndex: 0
+   623→    });
+   624→
+   625→    // Helper to check if this generation is still the active one
+   626→    const isStillActive = () => generationIdRef.current === generationId;
+   627→
+   628→    try {
+   629→      // Get the active LLM config
+   630→      const { llmConfigs } = useTavernStore.getState();
+   631→      const activeLLMConfig = llmConfigs.find(c => c.isActive);
+   632→      
+   633→      if (!activeLLMConfig) {
+   634→        throw new Error(t('chat.noLLM'));
+   635→      }
+   636→
+   637→      // Get current session data (re-read to get latest quest instances)
+   638→      const currentSession = useTavernStore.getState().sessions.find(s => s.id === activeSessionId);
+   639→      const currentMessages = currentSession?.messages || [];
+   640→      const currentSessionQuests = currentSession?.sessionQuests || [];
+   641→
+   642→      // Check if streaming is enabled
+   643→      const useStreaming = activeLLMConfig.parameters.stream;
+   644→      
+   645→      // Get context settings from store
+   646→      const contextConfig = settings.context;
+   647→
+   648→      // Handle group chat
+   649→      if (isGroupMode && activeGroup) {
+   650→        // Get group characters
+   651→        const groupCharacterIds = activeGroup.members?.map(m => m.characterId) || activeGroup.characterIds || [];
+   652→        const groupCharacters = characters.filter(c => groupCharacterIds.includes(c.id));
+   653→        
+   654→        if (groupCharacters.length === 0) {
+   655→          throw new Error(t('chat.noGroupCharacters'));
+   656→        }
+   657→
+   658→        // Get active lorebooks for prompt injection
+   659→        // IMPORTANT: When group has no lorebooks, we need to send ALL active lorebooks
+   660→        // so the server can filter per-character using characterLorebooksMap.
+   661→        // When group HAS lorebooks, only send those (shared by all characters).
+   662→        const activeLorebooks = (activeGroup?.lorebookIds && activeGroup.lorebookIds.length > 0)
+   663→          ? lorebooks.filter(lb => activeGroup.lorebookIds!.includes(lb.id) && activeLorebookIds.includes(lb.id))
+   664→          : lorebooks.filter(lb => activeLorebookIds.includes(lb.id) && lb.active);
+   665→        
+   666→        // Get session stats for attribute values
+   667→        const sessionStats = currentSession?.sessionStats;
+   668→
+   669→        // Build allCharacters array including persona as pseudo-character for peticiones/solicitudes
+   670→        const allCharactersWithPersona = [
+   671→          ...characters,
+   672→          ...(activePersona?.statsConfig?.enabled ? [{
+   673→            id: '__user__',
+   674→            name: activePersona.name || 'User',
+   675→            statsConfig: activePersona.statsConfig,
+   676→          }] as CharacterCard[] : []),
+   677→        ];
+   678→
+   679→        // Use group streaming endpoint
+   680→        const response = await fetch('/api/chat/group-stream', {
+   681→          method: 'POST',
+   682→          headers: { 'Content-Type': 'application/json' },
+   683→          body: JSON.stringify({
+   684→            message: userMessage.trim(),
+   685→            sessionId: activeSessionId,
+   686→            groupId: activeGroupId,
+   687→            group: activeGroup,
+   688→            characters: groupCharacters,
+   689→            messages: currentMessages.filter((m: { isDeleted: boolean }) => !m.isDeleted),
+   690→            llmConfig: activeLLMConfig,
+   691→            userName: activePersona?.name || 'User',
+   692→            persona: activePersona,
+   693→            contextConfig,
+   694→            lorebooks: activeLorebooks,
+   695→            // Pass per-character lorebooks when group has no lorebooks
+   696→            characterLorebooksMap: characterLorebooksMap,
+   697→            sessionStats,  // Pass session stats for attribute values
+   698→            sessionQuests: currentSessionQuests,  // Pass session quests (freshly read)
+   699→            questTemplates: latestQuestTemplates,  // Pass quest templates (freshly read)
+   700→            questSettings: latestQuestSettings,  // Pass quest settings (freshly read)
+   701→            hudContext: activeHUDContext,  // Pass HUD context for prompt injection
+   702→            allCharacters: allCharactersWithPersona,  // Pass all characters + persona for peticiones/solicitudes
+   703→            toolsSettings: settings.tools,  // Pass tools settings for group chat tool-calling
+   704→            soundTriggers,  // Pass sound triggers for {{sonidos}} resolution
+   705→            settings,  // Pass settings for {{sonidos}} template
+   706→            embeddingsChat: {
+   707→              ...settings.embeddingsChat,
+   708→              customNamespaces: activeGroup?.embeddingNamespaces,
+   709→            },  // Pass embeddings chat settings + group namespace override
+   710→            // Summary for memory/context compression
+   711→            summary: currentSession?.summary,
+   712→            // Per-character memory map for deduplication
+   713→            characterMemoryMap: (() => {
+   714→              const map: Record<string, CharacterMemory> = {};
+   715→              for (const char of groupCharacters) {
+   716→                const mem = getCharacterMemory(char.id);
+   717→                if (mem) map[char.id] = mem;
+   718→              }
+   719→              return map;
+   720→            })(),
+   721→            // Last responder ID for round-robin rotation
+   722→            lastResponderId: (() => {
+   723→              // Find the last assistant message to determine who responded last
+   724→              const lastAssistantMsg = [...currentMessages].reverse().find((m: any) => m.role === 'assistant' && !m.isDeleted);
+   725→              return lastAssistantMsg?.characterId || undefined;
+   726→            })(),
+   727→            // Turn count for narrator conditional settings
+   728→            turnCount: currentSession?.turnCount || currentMessages.filter((m: any) => m.role === 'user' && !m.isDeleted).length,
+   729→            // Whether narrator spoke last turn (for narrator interval tracking)
+   730→            // Calculate the actual TURN NUMBER when the narrator last spoke
+   731→            narratorLastTurn: (() => {
+   732→              const userMsgs = currentMessages.filter((m: any) => m.role === 'user' && !m.isDeleted);
+   733→              // Walk messages in reverse to find the last narrator message
+   734→              for (let idx = currentMessages.length - 1; idx >= 0; idx--) {
+   735→                const m = currentMessages[idx] as any;
+   736→                if (m.role === 'assistant' && !m.isDeleted && m.isNarratorMessage) {
+   737→                  // Find which user turn this narrator message is after
+   738→                  const msgsUpToNarrator = currentMessages.slice(0, idx + 1);
+   739→                  const userTurnsBefore = msgsUpToNarrator.filter((um: any) => um.role === 'user' && !um.isDeleted).length;
+   740→                  return userTurnsBefore;
+   741→                }
+   742→              }
+   743→              return -999; // No narrator message found
+   744→            })(),
+   745→            inventoryData: (() => {
+   746→              // CRITICAL: Re-read store state fresh to ensure we have the latest
+   747→              // equipment/consumable data. When equipItem/useConsumable runs,
+   748→              // it saves to session JSON BEFORE this code executes (300ms delay).
+   749→              const invState = useTavernStore.getState();
+   750→              const invSettings = invState.inventorySettings;
+   751→              if (!invSettings.enabled) return undefined;
+   752→              const personaId = activePersona?.id || 'default';
+   753→              // Re-read session from fresh store state to get updated sessionEquipment & activeConsumableEffects
+   754→              const freshSession = invState.sessions.find((s: any) => s.id === activeSessionId);
+   755→              return {
+   756→                personaItems: invState.getPersonaItems(personaId),
+   757→                sessionEquipment: freshSession?.sessionEquipment || [],
+   758→                activeEffects: freshSession?.activeConsumableEffects || invState.activeConsumableEffects.filter(e => e.personaId === personaId),
+   759→                currency: activePersona?.currency ?? 0,
+   760→                currencyName: activePersona?.currencyName || invSettings.currencyName,
+   761→                currencyIcon: activePersona?.currencyIcon || invSettings.currencyIcon,
+   762→                inventorySettings: invSettings,
+   763→              };
+   764→            })(),  // Pass inventory data for {{slots}} key resolution
+   765→          })
+   766→        });
+   767→
+   768→        if (!response.ok) {
+   769→          const errorData = await response.json().catch(() => ({ error: response.statusText || t('chat.error.streaming') }));
+   770→          throw new Error(errorData.error || t('chat.error.streaming'));
+   771→        }
+   772→
+   773→        const reader = response.body?.getReader();
+   774→        if (!reader) throw new Error('No response body');
+   775→
+   776→        const decoder = new TextDecoder();
+   777→        let buffer = '';
+   778→        let currentCharacterContent = '';
+   779→        let currentCharacter: CharacterCard | null = null;
+   780→        // Track group extraction flag from 'done' event
+   781→        let groupShouldExtract = false;
+   782→        let groupShouldEvaluateEmotion = false;
+   783→        let groupResponses: Array<{ characterId: string; characterName: string; content: string }> = [];
+   784→
+   785→        try {
+   786→          while (true) {
+   787→            // Check if generation was cancelled
+   788→            if (!isStillActive()) {
+   789→              reader.cancel();
+   790→              break;
+   791→            }
+   792→            
+   793→            const { done, value } = await reader.read();
+   794→            if (done) break;
+   795→
+   796→            buffer += decoder.decode(value, { stream: true });
+   797→            const messages = buffer.split('\n\n');
+   798→            buffer = messages.pop() || '';
+   799→
+   800→            for (const message of messages) {
+   801→              const dataMatch = message.match(/^data: (.+)$/s);
+   802→              if (!dataMatch) continue;
+   803→              
+   804→              const data = dataMatch[1];
+   805→              
+   806→              try {
+   807→                const parsed = JSON.parse(data);
+   808→                
+   809→                if (parsed.type === 'user_turn') {
+   810→                  // Group chat reactive strategy detected a peticion targeting the user
+   811→                  // Stop generation and let user respond
+   812→                  chatLogger.info('Turn stopped for user response', { reason: parsed.reason });
+   813→                  setStreamingProgress(null);
+   814→                  setStreamingCharacter(null);
+   815→                  setGenerating(false);
+   816→                  // Optionally show a toast notification
+   817→                  return;
+   818→                } else if (parsed.type === 'embeddings_context' && parsed.data) {
+   819→                  // Embeddings context was retrieved for this character
+   820→                  setEmbeddingsContexts(prev => [...prev, {
+   821→                    ...parsed.data,
+   822→                    characterId: parsed.characterId,
+   823→                    characterName: parsed.characterName,
+   824→                  }]);
+   825→                } else if (parsed.type === 'memory_extracting') {
+   826→                  // Memory extraction is running in background
+   827→                  const names = parsed.characterNames || parsed.characterName || '';
+   828→                  const label = Array.isArray(names) ? names.join(', ') : names;
+   829→                  if (label) {
+   830→                    setMemoryExtractingInfo({ active: true, characterNames: label });
+   831→                    setTimeout(() => setMemoryExtractingInfo(prev => ({ ...prev, active: false })), 8000);
+   832→                  }
+   833→                } else if (parsed.type === 'tool_call_start') {
+   834→                  // Tool call detected - show indicator
+   835→                  console.log('[ChatPanel] Tool call started:', parsed.toolName);
+   836→                  setToolCallInfo({
+   837→                    active: true,
+   838→                    toolName: parsed.toolName,
+   839→                    toolLabel: parsed.toolLabel,
+   840→                    toolIcon: parsed.toolIcon,
+   841→                    params: parsed.params,
+   842→                    phase: 'executing',
+   843→                    callId: parsed.callId,
+   844→                  });
+   845→                } else if (parsed.type === 'tool_call_result') {
+   846→                  // Tool execution completed
+   847→                  console.log('[ChatPanel] Tool call result:', parsed.toolName, parsed.success);
+   848→                  setToolCallInfo(prev => ({
+   849→                    ...prev,
+   850→                    active: true,
+   851→                    result: { success: parsed.success, displayMessage: parsed.displayMessage, duration: parsed.duration || 0 },
+   852→                    phase: 'done',
+   853→                    callId: parsed.callId,
+   854→                  }));
+   855→                  setTimeout(() => setToolCallInfo(prev => ({ ...prev, active: false, phase: 'idle' })), 5000);
+   856→                } else if (parsed.type === 'tool_call_error') {
+   857→                  // Tool call error
+   858→                  console.log('[ChatPanel] Tool call error:', parsed.error);
+   859→                  setToolCallInfo(prev => ({
+   860→                    ...prev,
+   861→                    active: true,
+   862→                    result: { success: false, displayMessage: parsed.error, duration: 0 },
+   863→                    phase: 'error',
+   864→                    callId: parsed.callId,
+   865→                  }));
+   866→                  setTimeout(() => setToolCallInfo(prev => ({ ...prev, active: false, phase: 'idle' })), 5000);
+   867→                } else if (parsed.type === 'quest_activation') {
+   868→                  // Quest objective was completed by a tool - execute on client side
+   869→                  console.log('[ChatPanel] Quest activation from tool:', parsed.toolName, parsed.activationType, parsed.key);
+   870→                  // Execute the objective completion on the CLIENT where the store has real data.
+   871→                  // store.completeObjective handles everything:
+   872→                  //   - Marks objective as completed
+   873→                  //   - Executes objective rewards (attribute, trigger, objective chain)
+   874→                  //   - Auto-completes quest if all required objectives done
+   875→                  //   - Executes quest rewards on auto-completion
+   876→                  //   - Activates quest chain if defined
+   877→                  //   - Adds notifications
+   878→                  if (parsed.activationType === 'complete_objective' && parsed.metadata && !parsed.metadata.alreadyCompleted) {
+   879→                    const store = useTavernStore.getState();
+   880→                    store.completeObjective?.(
+   881→                      activeSessionId,
+   882→                      parsed.metadata.questTemplateId,
+   883→                      parsed.metadata.objectiveId,
+   884→                      parsed.metadata.characterId,
+   885→                    );
+   886→                  }
+   887→                  // Show immediate toast feedback (store notifications handle quest completion separately)
+   888→                  if (!parsed.metadata?.alreadyCompleted && parsed.metadata?.objectiveName) {
+   889→                    toast.success(`Objetivo completado: ${parsed.metadata.objectiveName}`);
+   890→                  }
+   891→                } else if (parsed.type === 'action_activation') {
+   892→                  // Action/skill activated by tool - execute on client side
+   893→                  console.log('[ChatPanel] Action activation from tool:', parsed.toolName, parsed.skillName);
+   894→                  const store = useTavernStore.getState();
+   895→                  store.activateSkillByTool?.(
+   896→                    activeSessionId,
+   897→                    parsed.characterId,
+   898→                    parsed.skillName,
+   899→                    parsed.skillDescription || '',
+   900→                    parsed.activationCosts || [],
+   901→                    parsed.activationRewards || [],
+   902→                    parsed.skillCompletedDescription || '',
+   903→                  );
+   904→                  toast.success(`⚔️ Acción: ${parsed.skillName}`);
+   905→                } else if (parsed.type === 'stat_activation') {
+   906→                  // Stat modified by tool - execute on client side
+   907→                  console.log('[ChatPanel] Stat activation from tool:', parsed.toolName, parsed.attributeKey, parsed.oldValue, '→', parsed.newValue);
+   908→                  const store = useTavernStore.getState();
+   909→                  store.updateCharacterStat?.(
+   910→                    activeSessionId,
+   911→                    parsed.characterId,
+   912→                    parsed.attributeKey,
+   913→                    parsed.newValue,
+   914→                    'llm_detection'
+   915→                  );
+   916→                  toast.success(`📊 ${parsed.attributeName || parsed.attributeKey}: ${parsed.oldValue} → ${parsed.newValue}`);
+   917→                } else if (parsed.type === 'solicitud_activation') {
+   918→                  // Solicitud activated/completed by tool - execute on client side
+   919→                  console.log('[ChatPanel] Solicitud activation from tool:', parsed.toolName, parsed.activationType, parsed.solicitudKey);
+   920→                  const store = useTavernStore.getState();
+   921→                  if (parsed.activationType === 'create_solicitud' && parsed.targetCharacterId) {
+   922→                    store.createSolicitud?.(
+   923→                      activeSessionId,
+   924→                      parsed.targetCharacterId,
+   925→                      {
+   926→                        key: parsed.solicitudKey,
+   927→                        peticionKey: parsed.peticionKey,
+   928→                        fromCharacterId: parsed.fromCharacterId,
+   929→                        fromCharacterName: parsed.fromCharacterName,
+   930→                        description: parsed.description || '',
+   931→                        completionDescription: parsed.completionDescription,
+   932→                      }
+   933→                    );
+   934→                    toast.success(`📬 Petición: ${parsed.peticionKey || parsed.solicitudKey} → ${parsed.targetCharacterName || ''}`);
+   935→                  } else if (parsed.activationType === 'complete_solicitud') {
+   936→                    store.completeSolicitud?.(
+   937→                      activeSessionId,
+   938→                      parsed.fromCharacterId,
+   939→                      parsed.solicitudKey
+   940→                    );
+   941→                    toast.success(`✅ Solicitud completada: ${parsed.solicitudKey}`);
+   942→                  }
+   943→                } else if (parsed.type === 'memory_activation') {
+   944→                  // Memory tool activation - sync to client-side Character Memory (Zustand)
+   945→                  console.log('[ChatPanel] Memory activation from tool:', parsed.toolName, parsed.activationType);
+   946→                  const store = useTavernStore.getState();
+   947→                  if (parsed.activationType === 'save_memory' && parsed.eventData) {
+   948→                    store.addMemoryEvent(parsed.characterId, {
+   949→                      id: parsed.eventData.id,
+   950→                      type: parsed.eventData.type as any,
+   951→                      content: parsed.eventData.content,
+   952→                      importance: parsed.eventData.importance,
+   953→                      timestamp: new Date().toISOString(),
+   954→                      embeddingId: parsed.eventData.embeddingId,
+   955→                      sessionId: parsed.eventData.sessionId,
+   956→                    });
+   957→                    toast.success(`🧠 Memoria guardada: ${parsed.eventData.content.slice(0, 50)}...`);
+   958→                  } else if (parsed.activationType === 'update_relationship' && parsed.relationshipData) {
+   959→                    store.updateRelationship(parsed.characterId, {
+   960→                      targetId: parsed.relationshipData.targetId,
+   961→                      targetName: parsed.relationshipData.targetName,
+   962→                      relationship: parsed.relationshipData.relationship,
+   963→                      sentiment: parsed.relationshipData.sentiment,
+   964→                      notes: parsed.relationshipData.notes,
+   965→                      lastUpdated: new Date().toISOString(),
+   966→                    });
+   967→                    toast.success(`💜 Relación actualizada: ${parsed.relationshipData.targetName}`);
+   968→                  } else if (parsed.activationType === 'save_note' && parsed.noteContent) {
+   969→                    const existingMemory = store.getCharacterMemory(parsed.characterId);
+   970→                    store.setCharacterNotes(parsed.characterId, 
+   971→                      existingMemory?.notes ? `${existingMemory.notes}\n${parsed.noteContent}` : parsed.noteContent);
+   972→                  }
+   973→                } else if (parsed.type === 'character_start') {
+   974→                  currentCharacterContent = '';
+   975→                  const char = groupCharacters.find(c => c.id === parsed.characterId);
+   976→                  currentCharacter = char || null;
+   977→                  setStreamingCharacter(currentCharacter);
+   978→                  setStreamingProgress({
+   979→                    current: parsed.responseIndex,
+   980→                    total: parsed.totalResponses
+   981→                  });
+   982→                  setStreamingContent('');
+   983→                  
+   984→                  // UNIFIED SPRITE SYSTEM: Start sprite generation for this character
+   985→                  // Each character in the group gets independent sprite tracking
+   986→                  if (currentCharacter) {
+   987→                    console.log('[ChatPanel] Group - Starting sprite generation for:', currentCharacter.name);
+   988→                    startSpriteGenerationForCharacter(currentCharacter.id);
+   989→                    
+   990→                    // Create a unique messageKey for this character's triggers
+   991→                    const characterMessageKey = `${streamingMessageKeyRef.current}_${currentCharacter.id}`;
+   992→                    // Reset triggers for this specific character
+   993→                    resetTriggers(characterMessageKey, currentCharacter);
+   994→                  }
+   995→                } else if (parsed.type === 'token' && parsed.content) {
+   996→                  currentCharacterContent += parsed.content;
+   997→                  setStreamingContent(currentCharacterContent);
+   998→                  // UNIFIED TRIGGER SYSTEM: Process sound + sprite triggers in single pass
+   999→                  // CRITICAL: Use unique messageKey per character to avoid position conflicts
+  1000→                  const characterMessageKey = `${streamingMessageKeyRef.current}_${currentCharacter?.id || 'unknown'}`;
+  1001→                  try {
+  1002→                    processTriggers(currentCharacterContent, currentCharacter, characterMessageKey, groupCharacters);
+  1003→                  } catch (triggerError) {
+  1004→                    console.error('[ChatPanel] Group trigger processing error:', triggerError);
+  1005→                    // Don't throw - continue streaming even if triggers fail
+  1006→                  }
+  1007→                  try {
+  1008→                    scanForBackgroundTriggers(currentCharacterContent, streamingMessageKeyRef.current);
+  1009→                  } catch (bgError) {
+  1010→                    console.error('[ChatPanel] Group background trigger error:', bgError);
+  1011→                    // Don't throw - continue streaming even if background triggers fail
+  1012→                  }
+  1013→                } else if (parsed.type === 'character_done') {
+  1014→                  if (parsed.fullContent && activeSessionId && isStillActive()) {
+  1015→                    // FASE 4: Generate micro-reactions for group chat
+  1016→                    let microReactions: MicroReaction[] | undefined;
+  1017→                    if (isGroupMode && activeGroup) {
+  1018→                      const otherChars = groupCharacters.filter(c => c.id !== parsed.characterId);
+  1019→                      const speakerChar = groupCharacters.find(c => c.id === parsed.characterId);
+  1020→                      if (speakerChar && otherChars.length > 0 && speakerChar.microReactionConfig?.enabled) {
+  1021→                        microReactions = generateMicroReactions(
+  1022→                          parsed.characterId,
+  1023→                          parsed.characterName || speakerChar.name,
+  1024→                          parsed.fullContent,
+  1025→                          otherChars,
+  1026→                          speakerChar.microReactionConfig,
+  1027→                        );
+  1028→                      }
+  1029→                    }
+  1030→
+  1031→                    addMessage(activeSessionId, {
+  1032→                      characterId: parsed.characterId,
+  1033→                      role: 'assistant',
+  1034→                      content: parsed.fullContent,
+  1035→                      isDeleted: false,
+  1036→                      swipeId: generateId(),
+  1037→                      swipeIndex: 0,
+  1038→                      isNarratorMessage: parsed.isNarrator || false,
+  1039→                      metadata: {
+  1040→                        promptData: parsed.promptSections || [],
+  1041→                        microReactions: microReactions && microReactions.length > 0 ? microReactions : undefined,
+  1042→                      }
+  1043→                    });
+  1044→
+  1045→                    // Tick inventory consumable effects after each character response in group
+  1046→                    const invState = useTavernStore.getState();
+  1047→                    if (invState.inventorySettings.enabled && activePersona?.id) {
+  1048→                      const expiredMessages = invState.tickEffects(activePersona.id);
+  1049→                      if (expiredMessages.length > 0) {
+  1050→                        invState.removeExpiredEffects(activePersona.id);
+  1051→                        for (const msg of expiredMessages) {
+  1052→                          toast.info(msg);
+  1053→                        }
+  1054→                      }
+  1055→                    }
+  1056→
+  1057→                    // FASE 2: Check solicitud expiration after each group character turn
+  1058→                    const expirationState = useTavernStore.getState();
+  1059→                    const currentTurnCount = expirationState.getTurnCount?.(activeSessionId!) || 0;
+  1060→                    expirationState.expireSolicitudes?.(activeSessionId!, currentTurnCount);
+  1061→                  }
+  1062→                  
+  1063→                  // UNIFIED SPRITE SYSTEM: End sprite generation for this character
+  1064→                  // This properly handles the return to idle if trigger was activated
+  1065→                  // IMPORTANT: Only end for the character that just finished, not others
+  1066→                  const finishedChar = groupCharacters.find(c => c.id === parsed.characterId);
+  1067→                  if (finishedChar) {
+  1068→                    console.log('[ChatPanel] Group - Ending sprite generation for:', finishedChar.name);
+  1069→                    
+  1070→                    // CRITICAL: Complete any pending partial matches (key:value at end of text)
+  1071→                    // This ensures trigger sprites like "sprite:test01" are properly detected
+  1072→                    // Use unique messageKey per character to avoid position conflicts
+  1073→                    const characterMessageKey = `${streamingMessageKeyRef.current}_${finishedChar.id}`;
+  1074→                    completeTriggersPartialMatches(characterMessageKey, finishedChar, groupCharacters);
+  1075→                    
+  1076→                    const ttsExpected = !!(ttsConfig?.enabled && ttsConfig?.autoGeneration && isTTSConnected);
+  1077→                    endSpriteGenerationForCharacterWithTTS(finishedChar.id, ttsExpected);
+  1078→                  }
+  1079→                  
+  1080→                  setStreamingContent('');
+  1081→                  setStreamingCharacter(null);
+  1082→                } else if (parsed.type === 'character_error') {
+  1083→                  chatLogger.error(`Character ${parsed.characterName} error`, { error: parsed.error });
+  1084→                  if (activeSessionId && isStillActive()) {
+  1085→                    addMessage(activeSessionId, {
+  1086→                      characterId: parsed.characterId,
+  1087→                      role: 'system',
+  1088→                      content: `⚠️ ${parsed.characterName}: ${parsed.error}`,
+  1089→                      isDeleted: false,
+  1090→                      swipeId: generateId(),
+  1091→                      swipeIndex: 0
+  1092→                    });
+  1093→                  }
+  1094→                } else if (parsed.type === 'done') {
+  1095→                  // Group stream done - capture shouldExtract flag and responses
+  1096→                  groupShouldExtract = !!parsed.shouldExtract;
+  1097→                  groupShouldEvaluateEmotion = !!parsed.shouldEvaluateEmotion;
+  1098→                  groupResponses = (parsed.responses || []) as Array<{ characterId: string; characterName: string; content: string }>;
+  1099→                } else if (parsed.type === 'error') {
+  1100→                  // Preserve any accumulated group content before throwing
+  1101→                  if (accumulatedContent.trim() && activeSessionId && isStillActive()) {
+  1102→                    chatLogger.warn('Group stream error with partial content', {
+  1103→                      contentLength: accumulatedContent.length,
+  1104→                      error: parsed.error,
+  1105→                    });
+  1106→                  }
+  1107→                  throw new Error(parsed.error || 'Error en la generación del servidor');
+  1108→                }
+  1109→              } catch (parseError) {
+  1110→                if (parseError instanceof Error && !parseError.message.includes('JSON')) {
+  1111→                  throw parseError;
+  1112→                }
+  1113→                chatLogger.debug('Failed to parse SSE data (group)', { data });
+  1114→              }
+  1115→            }
+  1116→          }
+  1117→        } finally {
+  1118→          reader.releaseLock();
+  1119→        }
+  1120→        
+  1121→        setStreamingProgress(null);
+  1122→        
+  1123→        // Client-side memory extraction for group chat
+  1124→        // Triggered after the stream is fully processed, if server flagged shouldExtract
+  1125→        if (groupShouldExtract && isStillActive() && activeSessionId) {
+  1126→          const extractableChars = groupResponses.filter(r => r.content && r.content.length > 50);
+  1127→          if (extractableChars.length > 0) {
+  1128→            const charNames = extractableChars.map(r => r.characterName).join(', ');
+  1129→            setMemoryExtractingInfo({ active: true, characterNames: charNames });
+  1130→            
+  1131→            // Run extraction asynchronously (don't block the UI)
+  1132→            (async () => {
+  1133→              try {
+  1134→                const state = useTavernStore.getState();
+  1135→                const currentLLMConfig = state.llmConfigs.find(c => c.isActive);
+  1136→                const embeddingsChat = state.settings.embeddingsChat;
+  1137→                const currentSession = state.sessions.find(s => s.id === activeSessionId);
+  1138→                const sessionMsgs = currentSession?.messages || [];
+  1139→                const personaName = activePersona?.name || 'User';
+  1140→                
+  1141→                if (!currentLLMConfig) return;
+  1142→                
+  1143→                // Build chat context for context-aware extraction
+  1144→                const extractionContextDepth = embeddingsChat.memoryExtractionContextDepth || 0;
+  1145→                let chatContextForExtraction: string | undefined;
+  1146→                if (extractionContextDepth > 0) {
+  1147→                  const contextMessages = sessionMsgs
+  1148→                    .filter(m => !m.isDeleted && m.content?.trim())
+  1149→                    .slice(-(extractionContextDepth * 2 + 1));
+  1150→                  if (contextMessages.length > 0) {
+  1151→                    chatContextForExtraction = contextMessages
+  1152→                      .map(m => {
+  1153→                        const role = m.role === 'user' ? 'Jugador' : 'Personaje';
+  1154→                        return `${role}: ${m.content.trim().slice(0, 300)}`;
+  1155→                      })
+  1156→                      .join('\n  ');
+  1157→                  }
+  1158→                }
+  1159→                
+  1160→                let totalSaved = 0;
+  1161→                
+  1162→                // Extract last user message for user-memory extraction
+  1163→                const lastUserMsg = sessionMsgs
+  1164→                  .filter(m => m.role === 'user' && !m.isDeleted)
+  1165→                  .slice(-2, -1)[0]?.content;
+  1166→                
+  1167→                for (const resp of extractableChars) {
+  1168→                  try {
+  1169→                    const extractionResponse = await fetch('/api/embeddings/extract-memory', {
+  1170→                      method: 'POST',
+  1171→                      headers: { 'Content-Type': 'application/json' },
+  1172→                      body: JSON.stringify({
+  1173→                        lastMessage: resp.content,
+  1174→                        characterName: resp.characterName,
+  1175→                        characterId: resp.characterId,
+  1176→                        sessionId: activeSessionId,
+  1177→                        groupId: activeGroupId,
+  1178→                        userName: personaName,
+  1179→                        extractFromUser: embeddingsChat.memoryExtractionFromUserEnabled === true,
+  1180→                        lastUserMessage: lastUserMsg,
+  1181→                        llmConfig: {
+  1182→                          provider: currentLLMConfig.provider,
+  1183→                          endpoint: currentLLMConfig.endpoint,
+  1184→                          apiKey: currentLLMConfig.apiKey,
+  1185→                          model: currentLLMConfig.model,
+  1186→                          parameters: currentLLMConfig.parameters,
+  1187→                        },
+  1188→                        minImportance: embeddingsChat.memoryExtractionMinImportance || 2,
+  1189→                        customPrompt: embeddingsChat.groupMemoryExtractionPrompt || embeddingsChat.memoryExtractionPrompt,
+  1190→                        chatContext: chatContextForExtraction,
+  1191→                        consolidationSettings: embeddingsChat.memoryConsolidationEnabled ? {
+  1192→                          enabled: true,
+  1193→                          threshold: embeddingsChat.memoryConsolidationThreshold || 50,
+  1194→                          keepRecent: embeddingsChat.memoryConsolidationKeepRecent || 10,
+  1195→                          keepHighImportance: embeddingsChat.memoryConsolidationKeepHighImportance || 4,
+  1196→                        } : undefined,
+  1197→                        extractionModelConfig: embeddingsChat.extractionModelEnabled ? {
+  1198→                          extractionModelEnabled: true,
+  1199→                          extractionModelProvider: embeddingsChat.extractionModelProvider,
+  1200→                          extractionModelEndpoint: embeddingsChat.extractionModelEndpoint,
+  1201→                          extractionModelApiKey: embeddingsChat.extractionModelApiKey,
+  1202→                          extractionModelName: embeddingsChat.extractionModelName,
+  1203→                        } : undefined,
+  1204→                      }),
+  1205→                    });
+  1206→                    
+  1207→                    if (extractionResponse.ok) {
+  1208→                      const result = await extractionResponse.json();
+  1209→                      if (result.success) {
+  1210→                        totalSaved += result.saved || 0;
+  1211→                        console.log(`[Memory] Group extraction result for ${resp.characterName}: extracted=${result.count}, saved=${result.saved}`);
+  1212→                        
+  1213→                        // Sync memoryActivations to Character Memory
+  1214→                        if (result.memoryActivations && result.memoryActivations.length > 0) {
+  1215→                          const store = useTavernStore.getState();
+  1216→                          for (const activation of result.memoryActivations) {
+  1217→                            store.addMemoryEvent(activation.characterId, {
+  1218→                              id: activation.eventData.id,
+  1219→                              type: activation.eventData.type as any,
+  1220→                              content: activation.eventData.content,
+  1221→                              importance: activation.eventData.importance,
+  1222→                              timestamp: new Date().toISOString(),
+  1223→                              embeddingId: activation.eventData.embeddingId,
+  1224→                              sessionId: activation.eventData.sessionId,
+  1225→                            });
+  1226→                          }
+  1227→                        }
+  1228→                      }
+  1229→                    }
+  1230→                  } catch (err) {
+  1231→                    console.warn(`[Memory] Group extraction failed for ${resp.characterName}:`, err);
+  1232→                  }
+  1233→                }
+  1234→                
+  1235→                // Also trigger group dynamics extraction if enabled
+  1236→                if (embeddingsChat.groupDynamicsExtraction && extractableChars.length > 1) {
+  1237→                  try {
+  1238→                    const turnLines: string[] = [];
+  1239→                    const lastUserMsg = sessionMsgs.filter(m => m.role === 'user' && !m.isDeleted).slice(-1)[0];
+  1240→                    if (lastUserMsg) {
+  1241→                      turnLines.push(`Jugador: ${lastUserMsg.content.trim().slice(0, 500)}`);
+  1242→                    }
+  1243→                    for (const resp of extractableChars) {
+  1244→                      turnLines.push(`${resp.characterName}: ${resp.content.trim().slice(0, 500)}`);
+  1245→                    }
+  1246→                    const fullTurnContext = turnLines.join('\n');
+  1247→                    
+  1248→                    if (fullTurnContext.length > 100) {
+  1249→                      await fetch('/api/embeddings/extract-group-dynamics', {
+  1250→                        method: 'POST',
+  1251→                        headers: { 'Content-Type': 'application/json' },
+  1252→                        body: JSON.stringify({
+  1253→                          turnContext: fullTurnContext,
+  1254→                          groupId: activeGroupId,
+  1255→                          sessionId: activeSessionId,
+  1256→                          llmConfig: {
+  1257→                            provider: currentLLMConfig.provider,
+  1258→                            endpoint: currentLLMConfig.endpoint,
+  1259→                            apiKey: currentLLMConfig.apiKey,
+  1260→                            model: currentLLMConfig.model,
+  1261→                            parameters: currentLLMConfig.parameters,
+  1262→                          },
+  1263→                          minImportance: embeddingsChat.memoryExtractionMinImportance || 2,
+  1264→                        }),
+  1265→                      });
+  1266→                    }
+  1267→                  } catch (dynErr) {
+  1268→                    console.warn('[Memory] Group dynamics extraction failed (non-blocking):', dynErr);
+  1269→                  }
+  1270→                }
+  1271→                
+  1272→                if (totalSaved > 0) {
+  1273→                  toast.success(`🧠 ${totalSaved} memorias extraídas automáticamente`);
+  1274→                }
+  1275→              } catch (err) {
+  1276→                console.warn('[Memory] Group client-side extraction failed:', err);
+  1277→              } finally {
+  1278→                setMemoryExtractingInfo(prev => ({ ...prev, active: false }));
+  1279→              }
+  1280→            })();
+  1281→          }
+  1282→        }
+  1283→
+  1284→        // FASE 5: Emotional state evaluation for group chat
+  1285→        // Evaluate emotional states for each character that has emotional config enabled
+  1286→        if (groupShouldEvaluateEmotion && isStillActive() && activeSessionId) {
+  1287→          const emotionChars = groupResponses.filter(r => r.content && r.content.length > 20);
+  1288→          if (emotionChars.length > 0) {
+  1289→            (async () => {
+  1290→              try {
+  1291→                const state = useTavernStore.getState();
+  1292→                const currentLLMConfig = state.llmConfigs.find(c => c.isActive);
+  1293→                if (!currentLLMConfig) return;
+  1294→
+  1295→                const currentSession = state.sessions.find(s => s.id === activeSessionId);
+  1296→                const sessionMsgs = currentSession?.messages || [];
+  1297→                const groupSessionStats = currentSession?.sessionStats;
+  1298→
+  1299→                for (const resp of emotionChars) {
+  1300→                  const char = characters.find(c => c.id === resp.characterId);
+  1301→                  if (!char?.emotionalConfig?.enabled) continue;
+  1302→
+  1303→                  const currentState = groupSessionStats?.characterStats?.[char.id]?.emotionalState
+  1304→                    || char.emotionalConfig.initialState
+  1305→                    || 'neutral';
+  1306→
+  1307→                  const turnCount = groupSessionStats?.characterStats?.[char.id]?.emotionalStateTurnCount || 0;
+  1308→                  const interval = char.emotionalConfig.evaluationInterval || 1;
+  1309→                  if (turnCount % interval !== 0) continue;
+  1310→
+  1311→                  try {
+  1312→                    const emotionResponse = await fetch('/api/chat/emotion', {
+  1313→                      method: 'POST',
+  1314→                      headers: { 'Content-Type': 'application/json' },
+  1315→                      body: JSON.stringify({
+  1316→                        character: char,
+  1317→                        messages: sessionMsgs,
+  1318→                        llmConfig: {
+  1319→                          provider: currentLLMConfig.provider,
+  1320→                          endpoint: currentLLMConfig.endpoint,
+  1321→                          apiKey: currentLLMConfig.apiKey,
+  1322→                          model: currentLLMConfig.model,
+  1323→                          parameters: currentLLMConfig.parameters,
+  1324→                        },
+  1325→                        currentState,
+  1326→                        personality: char.personality,
+  1327→                      }),
+  1328→                    });
+  1329→
+  1330→                    if (emotionResponse.ok) {
+  1331→                      const result = await emotionResponse.json();
+  1332→                      if (result.shouldUpdate && result.evaluation) {
+  1333→                        const store = useTavernStore.getState();
+  1334→                        store.updateEmotionalState?.(
+  1335→                          activeSessionId!,
+  1336→                          char.id,
+  1337→                          result.evaluation.newState,
+  1338→                          result.evaluation.previousState,
+  1339→                        );
+  1340→                      }
+  1341→                    }
+  1342→                  } catch (charErr) {
+  1343→                    console.warn(`[Emotion] Group evaluation failed for ${resp.characterName}:`, charErr);
+  1344→                  }
+  1345→                }
+  1346→              } catch (err) {
+  1347→                console.warn('[Emotion] Group evaluation failed:', err);
+  1348→              }
+  1349→            })();
+  1350→          }
+  1351→        }
+  1352→        
+  1353→        return;
+  1354→      }
+  1355→
+  1356→      // Single character chat
+  1357→      if (!activeCharacter) return;
+  1358→
+  1359→      // Get active lorebooks for prompt injection
+  1360→      const activeLorebooks = lorebooks.filter(lb => effectiveLorebookIds.includes(lb.id) && activeLorebookIds.includes(lb.id));
+  1361→      
+  1362→      // Get session stats for attribute values
+  1363→      const sessionStats = currentSession?.sessionStats;
+  1364→
+  1365→      if (useStreaming) {
+  1366→        // Build allCharacters array including persona as pseudo-character for peticiones/solicitudes
+  1367→        const allCharactersWithPersona = [
+  1368→          ...characters,
+  1369→          ...(activePersona?.statsConfig?.enabled ? [{
+  1370→            id: '__user__',
+  1371→            name: activePersona.name || 'User',
+  1372→            statsConfig: activePersona.statsConfig,
+  1373→          }] as CharacterCard[] : []),
+  1374→        ];
+  1375→
+  1376→        // ===== DEBUG: Lorebook Attribute Resolution Tracing =====
+  1377→        console.group('%c[Lorebook DEBUG] Frontend → Backend Data', 'color: #e65100; font-weight: bold');
+  1378→        console.log('%c--- Lorebook Selection Debug ---', 'color: #d32f2f; font-weight: bold', {
+  1379→          isGroupMode,
+  1380→          characterId: activeCharacter?.id,
+  1381→          characterName: activeCharacter?.name,
+  1382→          characterLorebookIds: activeCharacter?.lorebookIds,
+  1383→          effectiveLorebookIds,
+  1384→          activeLorebookIds,
+  1385→          allLorebookIds: lorebooks.map(lb => ({ id: lb.id, name: lb.name, active: lb.active })),
+  1386→          activeLorebooksCount: activeLorebooks.length,
+  1387→        });
+  1388→        console.log('%c--- Active Lorebooks ---', 'color: #1565c0; font-weight: bold', activeLorebooks.map(lb => ({
+  1389→
+  1390→          id: lb.id,
+  1391→          name: lb.name,
+  1392→          active: lb.active,
+  1393→          entries: lb.entries.filter(e => e.entryType === 'attribute').map(e => ({
+  1394→            entryType: e.entryType,
+  1395→            disable: e.disable,
+  1396→            attributeConfig: e.attributeConfig ? {
+  1397→              characterId: e.attributeConfig.characterId,
+  1398→              attributeKey: e.attributeConfig.attributeKey,
+  1399→              injectionKey: e.attributeConfig.injectionKey,
+  1400→              mode: e.attributeConfig.mode,
+  1401→              staticCondition: e.attributeConfig.staticCondition,
+  1402→              dynamicConditions: e.attributeConfig.dynamicConditions?.map(dc => ({
+  1403→                operator: dc.operator,
+  1404→                value: dc.value,
+  1405→                content: dc.content?.slice(0, 80),
+  1406→              })),
+  1407→            } : null,
+  1408→          })),
+  1409→        })));
+  1410→        console.log('%c--- Session Stats ---', 'color: #1565c0; font-weight: bold', {
+  1411→          hasSessionStats: !!sessionStats,
+  1412→          initialized: sessionStats?.initialized,
+  1413→          characterStatsKeys: sessionStats ? Object.keys(sessionStats.characterStats || {}) : [],
+  1414→          userStats: sessionStats?.characterStats?.['__user__']
+  1415→            ? {
+  1416→                hasAttrValues: !!sessionStats.characterStats['__user__'].attributeValues,
+  1417→                attributes: { ...sessionStats.characterStats['__user__'].attributeValues },
+  1418→              }
+  1419→            : '(no __user__ stats)',
+  1420→          charStats: sessionStats?.characterStats?.[activeCharacter?.id]
+  1421→            ? {
+  1422→                hasAttrValues: !!sessionStats.characterStats[activeCharacter!.id].attributeValues,
+  1423→                attributes: { ...sessionStats.characterStats[activeCharacter!.id].attributeValues },
+  1424→              }
+  1425→            : `(no stats for char ${activeCharacter?.id})`,
+  1426→        });
+  1427→        console.log('%c--- All Characters (with Persona) ---', 'color: #1565c0; font-weight: bold', allCharactersWithPersona.map(c => ({
+  1428→          id: c.id,
+  1429→          name: c.name,
+  1430→          hasStatsConfig: !!c.statsConfig,
+  1431→          attributes: c.statsConfig?.attributes?.map(a => ({ key: a.key, name: a.name })),
+  1432→        })));
+  1433→        console.groupEnd();
+  1434→        // ===== END DEBUG =====
+  1435→
+  1436→        const response = await fetch('/api/chat/stream', {
+  1437→          method: 'POST',
+  1438→          headers: { 'Content-Type': 'application/json' },
+  1439→          body: JSON.stringify({
+  1440→            message: userMessage.trim(),
+  1441→            sessionId: activeSessionId,
+  1442→            characterId: activeCharacter.id,
+  1443→            character: activeCharacter,
+  1444→            messages: currentMessages.filter((m: { isDeleted: boolean }) => !m.isDeleted),
+  1445→            llmConfig: activeLLMConfig,
+  1446→            userName: activePersona?.name || 'User',
+  1447→            persona: activePersona,
+  1448→            contextConfig,
+  1449→            lorebooks: activeLorebooks,
+  1450→            sessionStats,  // Pass session stats for attribute values
+  1451→            sessionQuests: currentSessionQuests,  // Pass session quests (freshly read)
+  1452→            questTemplates: latestQuestTemplates,  // Pass quest templates (freshly read)
+  1453→            questSettings: latestQuestSettings,  // Pass quest settings (freshly read)
+  1454→            hudContext: activeHUDContext,  // Pass HUD context for prompt injection
+  1455→            summary: activeSession?.summary,  // Pass session summary (single, not array)
+  1456→            allCharacters: allCharactersWithPersona,  // Pass all characters + persona for peticiones/solicitudes
+  1457→            soundTriggers,  // Pass sound triggers for {{sonidos}} resolution
+  1458→            settings,  // Pass settings for {{sonidos}} template
+  1459→            characterMemory: activeCharacter ? getCharacterMemory(activeCharacter.id) : undefined,  // Pass character memory (events, relationships, notes)
+  1460→            embeddingsChat: {
+  1461→              ...settings.embeddingsChat,
+  1462→              customNamespaces: activeCharacter?.embeddingNamespaces,
+  1463→            },  // Pass embeddings chat settings + character namespace override
+  1464→            toolsSettings: settings.tools,  // Pass tool calling configuration
+  1465→            inventoryData: (() => {
+  1466→              // CRITICAL: Re-read store state fresh to ensure we have the latest
+  1467→              // equipment/consumable data. When equipItem/useConsumable runs,
+  1468→              // it saves to session JSON BEFORE this code executes (300ms delay).
+  1469→              const invState = useTavernStore.getState();
+  1470→              const invSettings = invState.inventorySettings;
+  1471→              if (!invSettings.enabled) return undefined;
+  1472→              const personaId = activePersona?.id || 'default';
+  1473→              // Re-read session from fresh store state to get updated sessionEquipment & activeConsumableEffects
+  1474→              const freshSession = invState.sessions.find((s: any) => s.id === activeSessionId);
+  1475→              return {
+  1476→                personaItems: invState.getPersonaItems(personaId),
+  1477→                sessionEquipment: freshSession?.sessionEquipment || [],
+  1478→                activeEffects: freshSession?.activeConsumableEffects || invState.activeConsumableEffects.filter(e => e.personaId === personaId),
+  1479→                currency: activePersona?.currency ?? 0,
+  1480→                currencyName: activePersona?.currencyName || invSettings.currencyName,
+  1481→                currencyIcon: activePersona?.currencyIcon || invSettings.currencyIcon,
+  1482→                inventorySettings: invSettings,
+  1483→              };
+  1484→            })(),  // Pass inventory data for {{slots}} key resolution
+  1485→          })
+  1486→        });
+  1487→
+  1488→        if (!response.ok) {
+  1489→          const errorData = await response.json().catch(() => ({ error: response.statusText || t('chat.error.streaming') }));
+  1490→          throw new Error(errorData.error || t('chat.error.streaming'));
+  1491→        }
+  1492→
+  1493→        const reader = response.body?.getReader();
+  1494→        if (!reader) throw new Error('No response body');
+  1495→
+  1496→        const decoder = new TextDecoder();
+  1497→        let accumulatedContent = '';
+  1498→        let buffer = '';
+  1499→        let promptSections: { type: string; label: string; content: string; color: string }[] = [];
+  1500→
+  1501→        try {
+  1502→          while (true) {
+  1503→            // Check if generation was cancelled
+  1504→            if (!isStillActive()) {
+  1505→              reader.cancel();
+  1506→              break;
+  1507→            }
+  1508→            
+  1509→            const { done, value } = await reader.read();
+  1510→            if (done) break;
+  1511→
+  1512→            buffer += decoder.decode(value, { stream: true });
+  1513→            const messages = buffer.split('\n\n');
+  1514→            buffer = messages.pop() || '';
+  1515→
+  1516→            for (const message of messages) {
+  1517→              const dataMatch = message.match(/^data: (.+)$/s);
+  1518→              if (!dataMatch) continue;
+  1519→              
+  1520→              const data = dataMatch[1];
+  1521→              
+  1522→              try {
+  1523→                const parsed = JSON.parse(data);
+  1524→                
+  1525→                if (parsed.type === 'prompt_data' && parsed.promptSections) {
+  1526→                  // Capture prompt sections for metadata
+  1527→                  promptSections = parsed.promptSections;
+  1528→                } else if (parsed.type === 'lorebook_debug') {
+  1529→                  // DEBUG: Backend lorebook attribute resolution results
+  1530→                  console.group('%c[Lorebook DEBUG] Backend Resolution Results', 'color: #e65100; font-weight: bold');
+  1531→                  console.log('%c--- Final Keys ---', 'color: #2e7d32; font-weight: bold', parsed.lorebookAttributeKeys);
+  1532→                  console.log('%c--- Per-Entry Debug ---', 'color: #2e7d32; font-weight: bold', parsed.debugEntries);
+  1533→                  if (parsed.debugEntries) {
+  1534→                    for (const entry of parsed.debugEntries) {
+  1535→                      const statusColor = entry.finalResult === '(empty)' ? '#c62828' : '#2e7d32';
+  1536→                      console.log(
+  1537→                        `%c[${entry.attributeValue === null ? '⚠ NOT FOUND' : entry.conditionResults.some(c => c.matched) ? '✓ MATCHED' : '✗ NO MATCH'}] ` +
+  1538→                        `{{${entry.injectionKey}}} | char=${entry.characterId}→${entry.resolvedCharId} | ` +
+  1539→                        `attr=${entry.attributeKey} | value=${JSON.stringify(entry.attributeValue)} | ` +
+  1540→                        `mode=${entry.mode}`,
+  1541→                        `color: ${statusColor}; font-weight: bold`
+  1542→                      );
+  1543→                      if (entry.conditionResults.length > 0) {
+  1544→                        for (const cr of entry.conditionResults) {
+  1545→                          const cColor = cr.matched ? '#2e7d32' : '#c62828';
+  1546→                          console.log(`  %c  ${cr.evaluationDetail}  content: "${(cr.content || '').slice(0, 60)}"`, `color: ${cColor}`);
+  1547→                        }
+  1548→                      }
+  1549→                    }
+  1550→                  }
+  1551→                  console.log('%c--- Available Stats ---', 'color: #2e7d32; font-weight: bold', parsed.availableStats);
+  1552→                  console.groupEnd();
+  1553→                } else if (parsed.type === 'embeddings_context' && parsed.data) {
+  1554→                  // Embeddings context was retrieved
+  1555→                  setEmbeddingsContexts(prev => [...prev, parsed.data]);
+  1556→                } else if (parsed.type === 'memory_extracting') {
+  1557→                  // Memory extraction is running in background
+  1558→                  const label = parsed.characterName || '';
+  1559→                  if (label) {
+  1560→                    setMemoryExtractingInfo({ active: true, characterNames: label });
+  1561→                    setTimeout(() => setMemoryExtractingInfo(prev => ({ ...prev, active: false })), 8000);
+  1562→                  }
+  1563→                } else if (parsed.type === 'tool_call_start') {
+  1564→                  // Tool call detected - show indicator
+  1565→                  console.log('[ChatPanel] Tool call started:', parsed.toolName);
+  1566→                  setToolCallInfo({
+  1567→                    active: true,
+  1568→                    toolName: parsed.toolName,
+  1569→                    toolLabel: parsed.toolLabel,
+  1570→                    toolIcon: parsed.toolIcon,
+  1571→                    params: parsed.params,
+  1572→                    phase: 'executing',
+  1573→                    callId: parsed.callId,
+  1574→                  });
+  1575→                } else if (parsed.type === 'tool_call_result') {
+  1576→                  // Tool execution completed
+  1577→                  console.log('[ChatPanel] Tool call result:', parsed.toolName, parsed.success);
+  1578→                  setToolCallInfo(prev => ({
+  1579→                    ...prev,
+  1580→                    active: true,
+  1581→                    result: { success: parsed.success, displayMessage: parsed.displayMessage, duration: parsed.duration || 0 },
+  1582→                    phase: 'done',
+  1583→                    callId: parsed.callId,
+  1584→                  }));
+  1585→                  setTimeout(() => setToolCallInfo(prev => ({ ...prev, active: false, phase: 'idle' })), 5000);
+  1586→                } else if (parsed.type === 'tool_call_error') {
+  1587→                  // Tool call error
+  1588→                  console.log('[ChatPanel] Tool call error:', parsed.error);
+  1589→                  setToolCallInfo(prev => ({
+  1590→                    ...prev,
+  1591→                    active: true,
+  1592→                    result: { success: false, displayMessage: parsed.error, duration: 0 },
+  1593→                    phase: 'error',
+  1594→                    callId: parsed.callId,
+  1595→                  }));
+  1596→                  setTimeout(() => setToolCallInfo(prev => ({ ...prev, active: false, phase: 'idle' })), 5000);
+  1597→                } else if (parsed.type === 'quest_activation') {
+  1598→                  // Quest objective was completed by a tool - execute on client side
+  1599→                  console.log('[ChatPanel] Quest activation from tool:', parsed.toolName, parsed.activationType, parsed.key);
+  1600→                  // Execute the objective completion on the CLIENT where the store has real data.
+  1601→                  // store.completeObjective handles everything:
+  1602→                  //   - Marks objective as completed
+  1603→                  //   - Executes objective rewards (attribute, trigger, objective chain)
+  1604→                  //   - Auto-completes quest if all required objectives done
+  1605→                  //   - Executes quest rewards on auto-completion
+  1606→                  //   - Activates quest chain if defined
+  1607→                  //   - Adds notifications
+  1608→                  if (parsed.activationType === 'complete_objective' && parsed.metadata && !parsed.metadata.alreadyCompleted) {
+  1609→                    const store = useTavernStore.getState();
+  1610→                    store.completeObjective?.(
+  1611→                      activeSessionId,
+  1612→                      parsed.metadata.questTemplateId,
+  1613→                      parsed.metadata.objectiveId,
+  1614→                      parsed.metadata.characterId,
+  1615→                    );
+  1616→                  }
+  1617→                  // Show immediate toast feedback (store notifications handle quest completion separately)
+  1618→                  if (!parsed.metadata?.alreadyCompleted && parsed.metadata?.objectiveName) {
+  1619→                    toast.success(`Objetivo completado: ${parsed.metadata.objectiveName}`);
+  1620→                  }
+  1621→                } else if (parsed.type === 'action_activation') {
+  1622→                  // Action/skill activated by tool - execute on client side
+  1623→                  console.log('[ChatPanel] Action activation from tool:', parsed.toolName, parsed.skillName);
+  1624→                  const store = useTavernStore.getState();
+  1625→                  store.activateSkillByTool?.(
+  1626→                    activeSessionId,
+  1627→                    parsed.characterId,
+  1628→                    parsed.skillName,
+  1629→                    parsed.skillDescription || '',
+  1630→                    parsed.activationCosts || [],
+  1631→                    parsed.activationRewards || [],
+  1632→                    parsed.skillCompletedDescription || '',
+  1633→                  );
+  1634→                  toast.success(`⚔️ Acción: ${parsed.skillName}`);
+  1635→                } else if (parsed.type === 'stat_activation') {
+  1636→                  // Stat modified by tool - execute on client side
+  1637→                  console.log('[ChatPanel] Stat activation from tool:', parsed.toolName, parsed.attributeKey, parsed.oldValue, '→', parsed.newValue);
+  1638→                  const store = useTavernStore.getState();
+  1639→                  store.updateCharacterStat?.(
+  1640→                    activeSessionId,
+  1641→                    parsed.characterId,
+  1642→                    parsed.attributeKey,
+  1643→                    parsed.newValue,
+  1644→                    'llm_detection'
+  1645→                  );
+  1646→                  toast.success(`📊 ${parsed.attributeName || parsed.attributeKey}: ${parsed.oldValue} → ${parsed.newValue}`);
+  1647→                } else if (parsed.type === 'solicitud_activation') {
+  1648→                  // Solicitud activated/completed by tool - execute on client side
+  1649→                  console.log('[ChatPanel] Solicitud activation from tool:', parsed.toolName, parsed.activationType, parsed.solicitudKey);
+  1650→                  const store = useTavernStore.getState();
+  1651→                  if (parsed.activationType === 'create_solicitud' && parsed.targetCharacterId) {
+  1652→                    store.createSolicitud?.(
+  1653→                      activeSessionId,
+  1654→                      parsed.targetCharacterId,
+  1655→                      {
+  1656→                        key: parsed.solicitudKey,
+  1657→                        peticionKey: parsed.peticionKey,
+  1658→                        fromCharacterId: parsed.fromCharacterId,
+  1659→                        fromCharacterName: parsed.fromCharacterName,
+  1660→                        description: parsed.description || '',
+  1661→                        completionDescription: parsed.completionDescription,
+  1662→                      }
+  1663→                    );
+  1664→                    toast.success(`📬 Petición: ${parsed.peticionKey || parsed.solicitudKey} → ${parsed.targetCharacterName || ''}`);
+  1665→                  } else if (parsed.activationType === 'complete_solicitud') {
+  1666→                    store.completeSolicitud?.(
+  1667→                      activeSessionId,
+  1668→                      parsed.fromCharacterId,
+  1669→                      parsed.solicitudKey
+  1670→                    );
+  1671→                    toast.success(`✅ Solicitud completada: ${parsed.solicitudKey}`);
+  1672→                  }
+  1673→                } else if (parsed.type === 'memory_activation') {
+  1674→                  // Memory tool activation - sync to client-side Character Memory (Zustand)
+  1675→                  console.log('[ChatPanel] Memory activation from tool:', parsed.toolName, parsed.activationType);
+  1676→                  const store = useTavernStore.getState();
+  1677→                  if (parsed.activationType === 'save_memory' && parsed.eventData) {
+  1678→                    store.addMemoryEvent(parsed.characterId, {
+  1679→                      id: parsed.eventData.id,
+  1680→                      type: parsed.eventData.type as any,
+  1681→                      content: parsed.eventData.content,
+  1682→                      importance: parsed.eventData.importance,
+  1683→                      timestamp: new Date().toISOString(),
+  1684→                      embeddingId: parsed.eventData.embeddingId,
+  1685→                      sessionId: parsed.eventData.sessionId,
+  1686→                    });
+  1687→                    toast.success(`🧠 Memoria guardada: ${parsed.eventData.content.slice(0, 50)}...`);
+  1688→                  } else if (parsed.activationType === 'update_relationship' && parsed.relationshipData) {
+  1689→                    store.updateRelationship(parsed.characterId, {
+  1690→                      targetId: parsed.relationshipData.targetId,
+  1691→                      targetName: parsed.relationshipData.targetName,
+  1692→                      relationship: parsed.relationshipData.relationship,
+  1693→                      sentiment: parsed.relationshipData.sentiment,
+  1694→                      notes: parsed.relationshipData.notes,
+  1695→                      lastUpdated: new Date().toISOString(),
+  1696→                    });
+  1697→                    toast.success(`💜 Relación actualizada: ${parsed.relationshipData.targetName}`);
+  1698→                  } else if (parsed.activationType === 'save_note' && parsed.noteContent) {
+  1699→                    const existingMemory = store.getCharacterMemory(parsed.characterId);
+  1700→                    store.setCharacterNotes(parsed.characterId, 
+  1701→                      existingMemory?.notes ? `${existingMemory.notes}\n${parsed.noteContent}` : parsed.noteContent);
+  1702→                  }
+  1703→                } else if (parsed.type === 'token' && parsed.content) {
+  1704→                  accumulatedContent += parsed.content;
+  1705→                  setStreamingContent(accumulatedContent);
+  1706→                  // UNIFIED TRIGGER SYSTEM: Process sound + sprite triggers in single pass
+  1707→                  // Pass allCharactersWithPersona for peticiones/solicitudes system
+  1708→                  try {
+  1709→                    processTriggers(accumulatedContent, activeCharacter, streamingMessageKeyRef.current, allCharactersWithPersona);
+  1710→                  } catch (triggerError) {
+  1711→                    console.error('[ChatPanel] Trigger processing error:', triggerError);
+  1712→                    // Don't throw - continue streaming even if triggers fail
+  1713→                  }
+  1714→                  try {
+  1715→                    scanForBackgroundTriggers(accumulatedContent, streamingMessageKeyRef.current);
+  1716→                  } catch (bgError) {
+  1717→                    console.error('[ChatPanel] Background trigger error:', bgError);
+  1718→                    // Don't throw - continue streaming even if background triggers fail
+  1719→                  }
+  1720→                } else if (parsed.type === 'error') {
+  1721→                  // If we have accumulated content, save the partial response
+  1722→                  // instead of discarding it entirely
+  1723→                  const partialContent = accumulatedContent.trim();
+  1724→                  if (partialContent && isStillActive()) {
+  1725→                    const namePrefix = `${activeCharacter.name}:`;
+  1726→                    const cleanedMessage = partialContent.startsWith(namePrefix)
+  1727→                      ? partialContent.slice(namePrefix.length).trim()
+  1728→                      : partialContent;
+  1729→                    
+  1730→                    if (cleanedMessage) {
+  1731→                      addMessage(activeSessionId, {
+  1732→                        characterId: activeCharacter.id,
+  1733→                        role: 'assistant',
+  1734→                        content: cleanedMessage,
+  1735→                        isDeleted: false,
+  1736→                        swipeId: generateId(),
+  1737→                        swipeIndex: 0,
+  1738→                        metadata: { promptData: promptSections }
+  1739→                      });
+  1740→                    }
+  1741→                  }
+  1742→                  setStreamingContent('');
+  1743→                  // Throw with a more descriptive error message
+  1744→                  throw new Error(parsed.error || 'Error en la generación del servidor');
+  1745→                } else if (parsed.type === 'done') {
+  1746→                  let cleanedMessage = accumulatedContent.trim();
+  1747→                  
+  1748→                  const namePrefix = `${activeCharacter.name}:`;
+  1749→                  if (cleanedMessage.startsWith(namePrefix)) {
+  1750→                    cleanedMessage = cleanedMessage.slice(namePrefix.length).trim();
+  1751→                  }
+  1752→                  
+  1753→                  if (cleanedMessage && isStillActive()) {
+  1754→                    addMessage(activeSessionId, {
+  1755→                      characterId: activeCharacter.id,
+  1756→                      role: 'assistant',
+  1757→                      content: cleanedMessage,
+  1758→                      isDeleted: false,
+  1759→                      swipeId: generateId(),
+  1760→                      swipeIndex: 0,
+  1761→                      metadata: {
+  1762→                        promptData: promptSections,
+  1763→                        toolsUsed: parsed.toolsUsed || []
+  1764→                      }
+  1765→                    });
+  1766→
+  1767→                    // FASE 2: Check solicitud expiration after each turn
+  1768→                    const expirationState = useTavernStore.getState();
+  1769→                    const currentTurnCount = expirationState.getTurnCount?.(activeSessionId!) || 0;
+  1770→                    expirationState.expireSolicitudes?.(activeSessionId!, currentTurnCount);
+  1771→
+  1772→                    // Tick inventory consumable effects (decrement turns)
+  1773→                    const invState = useTavernStore.getState();
+  1774→                    if (invState.inventorySettings.enabled && activePersona?.id) {
+  1775→                      const expiredMessages = invState.tickEffects(activePersona.id);
+  1776→                      if (expiredMessages.length > 0) {
+  1777→                        // Remove expired effects and show notifications
+  1778→                        invState.removeExpiredEffects(activePersona.id);
+  1779→                        for (const msg of expiredMessages) {
+  1780→                          toast.info(msg);
+  1781→                        }
+  1782→                      }
+  1783→                    }
+  1784→                  }
+  1785→                  setStreamingContent('');
+  1786→                  
+  1787→                  // Client-side memory extraction for single chat
+  1788→                  // Triggered after the stream is fully processed, if server flagged shouldExtract
+  1789→                  if (parsed.shouldExtract && cleanedMessage && isStillActive()) {
+  1790→                    setMemoryExtractingInfo({ active: true, characterNames: activeCharacter.name });
+  1791→                    
+  1792→                    // Run extraction asynchronously (don't block the UI)
+  1793→                    const extractionMessage = cleanedMessage;
+  1794→                    const extractionCharacterId = activeCharacter.id;
+  1795→                    const extractionCharacterName = activeCharacter.name;
+  1796→                    (async () => {
+  1797→                      try {
+  1798→                        const state = useTavernStore.getState();
+  1799→                        const currentLLMConfig = state.llmConfigs.find(c => c.isActive);
+  1800→                        const embeddingsChat = state.settings.embeddingsChat;
+  1801→                        const currentSession = state.sessions.find(s => s.id === activeSessionId);
+  1802→                        const sessionMsgs = currentSession?.messages || [];
+  1803→                        const personaName = activePersona?.name || 'User';
+  1804→                        
+  1805→                        if (!currentLLMConfig) return;
+  1806→                        
+  1807→                        // Build chat context for context-aware extraction
+  1808→                        const extractionContextDepth = embeddingsChat.memoryExtractionContextDepth || 0;
+  1809→                        let chatContextForExtraction: string | undefined;
+  1810→                        if (extractionContextDepth > 0) {
+  1811→                          const contextMessages = sessionMsgs
+  1812→                            .filter(m => !m.isDeleted && m.content?.trim())
+  1813→                            .slice(-(extractionContextDepth * 2 + 1));
+  1814→                          if (contextMessages.length > 0) {
+  1815→                            chatContextForExtraction = contextMessages
+  1816→                              .map(m => {
+  1817→                                const role = m.role === 'user' ? 'Jugador' : extractionCharacterName;
+  1818→                                const content = m.content.trim().slice(0, 300);
+  1819→                                return `${role}: ${content}`;
+  1820→                              })
+  1821→                              .join('\n  ');
+  1822→                          }
+  1823→                        }
+  1824→                        
+  1825→                        // Extract last user message for user-memory extraction
+  1826→                        const lastUserMsg = sessionMsgs
+  1827→                          .filter(m => m.role === 'user' && !m.isDeleted)
+  1828→                          .slice(-2, -1)[0]?.content;
+  1829→                        
+  1830→                        const extractionResponse = await fetch('/api/embeddings/extract-memory', {
+  1831→                          method: 'POST',
+  1832→                          headers: { 'Content-Type': 'application/json' },
+  1833→                          body: JSON.stringify({
+  1834→                            lastMessage: extractionMessage,
+  1835→                            characterName: extractionCharacterName,
+  1836→                            characterId: extractionCharacterId,
+  1837→                            sessionId: activeSessionId,
+  1838→                            userName: personaName,
+  1839→                            extractFromUser: embeddingsChat.memoryExtractionFromUserEnabled === true,
+  1840→                            lastUserMessage: lastUserMsg,
+  1841→                            llmConfig: {
+  1842→                              provider: currentLLMConfig.provider,
+  1843→                              endpoint: currentLLMConfig.endpoint,
+  1844→                              apiKey: currentLLMConfig.apiKey,
+  1845→                              model: currentLLMConfig.model,
+  1846→                              parameters: currentLLMConfig.parameters,
+  1847→                            },
+  1848→                            minImportance: embeddingsChat.memoryExtractionMinImportance || 2,
+  1849→                            customPrompt: embeddingsChat.memoryExtractionPrompt,
+  1850→                            chatContext: chatContextForExtraction,
+  1851→                            consolidationSettings: embeddingsChat.memoryConsolidationEnabled ? {
+  1852→                              enabled: true,
+  1853→                              threshold: embeddingsChat.memoryConsolidationThreshold || 50,
+  1854→                              keepRecent: embeddingsChat.memoryConsolidationKeepRecent || 10,
+  1855→                              keepHighImportance: embeddingsChat.memoryConsolidationKeepHighImportance || 4,
+  1856→                            } : undefined,
+  1857→                            extractionModelConfig: embeddingsChat.extractionModelEnabled ? {
+  1858→                              extractionModelEnabled: true,
+  1859→                              extractionModelProvider: embeddingsChat.extractionModelProvider,
+  1860→                              extractionModelEndpoint: embeddingsChat.extractionModelEndpoint,
+  1861→                              extractionModelApiKey: embeddingsChat.extractionModelApiKey,
+  1862→                              extractionModelName: embeddingsChat.extractionModelName,
+  1863→                            } : undefined,
+  1864→                          }),
+  1865→                        });
+  1866→                        
+  1867→                        if (extractionResponse.ok) {
+  1868→                          const result = await extractionResponse.json();
+  1869→                          if (result.success) {
+  1870→                            console.log(`[Memory] Extraction result for ${extractionCharacterName}: extracted=${result.count}, saved=${result.saved}`);
+  1871→                            
+  1872→                            // Sync memoryActivations to Character Memory
+  1873→                            if (result.memoryActivations && result.memoryActivations.length > 0) {
+  1874→                              const store = useTavernStore.getState();
+  1875→                              for (const activation of result.memoryActivations) {
+  1876→                                store.addMemoryEvent(activation.characterId, {
+  1877→                                  id: activation.eventData.id,
+  1878→                                  type: activation.eventData.type as any,
+  1879→                                  content: activation.eventData.content,
+  1880→                                  importance: activation.eventData.importance,
+  1881→                                  timestamp: new Date().toISOString(),
+  1882→                                  embeddingId: activation.eventData.embeddingId,
+  1883→                                  sessionId: activation.eventData.sessionId,
+  1884→                                });
+  1885→                              }
+  1886→                            }
+  1887→                            
+  1888→                            if (result.saved > 0) {
+  1889→                              toast.success(`🧠 ${result.saved} memorias extraídas automáticamente`);
+  1890→                            }
+  1891→                          }
+  1892→                        }
+  1893→                      } catch (err) {
+  1894→                        console.warn('[Memory] Client-side extraction failed:', err);
+  1895→                      } finally {
+  1896→                        setMemoryExtractingInfo(prev => ({ ...prev, active: false }));
+  1897→                      }
+  1898→                    })();
+  1899→                  }
+  1900→
+  1901→                  // FASE 5: Emotional state evaluation
+  1902→                  // Triggered after the stream is fully processed, if server flagged shouldEvaluateEmotion
+  1903→                  if (parsed.shouldEvaluateEmotion && cleanedMessage && isStillActive()) {
+  1904→                    const emotionCharacterId = activeCharacter.id;
+  1905→                    const emotionCharacterName = activeCharacter.name;
+  1906→                    const emotionConfig = activeCharacter.emotionalConfig;
+  1907→                    const currentState = sessionStats?.characterStats?.[emotionCharacterId]?.emotionalState
+  1908→                      || emotionConfig?.initialState
+  1909→                      || 'neutral';
+  1910→
+  1911→                    // Check evaluation interval
+  1912→                    const turnCount = sessionStats?.characterStats?.[emotionCharacterId]?.emotionalStateTurnCount || 0;
+  1913→                    const interval = emotionConfig?.evaluationInterval || 1;
+  1914→                    const shouldRun = turnCount % interval === 0;
+  1915→
+  1916→                    if (shouldRun) {
+  1917→                      (async () => {
+  1918→                        try {
+  1919→                          const state = useTavernStore.getState();
+  1920→                          const currentLLMConfig = state.llmConfigs.find(c => c.isActive);
+  1921→                          if (!currentLLMConfig) return;
+  1922→
+  1923→                          const currentSession = state.sessions.find(s => s.id === activeSessionId);
+  1924→                          const sessionMsgs = currentSession?.messages || [];
+  1925→
+  1926→                          const emotionResponse = await fetch('/api/chat/emotion', {
+  1927→                            method: 'POST',
+  1928→                            headers: { 'Content-Type': 'application/json' },
+  1929→                            body: JSON.stringify({
+  1930→                              character: activeCharacter,
+  1931→                              messages: sessionMsgs,
+  1932→                              llmConfig: {
+  1933→                                provider: currentLLMConfig.provider,
+  1934→                                endpoint: currentLLMConfig.endpoint,
+  1935→                                apiKey: currentLLMConfig.apiKey,
+  1936→                                model: currentLLMConfig.model,
+  1937→                                parameters: currentLLMConfig.parameters,
+  1938→                              },
+  1939→                              currentState,
+  1940→                              personality: activeCharacter.personality,
+  1941→                            }),
+  1942→                          });
+  1943→
+  1944→                          if (emotionResponse.ok) {
+  1945→                            const result = await emotionResponse.json();
+  1946→                            if (result.shouldUpdate && result.evaluation) {
+  1947→                              const store = useTavernStore.getState();
+  1948→                              store.updateEmotionalState?.(
+  1949→                                activeSessionId!,
+  1950→                                emotionCharacterId,
+  1951→                                result.evaluation.newState,
+  1952→                                result.evaluation.previousState,
+  1953→                              );
+  1954→
+  1955→                              if (result.evaluation.newState !== result.evaluation.previousState) {
+  1956→                                console.log(`[Emotion] ${emotionCharacterName}: ${result.evaluation.previousState} → ${result.evaluation.newState}`);
+  1957→                              }
+  1958→                            }
+  1959→                          }
+  1960→                        } catch (err) {
+  1961→                          console.warn('[Emotion] Evaluation failed:', err);
+  1962→                        }
+  1963→                      })();
+  1964→                    }
+  1965→                  }
+  1966→                }
+  1967→              } catch (parseError) {
+  1968→                if (parseError instanceof Error && !parseError.message.includes('JSON')) {
+  1969→                  throw parseError;
+  1970→                }
+  1971→                chatLogger.debug('Failed to parse SSE data (single)', { data });
+  1972→              }
+  1973→            }
+  1974→          }
+  1975→        } finally {
+  1976→          reader.releaseLock();
+  1977→        }
+  1978→      } else {
+  1979→        const response = await fetch('/api/chat/generate', {
+  1980→          method: 'POST',
+  1981→          headers: { 'Content-Type': 'application/json' },
+  1982→          body: JSON.stringify({
+  1983→            message: userMessage.trim(),
+  1984→            sessionId: activeSessionId,
+  1985→            characterId: activeCharacter.id,
+  1986→            character: activeCharacter,
+  1987→            messages: currentMessages.filter((m: { isDeleted: boolean }) => !m.isDeleted),
+  1988→            llmConfig: activeLLMConfig,
+  1989→            userName: activePersona?.name || 'User',
+  1990→            persona: activePersona,
+  1991→            contextConfig,
+  1992→            lorebooks: activeLorebooks,
+  1993→            sessionStats,  // Pass session stats for attribute values
+  1994→            allCharacters: allCharactersWithPersona,  // Pass all characters for peticiones/solicitudes resolution
+  1995→            sessionQuests: currentSessionQuests,  // Pass session quests (freshly read)
+  1996→            questTemplates: latestQuestTemplates,  // Pass quest templates (freshly read)
+  1997→            questSettings: latestQuestSettings,  // Pass quest settings (freshly read)
+  1998→            hudContext: activeHUDContext,  // Pass HUD context for prompt injection
+  1999→            characterMemory: activeCharacter ? getCharacterMemory(activeCharacter.id) : undefined  // Pass character memory
+  2000→          })
+
+[showing lines 1-2000 of 2879; use offset=2001 with limit to continue reading]

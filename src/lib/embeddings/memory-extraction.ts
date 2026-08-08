@@ -15,6 +15,8 @@ import { generateResponse } from '@/lib/llm/generation';
 import type { LLMConfig, ChatApiMessage } from '@/lib/llm/types';
 import { getEmbeddingClient } from '@/lib/embeddings/client';
 import type { CreateEmbeddingParams } from '@/lib/embeddings/types';
+import { CHARS_PER_TOKEN } from '@/lib/embeddings/types';
+import { getModelContextLength } from '@/lib/embeddings/config-persistence';
 import { DEFAULT_MEMORY_EXTRACTION_PROMPT, DEFAULT_GROUP_DYNAMICS_PROMPT } from './memory-extraction-prompts';
 
 // ============================================
@@ -342,10 +344,20 @@ export async function extractMemories(
 
   const promptTemplate = (customPrompt && customPrompt.trim()) ? customPrompt : MEMORY_EXTRACTION_PROMPT;
 
-  // Build the context section if provided
-  const contextSection = chatContext?.trim()
-    ? `Contexto reciente de la conversación:\n${chatContext}\n`
-    : '';
+  // Truncate chat context to a reasonable size based on the embedding model's context length.
+  // The chat context is supplementary — we only need enough to disambiguate the last message,
+  // not the entire conversation. Use 50% of the embedding model's context window as the budget
+  // for the chat context portion of the extraction prompt.
+  let contextSection = '';
+  if (chatContext?.trim()) {
+    const modelContextTokens = getModelContextLength();
+    const contextTokenBudget = Math.floor(modelContextTokens * 0.5);
+    const maxContextChars = Math.floor(contextTokenBudget * CHARS_PER_TOKEN);
+    const trimmedContext = chatContext.length > maxContextChars
+      ? chatContext.slice(0, maxContextChars)
+      : chatContext;
+    contextSection = `Contexto reciente de la conversación:\n${trimmedContext}\n`;
+  }
 
   const prompt = promptTemplate
     .replace('{chatContext}', contextSection)

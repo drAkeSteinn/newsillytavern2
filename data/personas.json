@@ -6,7 +6,7 @@
     "avatar": "",
     "isActive": true,
     "createdAt": "2026-03-01T21:37:31.485Z",
-    "updatedAt": "2026-06-06T18:04:34.938Z",
+    "updatedAt": "2026-08-07T07:42:05.627Z",
     "statsConfig": {
       "enabled": true,
       "attributes": [
@@ -117,7 +117,8 @@
       {
         "itemId": "cum-001",
         "quantity": 1,
-        "equipped": false
+        "equipped": true,
+        "equippedSlotId": "main_hand"
       },
       {
         "itemId": "plug-002",
@@ -131,7 +132,7 @@
         "equippedSlotId": "slot-1780243589021-wpam34n"
       }
     ],
-    "currency": 112,
+    "currency": 121,
     "currencyName": "Puntos",
     "currencyIcon": "💰"
   }

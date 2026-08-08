@@ -1,0 +1,1313 @@
+     1→@import "tailwindcss";
+     2→@import "tw-animate-css";
+     3→
+     4→@custom-variant dark (&:is(.dark *));
+     5→
+     6→@theme inline {
+     7→  --color-background: var(--background);
+     8→  --color-foreground: var(--foreground);
+     9→  --font-sans: var(--font-geist-sans);
+    10→  --font-mono: var(--font-geist-mono);
+    11→  --color-sidebar-ring: var(--sidebar-ring);
+    12→  --color-sidebar-border: var(--sidebar-border);
+    13→  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    14→  --color-sidebar-accent: var(--sidebar-accent);
+    15→  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    16→  --color-sidebar-primary: var(--sidebar-primary);
+    17→  --color-sidebar-foreground: var(--sidebar-foreground);
+    18→  --color-sidebar: var(--sidebar);
+    19→  --color-chart-5: var(--chart-5);
+    20→  --color-chart-4: var(--chart-4);
+    21→  --color-chart-3: var(--chart-3);
+    22→  --color-chart-2: var(--chart-2);
+    23→  --color-chart-1: var(--chart-1);
+    24→  --color-ring: var(--ring);
+    25→  --color-input: var(--input);
+    26→  --color-border: var(--border);
+    27→  --color-destructive: var(--destructive);
+    28→  --color-accent-foreground: var(--accent-foreground);
+    29→  --color-accent: var(--accent);
+    30→  --color-muted-foreground: var(--muted-foreground);
+    31→  --color-muted: var(--muted);
+    32→  --color-secondary-foreground: var(--secondary-foreground);
+    33→  --color-secondary: var(--secondary);
+    34→  --color-primary-foreground: var(--primary-foreground);
+    35→  --color-primary: var(--primary);
+    36→  --color-popover-foreground: var(--popover-foreground);
+    37→  --color-popover: var(--popover);
+    38→  --color-card-foreground: var(--card-foreground);
+    39→  --color-card: var(--card);
+    40→  --radius-sm: calc(var(--radius) - 4px);
+    41→  --radius-md: calc(var(--radius) - 2px);
+    42→  --radius-lg: var(--radius);
+    43→  --radius-xl: calc(var(--radius) + 4px);
+    44→}
+    45→
+    46→:root {
+    47→  --radius: 0.625rem;
+    48→  --background: oklch(1 0 0);
+    49→  --foreground: oklch(0.145 0 0);
+    50→  --card: oklch(1 0 0);
+    51→  --card-foreground: oklch(0.145 0 0);
+    52→  --popover: oklch(1 0 0);
+    53→  --popover-foreground: oklch(0.145 0 0);
+    54→  --primary: oklch(0.205 0 0);
+    55→  --primary-foreground: oklch(0.985 0 0);
+    56→  --secondary: oklch(0.97 0 0);
+    57→  --secondary-foreground: oklch(0.205 0 0);
+    58→  --muted: oklch(0.97 0 0);
+    59→  --muted-foreground: oklch(0.556 0 0);
+    60→  --accent: oklch(0.97 0 0);
+    61→  --accent-foreground: oklch(0.205 0 0);
+    62→  --destructive: oklch(0.577 0.245 27.325);
+    63→  --border: oklch(0.922 0 0);
+    64→  --input: oklch(0.922 0 0);
+    65→  --ring: oklch(0.708 0 0);
+    66→  --chart-1: oklch(0.646 0.222 41.116);
+    67→  --chart-2: oklch(0.6 0.118 184.704);
+    68→  --chart-3: oklch(0.398 0.07 227.392);
+    69→  --chart-4: oklch(0.828 0.189 84.429);
+    70→  --chart-5: oklch(0.769 0.188 70.08);
+    71→  --sidebar: oklch(0.985 0 0);
+    72→  --sidebar-foreground: oklch(0.145 0 0);
+    73→  --sidebar-primary: oklch(0.205 0 0);
+    74→  --sidebar-primary-foreground: oklch(0.985 0 0);
+    75→  --sidebar-accent: oklch(0.97 0 0);
+    76→  --sidebar-accent-foreground: oklch(0.205 0 0);
+    77→  --sidebar-border: oklch(0.922 0 0);
+    78→  --sidebar-ring: oklch(0.708 0 0);
+    79→}
+    80→
+    81→.dark {
+    82→  --background: oklch(0.145 0 0);
+    83→  --foreground: oklch(0.985 0 0);
+    84→  --card: oklch(0.205 0 0);
+    85→  --card-foreground: oklch(0.985 0 0);
+    86→  --popover: oklch(0.205 0 0);
+    87→  --popover-foreground: oklch(0.985 0 0);
+    88→  --primary: oklch(0.922 0 0);
+    89→  --primary-foreground: oklch(0.205 0 0);
+    90→  --secondary: oklch(0.269 0 0);
+    91→  --secondary-foreground: oklch(0.985 0 0);
+    92→  --muted: oklch(0.269 0 0);
+    93→  --muted-foreground: oklch(0.708 0 0);
+    94→  --accent: oklch(0.269 0 0);
+    95→  --accent-foreground: oklch(0.985 0 0);
+    96→  --destructive: oklch(0.704 0.191 22.216);
+    97→  --border: oklch(1 0 0 / 10%);
+    98→  --input: oklch(1 0 0 / 15%);
+    99→  --ring: oklch(0.556 0 0);
+   100→  --chart-1: oklch(0.488 0.243 264.376);
+   101→  --chart-2: oklch(0.696 0.17 162.48);
+   102→  --chart-3: oklch(0.769 0.188 70.08);
+   103→  --chart-4: oklch(0.627 0.265 303.9);
+   104→  --chart-5: oklch(0.645 0.246 16.439);
+   105→  --sidebar: oklch(0.205 0 0);
+   106→  --sidebar-foreground: oklch(0.985 0 0);
+   107→  --sidebar-primary: oklch(0.488 0.243 264.376);
+   108→  --sidebar-primary-foreground: oklch(0.985 0 0);
+   109→  --sidebar-accent: oklch(0.269 0 0);
+   110→  --sidebar-accent-foreground: oklch(0.985 0 0);
+   111→  --sidebar-border: oklch(1 0 0 / 10%);
+   112→  --sidebar-ring: oklch(0.556 0 0);
+   113→}
+   114→
+   115→/* ============================================
+   116→   KOMIKAHB Font - Comic Sound Effects
+   117→   ============================================ */
+   118→@font-face {
+   119→  font-family: 'KOMIKAHB';
+   120→  src: url('/fonts/KOMIKAHB.ttf') format('truetype');
+   121→  font-weight: bold;
+   122→  font-style: normal;
+   123→  font-display: swap;
+   124→}
+   125→
+   126→@layer base {
+   127→  * {
+   128→    @apply border-border outline-ring/50;
+   129→  }
+   130→  body {
+   131→    @apply bg-background text-foreground;
+   132→  }
+   133→  /* Disable font ligatures on monospace textareas and inputs.
+   134→     Programming fonts (like Geist Mono) enable ligatures by default,
+   135→     which causes "..." → "…", "<>" → "◇", "<=" → "≤", etc.
+   136→     This is desirable in code editors but problematic in content textareas
+   137→     where users need to see exactly what they type (lorebook entries,
+   138→     character descriptions, actions, etc.). */
+   139→  textarea.font-mono,
+   140→  input.font-mono {
+   141→    font-variant-ligatures: none;
+   142→  }
+   143→}
+   144→
+   145→/* Streaming cursor animation */
+   146→@keyframes blink {
+   147→  0%, 50% {
+   148→    opacity: 1;
+   149→  }
+   150→  51%, 100% {
+   151→    opacity: 0;
+   152→  }
+   153→}
+   154→
+   155→.animate-cursor-blink {
+   156→  animation: blink 1s step-end infinite;
+   157→}
+   158→
+   159→/* FASE 7: Sprite transition keyframes */
+   160→@keyframes sprite-bounce-in {
+   161→  0% {
+   162→    opacity: 0;
+   163→    transform: scale(0.5);
+   164→  }
+   165→  50% {
+   166→    opacity: 1;
+   167→    transform: scale(1.1);
+   168→  }
+   169→  70% {
+   170→    transform: scale(0.95);
+   171→  }
+   172→  100% {
+   173→    opacity: 1;
+   174→    transform: scale(1);
+   175→  }
+   176→}
+   177→
+   178→/* Custom scrollbar for chat areas */
+   179→.scrollbar-thin::-webkit-scrollbar {
+   180→  width: 6px;
+   181→  height: 6px;
+   182→}
+   183→
+   184→.scrollbar-thin::-webkit-scrollbar-track {
+   185→  background: transparent;
+   186→}
+   187→
+   188→.scrollbar-thin::-webkit-scrollbar-thumb {
+   189→  background: oklch(0.556 0 0 / 0.3);
+   190→  border-radius: 3px;
+   191→}
+   192→
+   193→.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+   194→  background: oklch(0.556 0 0 / 0.5);
+   195→}
+   196→
+   197→/* ============================================
+   198→   Atmosphere Effects
+   199→   ============================================ */
+   200→
+   201→/* Atmosphere Container */
+   202→.atmosphere-container {
+   203→  z-index: 30;
+   204→}
+   205→
+   206→/* Rain Effects */
+   207→.rain-drop {
+   208→  position: absolute;
+   209→  width: 2px;
+   210→  background: linear-gradient(to bottom, transparent, rgba(174, 194, 224, 0.8));
+   211→  border-radius: 0 0 5px 5px;
+   212→  animation: rain-fall linear infinite;
+   213→}
+   214→
+   215→@keyframes rain-fall {
+   216→  0% {
+   217→    transform: translateY(-100%);
+   218→    opacity: 0;
+   219→  }
+   220→  10% {
+   221→    opacity: 1;
+   222→  }
+   223→  90% {
+   224→    opacity: 1;
+   225→  }
+   226→  100% {
+   227→    transform: translateY(100vh);
+   228→    opacity: 0;
+   229→  }
+   230→}
+   231→
+   232→/* Rain Light */
+   233→.rain-light {
+   234→  animation: rain-shimmer 3s ease-in-out infinite;
+   235→}
+   236→
+   237→@keyframes rain-shimmer {
+   238→  0%, 100% {
+   239→    filter: brightness(1);
+   240→  }
+   241→  50% {
+   242→    filter: brightness(1.1);
+   243→  }
+   244→}
+   245→
+   246→/* Rain Heavy */
+   247→.rain-heavy {
+   248→  animation: rain-heavy-intensity 2s ease-in-out infinite;
+   249→}
+   250→
+   251→@keyframes rain-heavy-intensity {
+   252→  0%, 100% {
+   253→    filter: brightness(1) contrast(1.05);
+   254→  }
+   255→  50% {
+   256→    filter: brightness(0.95) contrast(1.1);
+   257→  }
+   258→}
+   259→
+   260→/* Fog Effects */
+   261→@keyframes fog-drift {
+   262→  0%, 100% {
+   263→    transform: translateX(-2%) scale(1.02);
+   264→  }
+   265→  50% {
+   266→    transform: translateX(2%) scale(1);
+   267→  }
+   268→}
+   269→
+   270→/* Light Rays */
+   271→@keyframes light-rays-shimmer {
+   272→  0%, 100% {
+   273→    opacity: 0.2;
+   274→    transform: translateX(-5%);
+   275→  }
+   276→  50% {
+   277→    opacity: 0.4;
+   278→    transform: translateX(5%);
+   279→  }
+   280→}
+   281→
+   282→/* Lightning Flash */
+   283→@keyframes lightning-flash {
+   284→  0%, 100% {
+   285→    opacity: 0;
+   286→  }
+   287→  5% {
+   288→    opacity: 1;
+   289→  }
+   290→  10% {
+   291→    opacity: 0.3;
+   292→  }
+   293→  15% {
+   294→    opacity: 0.8;
+   295→  }
+   296→  20%, 100% {
+   297→    opacity: 0;
+   298→  }
+   299→}
+   300→
+   301→/* Snow Flakes */
+   302→.snowflake {
+   303→  position: absolute;
+   304→  color: white;
+   305→  font-size: 1em;
+   306→  animation: snow-fall linear infinite;
+   307→  text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+   308→}
+   309→
+   310→@keyframes snow-fall {
+   311→  0% {
+   312→    transform: translateY(-10vh) rotate(0deg);
+   313→    opacity: 0;
+   314→  }
+   315→  10% {
+   316→    opacity: 1;
+   317→  }
+   318→  90% {
+   319→    opacity: 1;
+   320→  }
+   321→  100% {
+   322→    transform: translateY(110vh) rotate(360deg);
+   323→    opacity: 0;
+   324→  }
+   325→}
+   326→
+   327→/* Performance optimization - reduce motion when preferred */
+   328→@media (prefers-reduced-motion: reduce) {
+   329→  .rain-drop,
+   330→  .snowflake,
+   331→  .atmosphere-overlay,
+   332→  .rain-light,
+   333→  .rain-heavy {
+   334→    animation: none !important;
+   335→  }
+   336→}
+   337→
+   338→/* ============================================
+   339→   HUD Style Animations
+   340→   ============================================ */
+   341→
+   342→/* Glass/Shimmer effect */
+   343→@keyframes shimmer {
+   344→  0%, 100% {
+   345→    background-position: -200% 0;
+   346→  }
+   347→  50% {
+   348→    background-position: 200% 0;
+   349→  }
+   350→}
+   351→
+   352→/* Neon pulse effect */
+   353→@keyframes neonPulse {
+   354→  0%, 100% {
+   355→    box-shadow:
+   356→      0 0 20px rgba(6, 182, 212, 0.3),
+   357→      inset 0 0 20px rgba(6, 182, 212, 0.1),
+   358→      0 0 40px rgba(6, 182, 212, 0.1);
+   359→  }
+   360→  50% {
+   361→    box-shadow:
+   362→      0 0 30px rgba(6, 182, 212, 0.5),
+   363→      inset 0 0 30px rgba(6, 182, 212, 0.2),
+   364→      0 0 60px rgba(6, 182, 212, 0.2);
+   365→  }
+   366→}
+   367→
+   368→/* Holographic scan line effect */
+   369→@keyframes holoScan {
+   370→  0% {
+   371→    transform: translateX(-100%);
+   372→  }
+   373→  100% {
+   374→    transform: translateX(100%);
+   375→  }
+   376→}
+   377→
+   378→/* Holographic color shift */
+   379→@keyframes holoShift {
+   380→  0%, 100% {
+   381→    opacity: 0.3;
+   382→    filter: hue-rotate(0deg);
+   383→  }
+   384→  50% {
+   385→    opacity: 0.6;
+   386→    filter: hue-rotate(30deg);
+   387→  }
+   388→}
+   389→
+   390→/* Retro CRT flicker */
+   391→@keyframes retroFlicker {
+   392→  0%, 100% {
+   393→    opacity: 1;
+   394→    text-shadow: 0 0 10px rgba(34, 197, 94, 0.8);
+   395→  }
+   396→  92% {
+   397→    opacity: 1;
+   398→  }
+   399→  93% {
+   400→    opacity: 0.8;
+   401→  }
+   402→  94% {
+   403→    opacity: 1;
+   404→  }
+   405→  95% {
+   406→    opacity: 0.9;
+   407→  }
+   408→  96% {
+   409→    opacity: 1;
+   410→  }
+   411→}
+   412→
+   413→/* Fantasy glow pulse */
+   414→@keyframes fantasyGlow {
+   415→  0%, 100% {
+   416→    box-shadow:
+   417→      inset 0 0 20px rgba(217, 119, 6, 0.1),
+   418→      0 0 15px rgba(217, 119, 6, 0.2);
+   419→  }
+   420→  50% {
+   421→    box-shadow:
+   422→      inset 0 0 30px rgba(217, 119, 6, 0.15),
+   423→      0 0 25px rgba(217, 119, 6, 0.3);
+   424→  }
+   425→}
+   426→
+   427→/* Progress bar animation */
+   428→@keyframes progressPulse {
+   429→  0%, 100% {
+   430→    opacity: 1;
+   431→  }
+   432→  50% {
+   433→    opacity: 0.7;
+   434→  }
+   435→}
+   436→
+   437→/* Slide in from side based on position */
+   438→@keyframes slideInFromLeft {
+   439→  from {
+   440→    opacity: 0;
+   441→    transform: translateX(-20px);
+   442→  }
+   443→  to {
+   444→    opacity: 1;
+   445→    transform: translateX(0);
+   446→  }
+   447→}
+   448→
+   449→@keyframes slideInFromRight {
+   450→  from {
+   451→    opacity: 0;
+   452→    transform: translateX(20px);
+   453→  }
+   454→  to {
+   455→    opacity: 1;
+   456→    transform: translateX(0);
+   457→  }
+   458→}
+   459→
+   460→/* Fade in animation */
+   461→@keyframes fadeIn {
+   462→  from {
+   463→    opacity: 0;
+   464→  }
+   465→  to {
+   466→    opacity: 1;
+   467→  }
+   468→}
+   469→
+   470→/* HUD entrance animations */
+   471→.hud-enter-left {
+   472→  animation: slideInFromLeft 0.3s ease-out forwards;
+   473→}
+   474→
+   475→.hud-enter-right {
+   476→  animation: slideInFromRight 0.3s ease-out forwards;
+   477→}
+   478→
+   479→/* Reduced motion for HUD animations */
+   480→@media (prefers-reduced-motion: reduce) {
+   481→  @keyframes shimmer {
+   482→    0%, 100% {
+   483→      background-position: 0 0;
+   484→    }
+   485→  }
+   486→
+   487→  @keyframes neonPulse {
+   488→    0%, 100% {
+   489→      box-shadow:
+   490→        0 0 20px rgba(6, 182, 212, 0.3),
+   491→        inset 0 0 20px rgba(6, 182, 212, 0.1);
+   492→    }
+   493→  }
+   494→
+   495→  @keyframes holoScan {
+   496→    0%, 100% {
+   497→      transform: translateX(0);
+   498→    }
+   499→  }
+   500→
+   501→  @keyframes retroFlicker {
+   502→    0%, 100% {
+   503→      opacity: 1;
+   504→    }
+   505→  }
+   506→
+   507→  @keyframes fantasyGlow {
+   508→    0%, 100% {
+   509→      box-shadow:
+   510→        inset 0 0 20px rgba(217, 119, 6, 0.1),
+   511→        0 0 15px rgba(217, 119, 6, 0.2);
+   512→    }
+   513→  }
+   514→}
+   515→
+   516→/* ============================================
+   517→   Theme Effects Animations
+   518→   ============================================ */
+   519→
+   520→/* Glitch Animation - Cyberpunk theme */
+   521→@keyframes glitch-anim {
+   522→  0% {
+   523→    transform: translate(0);
+   524→  }
+   525→  20% {
+   526→    transform: translate(-2px, 2px);
+   527→  }
+   528→  40% {
+   529→    transform: translate(-2px, -2px);
+   530→  }
+   531→  60% {
+   532→    transform: translate(2px, 2px);
+   533→  }
+   534→  80% {
+   535→    transform: translate(2px, -2px);
+   536→  }
+   537→  100% {
+   538→    transform: translate(0);
+   539→  }
+   540→}
+   541→
+   542→@keyframes glitch-anim-2 {
+   543→  0% {
+   544→    clip-path: inset(40% 0 61% 0);
+   545→    transform: translate(-2px, -2px);
+   546→  }
+   547→  20% {
+   548→    clip-path: inset(92% 0 1% 0);
+   549→    transform: translate(2px, 2px);
+   550→  }
+   551→  40% {
+   552→    clip-path: inset(43% 0 1% 0);
+   553→    transform: translate(-2px, 2px);
+   554→  }
+   555→  60% {
+   556→    clip-path: inset(25% 0 58% 0);
+   557→    transform: translate(2px, -2px);
+   558→  }
+   559→  80% {
+   560→    clip-path: inset(54% 0 7% 0);
+   561→    transform: translate(-2px, 2px);
+   562→  }
+   563→  100% {
+   564→    clip-path: inset(58% 0 43% 0);
+   565→    transform: translate(2px, -2px);
+   566→  }
+   567→}
+   568→
+   569→@keyframes glitch-scan {
+   570→  0% {
+   571→    transform: translateY(-100%);
+   572→  }
+   573→  100% {
+   574→    transform: translateY(100%);
+   575→  }
+   576→}
+   577→
+   578→/* Neon Pulse - Cyberpunk theme */
+   579→@keyframes neon-pulse {
+   580→  0%, 100% {
+   581→    text-shadow: 
+   582→      0 0 5px currentColor,
+   583→      0 0 10px currentColor,
+   584→      0 0 20px currentColor;
+   585→    opacity: 1;
+   586→  }
+   587→  50% {
+   588→    text-shadow: 
+   589→      0 0 10px currentColor,
+   590→      0 0 20px currentColor,
+   591→      0 0 40px currentColor,
+   592→      0 0 80px currentColor;
+   593→    opacity: 0.9;
+   594→  }
+   595→}
+   596→
+   597→/* Gear Rotate - Steampunk theme */
+   598→@keyframes gear-rotate {
+   599→  from {
+   600→    transform: rotate(0deg);
+   601→  }
+   602→  to {
+   603→    transform: rotate(360deg);
+   604→  }
+   605→}
+   606→
+   607→/* Candle Flicker - Gothic theme */
+   608→@keyframes flicker {
+   609→  0%, 100% {
+   610→    opacity: 1;
+   611→    transform: scale(1) translateY(0);
+   612→  }
+   613→  25% {
+   614→    opacity: 0.9;
+   615→    transform: scale(0.98) translateY(1px);
+   616→  }
+   617→  50% {
+   618→    opacity: 1;
+   619→    transform: scale(1.02) translateY(-1px);
+   620→  }
+   621→  75% {
+   622→    opacity: 0.95;
+   623→    transform: scale(0.99) translateY(0.5px);
+   624→  }
+   625→}
+   626→
+   627→@keyframes flicker-glow {
+   628→  0%, 100% {
+   629→    opacity: 0.6;
+   630→    filter: blur(20px);
+   631→  }
+   632→  50% {
+   633→    opacity: 0.8;
+   634→    filter: blur(30px);
+   635→  }
+   636→}
+   637→
+   638→/* Scanline Move - Retro theme */
+   639→@keyframes scanline {
+   640→  0% {
+   641→    transform: translateY(-100%);
+   642→  }
+   643→  100% {
+   644→    transform: translateY(100vh);
+   645→  }
+   646→}
+   647→
+   648→@keyframes phosphor {
+   649→  0%, 100% {
+   650→    opacity: 0.02;
+   651→  }
+   652→  50% {
+   653→    opacity: 0.04;
+   654→  }
+   655→}
+   656→
+   657→/* Pixel Bounce - Pixel Art theme */
+   658→@keyframes pixel-bounce {
+   659→  0%, 100% {
+   660→    transform: translateY(0);
+   661→  }
+   662→  50% {
+   663→    transform: translateY(-5px);
+   664→  }
+   665→}
+   666→
+   667→/* Theme-specific utility classes */
+   668→.theme-cyberpunk {
+   669→  --glitch-color: var(--theme-primary, #00FFFF);
+   670→}
+   671→
+   672→.theme-steampunk {
+   673→  --gear-color: var(--theme-primary, #B5A642);
+   674→}
+   675→
+   676→.theme-gothic {
+   677→  --candle-color: var(--theme-secondary, #8B0000);
+   678→}
+   679→
+   680→.theme-retro {
+   681→  --phosphor-color: var(--theme-primary, #00FF00);
+   682→}
+   683→
+   684→.theme-pixelart {
+   685→  --pixel-color: var(--theme-primary, #00A800);
+   686→}
+   687→
+   688→/* Animation utility classes */
+   689→.animate-glitch-scan {
+   690→  animation: glitch-scan 3s linear infinite;
+   691→}
+   692→
+   693→.animate-neon-pulse {
+   694→  animation: neon-pulse 2s ease-in-out infinite;
+   695→}
+   696→
+   697→.animate-gear-rotate {
+   698→  animation: gear-rotate 20s linear infinite;
+   699→}
+   700→
+   701→.animate-flicker {
+   702→  animation: flicker 0.5s ease-in-out infinite;
+   703→}
+   704→
+   705→.animate-flicker-glow {
+   706→  animation: flicker-glow 1s ease-in-out infinite;
+   707→}
+   708→
+   709→.animate-scanline {
+   710→  animation: scanline 8s linear infinite;
+   711→}
+   712→
+   713→.animate-phosphor {
+   714→  animation: phosphor 4s ease-in-out infinite;
+   715→}
+   716→
+   717→.animate-pixel-bounce {
+   718→  animation: pixel-bounce 1s ease-in-out infinite;
+   719→}
+   720→
+   721→/* Glitch text effect */
+   722→.glitch-text {
+   723→  position: relative;
+   724→}
+   725→
+   726→.glitch-text::before,
+   727→.glitch-text::after {
+   728→  content: attr(data-text);
+   729→  position: absolute;
+   730→  top: 0;
+   731→  left: 0;
+   732→  width: 100%;
+   733→  height: 100%;
+   734→}
+   735→
+   736→.glitch-text::before {
+   737→  animation: glitch-anim-2 3s infinite linear alternate-reverse;
+   738→  color: #ff00ff;
+   739→  z-index: -1;
+   740→}
+   741→
+   742→.glitch-text::after {
+   743→  animation: glitch-anim 2s infinite linear alternate-reverse;
+   744→  color: #00ffff;
+   745→  z-index: -2;
+   746→}
+   747→
+   748→/* Neon border effect */
+   749→.neon-border {
+   750→  box-shadow:
+   751→    0 0 5px var(--theme-primary, currentColor),
+   752→    0 0 10px var(--theme-primary, currentColor),
+   753→    inset 0 0 5px var(--theme-primary, currentColor);
+   754→}
+   755→
+   756→/* Pixelated border */
+   757→.pixel-border {
+   758→  border-style: solid;
+   759→  border-width: 4px;
+   760→  border-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Crect x='0' y='0' width='4' height='4' fill='%23000'/%3E%3Crect x='4' y='0' width='4' height='4' fill='transparent'/%3E%3Crect x='8' y='0' width='4' height='4' fill='%23000'/%3E%3Crect x='0' y='4' width='4' height='4' fill='transparent'/%3E%3Crect x='4' y='4' width='4' height='4' fill='%23000'/%3E%3Crect x='8' y='4' width='4' height='4' fill='transparent'/%3E%3Crect x='0' y='8' width='4' height='4' fill='%23000'/%3E%3Crect x='4' y='8' width='4' height='4' fill='transparent'/%3E%3Crect x='8' y='8' width='4' height='4' fill='%23000'/%3E%3C/svg%3E") 4 round;
+   761→}
+   762→
+   763→/* Gothic ornate border */
+   764→.gothic-border {
+   765→  border: 2px solid var(--theme-primary, #C0C0C0);
+   766→  box-shadow:
+   767→    inset 0 0 10px rgba(0, 0, 0, 0.5),
+   768→    0 0 10px rgba(139, 0, 0, 0.3);
+   769→}
+   770→
+   771→/* Steampunk brass effect */
+   772→.steampunk-border {
+   773→  border: 3px solid var(--theme-primary, #B5A642);
+   774→  box-shadow:
+   775→    inset 0 0 5px rgba(181, 166, 66, 0.3),
+   776→    0 0 10px rgba(184, 115, 51, 0.2);
+   777→  background-image: linear-gradient(
+   778→    135deg,
+   779→    transparent 25%,
+   780→    rgba(181, 166, 66, 0.1) 25%,
+   781→    rgba(181, 166, 66, 0.1) 50%,
+   782→    transparent 50%,
+   783→    transparent 75%,
+   784→    rgba(181, 166, 66, 0.1) 75%
+   785→  );
+   786→  background-size: 4px 4px;
+   787→}
+   788→
+   789→/* Reduced motion for theme effects */
+   790→@media (prefers-reduced-motion: reduce) {
+   791→  .animate-glitch-scan,
+   792→  .animate-neon-pulse,
+   793→  .animate-gear-rotate,
+   794→  .animate-flicker,
+   795→  .animate-flicker-glow,
+   796→  .animate-scanline,
+   797→  .animate-phosphor,
+   798→  .animate-pixel-bounce {
+   799→    animation: none !important;
+   800→  }
+   801→  
+   802→  .glitch-text::before,
+   803→  .glitch-text::after {
+   804→    animation: none !important;
+   805→  }
+   806→}
+   807→
+   808→/* ============================================
+   809→   HUD Enhanced Visual Effects
+   810→   ============================================ */
+   811→
+   812→/* Value Change Flash Effect */
+   813→@keyframes hud-flash {
+   814→  0%, 100% {
+   815→    filter: brightness(1);
+   816→  }
+   817→  50% {
+   818→    filter: brightness(1.3);
+   819→  }
+   820→}
+   821→
+   822→.animate-hud-flash {
+   823→  animation: hud-flash 0.3s ease-out;
+   824→}
+   825→
+   826→/* Flash Overlay */
+   827→@keyframes flash-overlay {
+   828→  0% {
+   829→    opacity: 0.6;
+   830→    transform: scale(0.95);
+   831→  }
+   832→  100% {
+   833→    opacity: 0;
+   834→    transform: scale(1.1);
+   835→  }
+   836→}
+   837→
+   838→.animate-flash-overlay {
+   839→  animation: flash-overlay 0.4s ease-out forwards;
+   840→}
+   841→
+   842→/* Shake Effect for Damage/Decrease */
+   843→@keyframes hud-shake {
+   844→  0%, 100% {
+   845→    transform: translateX(0);
+   846→  }
+   847→  10%, 30%, 50%, 70%, 90% {
+   848→    transform: translateX(-2px);
+   849→  }
+   850→  20%, 40%, 60%, 80% {
+   851→    transform: translateX(2px);
+   852→  }
+   853→}
+   854→
+   855→.animate-hud-shake {
+   856→  animation: hud-shake 0.4s ease-in-out;
+   857→}
+   858→
+   859→/* Number Pulse Animation */
+   860→@keyframes number-pulse {
+   861→  0%, 100% {
+   862→    transform: scale(1);
+   863→    opacity: 1;
+   864→  }
+   865→  50% {
+   866→    transform: scale(1.1);
+   867→    opacity: 0.8;
+   868→  }
+   869→}
+   870→
+   871→.animate-number-pulse {
+   872→  animation: number-pulse 0.3s ease-out;
+   873→}
+   874→
+   875→/* Progress Bar Pulse */
+   876→@keyframes bar-pulse {
+   877→  0%, 100% {
+   878→    filter: brightness(1);
+   879→  }
+   880→  50% {
+   881→    filter: brightness(1.2);
+   882→  }
+   883→}
+   884→
+   885→.animate-bar-pulse {
+   886→  animation: bar-pulse 0.5s ease-out;
+   887→}
+   888→
+   889→/* Critical State Pulse */
+   890→@keyframes critical-pulse {
+   891→  0%, 100% {
+   892→    opacity: 0.3;
+   893→    transform: scale(1);
+   894→  }
+   895→  50% {
+   896→    opacity: 0.6;
+   897→    transform: scale(1.02);
+   898→  }
+   899→}
+   900→
+   901→.animate-critical-pulse {
+   902→  animation: critical-pulse 1s ease-in-out infinite;
+   903→}
+   904→
+   905→/* Gradient Shift Animation - subtle, no interference */
+   906→@keyframes gradient-shift {
+   907→  0%, 100% {
+   908→    filter: brightness(1);
+   909→  }
+   910→  50% {
+   911→    filter: brightness(1.05);
+   912→  }
+   913→}
+   914→
+   915→.animate-gradient-shift {
+   916→  animation: gradient-shift 3s ease infinite;
+   917→}
+   918→
+   919→/* Ripple Out Effect */
+   920→@keyframes ripple-out {
+   921→  0% {
+   922→    width: 0;
+   923→    height: 0;
+   924→    opacity: 0.8;
+   925→  }
+   926→  100% {
+   927→    width: 20px;
+   928→    height: 20px;
+   929→    opacity: 0;
+   930→    margin: -10px;
+   931→  }
+   932→}
+   933→
+   934→.animate-ripple-out {
+   935→  animation: ripple-out 0.5s ease-out forwards;
+   936→}
+   937→
+   938→/* Ripple Expand (for gauges) */
+   939→@keyframes ripple-expand {
+   940→  0% {
+   941→    transform: scale(1);
+   942→    opacity: 0.6;
+   943→  }
+   944→  100% {
+   945→    transform: scale(1.5);
+   946→    opacity: 0;
+   947→  }
+   948→}
+   949→
+   950→.animate-ripple-expand {
+   951→  animation: ripple-expand 0.6s ease-out forwards;
+   952→}
+   953→
+   954→/* Gauge Pulse Effect */
+   955→@keyframes gauge-pulse {
+   956→  0%, 100% {
+   957→    filter: drop-shadow(0 0 4px currentColor);
+   958→  }
+   959→  50% {
+   960→    filter: drop-shadow(0 0 8px currentColor);
+   961→  }
+   962→}
+   963→
+   964→.animate-gauge-pulse {
+   965→  animation: gauge-pulse 0.5s ease-out;
+   966→}
+   967→
+   968→/* Particle Float */
+   969→@keyframes particle-float {
+   970→  0%, 100% {
+   971→    transform: translateY(0) scale(1);
+   972→    opacity: 0.3;
+   973→  }
+   974→  50% {
+   975→    transform: translateY(-4px) scale(1.2);
+   976→    opacity: 0.8;
+   977→  }
+   978→}
+   979→
+   980→.animate-particle-float {
+   981→  animation: particle-float 2s ease-in-out infinite;
+   982→}
+   983→
+   984→/* Ripple Wave (SVG) */
+   985→@keyframes ripple-wave {
+   986→  0% {
+   987→    r: 10;
+   988→    opacity: 0.8;
+   989→  }
+   990→  100% {
+   991→    r: 50;
+   992→    opacity: 0;
+   993→  }
+   994→}
+   995→
+   996→.animate-ripple-wave {
+   997→  animation: ripple-wave 1s ease-out forwards;
+   998→}
+   999→
+  1000→/* Sparkle Animation */
+  1001→@keyframes sparkle {
+  1002→  0%, 100% {
+  1003→    opacity: 0;
+  1004→    transform: scale(0.5);
+  1005→  }
+  1006→  50% {
+  1007→    opacity: 1;
+  1008→    transform: scale(1);
+  1009→  }
+  1010→}
+  1011→
+  1012→.animate-sparkle {
+  1013→  animation: sparkle 2s ease-in-out infinite;
+  1014→}
+  1015→
+  1016→/* Energy Wave */
+  1017→@keyframes energy-wave {
+  1018→  0% {
+  1019→    d: path("M0,50 Q25,30 50,50 T100,50 V100 H0 Z");
+  1020→  }
+  1021→  50% {
+  1022→    d: path("M0,50 Q25,70 50,50 T100,50 V100 H0 Z");
+  1023→  }
+  1024→  100% {
+  1025→    d: path("M0,50 Q25,30 50,50 T100,50 V100 H0 Z");
+  1026→  }
+  1027→}
+  1028→
+  1029→.animate-energy-wave {
+  1030→  animation: energy-wave 3s ease-in-out infinite;
+  1031→}
+  1032→
+  1033→/* Scanline Move */
+  1034→@keyframes scanline-move {
+  1035→  0% {
+  1036→    transform: translateY(-100%);
+  1037→  }
+  1038→  100% {
+  1039→    transform: translateY(100%);
+  1040→  }
+  1041→}
+  1042→
+  1043→.animate-scanline-move {
+  1044→  animation: scanline-move 8s linear infinite;
+  1045→}
+  1046→
+  1047→/* Neon Flicker */
+  1048→@keyframes neon-flicker {
+  1049→  0%, 100% {
+  1050→    opacity: 1;
+  1051→  }
+  1052→  92% {
+  1053→    opacity: 1;
+  1054→  }
+  1055→  93% {
+  1056→    opacity: 0.8;
+  1057→  }
+  1058→  94% {
+  1059→    opacity: 1;
+  1060→  }
+  1061→  96% {
+  1062→    opacity: 0.9;
+  1063→  }
+  1064→  97% {
+  1065→    opacity: 1;
+  1066→  }
+  1067→}
+  1068→
+  1069→.animate-neon-flicker {
+  1070→  animation: neon-flicker 4s ease-in-out infinite;
+  1071→}
+  1072→
+  1073→/* Rune Glow */
+  1074→@keyframes rune-glow {
+  1075→  0%, 100% {
+  1076→    opacity: 0.4;
+  1077→    text-shadow: 0 0 5px currentColor;
+  1078→  }
+  1079→  50% {
+  1080→    opacity: 0.8;
+  1081→    text-shadow: 0 0 15px currentColor, 0 0 25px currentColor;
+  1082→  }
+  1083→}
+  1084→
+  1085→.animate-rune-glow {
+  1086→  animation: rune-glow 3s ease-in-out infinite;
+  1087→}
+  1088→
+  1089→/* Retro Flicker */
+  1090→@keyframes retro-flicker {
+  1091→  0%, 100% {
+  1092→    opacity: 0.05;
+  1093→  }
+  1094→  50% {
+  1095→    opacity: 0.1;
+  1096→  }
+  1097→}
+  1098→
+  1099→.animate-retro-flicker {
+  1100→  animation: retro-flicker 0.1s ease-in-out infinite;
+  1101→}
+  1102→
+  1103→/* Chromatic Shift (Holographic) */
+  1104→@keyframes chromatic-shift {
+  1105→  0%, 100% {
+  1106→    transform: translateX(0);
+  1107→  }
+  1108→  25% {
+  1109→    transform: translateX(1px);
+  1110→  }
+  1111→  75% {
+  1112→    transform: translateX(-1px);
+  1113→  }
+  1114→}
+  1115→
+  1116→.animate-chromatic-shift {
+  1117→  animation: chromatic-shift 0.3s ease-in-out infinite;
+  1118→}
+  1119→
+  1120→/* Holo Scan */
+  1121→@keyframes holo-scan {
+  1122→  0% {
+  1123→    top: -10%;
+  1124→  }
+  1125→  100% {
+  1126→    top: 110%;
+  1127→  }
+  1128→}
+  1129→
+  1130→.animate-holo-scan {
+  1131→  animation: holo-scan 2s linear infinite;
+  1132→}
+  1133→
+  1134→/* Holo Color Shift */
+  1135→@keyframes holo-color-shift {
+  1136→  0%, 100% {
+  1137→    background: linear-gradient(45deg, 
+  1138→      rgba(6, 182, 212, 0.1), 
+  1139→      rgba(168, 85, 247, 0.1), 
+  1140→      rgba(236, 72, 153, 0.1)
+  1141→    );
+  1142→  }
+  1143→  33% {
+  1144→    background: linear-gradient(45deg, 
+  1145→      rgba(168, 85, 247, 0.1), 
+  1146→      rgba(236, 72, 153, 0.1), 
+  1147→      rgba(6, 182, 212, 0.1)
+  1148→    );
+  1149→  }
+  1150→  66% {
+  1151→    background: linear-gradient(45deg, 
+  1152→      rgba(236, 72, 153, 0.1), 
+  1153→      rgba(6, 182, 212, 0.1), 
+  1154→      rgba(168, 85, 247, 0.1)
+  1155→    );
+  1156→  }
+  1157→}
+  1158→
+  1159→.animate-holo-color-shift {
+  1160→  animation: holo-color-shift 4s ease-in-out infinite;
+  1161→}
+  1162→
+  1163→/* Dots Pulse */
+  1164→@keyframes dots-pulse {
+  1165→  0%, 100% {
+  1166→    transform: scale(1);
+  1167→  }
+  1168→  50% {
+  1169→    transform: scale(1.05);
+  1170→  }
+  1171→}
+  1172→
+  1173→.animate-dots-pulse {
+  1174→  animation: dots-pulse 0.3s ease-out;
+  1175→}
+  1176→
+  1177→/* Dot Fill Animation */
+  1178→@keyframes dot-fill {
+  1179→  0% {
+  1180→    transform: scale(0);
+  1181→  }
+  1182→  50% {
+  1183→    transform: scale(1.3);
+  1184→  }
+  1185→  100% {
+  1186→    transform: scale(1);
+  1187→  }
+  1188→}
+  1189→
+  1190→.animate-dot-fill {
+  1191→  animation: dot-fill 0.3s ease-out;
+  1192→}
+  1193→
+  1194→/* Dot Empty Animation */
+  1195→@keyframes dot-empty {
+  1196→  0% {
+  1197→    transform: scale(1);
+  1198→  }
+  1199→  50% {
+  1200→    transform: scale(0.8);
+  1201→  }
+  1202→  100% {
+  1203→    transform: scale(1);
+  1204→  }
+  1205→}
+  1206→
+  1207→.animate-dot-empty {
+  1208→  animation: dot-empty 0.3s ease-out;
+  1209→}
+  1210→
+  1211→/* Badge Pop Effect */
+  1212→@keyframes badge-pop {
+  1213→  0% {
+  1214→    transform: scale(1);
+  1215→  }
+  1216→  50% {
+  1217→    transform: scale(1.1);
+  1218→  }
+  1219→  100% {
+  1220→    transform: scale(1);
+  1221→  }
+  1222→}
+  1223→
+  1224→.animate-badge-pop {
+  1225→  animation: badge-pop 0.3s ease-out;
+  1226→}
+  1227→
+  1228→/* Reduced motion for HUD effects */
+  1229→@media (prefers-reduced-motion: reduce) {
+  1230→  .animate-hud-flash,
+  1231→  .animate-flash-overlay,
+  1232→  .animate-hud-shake,
+  1233→  .animate-number-pulse,
+  1234→  .animate-bar-pulse,
+  1235→  .animate-critical-pulse,
+  1236→  .animate-gradient-shift,
+  1237→  .animate-ripple-out,
+  1238→  .animate-ripple-expand,
+  1239→  .animate-gauge-pulse,
+  1240→  .animate-particle-float,
+  1241→  .animate-ripple-wave,
+  1242→  .animate-sparkle,
+  1243→  .animate-energy-wave,
+  1244→  .animate-scanline-move,
+  1245→  .animate-neon-flicker,
+  1246→  .animate-rune-glow,
+  1247→  .animate-retro-flicker,
+  1248→  .animate-chromatic-shift,
+  1249→  .animate-holo-scan,
+  1250→  .animate-holo-color-shift,
+  1251→  .animate-dots-pulse,
+  1252→  .animate-dot-fill,
+  1253→  .animate-dot-empty,
+  1254→  .animate-badge-pop {
+  1255→    animation: none !important;
+  1256→  }
+  1257→}
+  1258→
+  1259→/* ============================================
+  1260→   Comic Sound Effect Animations (v3 - Manga Pack)
+  1261→   ============================================
+  1262→   Based on comic_sfx_manga_pack_v4 reference:
+  1263→   - Single CSS keyframe lifecycle (SVG inline)
+  1264→   - Boiling lines: 3 alternating outline paths for hand-drawn feel
+  1265→   - Ink wobble: SVG feTurbulence/feDisplacementMap filter
+  1266→   - Text rattle: SVG filter for organic text movement
+  1267→   - Single playback: pop-in → stabilize → rise → disappear
+  1268→   - Dynamic text: textLength + lengthAdjust for auto-fitting
+  1269→*/
+  1270→
+  1271→/* Comic SFX host positioning */
+  1272→.comic-sfx-host {
+  1273→  position: relative;
+  1274→  pointer-events: none;
+  1275→}
+  1276→
+  1277→.comic-sfx-host svg,
+  1278→.comic-sfx-preview svg {
+  1279→  display: block;
+  1280→  overflow: visible;
+  1281→  background: transparent;
+  1282→}
+  1283→
+  1284→/* Reduced motion for comic effects */
+  1285→@media (prefers-reduced-motion: reduce) {
+  1286→  .comic-sfx-host svg,
+  1287→  .comic-sfx-preview svg {
+  1288→    animation: none !important;
+  1289→  }
+  1290→  .comic-sfx-host svg .sfx-root,
+  1291→  .comic-sfx-preview svg .sfx-root,
+  1292→  .comic-sfx-host svg .boil-a,
+  1293→  .comic-sfx-host svg .boil-b,
+  1294→  .comic-sfx-host svg .boil-c,
+  1295→  .comic-sfx-host svg .side-mark,
+  1296→  .comic-sfx-host svg .dot,
+  1297→  .comic-sfx-host svg .heart,
+  1298→  .comic-sfx-host svg .arrow,
+  1299→  .comic-sfx-host svg .text-pop,
+  1300→  .comic-sfx-preview svg .sfx-root,
+  1301→  .comic-sfx-preview svg .boil-a,
+  1302→  .comic-sfx-preview svg .boil-b,
+  1303→  .comic-sfx-preview svg .boil-c,
+  1304→  .comic-sfx-preview svg .side-mark,
+  1305→  .comic-sfx-preview svg .dot,
+  1306→  .comic-sfx-preview svg .heart,
+  1307→  .comic-sfx-preview svg .arrow,
+  1308→  .comic-sfx-preview svg .text-pop {
+  1309→    animation: none !important;
+  1310→    opacity: 1 !important;
+  1311→  }
+  1312→}
+  1313→

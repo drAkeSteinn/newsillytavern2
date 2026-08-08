@@ -1,0 +1,502 @@
+  2001→
+  2002→                if (quickReplies.length === 0) return <></>;
+  2003→
+  2004→                // Determine which character's attributes to use for condition evaluation
+  2005→                const primaryCharacterId = activeCharacter?.id;
+  2006→                const characterAttributeValues = primaryCharacterId && sessionStats?.characterStats?.[primaryCharacterId]
+  2007→                  ? sessionStats.characterStats[primaryCharacterId].attributeValues
+  2008→                  : {};
+  2009→
+  2010→                const qrContext = {
+  2011→                  user: activePersona?.name || 'User',
+  2012→                  char: activeCharacter?.name || (isGroupMode ? activeGroup?.name : 'Character') || 'Character',
+  2013→                };
+  2014→
+  2015→                // Filter quick replies by conditions
+  2016→                const visibleReplies = quickReplies.filter((item) => {
+  2017→                  if (!item.requirements || item.requirements.length === 0) return true;
+  2018→                  return evaluateRequirements(
+  2019→                    item.requirements,
+  2020→                    characterAttributeValues,
+  2021→                    sessionStats || null,
+  2022→                    item.requirementOperator
+  2023→                  );
+  2024→                });
+  2025→
+  2026→                if (visibleReplies.length === 0) return <></>;
+  2027→
+  2028→                return (
+  2029→                <div className="px-2 py-1 flex gap-1 overflow-x-auto border-t bg-background/30 flex-shrink-0">
+  2030→                  {visibleReplies.map((item) => {
+  2031→                    const resolvedLabel = resolveTemplateVariables(item.label, qrContext);
+  2032→                    const resolvedResponse = resolveTemplateVariables(item.response, qrContext);
+  2033→                    const hasUnresolved = item.response !== resolvedResponse || item.label !== resolvedLabel;
+  2034→                    const hasModifiers = item.modifiers && item.modifiers.length > 0;
+  2035→                    return (
+  2036→                    <Button
+  2037→                      key={item.id}
+  2038→                      variant="outline"
+  2039→                      size="sm"
+  2040→                      className={cn(
+  2041→                        "h-6 px-2 text-xs flex-shrink-0 disabled:opacity-50 max-w-[150px]",
+  2042→                        hasModifiers && "border-amber-500/30 hover:border-amber-500/50"
+  2043→                      )}
+  2044→                      disabled={isAnyGenerating}
+  2045→                      onClick={() => handleQuickReply(item)}
+  2046→                      title={hasUnresolved ? resolvedResponse : (item.response !== item.label ? item.response : undefined)}
+  2047→                    >
+  2048→                      {hasModifiers && <Zap className="w-3 h-3 mr-1 text-amber-400 flex-shrink-0" />}
+  2049→                      <span className="truncate">{resolvedLabel}</span>
+  2050→                    </Button>
+  2051→                    );
+  2052→                  })}
+  2053→                </div>
+  2054→                );
+  2055→              })()}
+  2056→
+  2057→              {/* User Peticiones - Quick Tags */}
+  2058→              <QuickPetitions
+  2059→                activePersona={activePersona}
+  2060→                activeCharacter={activeCharacter}
+  2061→                characters={isGroupMode ? (characters.length > 0 ? characters : allCharacters) : (activeCharacter ? [activeCharacter] : [])}
+  2062→                onActivatePeticion={handleActivatePeticion}
+  2063→              />
+  2064→
+  2065→              {/* Input Area - Always visible */}
+  2066→              <div 
+  2067→                className="p-2 border-t flex-shrink-0"
+  2068→                style={{
+  2069→                  backgroundColor: safeAppearance.input.backgroundColor,
+  2070→                  borderColor: safeAppearance.input.borderColor,
+  2071→                }}
+  2072→              >
+  2073→                <div className="flex gap-2 items-end">
+  2074→                  <EmojiPicker onEmojiSelect={(emoji) => setInput(prev => prev + emoji)} />
+  2075→                  <Textarea
+  2076→                    ref={textareaRef}
+  2077→                    value={input}
+  2078→                    onChange={(e) => setInput(e.target.value)}
+  2079→                    onKeyDown={handleKeyDown}
+  2080→                    placeholder={t('chat.messagePlaceholder')}
+  2081→                    className="min-h-[32px] max-h-[80px] resize-none flex-1 placeholder:text-muted-foreground"
+  2082→                    style={{
+  2083→                      color: safeAppearance.input.textColor,
+  2084→                      borderColor: safeAppearance.input.borderColor,
+  2085→                      borderRadius: safeAppearance.input.borderRadius,
+  2086→                      fontSize: safeAppearance.input.fontSize === 'sm' ? '0.75rem' : 
+  2087→                               safeAppearance.input.fontSize === 'lg' ? '1.125rem' : '1rem',
+  2088→                    }}
+  2089→                    disabled={isAnyGenerating || isTranscribing}
+  2090→                    rows={1}
+  2091→                  />
+  2092→                  {/* Voice Recording Button */}
+  2093→                  <Button
+  2094→                    type="button"
+  2095→                    size="icon"
+  2096→                    variant={isRecording ? "destructive" : recordingError ? "destructive" : "outline"}
+  2097→                    className={cn(
+  2098→                      "h-8 w-8 flex-shrink-0 transition-all",
+  2099→                      isRecording && "animate-pulse bg-red-600 hover:bg-red-700",
+  2100→                      permissionStatus === 'denied' && "border-amber-500 hover:bg-amber-500/10"
+  2101→                    )}
+  2102→                    onClick={handleRecordingClick}
+  2103→                    disabled={isAnyGenerating || isTranscribing}
+  2104→                    title={
+  2105→                      permissionStatus === 'denied' 
+  2106→                        ? 'Clic para solicitar permiso de micrófono'
+  2107→                        : recordingError 
+  2108→                          ? recordingError 
+  2109→                          : isRecording 
+  2110→                            ? 'Detener grabación' 
+  2111→                            : 'Grabar mensaje de voz'
+  2112→                    }
+  2113→                  >
+  2114→                    {isTranscribing ? (
+  2115→                      <Loader2 className="w-4 h-4 animate-spin" />
+  2116→                    ) : permissionStatus === 'denied' ? (
+  2117→                      <Mic className="w-4 h-4 text-amber-500" />
+  2118→                    ) : isRecording ? (
+  2119→                      <Square className="w-4 h-4" />
+  2120→                    ) : (
+  2121→                      <Mic className="w-4 h-4" />
+  2122→                    )}
+  2123→                  </Button>
+  2124→                  {/* KWS Toggle Button */}
+  2125→                  <Button
+  2126→                    type="button"
+  2127→                    size="icon"
+  2128→                    variant={kwsActive ? "default" : "outline"}
+  2129→                    className={cn(
+  2130→                      "h-8 w-8 flex-shrink-0 transition-all",
+  2131→                      kwsActive && kwsPausedByTTS && "animate-pulse bg-amber-600 hover:bg-amber-700",
+  2132→                      kwsActive && !kwsPausedByTTS && "animate-pulse bg-green-600 hover:bg-green-700"
+  2133→                    )}
+  2134→                    onClick={handleKWSToggle}
+  2135→                    disabled={isAnyGenerating || isTranscribing}
+  2136→                    title={
+  2137→                      kwsPausedByTTS
+  2138→                        ? 'KWS en pausa (TTS reproduciendo)'
+  2139→                        : kwsActive
+  2140→                          ? 'Desactivar escucha por voz'
+  2141→                          : `Activar escucha por voz (${activeCharacter?.name || 'KWS'})`
+  2142→                    }
+  2143→                  >
+  2144→                    {kwsPausedByTTS ? (
+  2145→                      <VolumeX className="w-4 h-4" />
+  2146→                    ) : kwsActive ? (
+  2147→                      <Radio className="w-4 h-4" />
+  2148→                    ) : (
+  2149→                      <Ear className="w-4 h-4" />
+  2150→                    )}
+  2151→                  </Button>
+  2152→                  {/* Recording Duration Indicator */}
+  2153→                  {isRecording && (
+  2154→                    <span className="text-xs text-red-500 font-mono min-w-[40px] animate-pulse">
+  2155→                      {Math.floor(recordingDuration / 60000)}:{String(Math.floor((recordingDuration % 60000) / 1000)).padStart(2, '0')}
+  2156→                    </span>
+  2157→                  )}
+  2158→                  {/* KWS Status Indicator */}
+  2159→                  {kwsActive && !kwsCapturing && (
+  2160→                    <span className={cn(
+  2161→                      "text-xs font-mono min-w-[50px]",
+  2162→                      kwsPausedByTTS
+  2163→                        ? "text-amber-400 animate-pulse"
+  2164→                        : "text-green-500 animate-pulse"
+  2165→                    )}>
+  2166→                      {kwsPausedByTTS ? '🔇 EN PAUSA' : '🎧 ESCUCHANDO'}
+  2167→                    </span>
+  2168→                  )}
+  2169→                  {/* KWS Capturing Indicator - After wake word detected */}
+  2170→                  {kwsCapturing && (
+  2171→                    <span className={cn(
+  2172→                      "text-xs font-mono min-w-[50px]",
+  2173→                      "text-amber-400 animate-pulse"
+  2174→                    )}>
+  2175→                      🎤 CAPTURANDO...
+  2176→                    </span>
+  2177→                  )}
+  2178→                  {/* KWS Transcript Preview - Shows what KWS is detecting in real-time */}
+  2179→                  {kwsActive && kwsTranscript && (
+  2180→                    <div className={cn(
+  2181→                      "flex items-center gap-1 px-2 py-0.5 rounded-full border max-w-[200px] overflow-hidden",
+  2182→                      kwsCapturing
+  2183→                        ? "bg-amber-500/10 border-amber-500/30"
+  2184→                        : "bg-green-500/10 border-green-500/20"
+  2185→                    )}>
+  2186→                      <span className={cn(
+  2187→                        "w-1.5 h-1.5 rounded-full animate-pulse flex-shrink-0",
+  2188→                        kwsCapturing ? "bg-amber-500" : "bg-green-500"
+  2189→                      )} />
+  2190→                      <div className="flex-1 min-w-0 overflow-hidden">
+  2191→                        <div className="flex justify-end">
+  2192→                          <span className={cn(
+  2193→                            "text-[10px] italic whitespace-nowrap",
+  2194→                            kwsCapturing ? "text-amber-300" : "text-green-400"
+  2195→                          )}>
+  2196→                            &quot;{kwsTranscript.length > 35 ? '...' + kwsTranscript.slice(-35) : kwsTranscript}&quot;
+  2197→                          </span>
+  2198→                        </div>
+  2199→                      </div>
+  2200→                    </div>
+  2201→                  )}
+  2202→                  {/* Wake Word Detected Indicator */}
+  2203→                  {kwsLastDetectedWord && kwsCapturing && (
+  2204→                    <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/30">
+  2205→                      <Zap className="w-3 h-3 text-amber-400" />
+  2206→                      <span className="text-[10px] text-amber-400 font-medium">
+  2207→                        {kwsLastDetectedWord} →
+  2208→                      </span>
+  2209→                    </div>
+  2210→                  )}
+  2211→                  {/* Message being captured - will be sent on silence */}
+  2212→                  {kwsCapturing && kwsCapturedMessage && (
+  2213→                    <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-blue-500/10 border border-blue-500/30 max-w-[200px] overflow-hidden">
+  2214→                      <Send className="w-3 h-3 text-blue-400 flex-shrink-0" />
+  2215→                      <div className="flex-1 min-w-0 overflow-hidden">
+  2216→                        <div className="flex justify-end">
+  2217→                          <span className="text-[10px] text-blue-300 whitespace-nowrap">
+  2218→                            {kwsCapturedMessage.length > 35 ? '...' + kwsCapturedMessage.slice(-35) : kwsCapturedMessage}
+  2219→                          </span>
+  2220→                        </div>
+  2221→                      </div>
+  2222→                    </div>
+  2223→                  )}
+  2224→                  {/* Global Audio Mute Button */}
+  2225→                  <Button
+  2226→                    type="button"
+  2227→                    size="icon"
+  2228→                    variant={globalMuted ? "destructive" : "outline"}
+  2229→                    className={cn(
+  2230→                      "h-8 w-8 flex-shrink-0 transition-all",
+  2231→                      globalMuted && "bg-red-600/80 hover:bg-red-700 border-red-500"
+  2232→                    )}
+  2233→                    onClick={handleGlobalMuteToggle}
+  2234→                    title={globalMuted ? 'Desactivar silencio global' : 'Silenciar todo el audio'}
+  2235→                  >
+  2236→                    {globalMuted ? (
+  2237→                      <VolumeX className="w-4 h-4" />
+  2238→                    ) : (
+  2239→                      <Volume2 className="w-4 h-4" />
+  2240→                    )}
+  2241→                  </Button>
+  2242→                  {/* Permission denied warning - now clickable */}
+  2243→                  {permissionStatus === 'denied' && !isRecording && !isTranscribing && (
+  2244→                    <button 
+  2245→                      onClick={handleRecordingClick}
+  2246→                      className="text-xs text-amber-500 hover:text-amber-400 transition-colors cursor-pointer"
+  2247→                    >
+  2248→                      <span className="opacity-70">🔓 Solicitar permiso</span>
+  2249→                    </button>
+  2250→                  )}
+  2251→                  <Button
+  2252→                    size="icon"
+  2253→                    className="h-8 w-8 flex-shrink-0"
+  2254→                    onClick={isAnyGenerating ? onStopGeneration : handleSend}
+  2255→                    disabled={!isAnyGenerating && (!input.trim() || isTranscribing)}
+  2256→                  >
+  2257→                    {isAnyGenerating ? (
+  2258→                      <Square className="w-4 h-4 fill-current" />
+  2259→                    ) : (
+  2260→                      <Send className="w-4 h-4" />
+  2261→                    )}
+  2262→                  </Button>
+  2263→                </div>
+  2264→              </div>
+  2265→            </>
+  2266→          )}
+  2267→
+  2268→          {/* Solicitudes Tab Content */}
+  2269→          {activeTab === 'solicitudes' && (
+  2270→            <ScrollArea className="flex-1 min-h-0">
+  2271→              <div className="p-3 space-y-3">
+  2272→                <div className="flex items-center gap-2 mb-3">
+  2273→                  <Inbox className="w-4 h-4 text-amber-500" />
+  2274→                  <h4 className="font-medium text-sm">Solicitudes Recibidas</h4>
+  2275→                  {pendingUserSolicitudes.length > 0 && (
+  2276→                    <Badge className="bg-amber-500/20 text-amber-400 text-[10px]">
+  2277→                      {pendingUserSolicitudes.length} pendientes
+  2278→                    </Badge>
+  2279→                  )}
+  2280→                </div>
+  2281→                
+  2282→                {pendingUserSolicitudes.length === 0 ? (
+  2283→                  <div className="text-center py-12 text-muted-foreground">
+  2284→                    <Inbox className="w-12 h-12 mx-auto mb-3 opacity-30" />
+  2285→                    <p className="text-sm">No tienes solicitudes pendientes</p>
+  2286→                    <p className="text-xs mt-1 opacity-70">Los personajes pueden enviarte solicitudes durante la conversación</p>
+  2287→                  </div>
+  2288→                ) : (
+  2289→                  <div className="space-y-3">
+  2290→                    {/* Group by character */}
+  2291→                    {Array.from(new Map(pendingUserSolicitudes.map(s => [s.fromCharacterName, s])).values()).reduce((acc, s) => {
+  2292→                      const existing = acc.find(g => g.characterName === s.fromCharacterName);
+  2293→                      if (existing) {
+  2294→                        existing.solicitudes.push(s);
+  2295→                      } else {
+  2296→                        acc.push({ characterName: s.fromCharacterName, solicitudes: [s] });
+  2297→                      }
+  2298→                      return acc;
+  2299→                    }, [] as { characterName: string; solicitudes: typeof pendingUserSolicitudes }).map((group) => (
+  2300→                      <div key={group.characterName} className="space-y-2">
+  2301→                        {/* Character Header */}
+  2302→                        <div className="flex items-center gap-2 px-2 py-1.5 bg-muted/50 rounded-lg">
+  2303→                          <User className="w-3.5 h-3.5 text-muted-foreground" />
+  2304→                          <span className="text-xs font-medium">{group.characterName}</span>
+  2305→                          <Badge variant="outline" className="text-[10px] h-4 px-1 ml-auto">
+  2306→                            {group.solicitudes.length}
+  2307→                          </Badge>
+  2308→                        </div>
+  2309→                        
+  2310→                        {/* Solicitudes for this character */}
+  2311→                        {group.solicitudes.map((solicitud) => (
+  2312→                          <div
+  2313→                            key={solicitud.id}
+  2314→                            className="p-3 rounded-lg border bg-amber-500/5 border-amber-500/20 hover:bg-amber-500/10 transition-colors"
+  2315→                          >
+  2316→                            {/* Key and time */}
+  2317→                            <div className="flex items-center justify-between gap-2 mb-2">
+  2318→                              <code className="text-[10px] bg-black/30 px-1.5 py-0.5 rounded font-mono text-amber-300">
+  2319→                                {solicitud.key}
+  2320→                              </code>
+  2321→                              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+  2322→                                <Clock className="w-3 h-3" />
+  2323→                                {formatTime(solicitud.createdAt)}
+  2324→                              </span>
+  2325→                            </div>
+  2326→                            
+  2327→                            {/* Description */}
+  2328→                            <p className="text-xs text-foreground/80 mb-3 leading-relaxed">
+  2329→                              {solicitud.description}
+  2330→                            </p>
+  2331→                            
+  2332→                            {/* Action Buttons */}
+  2333→                            <div className="flex gap-2">
+  2334→                              <Button
+  2335→                                variant="outline"
+  2336→                                size="sm"
+  2337→                                className="h-7 px-3 text-xs flex-1 bg-green-500/10 border-green-500/30 text-green-400 hover:bg-green-500/20 hover:text-green-300"
+  2338→                                onClick={() => {
+  2339→                                  if (activeSessionId) {
+  2340→                                    acceptUserSolicitud(activeSessionId, solicitud.id);
+  2341→                                  }
+  2342→                                }}
+  2343→                              >
+  2344→                                <Check className="w-3.5 h-3.5 mr-1" />
+  2345→                                Aceptar
+  2346→                              </Button>
+  2347→                              <Button
+  2348→                                variant="outline"
+  2349→                                size="sm"
+  2350→                                className="h-7 px-3 text-xs flex-1 bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20 hover:text-red-300"
+  2351→                                onClick={() => {
+  2352→                                  if (activeSessionId) {
+  2353→                                    rejectUserSolicitud(activeSessionId, solicitud.id);
+  2354→                                  }
+  2355→                                }}
+  2356→                              >
+  2357→                                <Circle className="w-3.5 h-3.5 mr-1" />
+  2358→                                Rechazar
+  2359→                              </Button>
+  2360→                            </div>
+  2361→                          </div>
+  2362→                        ))}
+  2363→                      </div>
+  2364→                    ))}
+  2365→                  </div>
+  2366→                )}
+  2367→              </div>
+  2368→            </ScrollArea>
+  2369→          )}
+  2370→
+  2371→          {/* Misiones Tab Content */}
+  2372→          {activeTab === 'misiones' && (
+  2373→            <ScrollArea className="flex-1 min-h-0">
+  2374→              <div className="p-3 space-y-3">
+  2375→                {/* Header with quest counts */}
+  2376→                <div className="flex items-center gap-2 mb-3">
+  2377→                  <ScrollText className="w-4 h-4 text-amber-500" />
+  2378→                  <h4 className="font-medium text-sm">{t('chatbox.quests')}</h4>
+  2379→                  {sessionQuests.filter(q => q.status === 'active').length > 0 && (
+  2380→                    <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-[10px]">
+  2381→                      {sessionQuests.filter(q => q.status === 'active').length} activas
+  2382→                    </Badge>
+  2383→                  )}
+  2384→                  {sessionQuests.filter(q => q.status === 'available').length > 0 && (
+  2385→                    <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-[10px]">
+  2386→                      +{sessionQuests.filter(q => q.status === 'available').length} disp.
+  2387→                    </Badge>
+  2388→                  )}
+  2389→                </div>
+  2390→                
+  2391→                {!questSettings.enabled ? (
+  2392→                  <div className="text-center py-12 text-muted-foreground">
+  2393→                    <ScrollText className="w-12 h-12 mx-auto mb-3 opacity-30" />
+  2394→                    <p className="text-sm">{t('chatbox.questsDisabled')}</p>
+  2395→                  </div>
+  2396→                ) : sessionQuests.length === 0 ? (
+  2397→                  <div className="text-center py-12 text-muted-foreground">
+  2398→                    <ScrollText className="w-12 h-12 mx-auto mb-3 opacity-30" />
+  2399→                    <p className="text-sm">{t('chatbox.noQuests')}</p>
+  2400→                    <p className="text-xs mt-1 opacity-70">Las misiones aparecerán según avances en la conversación</p>
+  2401→                  </div>
+  2402→                ) : (
+  2403→                  <div className="space-y-3">
+  2404→                    {/* Active Quests */}
+  2405→                    {sessionQuests.filter(q => q.status === 'active').length > 0 && (
+  2406→                      <div className="space-y-2">
+  2407→                        <div className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium px-1">
+  2408→                          Activas
+  2409→                        </div>
+  2410→                        {sessionQuests.filter(q => q.status === 'active').map(quest => {
+  2411→                          const template = questTemplates.find(t => t.id === quest.templateId);
+  2412→                          if (!template) return null;
+  2413→                          
+  2414→                          const colors = priorityColors[template.priority] || priorityColors.main;
+  2415→                          const completedObjectives = quest.objectives.filter(o => o.isCompleted).length;
+  2416→                          const totalObjectives = quest.objectives.length;
+  2417→                          const isExpanded = expandedQuestId === quest.templateId;
+  2418→                          
+  2419→                          // Get objectives with template data
+  2420→                          const objectives = template.objectives.map(obj => {
+  2421→                            const instanceObj = quest.objectives.find(o => o.templateId === obj.id);
+  2422→                            return {
+  2423→                              ...obj,
+  2424→                              currentCount: instanceObj?.currentCount ?? 0,
+  2425→                              isCompleted: instanceObj?.isCompleted ?? false,
+  2426→                            };
+  2427→                          });
+  2428→                          
+  2429→                          return (
+  2430→                            <div
+  2431→                              key={quest.templateId}
+  2432→                              className={cn(
+  2433→                                'rounded-lg border transition-all',
+  2434→                                colors.bg,
+  2435→                                colors.border,
+  2436→                                'hover:bg-white/5'
+  2437→                              )}
+  2438→                            >
+  2439→                              {/* Quest Header */}
+  2440→                              <div className="flex items-start gap-2 p-2">
+  2441→                                {/* Icon */}
+  2442→                                <div className={cn(
+  2443→                                  'flex items-center justify-center rounded-lg shrink-0 w-10 h-10',
+  2444→                                  colors.bg,
+  2445→                                  'border',
+  2446→                                  colors.border
+  2447→                                )}>
+  2448→                                  <span className="text-xl">{template.icon || '📜'}</span>
+  2449→                                </div>
+  2450→                                
+  2451→                                {/* Quest Info */}
+  2452→                                <div className="flex-1 min-w-0">
+  2453→                                  <div className="flex items-center gap-1.5">
+  2454→                                    <span 
+  2455→                                      className={cn(
+  2456→                                        'font-medium truncate cursor-pointer hover:underline text-sm',
+  2457→                                        colors.text
+  2458→                                      )}
+  2459→                                      onClick={() => setExpandedQuestId(isExpanded ? null : quest.templateId)}
+  2460→                                    >
+  2461→                                      {template.name}
+  2462→                                    </span>
+  2463→                                    {template.priority === 'main' && (
+  2464→                                      <Star className="w-3 h-3 text-amber-400 shrink-0" />
+  2465→                                    )}
+  2466→                                  </div>
+  2467→                                  
+  2468→                                  {/* Progress Bar */}
+  2469→                                  <div className="mt-1.5 flex items-center gap-2">
+  2470→                                    <div className="flex-1 h-1.5 bg-black/30 rounded-full overflow-hidden">
+  2471→                                      <div
+  2472→                                        className={cn('h-full rounded-full transition-all', colors.progress)}
+  2473→                                        style={{ width: `${quest.progress}%` }}
+  2474→                                      />
+  2475→                                    </div>
+  2476→                                    <span className={cn('text-[10px] font-medium', colors.text)}>
+  2477→                                      {Math.round(quest.progress)}%
+  2478→                                    </span>
+  2479→                                  </div>
+  2480→                                  
+  2481→                                  {/* Objective Count */}
+  2482→                                  <div className="mt-1 flex items-center gap-1 text-[10px] text-white/50">
+  2483→                                    <Target className="w-3 h-3" />
+  2484→                                    <span>{completedObjectives}/{totalObjectives} objetivos</span>
+  2485→                                    {template.rewards.length > 0 && (
+  2486→                                      <>
+  2487→                                        <span className="mx-1">•</span>
+  2488→                                        <Gift className="w-3 h-3" />
+  2489→                                        <span>{template.rewards.length} recompensas</span>
+  2490→                                      </>
+  2491→                                    )}
+  2492→                                  </div>
+  2493→                                </div>
+  2494→                                
+  2495→                                {/* Deactivate Button */}
+  2496→                                <button
+  2497→                                  onClick={() => handleQuestToggle(template.id, 'active')}
+  2498→                                  className={cn(
+  2499→                                    'p-1.5 rounded-lg transition-colors shrink-0',
+  2500→                                    'hover:bg-red-500/20 text-red-400/60 hover:text-red-400'
+
+[showing lines 2001-2500 of 3192; use offset=2501 with limit to continue reading]

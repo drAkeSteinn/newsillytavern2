@@ -1,0 +1,502 @@
+  1001→
+  1002→                    // Buffer content for potential tool call detection
+  1003→                    let roundContent = '';
+  1004→                    for await (const chunk of generator) {
+  1005→                      roundContent += chunk;
+  1006→                      accumulatedContent += chunk;
+  1007→                    }
+  1008→
+  1009→                    const toolCalls = finalizeToolCalls(accumulator);
+  1010→                    if (toolCalls.length > 0 && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'stop')) {
+  1011→                      // Another tool call detected - stream buffered content and execute
+  1012→                      if (roundContent.trim()) {
+  1013→                        for (const chunk of splitIntoChunks(roundContent)) {
+  1014→                          controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1015→                        }
+  1016→                      }
+  1017→                      const toolResult = await executeToolCallsAndContinue(
+  1018→                        toolCalls, availableTools, toolRound, maxToolRounds,
+  1019→                        effectiveCharacter, sessionId || '', effectiveUserName, controller,
+  1020→                        sessionQuests, questTemplates,
+  1021→                        effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
+  1022→                      );
+  1023→                      toolContextMessages = buildToolMessagesForOpenAI(toolContextMessages, toolCalls, toolResult);
+  1024→                      toolRound++;
+  1025→                      isToolRound = true;
+  1026→                      continue;
+  1027→                    } else {
+  1028→                      // No more tool calls - stream the response
+  1029→                      const cleanedContent = cleanModelArtifacts(roundContent);
+  1030→                      for (const chunk of splitIntoChunks(cleanedContent)) {
+  1031→                        controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1032→                      }
+  1033→                      accumulatedContent = cleanModelArtifacts(accumulatedContent);
+  1034→                    }
+  1035→                  } else {
+  1036→                    console.log(`[Z.ai+Tools] Tool round ${toolRound}: sending ${toolContextMessages.length} messages (final round, no tools)`);
+  1037→                    generator = streamZAI(toolContextMessages, zaiRuntimeToken);
+  1038→                    for await (const chunk of generator) {
+  1039→                      controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1040→                    }
+  1041→                  }
+  1042→                } else {
+  1043→                  // No tools enabled - normal streaming
+  1044→                  generator = streamZAI(chatMessages, zaiRuntimeToken);
+  1045→                  for await (const chunk of generator) {
+  1046→                    controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1047→                  }
+  1048→                }
+  1049→                break;
+  1050→              }
+  1051→
+  1052→              case 'openai':
+  1053→              case 'vllm':
+  1054→              case 'lm-studio':
+  1055→              case 'custom': {
+  1056→                if (!llmConfig.endpoint) {
+  1057→                  throw new Error(`${llmConfig.provider} requires an endpoint URL`);
+  1058→                }
+  1059→                let chatMessages = buildChatMessages(
+  1060→                  baseSystemPrompt || finalSystemPrompt,
+  1061→                  allMessages,
+  1062→                  effectiveCharacter,
+  1063→                  effectiveUserName,
+  1064→                  effectiveCharacter.postHistoryInstructions?.trim(),
+  1065→                  undefined, true, embeddingsContext,
+  1066→                  lorebookChatInjections,
+  1067→                  exampleMessages
+  1068→                );
+  1069→                if (hudContextSection && hudContext) {
+  1070→                  chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
+  1071→                }
+  1072→
+  1073→                if (shouldUseTools && !isToolRound) {
+  1074→                  // First call with tools
+  1075→                  baseChatMessages = chatMessages;
+  1076→                  const accumulator = createToolCallAccumulator(availableTools);
+  1077→                  generator = streamOpenAIWithTools(chatMessages, llmConfig, llmConfig.provider, availableTools, accumulator);
+  1078→
+  1079→                  // BUFFER content - don't stream to client yet
+  1080→                  // We need to detect if this is a text-based tool call before showing anything
+  1081→                  let roundContent = '';
+  1082→                  for await (const chunk of generator) {
+  1083→                    roundContent += chunk;
+  1084→                    accumulatedContent += chunk;
+  1085→                    // DO NOT send to client yet - buffer for tool call detection
+  1086→                  }
+  1087→
+  1088→                  console.log(`[Tools] Round 0 buffered ${roundContent.length} chars, finishReason=${accumulator.finishReason}, nativeToolCalls=${accumulator.toolCalls.length}`);
+  1089→
+  1090→                  // Check for native tool calls first
+  1091→                  if (hasToolCalls(accumulator) && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'stop')) {
+  1092→                    // Stream any text content alongside tool calls
+  1093→                    if (roundContent.trim()) {
+  1094→                      for (const chunk of splitIntoChunks(roundContent)) {
+  1095→                        controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1096→                      }
+  1097→                    }
+  1098→                    // Native tool calls detected! Execute them and loop
+  1099→                    const toolResult = await executeToolCallsAndContinue(
+  1100→                      accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
+  1101→                      effectiveCharacter, sessionId || '', effectiveUserName, controller,
+  1102→                      sessionQuests, questTemplates,
+  1103→                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory,
+  1104→                      lorebooks
+  1105→                    );
+  1106→                    allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
+  1107→                    allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
+  1108→                    if (toolResult.shouldContinue) {
+  1109→                      const toolResultPairs = toolResult.toolResults.length > 0
+  1110→                        ? toolResult.toolResults
+  1111→                        : accumulator.toolCalls.map(tc => ({
+  1112→                            success: true, displayMessage: toolResult.newContent || `[${tc.name} ejecutada]`
+  1113→                          }));
+  1114→                      toolContextMessages = [
+  1115→                        ...baseChatMessages,
+  1116→                        ...buildToolMessagesForOpenAI(accumulator.toolCalls, toolResultPairs),
+  1117→                      ];
+  1118→                      accumulatedContent = '';
+  1119→                      toolRound++;
+  1120→                      continue;
+  1121→                    }
+  1122→                  } else if (mightContainToolCall(roundContent)) {
+  1123→                    // Check for text-based tool call (model outputting JSON as content)
+  1124→                    // This handles models like LM Studio that don't properly use native tool calling
+  1125→                    console.log(`[Tools] Content might contain text-based tool call, attempting parse...`);
+  1126→                    console.log(`[Tools] Content preview: ${roundContent.slice(0, 200)}...`);
+  1127→                    const textToolCalls = parseAllToolCallsFromText(roundContent);
+  1128→                    if (textToolCalls.length > 0) {
+  1129→                      console.log(`[Tools] ✓ Text-based tool call(s) detected: ${textToolCalls.map(tc => tc.name).join(', ')}`);
+  1130→
+  1131→                      // Stream any natural text before/after the tool calls
+  1132→                      const cleanContent = stripToolCallFromText(roundContent);
+  1133→                      if (cleanContent.trim()) {
+  1134→                        console.log(`[Tools] Natural text to stream before/after tool call: "${cleanContent.slice(0, 100)}..."`);
+  1135→                        for (const chunk of splitIntoChunks(cleanContent)) {
+  1136→                          controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1137→                        }
+  1138→                      }
+  1139→
+  1140→                      // Convert ALL to NativeToolCall format
+  1141→                      const nativeCalls: NativeToolCall[] = textToolCalls.map((tc, idx) => ({
+  1142→                        id: `text_call_${Date.now()}_${idx}`,
+  1143→                        name: tc.name,
+  1144→                        arguments: tc.arguments,
+  1145→                        rawArguments: JSON.stringify(tc.arguments),
+  1146→                      }));
+  1147→
+  1148→                      // Execute and continue
+  1149→                      const toolResult = await executeToolCallsAndContinue(
+  1150→                        nativeCalls, availableTools, toolRound, maxToolRounds,
+  1151→                        effectiveCharacter, sessionId || '', effectiveUserName, controller,
+  1152→                        sessionQuests, questTemplates,
+  1153→                        effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
+  1154→                      );
+  1155→                      allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
+  1156→                      allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
+  1157→                      if (toolResult.shouldContinue) {
+  1158→                        // For text-based calls, inject as user message with tool context
+  1159→                        const toolNames = textToolCalls.map(tc => tc.name).join(', ');
+  1160→                        toolContextMessages = [
+  1161→                          ...baseChatMessages,
+  1162→                          { role: 'user', content: `[Resultado de herramientas: ${toolNames}]\n${toolResult.newContent}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
+  1163→                        ] as any;
+  1164→                        accumulatedContent = '';
+  1165→                        toolRound++;
+  1166→                        continue;
+  1167→                      }
+  1168→                    } else {
+  1169→                      // Content looked like tool call but couldn't parse - clean and stream as regular text
+  1170→                      console.log(`[Tools] ✗ Content looked like tool call but parse failed. Cleaning artifacts and streaming.`);
+  1171→                      const cleanedContent = cleanModelArtifacts(roundContent);
+  1172→                      for (const chunk of splitIntoChunks(cleanedContent)) {
+  1173→                        controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1174→                      }
+  1175→                    }
+  1176→                  } else {
+  1177→                    // Regular text response - stream buffered content to client (clean artifacts)
+  1178→                    const cleanedContent = cleanModelArtifacts(roundContent);
+  1179→                    for (const chunk of splitIntoChunks(cleanedContent)) {
+  1180→                      controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1181→                    }
+  1182→                  }
+  1183→                  // Fix: Update accumulatedContent to cleaned version so memory extraction/reinforcement
+  1184→                  // operates on clean text (without model artifacts, tool syntax, etc.)
+  1185→                  accumulatedContent = cleanModelArtifacts(accumulatedContent);
+  1186→                  toolRound = maxToolRounds + 1;
+  1187→                  continue;
+  1188→                } else if (shouldUseTools && isToolRound) {
+  1189→                  // Follow-up call with tool results - include tools so the character can chain actions
+  1190→                  const canUseMoreTools = toolRound < maxToolRounds;
+  1191→                  if (canUseMoreTools) {
+  1192→                    console.log(`[OpenAI+Tools] Tool round ${toolRound}: sending tool results with tools (character can chain actions)`);
+  1193→                    const accumulator = createToolCallAccumulator(availableTools);
+  1194→                    generator = streamOpenAIWithTools(toolContextMessages as any, llmConfig, availableTools, accumulator);
+  1195→
+  1196→                    let roundContent = '';
+  1197→                    for await (const chunk of generator) {
+  1198→                      roundContent += chunk;
+  1199→                      accumulatedContent += chunk;
+  1200→                    }
+  1201→
+  1202→                    const toolCalls = finalizeToolCalls(accumulator);
+  1203→                    if (toolCalls.length > 0 && (accumulator.finishReason === 'tool_calls' || accumulator.finishReason === 'stop')) {
+  1204→                      if (roundContent.trim()) {
+  1205→                        for (const chunk of splitIntoChunks(roundContent)) {
+  1206→                          controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1207→                        }
+  1208→                      }
+  1209→                      const toolResult = await executeToolCallsAndContinue(
+  1210→                        toolCalls, availableTools, toolRound, maxToolRounds,
+  1211→                        effectiveCharacter, sessionId || '', effectiveUserName, controller,
+  1212→                        sessionQuests, questTemplates,
+  1213→                        effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
+  1214→                      );
+  1215→                      toolContextMessages = buildToolMessagesForOpenAI(toolContextMessages, toolCalls, toolResult);
+  1216→                      toolRound++;
+  1217→                      isToolRound = true;
+  1218→                      continue;
+  1219→                    } else {
+  1220→                      const cleanedContent = cleanModelArtifacts(roundContent);
+  1221→                      for (const chunk of splitIntoChunks(cleanedContent)) {
+  1222→                        controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1223→                      }
+  1224→                      accumulatedContent = cleanModelArtifacts(accumulatedContent);
+  1225→                    }
+  1226→                  } else {
+  1227→                    generator = streamOpenAICompatible(toolContextMessages as any, llmConfig, llmConfig.provider);
+  1228→                  }
+  1229→                } else {
+  1230→                  generator = streamOpenAICompatible(chatMessages, llmConfig, llmConfig.provider);
+  1231→                }
+  1232→                break;
+  1233→              }
+  1234→
+  1235→              case 'anthropic': {
+  1236→                if (!llmConfig.apiKey) {
+  1237→                  throw new Error('Anthropic requires an API key');
+  1238→                }
+  1239→                let chatMessages = buildChatMessages(
+  1240→                  baseSystemPrompt || finalSystemPrompt,
+  1241→                  allMessages,
+  1242→                  effectiveCharacter,
+  1243→                  effectiveUserName,
+  1244→                  effectiveCharacter.postHistoryInstructions?.trim(),
+  1245→                  undefined, true, embeddingsContext,
+  1246→                  lorebookChatInjections,
+  1247→                  exampleMessages
+  1248→                );
+  1249→                if (hudContextSection && hudContext) {
+  1250→                  chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
+  1251→                }
+  1252→
+  1253→                if (shouldUseTools && !isToolRound) {
+  1254→                  baseChatMessages = chatMessages;
+  1255→                  const toolState = createAnthropicToolState();
+  1256→                  generator = streamAnthropicWithTools(chatMessages, llmConfig, availableTools, toolState);
+  1257→
+  1258→                  let roundContent = '';
+  1259→                  for await (const chunk of generator) {
+  1260→                    roundContent += chunk;
+  1261→                    accumulatedContent += chunk;
+  1262→                    // DO NOT send to client yet - buffer for tool call detection
+  1263→                  }
+  1264→
+  1265→                  const toolCalls = anthropicStateToToolCalls(toolState);
+  1266→                  if (toolCalls.length > 0 && (toolState.stopReason === 'tool_use')) {
+  1267→                    if (roundContent.trim()) {
+  1268→                      for (const chunk of splitIntoChunks(roundContent)) {
+  1269→                        controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1270→                      }
+  1271→                    }
+  1272→                    const toolResult = await executeToolCallsAndContinue(
+  1273→                      toolCalls, availableTools, toolRound, maxToolRounds,
+  1274→                      effectiveCharacter, sessionId || '', effectiveUserName, controller,
+  1275→                      sessionQuests, questTemplates,
+  1276→                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory,
+  1277→                      lorebooks
+  1278→                    );
+  1279→                    allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
+  1280→                    allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
+  1281→                    if (toolResult.shouldContinue) {
+  1282→                      const toolResultPairs = toolResult.toolResults.length > 0
+  1283→                        ? toolResult.toolResults
+  1284→                        : toolCalls.map(tc => ({
+  1285→                            success: true, displayMessage: toolResult.newContent || `[${tc.name} ejecutada]`
+  1286→                          }));
+  1287→                      const toolMessages = buildToolMessagesForAnthropic(toolCalls, toolResultPairs);
+  1288→                      accumulatedContent = '';
+  1289→                      toolContextMessages = [
+  1290→                        ...baseChatMessages,
+  1291→                        ...toolMessages.flatMap(m => m),
+  1292→                      ];
+  1293→                      toolRound++;
+  1294→                      continue;
+  1295→                    }
+  1296→                    } else if (mightContainToolCall(roundContent)) {
+  1297→                    const textToolCalls = parseAllToolCallsFromText(roundContent);
+  1298→                    if (textToolCalls.length > 0) {
+  1299→                      console.log(`[Tools] ✓ Text-based tool call(s) detected (Anthropic): ${textToolCalls.map(tc => tc.name).join(', ')}`);
+  1300→                      const cleanContent = stripToolCallFromText(roundContent);
+  1301→                      if (cleanContent.trim()) {
+  1302→                        for (const chunk of splitIntoChunks(cleanContent)) {
+  1303→                          controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1304→                        }
+  1305→                      }
+  1306→                      const nativeCalls: NativeToolCall[] = textToolCalls.map((tc, idx) => ({
+  1307→                        id: `text_call_${Date.now()}_${idx}`,
+  1308→                        name: tc.name,
+  1309→                        arguments: tc.arguments,
+  1310→                        rawArguments: JSON.stringify(tc.arguments),
+  1311→                      }));
+  1312→                      const toolResult = await executeToolCallsAndContinue(
+  1313→                        nativeCalls, availableTools, toolRound, maxToolRounds,
+  1314→                        effectiveCharacter, sessionId || '', effectiveUserName, controller,
+  1315→                        sessionQuests, questTemplates,
+  1316→                        effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
+  1317→                      );
+  1318→                      allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
+  1319→                      allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
+  1320→                      if (toolResult.shouldContinue) {
+  1321→                        const toolNames = textToolCalls.map(tc => tc.name).join(', ');
+  1322→                        toolContextMessages = [
+  1323→                          ...baseChatMessages,
+  1324→                          { role: 'user', content: `[Resultado de herramientas: ${toolNames}]\n${toolResult.newContent}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
+  1325→                        ] as any;
+  1326→                        accumulatedContent = '';
+  1327→                        toolRound++;
+  1328→                        continue;
+  1329→                      }
+  1330→                    } else {
+  1331→                      const cleanedContent = cleanModelArtifacts(roundContent);
+  1332→                      for (const chunk of splitIntoChunks(cleanedContent)) {
+  1333→                        controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1334→                      }
+  1335→                    }
+  1336→                  } else {
+  1337→                    const cleanedContent = cleanModelArtifacts(roundContent);
+  1338→                    for (const chunk of splitIntoChunks(cleanedContent)) {
+  1339→                      controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1340→                    }
+  1341→                  }
+  1342→                  toolRound = maxToolRounds + 1;
+  1343→                  continue;
+  1344→                } else if (shouldUseTools && isToolRound) {
+  1345→                  // Follow-up call with tool results - include tools so the character can chain actions
+  1346→                  const canUseMoreTools = toolRound < maxToolRounds;
+  1347→                  if (canUseMoreTools) {
+  1348→                    console.log(`[Anthropic+Tools] Tool round ${toolRound}: sending tool results with tools (character can chain actions)`);
+  1349→                    const toolState = createAnthropicToolState();
+  1350→                    generator = streamAnthropicWithTools(toolContextMessages as any, llmConfig, availableTools, toolState);
+  1351→
+  1352→                    let roundContent = '';
+  1353→                    for await (const chunk of generator) {
+  1354→                      roundContent += chunk;
+  1355→                      accumulatedContent += chunk;
+  1356→                    }
+  1357→
+  1358→                    const toolCalls = anthropicStateToToolCalls(toolState);
+  1359→                    if (toolCalls.length > 0 && toolState.stopReason === 'tool_use') {
+  1360→                      if (roundContent.trim()) {
+  1361→                        for (const chunk of splitIntoChunks(roundContent)) {
+  1362→                          controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1363→                        }
+  1364→                      }
+  1365→                      const toolResult = await executeToolCallsAndContinue(
+  1366→                        toolCalls, availableTools, toolRound, maxToolRounds,
+  1367→                        effectiveCharacter, sessionId || '', effectiveUserName, controller,
+  1368→                        sessionQuests, questTemplates,
+  1369→                        effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
+  1370→                      );
+  1371→                      toolContextMessages = buildToolMessagesForAnthropic(toolContextMessages, toolCalls, toolResult);
+  1372→                      toolRound++;
+  1373→                      isToolRound = true;
+  1374→                      continue;
+  1375→                    } else {
+  1376→                      const cleanedContent = cleanModelArtifacts(roundContent);
+  1377→                      for (const chunk of splitIntoChunks(cleanedContent)) {
+  1378→                        controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1379→                      }
+  1380→                      accumulatedContent = cleanModelArtifacts(accumulatedContent);
+  1381→                    }
+  1382→                  } else {
+  1383→                    generator = streamAnthropic(toolContextMessages as any, llmConfig);
+  1384→                  }
+  1385→                } else {
+  1386→                  generator = streamAnthropic(chatMessages, llmConfig);
+  1387→                }
+  1388→                break;
+  1389→              }
+  1390→
+  1391→              case 'ollama': {
+  1392→                console.log(`[Stream] Ollama case: shouldUseTools=${shouldUseTools}, isToolRound=${isToolRound}, toolRound=${toolRound}`);
+  1393→                if (shouldUseTools && !isToolRound) {
+  1394→                  // Use /api/chat with tools support
+  1395→                  let chatMessages = buildChatMessages(
+  1396→                    baseSystemPrompt || finalSystemPrompt,
+  1397→                    allMessages,
+  1398→                    effectiveCharacter,
+  1399→                    effectiveUserName,
+  1400→                    effectiveCharacter.postHistoryInstructions?.trim(),
+  1401→                    undefined, true, embeddingsContext,
+  1402→                    lorebookChatInjections,
+  1403→                  exampleMessages
+  1404→                  );
+  1405→                  if (hudContextSection && hudContext) {
+  1406→                    chatMessages = injectHUDContextIntoMessages(chatMessages, hudContextSection, hudContext.position);
+  1407→                  }
+  1408→                  baseChatMessages = chatMessages;
+  1409→                  const accumulator = createToolCallAccumulator(availableTools);
+  1410→                  generator = streamOllamaWithTools(chatMessages, llmConfig, availableTools, accumulator);
+  1411→
+  1412→                  // BUFFER content for tool call detection
+  1413→                  let roundContent = '';
+  1414→                  for await (const chunk of generator) {
+  1415→                    roundContent += chunk;
+  1416→                    accumulatedContent += chunk;
+  1417→                  }
+  1418→
+  1419→                  // Ollama sends done_reason: "stop" for BOTH normal responses AND tool calls.
+  1420→                  // We detect tool calls by checking if toolCalls were accumulated, NOT by done_reason.
+  1421→                  if (hasToolCalls(accumulator)) {
+  1422→                    if (roundContent.trim()) {
+  1423→                      for (const chunk of splitIntoChunks(roundContent)) {
+  1424→                        controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1425→                      }
+  1426→                    }
+  1427→                    const toolResult = await executeToolCallsAndContinue(
+  1428→                      accumulator.toolCalls, availableTools, toolRound, maxToolRounds,
+  1429→                      effectiveCharacter, sessionId || '', effectiveUserName, controller,
+  1430→                      sessionQuests, questTemplates,
+  1431→                      effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory,
+  1432→                      lorebooks
+  1433→                    );
+  1434→                    allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
+  1435→                    allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
+  1436→                    if (toolResult.shouldContinue) {
+  1437→                      const toolResultPairs = toolResult.toolResults.length > 0
+  1438→                        ? toolResult.toolResults
+  1439→                        : accumulator.toolCalls.map(tc => ({
+  1440→                            success: true, displayMessage: toolResult.newContent || `[${tc.name} ejecutada]`
+  1441→                          }));
+  1442→                      const toolResultMessages = buildToolMessagesForOllama(accumulator.toolCalls, toolResultPairs);
+  1443→                      toolContextMessages = [...baseChatMessages, ...toolResultMessages] as any;
+  1444→                      toolRound++;
+  1445→                      continue;
+  1446→                    }
+  1447→                  } else if (mightContainToolCall(roundContent)) {
+  1448→                    const textToolCalls = parseAllToolCallsFromText(roundContent);
+  1449→                    if (textToolCalls.length > 0) {
+  1450→                      console.log(`[Tools] ✓ Text-based tool call(s) detected (Ollama): ${textToolCalls.map(tc => tc.name).join(', ')}`);
+  1451→                      const cleanContent = stripToolCallFromText(roundContent);
+  1452→                      if (cleanContent.trim()) {
+  1453→                        for (const chunk of splitIntoChunks(cleanContent)) {
+  1454→                          controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1455→                        }
+  1456→                      }
+  1457→                      const nativeCalls: NativeToolCall[] = textToolCalls.map((tc, idx) => ({
+  1458→                        id: `text_call_${Date.now()}_${idx}`,
+  1459→                        name: tc.name,
+  1460→                        arguments: tc.arguments,
+  1461→                        rawArguments: JSON.stringify(tc.arguments),
+  1462→                      }));
+  1463→                      const toolResult = await executeToolCallsAndContinue(
+  1464→                        nativeCalls, availableTools, toolRound, maxToolRounds,
+  1465→                        effectiveCharacter, sessionId || '', effectiveUserName, controller,
+  1466→                        sessionQuests, questTemplates,
+  1467→                        effectiveCharacter.statsConfig, sessionStats, allCharacters, characterMemory
+  1468→                      );
+  1469→                      allToolsUsed = [...allToolsUsed, ...toolResult.toolsUsed];
+  1470→                      allQuestActivations = [...allQuestActivations, ...toolResult.questActivations];
+  1471→                      if (toolResult.shouldContinue) {
+  1472→                        const toolNames = textToolCalls.map(tc => tc.name).join(', ');
+  1473→                        toolContextMessages = [
+  1474→                          ...baseChatMessages,
+  1475→                          { role: 'user', content: `[Resultado de herramientas: ${toolNames}]\n${toolResult.newContent}\n\nResponde de forma natural usando esta información. No menciones las herramientas ni el proceso interno.` },
+  1476→                        ] as any;
+  1477→                        accumulatedContent = '';
+  1478→                        toolRound++;
+  1479→                        continue;
+  1480→                      }
+  1481→                    } else {
+  1482→                      const cleanedContent = cleanModelArtifacts(roundContent);
+  1483→                      for (const chunk of splitIntoChunks(cleanedContent)) {
+  1484→                        controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1485→                      }
+  1486→                    }
+  1487→                  } else {
+  1488→                    const cleanedContent = cleanModelArtifacts(roundContent);
+  1489→                    for (const chunk of splitIntoChunks(cleanedContent)) {
+  1490→                      controller.enqueue(createSSEJSON({ type: 'token', content: chunk }));
+  1491→                    }
+  1492→                  }
+  1493→                  // Fix: Update accumulatedContent to cleaned version
+  1494→                  accumulatedContent = cleanModelArtifacts(accumulatedContent);
+  1495→                  toolRound = maxToolRounds + 1;
+  1496→                  continue;
+  1497→                } else if (shouldUseTools && isToolRound) {
+  1498→                  // Follow-up: send tool results back to Ollama - include tools so character can chain actions
+  1499→                  const canUseMoreTools = toolRound < maxToolRounds;
+  1500→                  const ollamaFollowUpTools = canUseMoreTools ? availableTools : [];
+
+[showing lines 1001-1500 of 1889; use offset=1501 with limit to continue reading]

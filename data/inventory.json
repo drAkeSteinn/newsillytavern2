@@ -2797,6 +2797,118 @@
   "inventoryNotifications": [
     {
       "type": "item_equipped",
+      "itemId": "cum-001",
+      "itemName": "Plug Inflador de Semen",
+      "quantity": 1,
+      "message": "{{user}} te metio un plug que te llena de semen eyaculando constantemente hasta que parezcas embarazada",
+      "id": "notif-1786088454394-jd4n93o",
+      "timestamp": "2026-08-07T07:40:54.394Z",
+      "read": false
+    },
+    {
+      "type": "item_removed",
+      "itemId": "past-002",
+      "itemName": "Pastilla Babeadora",
+      "quantity": 1,
+      "message": "El efecto de Pastilla Babeadora ha expirado",
+      "id": "notif-1786088358934-iqsfkpr",
+      "timestamp": "2026-08-07T07:39:18.934Z",
+      "read": false
+    },
+    {
+      "type": "item_used",
+      "itemId": "past-002",
+      "itemName": "Pastilla Babeadora",
+      "quantity": 1,
+      "message": "{{user}} te dio una pastilla que te hace babear como perra",
+      "id": "notif-1786088185265-eurmmzy",
+      "timestamp": "2026-08-07T07:36:25.265Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: la inundación de semen*",
+      "id": "notif-1786087667615-22u9kuz",
+      "timestamp": "2026-08-07T07:27:47.615Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: la inundación de sem",
+      "id": "notif-1786087667598-tem33g9",
+      "timestamp": "2026-08-07T07:27:47.598Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: la inundación de",
+      "id": "notif-1786087667581-mfhn3qv",
+      "timestamp": "2026-08-07T07:27:47.581Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: la inundación",
+      "id": "notif-1786087667563-8s875hd",
+      "timestamp": "2026-08-07T07:27:47.563Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: la inundaci",
+      "id": "notif-1786087667545-7867ziy",
+      "timestamp": "2026-08-07T07:27:47.545Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: la inund",
+      "id": "notif-1786087667524-0iujd1g",
+      "timestamp": "2026-08-07T07:27:47.524Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Item",
+      "quantity": 1,
+      "message": "Obtained: la in",
+      "id": "notif-1786087667505-ytpzs5k",
+      "timestamp": "2026-08-07T07:27:47.505Z",
+      "read": false
+    },
+    {
+      "type": "add",
+      "itemName": "Pastilla Babeadora",
+      "quantity": 1,
+      "message": "Obtained: la",
+      "id": "notif-1786087667488-cgfyhjm",
+      "timestamp": "2026-08-07T07:27:47.488Z",
+      "read": false
+    },
+    {
+      "type": "item_added",
+      "itemId": "past-002",
+      "itemName": "Pastilla Babeadora",
+      "quantity": 1,
+      "message": "Obtuviste Pastilla Babeadora",
+      "id": "notif-1786087667470-91nkn7v",
+      "timestamp": "2026-08-07T07:27:47.470Z",
+      "read": false
+    },
+    {
+      "type": "item_equipped",
       "itemId": "dildo-002",
       "itemName": "Dildo Tentaculo",
       "quantity": 1,
@@ -3155,125 +3267,6 @@
       "message": "Puntos: -40 (Total: 907)",
       "id": "notif-1780244149133-7bun1b3",
       "timestamp": "2026-05-31T16:15:49.133Z",
-      "read": false
-    },
-    {
-      "type": "item_equipped",
-      "itemId": "plug-001",
-      "itemName": "Plug Inflable",
-      "quantity": 1,
-      "message": "{{user}} te metio un plug inflable que se esta expandiendo dentro de tu ano",
-      "id": "notif-1780243892239-54zuetk",
-      "timestamp": "2026-05-31T16:11:32.239Z",
-      "read": false
-    },
-    {
-      "type": "item_added",
-      "itemId": "plug-001",
-      "itemName": "Plug Inflable",
-      "quantity": 1,
-      "message": "Obtuviste Plug Inflable",
-      "id": "notif-1780243828074-t26i4rz",
-      "timestamp": "2026-05-31T16:10:28.074Z",
-      "read": false
-    },
-    {
-      "type": "item_equipped",
-      "itemId": "plug-002",
-      "itemName": "Doble dildo lechero",
-      "quantity": 1,
-      "message": "{{user}} te metio un plug que eyacula semen en tu ano y luego lo succiona todo de golpe repitiendo el proceso una y otra ves",
-      "id": "notif-1780223022022-nfqlqcy",
-      "timestamp": "2026-05-31T10:23:42.022Z",
-      "read": false
-    },
-    {
-      "type": "item_equipped",
-      "itemId": "plug-002",
-      "itemName": "Doble dildo lechero",
-      "quantity": 1,
-      "message": "{{user}} te quito el plug lechero, tu ano sigue palpitando",
-      "id": "notif-1780222963020-vvi52s5",
-      "timestamp": "2026-05-31T10:22:43.020Z",
-      "read": false
-    },
-    {
-      "type": "item_equipped",
-      "itemId": "plug-002",
-      "itemName": "Plug Lechero",
-      "quantity": 1,
-      "message": "{{user}} te metio un plug que inyecta y succiona semen dentro de tu ano",
-      "id": "notif-1780221487794-v6ef8n3",
-      "timestamp": "2026-05-31T09:58:07.794Z",
-      "read": false
-    },
-    {
-      "type": "item_equipped",
-      "itemId": "cum-002",
-      "itemName": "Dildo Eyaculador Masivo",
-      "quantity": 1,
-      "message": "{{user}} te metio un dildo que te llena de semen hasta hincharte el estomago, cada senton que te das te eyacula dentro",
-      "id": "notif-1780221025865-lf3j6kd",
-      "timestamp": "2026-05-31T09:50:25.865Z",
-      "read": false
-    },
-    {
-      "type": "item_equipped",
-      "itemId": "cum-001",
-      "itemName": "Plug Inflador de Semen",
-      "quantity": 1,
-      "message": "{{user}} te metio un plug que te llena de semen eyaculando constantemente hasta que parezcas embarazada",
-      "id": "notif-1780220773186-xkorak8",
-      "timestamp": "2026-05-31T09:46:13.186Z",
-      "read": false
-    },
-    {
-      "type": "item_removed",
-      "itemId": "past-003",
-      "itemName": "Pastilla Orgasmica",
-      "quantity": 1,
-      "message": "El efecto de Pastilla Orgasmica ha expirado",
-      "id": "notif-1780220271709-k688l1x",
-      "timestamp": "2026-05-31T09:37:51.709Z",
-      "read": false
-    },
-    {
-      "type": "item_equipped",
-      "itemId": "plug-002",
-      "itemName": "Plug Lechero",
-      "quantity": 1,
-      "message": "{{user}} te metio un plug que inyecta y succiona semen dentro de tu ano",
-      "id": "notif-1780220240494-spswszm",
-      "timestamp": "2026-05-31T09:37:20.494Z",
-      "read": false
-    },
-    {
-      "type": "item_added",
-      "itemId": "plug-002",
-      "itemName": "Plug Lechero",
-      "quantity": 1,
-      "message": "Obtuviste Plug Lechero",
-      "id": "notif-1780220234064-2ku4x8n",
-      "timestamp": "2026-05-31T09:37:14.064Z",
-      "read": false
-    },
-    {
-      "type": "item_removed",
-      "itemId": "past-002",
-      "itemName": "Pastilla Babeadora",
-      "quantity": 1,
-      "message": "dejaste de babear tanto",
-      "id": "notif-1780217220863-2tpdaro",
-      "timestamp": "2026-05-31T08:47:00.863Z",
-      "read": false
-    },
-    {
-      "type": "add",
-      "itemName": "Item",
-      "quantity": 1,
-      "message": "Obtained: de metérmela hasta la campanilla y que me ahogue rico",
-      "id": "notif-1780217220298-53hvey2",
-      "timestamp": "2026-05-31T08:47:00.298Z",
       "read": false
     }
   ]

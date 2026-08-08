@@ -10,7 +10,6 @@ import {
   Clock,
   Hash,
   Trash2,
-  RefreshCw,
   ChevronDown,
   ChevronUp,
   Loader2
@@ -169,18 +168,6 @@ function SummaryCard({ summary, isExpanded, onToggle, onDelete, formatDate }: Su
           </ScrollArea>
           
           <div className="flex items-center justify-end gap-2 mt-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground"
-              onClick={(e) => {
-                e.stopPropagation();
-                // TODO: Implement regenerate
-              }}
-            >
-              <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-              Regenerar
-            </Button>
             <Button
               variant="ghost"
               size="sm"

@@ -36,6 +36,19 @@ export async function PUT(request: NextRequest) {
     const dimensionChanged = body.dimension && body.dimension !== oldConfig.dimension;
     const needTableReinit = modelChanged || dimensionChanged;
 
+    // Auto-detect context length when model changes
+    if (modelChanged && body.model) {
+      try {
+        const { detectModelContextLength } = await import('@/lib/embeddings/ollama-client');
+        const ollamaUrl = body.ollamaUrl || oldConfig.ollamaUrl;
+        const detectedLength = await detectModelContextLength(ollamaUrl, body.model);
+        body.modelContextLength = detectedLength;
+        console.log(`[embeddings/config] Auto-detected context length for "${body.model}": ${detectedLength} tokens`);
+      } catch (err) {
+        console.warn('[embeddings/config] Failed to auto-detect context length:', err);
+      }
+    }
+
     const { saveConfig, invalidateConfigCache } = await import('@/lib/embeddings/config-persistence');
     invalidateConfigCache();
 
@@ -70,6 +83,7 @@ export async function PUT(request: NextRequest) {
         dimensionMismatch,
         oldDimension,
         newDimension: newConfig.dimension,
+        contextAutoDetected: !!modelChanged,
         note: dimensionMismatch
           ? `La tabla de embeddings fue recreada automáticamente (${oldDimension}D → ${newConfig.dimension}D). Los embeddings anteriores fueron eliminados.`
           : undefined,

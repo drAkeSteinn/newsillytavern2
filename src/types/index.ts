@@ -972,6 +972,7 @@ export interface CharacterGroup {
   questTemplateIds?: string[];       // Quest templates to use for this group
   embeddingNamespaces?: string[];   // Embedding namespaces to search during chat (overrides strategy)
   narratorSettings?: NarratorSettings;  // Narrator behavior configuration
+  quickReplies?: GroupQuickReply[];     // Group-specific quick replies (replaces individual character quick replies in group mode)
   firstMes?: string;            // First message for group chat
   alternateGreetings?: string[]; // Alternative first messages
   createdAt: string;
@@ -2141,6 +2142,28 @@ export interface CharacterQuickReply {
   modifiers?: QuickReplyAttributeModifier[];
   /** Optional sprite activation - triggers a sprite animation when this quick reply is used */
   spriteActivation?: QuickReplySpriteActivation;
+  /** Optional conditions that must be met for this quick reply to appear */
+  requirements?: StatRequirement[];
+  /** Logic operator for requirements: AND = all must be met, OR = at least one must be met */
+  requirementOperator?: 'AND' | 'OR';
+}
+
+/** Group-specific quick reply with conditions based on member character attributes */
+export interface GroupQuickReply {
+  /** Unique ID for this quick reply */
+  id: string;
+  /** Label shown on the button in the chatbox */
+  label: string;
+  /** Actual text sent as the user message */
+  response: string;
+  /** Optional attribute modifiers - can target any member character's attributes */
+  modifiers?: QuickReplyAttributeModifier[];
+  /** Optional sprite activation */
+  spriteActivation?: QuickReplySpriteActivation;
+  /** Optional conditions based on member character attributes */
+  requirements?: StatRequirement[];
+  /** Logic operator for requirements */
+  requirementOperator?: 'AND' | 'OR';
 }
 
 export interface HandySettings {
@@ -2232,6 +2255,16 @@ export interface EmbeddingsChatSettings {
   memoryReinforcementThreshold?: number;
   /** Enable memory extraction from user messages as well as assistant messages */
   memoryExtractionFromUserEnabled?: boolean;
+  /** Enable using a separate (faster/cheaper) LLM for memory extraction and consolidation */
+  extractionModelEnabled?: boolean;
+  /** Provider for the separate extraction model (e.g., 'ollama', 'openai', 'grok') */
+  extractionModelProvider?: string;
+  /** Endpoint URL for the separate extraction model */
+  extractionModelEndpoint?: string;
+  /** API key for the separate extraction model provider */
+  extractionModelApiKey?: string;
+  /** Model name for the separate extraction model (e.g., 'llama3.1:8b') */
+  extractionModelName?: string;
 }
 
 // ============ Tools / Actions Settings ============

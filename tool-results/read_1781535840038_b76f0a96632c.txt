@@ -1,0 +1,1038 @@
+     1→/**
+     2→ * LanceDB Vector Database Wrapper
+     3→ * 
+     4→ * Handles vector storage, similarity search, and namespace management.
+     5→ * Uses dynamic module loading for cross-platform compatibility.
+     6→ */
+     7→
+     8→import * as path from 'path';
+     9→import * as fs from 'fs';
+    10→import type { Embedding, SearchResult, RecordNamespace, EmbeddingStats } from './types';
+    11→
+    12→// ============ Platform Detection ============
+    13→
+    14→export type Platform = 'win32' | 'linux' | 'darwin' | 'unknown';
+    15→
+    16→export function getPlatform(): Platform {
+    17→  if (typeof process !== 'undefined' && process.platform) {
+    18→    return process.platform as Platform;
+    19→  }
+    20→  return 'unknown';
+    21→}
+    22→
+    23→export function isWindows(): boolean { return getPlatform() === 'win32'; }
+    24→export function isLinux(): boolean { return getPlatform() === 'linux'; }
+    25→export function isMacOS(): boolean { return getPlatform() === 'darwin'; }
+    26→
+    27→// ============ Path Utilities ============
+    28→
+    29→const EMBEDDINGS_TABLE = 'embeddings';
+    30→const NAMESPACES_TABLE = 'namespaces';
+    31→
+    32→export function getDefaultLanceDBPath(): string {
+    33→  const cwd = process.cwd();
+    34→  if (isWindows()) {
+    35→    return path.resolve(cwd, 'data', 'lancedb');
+    36→  }
+    37→  return path.join(cwd, 'data', 'lancedb');
+    38→}
+    39→
+    40→export function normalizePath(uri: string): string {
+    41→  if (uri.startsWith('mem://') || uri.startsWith('lancedb://')) return uri;
+    42→  let normalized = path.normalize(uri);
+    43→  if (isWindows()) normalized = normalized.replace(/\//g, '\\');
+    44→  return normalized;
+    45→}
+    46→
+    47→export function checkDirectoryPermissions(dirPath: string): {
+    48→  exists: boolean; writable: boolean; error?: string;
+    49→} {
+    50→  try {
+    51→    const normalizedPath = normalizePath(dirPath);
+    52→    const parentDir = path.dirname(normalizedPath);
+    53→
+    54→    if (!fs.existsSync(parentDir)) {
+    55→      return { exists: false, writable: false, error: 'Parent directory does not exist' };
+    56→    }
+    57→
+    58→    if (fs.existsSync(normalizedPath)) {
+    59→      try {
+    60→        fs.accessSync(normalizedPath, fs.constants.W_OK);
+    61→        return { exists: true, writable: true };
+    62→      } catch {
+    63→        return { exists: true, writable: false, error: 'No write permission' };
+    64→      }
+    65→    }
+    66→
+    67→    try {
+    68→      fs.accessSync(parentDir, fs.constants.W_OK);
+    69→      return { exists: false, writable: true };
+    70→    } catch {
+    71→      return { exists: false, writable: false, error: 'No write permission on parent directory' };
+    72→    }
+    73→  } catch (error: any) {
+    74→    return { exists: false, writable: false, error: error.message };
+    75→  }
+    76→}
+    77→
+    78→export function ensureLanceDBDirectory(uri: string): { success: boolean; path: string; error?: string } {
+    79→  try {
+    80→    if (uri.startsWith('mem://') || uri.startsWith('lancedb://')) {
+    81→      return { success: true, path: uri };
+    82→    }
+    83→    const normalizedPath = normalizePath(uri);
+    84→    if (!fs.existsSync(normalizedPath)) {
+    85→      fs.mkdirSync(normalizedPath, { recursive: true });
+    86→    }
+    87→    return { success: true, path: normalizedPath };
+    88→  } catch (error: any) {
+    89→    return { success: false, path: uri, error: error.message };
+    90→  }
+    91→}
+    92→
+    93→// ============ Global State ============
+    94→
+    95→let lancedbModule: any = null;
+    96→let lancedbLoadError: string | null = null;
+    97→let isModuleLoadAttempted = false;
+    98→
+    99→let db: any = null;
+   100→let embeddingsTable: any = null;
+   101→let namespacesTable: any = null;
+   102→let isInitialized = false;
+   103→let currentUri: string | null = null;
+   104→
+   105→/**
+   106→ * When true, LanceDB is permanently unavailable on this system
+   107→ * (e.g., native binary not found for the platform).
+   108→ * All operations will return safe defaults instead of throwing.
+   109→ */
+   110→let isPermanentlyUnavailable = false;
+   111→
+   112→/**
+   113→ * Check if LanceDB is permanently unavailable (native module can't load).
+   114→ * Once this is true, all DB operations will return safe defaults.
+   115→ */
+   116→export function isLanceDBPermanentlyUnavailable(): boolean {
+   117→  return isPermanentlyUnavailable;
+   118→}
+   119→
+   120→/**
+   121→ * Get the error that caused LanceDB to be permanently unavailable.
+   122→ */
+   123→export function getLanceDBUnavailableError(): string | null {
+   124→  return lancedbLoadError;
+   125→}
+   126→
+   127→// ============ Error Types ============
+   128→
+   129→export class LanceDBError extends Error {
+   130→  constructor(
+   131→    message: string,
+   132→    public code: string,
+   133→    public platform?: Platform,
+   134→    public details?: any
+   135→  ) {
+   136→    super(message);
+   137→    this.name = 'LanceDBError';
+   138→  }
+   139→
+   140→  getSuggestion(): string {
+   141→    switch (this.code) {
+   142→      case 'PERMISSION_DENIED':
+   143→        return isWindows()
+   144→          ? 'Run as administrator or change the database path.'
+   145→          : 'Check directory permissions with chmod.';
+   146→      case 'NATIVE_MODULE_ERROR':
+   147→        return isWindows()
+   148→          ? 'Install Visual C++ Redistributable. Reinstall @lancedb/lancedb.'
+   149→          : 'Check native dependencies (glibc, etc.).';
+   150→      case 'MODULE_NOT_AVAILABLE':
+   151→        return 'LanceDB is not available on this system. Check platform compatibility.';
+   152→      case 'TABLE_NOT_FOUND':
+   153→        return 'Table does not exist. It will be created on first operation.';
+   154→      default:
+   155→        return 'Check the documentation or logs for more details.';
+   156→    }
+   157→  }
+   158→}
+   159→
+   160→// ============ Dynamic Module Loading ============
+   161→
+   162→async function loadLanceDBModule(): Promise<{ success: boolean; error?: string }> {
+   163→  if (isModuleLoadAttempted) {
+   164→    return { success: lancedbModule !== null, error: lancedbLoadError || undefined };
+   165→  }
+   166→  isModuleLoadAttempted = true;
+   167→
+   168→  try {
+   169→    lancedbModule = await import('@lancedb/lancedb');
+   170→    return { success: true };
+   171→  } catch (error: any) {
+   172→    const errorMsg = error.message || String(error);
+   173→    lancedbLoadError = errorMsg;
+   174→    return { success: false, error: errorMsg };
+   175→  }
+   176→}
+   177→
+   178→export async function isLanceDBAvailable(): Promise<{ available: boolean; error?: string }> {
+   179→  const result = await loadLanceDBModule();
+   180→  return { available: result.success, error: result.error };
+   181→}
+   182→
+   183→// ============ Helpers ============
+   184→
+   185→function parseMetadata(metadata: any): Record<string, any> {
+   186→  if (!metadata) return {};
+   187→  if (typeof metadata === 'string') {
+   188→    try { return JSON.parse(metadata); } catch { return {}; }
+   189→  }
+   190→  return metadata;
+   191→}
+   192→
+   193→/**
+   194→ * Escape a value for safe use in LanceDB filter expressions.
+   195→ * Prevents injection by escaping single quotes which are used as string delimiters.
+   196→ */
+   197→function escapeFilterValue(value: string): string {
+   198→  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+   199→}
+   200→
+   201→function normalizeVector(vector: number[]): number[] {
+   202→  const magnitude = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
+   203→  if (magnitude === 0) return vector;
+   204→  return vector.map(val => val / magnitude);
+   205→}
+   206→
+   207→/**
+   208→ * Convert LanceDB's L2-squared distance to cosine similarity.
+   209→ * LanceDB vectorSearch returns _distance = L2² (squared Euclidean distance).
+   210→ * For unit-normalized vectors: L2² = 2 - 2·cos(θ), so cos(θ) = 1 - L2²/2.
+   211→ */
+   212→function l2SquaredToCosineSimilarity(l2SquaredDistance: number): number {
+   213→  return 1 - l2SquaredDistance / 2;
+   214→}
+   215→
+   216→async function tableToArray(table: any): Promise<any[]> {
+   217→  return await table.query().toArray();
+   218→}
+   219→
+   220→async function tableFilter(table: any, filter: string): Promise<any[]> {
+   221→  return await table.query().where(filter).toArray();
+   222→}
+   223→
+   224→// ============ Initialization ============
+   225→
+   226→// Track the dimension that the embeddings table was created with
+   227→let tableDimension: number | null = null;
+   228→
+   229→async function initializeTables(): Promise<void> {
+   230→  if (!db) throw new Error('Database not initialized');
+   231→
+   232→  // Get vector dimension from config
+   233→  let vectorDimension = 1024;
+   234→  let embeddingModel = 'bge-m3:567m';
+   235→  try {
+   236→    const { getConfig } = await import('./config-persistence');
+   237→    const config = getConfig();
+   238→    vectorDimension = config.dimension || 1024;
+   239→    embeddingModel = config.model || 'bge-m3:567m';
+   240→  } catch {
+   241→    // Use defaults
+   242→  }
+   243→
+   244→  const defaultEmbedding = {
+   245→    id: 'placeholder',
+   246→    content: 'placeholder',
+   247→    vector: new Array(vectorDimension).fill(0),
+   248→    metadata: '{}',
+   249→    namespace: 'default',
+   250→    source_type: 'system',
+   251→    source_id: 'init',
+   252→    model_name: embeddingModel,
+   253→    created_at: new Date().toISOString(),
+   254→    updated_at: new Date().toISOString(),
+   255→  };
+   256→
+   257→  const defaultNamespace = {
+   258→    id: 'placeholder',
+   259→    namespace: 'default',
+   260→    description: 'Default namespace',
+   261→    metadata: '{}',
+   262→    created_at: new Date().toISOString(),
+   263→    updated_at: new Date().toISOString(),
+   264→  };
+   265→
+   266→  // Try to open existing embeddings table
+   267→  try {
+   268→    embeddingsTable = await db.openTable(EMBEDDINGS_TABLE);
+   269→
+   270→    // Check if dimension matches by reading the first row's vector
+   271→    // If the table was created with a different dimension, we must recreate it
+   272→    const existingRows = await embeddingsTable.query().limit(1).toArray();
+   273→    if (existingRows.length > 0 && existingRows[0].vector) {
+   274→      const existingDim = existingRows[0].vector.length;
+   275→      tableDimension = existingDim;
+   276→
+   277→      if (existingDim !== vectorDimension) {
+   278→        console.warn(
+   279→          `[LanceDB] Dimension mismatch detected! Table has ${existingDim}D vectors, but config requires ${vectorDimension}D. ` +
+   280→          `Dropping and recreating embeddings table. All existing embeddings will be lost.`
+   281→        );
+   282→
+   283→        // Drop the old table
+   284→        try { await db.dropTable(EMBEDDINGS_TABLE); } catch { /* ignore */ }
+   285→
+   286→        // Also drop any namespace-specific tables that might have wrong dimensions
+   287→        try {
+   288→          const tables = await db.tableNames();
+   289→          for (const tableName of tables) {
+   290→            if (tableName !== EMBEDDINGS_TABLE && tableName !== NAMESPACES_TABLE) {
+   291→              try { await db.dropTable(tableName); } catch { /* ignore */ }
+   292→            }
+   293→          }
+   294→        } catch { /* ignore */ }
+   295→
+   296→        // Recreate with new dimension
+   297→        await db.createTable(EMBEDDINGS_TABLE, [defaultEmbedding]);
+   298→        embeddingsTable = await db.openTable(EMBEDDINGS_TABLE);
+   299→        await embeddingsTable.delete("id = 'placeholder'");
+   300→        tableDimension = vectorDimension;
+   301→      }
+   302→    } else if (existingRows.length === 0) {
+   303→      // Table exists but is empty — recreate with new dimension to be safe
+   304→      try { await db.dropTable(EMBEDDINGS_TABLE); } catch { /* ignore */ }
+   305→      await db.createTable(EMBEDDINGS_TABLE, [defaultEmbedding]);
+   306→      embeddingsTable = await db.openTable(EMBEDDINGS_TABLE);
+   307→      await embeddingsTable.delete("id = 'placeholder'");
+   308→      tableDimension = vectorDimension;
+   309→    }
+   310→  } catch {
+   311→    // Table doesn't exist yet, create it
+   312→    await db.createTable(EMBEDDINGS_TABLE, [defaultEmbedding]);
+   313→    embeddingsTable = await db.openTable(EMBEDDINGS_TABLE);
+   314→    await embeddingsTable.delete("id = 'placeholder'");
+   315→    tableDimension = vectorDimension;
+   316→  }
+   317→
+   318→  // Namespaces table (no vectors, no dimension concern)
+   319→  try {
+   320→    namespacesTable = await db.openTable(NAMESPACES_TABLE);
+   321→  } catch {
+   322→    await db.createTable(NAMESPACES_TABLE, [defaultNamespace]);
+   323→    namespacesTable = await db.openTable(NAMESPACES_TABLE);
+   324→    await namespacesTable.delete("id = 'placeholder'");
+   325→  }
+   326→}
+   327→
+   328→export function getTableDimension(): number | null {
+   329→  return tableDimension;
+   330→}
+   331→
+   332→export async function initLanceDB(uri?: string, forceReinit: boolean = false): Promise<void> {
+   333→  const dbUri = uri || process.env.LANCEDB_URI || getDefaultLanceDBPath();
+   334→
+   335→  if (isInitialized && db && currentUri === dbUri && !forceReinit) return;
+   336→
+   337→  // If permanently unavailable, skip silently (don't throw)
+   338→  if (isPermanentlyUnavailable) {
+   339→    return;
+   340→  }
+   341→
+   342→  if (db) await closeLanceDB();
+   343→
+   344→  const { success, error } = await loadLanceDBModule();
+   345→  if (!success) {
+   346→    isPermanentlyUnavailable = true;
+   347→    lancedbLoadError = error || 'Unknown error';
+   348→    console.warn(
+   349→      `[LanceDB] ⚠️ LanceDB native module not available for platform "${getPlatform()}". ` +
+   350→      `Embeddings/vector search features will be disabled. Error: ${error}`
+   351→    );
+   352→    return;
+   353→  }
+   354→
+   355→  isInitialized = true;
+   356→  currentUri = dbUri;
+   357→
+   358→  try {
+   359→    const dirResult = ensureLanceDBDirectory(dbUri);
+   360→    if (!dirResult.success) {
+   361→      throw new LanceDBError(
+   362→        `Cannot create/verify directory: ${dirResult.error}`,
+   363→        'DIRECTORY_ERROR',
+   364→        getPlatform(),
+   365→        { uri: dbUri }
+   366→      );
+   367→    }
+   368→
+   369→    db = await lancedbModule.connect(dirResult.path);
+   370→    await initializeTables();
+   371→  } catch (error: any) {
+   372→    if (error instanceof LanceDBError) throw error;
+   373→
+   374→    isInitialized = false;
+   375→    db = null;
+   376→    currentUri = null;
+   377→
+   378→    const msg = error.message || String(error);
+   379→    const lowerMsg = msg.toLowerCase();
+   380→
+   381→    let code = 'UNKNOWN_ERROR';
+   382→    if (lowerMsg.includes('permission') || lowerMsg.includes('access denied')) code = 'PERMISSION_DENIED';
+   383→    else if (lowerMsg.includes('native') || lowerMsg.includes('binding')) code = 'NATIVE_MODULE_ERROR';
+   384→
+   385→    throw new LanceDBError(msg, code, getPlatform(), { uri: dbUri, originalError: error });
+   386→  }
+   387→}
+   388→
+   389→// ============ Table Getters ============
+   390→
+   391→async function getEmbeddingsTable(): Promise<any> {
+   392→  if (isPermanentlyUnavailable) {
+   393→    return null;
+   394→  }
+   395→  if (!db || !isInitialized) await initLanceDB();
+   396→  // After init, check again (init may have set permanently unavailable)
+   397→  if (isPermanentlyUnavailable || !embeddingsTable) {
+   398→    return null;
+   399→  }
+   400→  return embeddingsTable;
+   401→}
+   402→
+   403→async function getNamespacesTable(): Promise<any> {
+   404→  if (isPermanentlyUnavailable) {
+   405→    return null;
+   406→  }
+   407→  if (!db || !isInitialized) await initLanceDB();
+   408→  // After init, check again (init may have set permanently unavailable)
+   409→  if (isPermanentlyUnavailable || !namespacesTable) {
+   410→    return null;
+   411→  }
+   412→  return namespacesTable;
+   413→}
+   414→
+   415→export function closeLanceDB(): Promise<void> {
+   416→  if (db) {
+   417→    try { db.close(); } catch { /* ignore */ }
+   418→  }
+   419→  db = null;
+   420→  embeddingsTable = null;
+   421→  namespacesTable = null;
+   422→  isInitialized = false;
+   423→  currentUri = null;
+   424→  tableDimension = null;
+   425→  return Promise.resolve();
+   426→}
+   427→
+   428→// ============ LanceDBWrapper (static methods) ============
+   429→
+   430→export class LanceDBWrapper {
+   431→  static async checkConnection(): Promise<boolean> {
+   432→    if (isPermanentlyUnavailable) return false;
+   433→    try {
+   434→      if (!db) await initLanceDB();
+   435→      return db !== null && !isPermanentlyUnavailable;
+   436→    } catch {
+   437→      return false;
+   438→    }
+   439→  }
+   440→
+   441→  static getSystemInfo() {
+   442→    return {
+   443→      platform: getPlatform(),
+   444→      isWindows: isWindows(),
+   445→      isLinux: isLinux(),
+   446→      isMacOS: isMacOS(),
+   447→      currentUri,
+   448→      isInitialized: isInitialized && db !== null,
+   449→      isUnavailable: isPermanentlyUnavailable,
+   450→      unavailableError: lancedbLoadError,
+   451→    };
+   452→  }
+   453→
+   454→  static async close(): Promise<void> {
+   455→    return closeLanceDB();
+   456→  }
+   457→
+   458→  static async insertEmbedding(params: {
+   459→    content: string;
+   460→    vector: number[];
+   461→    metadata?: Record<string, any>;
+   462→    namespace?: string;
+   463→    source_type?: string;
+   464→    source_id?: string;
+   465→    model_name?: string;
+   466→  }): Promise<string> {
+   467→    if (isPermanentlyUnavailable) {
+   468→      console.warn('[LanceDB] insertEmbedding skipped: LanceDB is not available on this system.');
+   469→      return '__unavailable__';
+   470→    }
+   471→    const { v4: uuidv4 } = await import('uuid');
+   472→    const {
+   473→      content, vector, metadata = {},
+   474→      namespace = 'default', source_type, source_id,
+   475→    } = params;
+   476→
+   477→    let model_name = params.model_name;
+   478→    if (!model_name) {
+   479→      try {
+   480→        const { getConfig } = await import('./config-persistence');
+   481→        model_name = getConfig().model;
+   482→      } catch { model_name = 'unknown'; }
+   483→    }
+   484→
+   485→    const table = await getEmbeddingsTable();
+   486→    if (!table) {
+   487→      console.warn('[LanceDB] insertEmbedding skipped: table not available.');
+   488→      return '__unavailable__';
+   489→    }
+   490→    const normalizedVector = normalizeVector(vector);
+   491→
+   492→    const embedding = {
+   493→      id: uuidv4(),
+   494→      content,
+   495→      vector: normalizedVector,
+   496→      metadata: JSON.stringify({ ...metadata, created_at: new Date().toISOString(), source_type, source_id }),
+   497→      namespace,
+   498→      source_type,
+   499→      source_id,
+   500→      model_name,
+   501→      created_at: new Date().toISOString(),
+   502→      updated_at: new Date().toISOString(),
+   503→    };
+   504→
+   505→    await table.add([embedding]);
+   506→    return embedding.id;
+   507→  }
+   508→
+   509→  static async searchSimilar(params: {
+   510→    queryVector: number[];
+   511→    namespace?: string;
+   512→    limit?: number;
+   513→    threshold?: number;
+   514→  }): Promise<SearchResult[]> {
+   515→    if (isPermanentlyUnavailable) return [];
+   516→    const {
+   517→      queryVector,
+   518→      namespace,
+   519→      limit = 10,
+   520→      threshold = 0.3,
+   521→    } = params;
+   522→
+   523→    const table = await getEmbeddingsTable();
+   524→    if (!table) return [];
+   525→    const normalizedQueryVector = normalizeVector(queryVector);
+   526→
+   527→    let results: any[];
+   528→
+   529→    // All embeddings are stored in the main table with a 'namespace' column.
+   530→    // Always search the main table and filter by namespace in-memory.
+   531→    const allResults = await table
+   532→      .vectorSearch(normalizedQueryVector)
+   533→      .limit(limit * 10)
+   534→      .toArray();
+   535→
+   536→    results = allResults
+   537→      .map((row: any) => ({
+   538→        ...row,
+   539→        similarity: l2SquaredToCosineSimilarity(row._distance || 0),
+   540→      }))
+   541→      .filter((r: any) => {
+   542→        if (!namespace || namespace === 'all') return r.similarity >= threshold;
+   543→        return (r.namespace || 'default') === namespace && r.similarity >= threshold;
+   544→      })
+   545→      .slice(0, limit);
+   546→
+   547→    return results.map((row: any) => ({
+   548→      id: row.id,
+   549→      content: row.content,
+   550→      metadata: parseMetadata(row.metadata),
+   551→      namespace: row.namespace || 'default',
+   552→      source_type: row.source_type,
+   553→      source_id: row.source_id,
+   554→      similarity: row.similarity,
+   555→    }));
+   556→  }
+   557→
+   558→  static async getEmbeddingById(id: string): Promise<Embedding | null> {
+   559→    if (isPermanentlyUnavailable) return null;
+   560→    const table = await getEmbeddingsTable();
+   561→    if (!table) return null;
+   562→    const results = await tableFilter(table, `id = '${escapeFilterValue(id)}'`);
+   563→    if (results.length === 0) return null;
+   564→
+   565→    const row = results[0];
+   566→    return {
+   567→      id: row.id,
+   568→      content: row.content,
+   569→      metadata: parseMetadata(row.metadata),
+   570→      namespace: row.namespace || 'default',
+   571→      source_type: row.source_type,
+   572→      source_id: row.source_id,
+   573→      model_name: row.model_name,
+   574→      created_at: new Date(row.created_at),
+   575→      updated_at: new Date(row.updated_at),
+   576→    };
+   577→  }
+   578→
+   579→  static async deleteEmbedding(id: string): Promise<boolean> {
+   580→    if (isPermanentlyUnavailable) return false;
+   581→    const table = await getEmbeddingsTable();
+   582→    if (!table) return false;
+   583→    await table.delete(`id = '${escapeFilterValue(id)}'`);
+   584→    return true;
+   585→  }
+   586→
+   587→  static async deleteBySource(source_type: string, source_id: string): Promise<number> {
+   588→    if (isPermanentlyUnavailable) return 0;
+   589→    const table = await getEmbeddingsTable();
+   590→    if (!table) return 0;
+   591→    // Count matching records before deletion
+   592→    const matching = await tableFilter(table, `source_type = '${escapeFilterValue(source_type)}' AND source_id = '${escapeFilterValue(source_id)}'`);
+   593→    const count = matching.length;
+   594→    if (count > 0) {
+   595→      await table.delete(`source_type = '${escapeFilterValue(source_type)}' AND source_id = '${escapeFilterValue(source_id)}'`);
+   596→    }
+   597→    return count;
+   598→  }
+   599→
+   600→  static async upsertNamespace(params: {
+   601→    namespace: string;
+   602→    description?: string;
+   603→    metadata?: Record<string, any>;
+   604→  }): Promise<RecordNamespace> {
+   605→    if (isPermanentlyUnavailable) {
+   606→      // Return a stub namespace so callers don't crash
+   607→      return {
+   608→        id: '__unavailable__',
+   609→        namespace: params.namespace,
+   610→        description: params.description,
+   611→        metadata: params.metadata || {},
+   612→        created_at: new Date(),
+   613→        updated_at: new Date(),
+   614→      };
+   615→    }
+   616→    const { v4: uuidv4 } = await import('uuid');
+   617→    const { namespace, description, metadata = {} } = params;
+   618→    const table = await getNamespacesTable();
+   619→    if (!table) {
+   620→      return {
+   621→        id: '__unavailable__',
+   622→        namespace: params.namespace,
+   623→        description: params.description,
+   624→        metadata: params.metadata || {},
+   625→        created_at: new Date(),
+   626→        updated_at: new Date(),
+   627→      };
+   628→    }
+   629→    const existing = await tableFilter(table, `namespace = '${escapeFilterValue(namespace)}'`);
+   630→
+   631→    const nsRecord = {
+   632→      id: existing.length > 0 ? existing[0].id : uuidv4(),
+   633→      namespace,
+   634→      description,
+   635→      metadata: JSON.stringify(metadata),
+   636→      created_at: existing.length > 0 ? existing[0].created_at : new Date().toISOString(),
+   637→      updated_at: new Date().toISOString(),
+   638→    };
+   639→
+   640→    // Always delete all matching rows before inserting to prevent duplicates
+   641→    // caused by race conditions (concurrent upsertNamespace calls).
+   642→    if (existing.length > 0) {
+   643→      await table.delete(`namespace = '${escapeFilterValue(namespace)}'`);
+   644→    }
+   645→    await table.add([nsRecord]);
+   646→
+   647→    // Safety net: if a race created extra duplicates, clean them up.
+   648→    // Keep only the row we just inserted (by id).
+   649→    const afterInsert = await tableFilter(table, `namespace = '${escapeFilterValue(namespace)}'`);
+   650→    if (afterInsert.length > 1) {
+   651→      const idsToDelete = afterInsert
+   652→        .filter((row: any) => row.id !== nsRecord.id)
+   653→        .map((row: any) => row.id);
+   654→      if (idsToDelete.length > 0) {
+   655→        const deleteFilter = idsToDelete
+   656→          .map((id: string) => `id = '${escapeFilterValue(id)}'`)
+   657→          .join(' OR ');
+   658→        await table.delete(deleteFilter);
+   659→        console.log(`[LanceDB] Cleaned up ${idsToDelete.length} duplicate namespace row(s) for "${namespace}"`);
+   660→      }
+   661→    }
+   662→
+   663→    return {
+   664→      id: nsRecord.id,
+   665→      namespace: nsRecord.namespace,
+   666→      description: nsRecord.description,
+   667→      metadata: JSON.parse(nsRecord.metadata),
+   668→      created_at: new Date(nsRecord.created_at),
+   669→      updated_at: new Date(nsRecord.updated_at),
+   670→    };
+   671→  }
+   672→
+   673→  static async getAllNamespaces(): Promise<RecordNamespace[]> {
+   674→    if (isPermanentlyUnavailable) return [];
+   675→    const table = await getNamespacesTable();
+   676→    if (!table) return [];
+   677→    const results = await tableToArray(table);
+   678→    const mapped = results.map((row: any) => ({
+   679→      id: row.id,
+   680→      namespace: row.namespace,
+   681→      description: row.description,
+   682→      metadata: typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata,
+   683→      created_at: new Date(row.created_at),
+   684→      updated_at: new Date(row.updated_at),
+   685→    }));
+   686→
+   687→    // Deduplicate by namespace name — keep the most recently updated entry.
+   688→    // This guards against duplicate rows that can appear due to a race condition
+   689→    // in upsertNamespace (non-atomic delete-then-insert).
+   690→    const deduped = new Map<string, RecordNamespace>();
+   691→    for (const ns of mapped) {
+   692→      const existing = deduped.get(ns.namespace);
+   693→      if (!existing || ns.updated_at > existing.updated_at) {
+   694→        deduped.set(ns.namespace, ns);
+   695→      }
+   696→    }
+   697→    return Array.from(deduped.values());
+   698→  }
+   699→
+   700→  static async deleteNamespace(namespace: string): Promise<boolean> {
+   701→    if (isPermanentlyUnavailable) return true;
+   702→    try {
+   703→      const deletedEmbeddings = await LanceDBWrapper.deleteAllByNamespace(namespace);
+   704→      console.log(`[LanceDB] Deleted ${deletedEmbeddings} embeddings from namespace "${namespace}"`);
+   705→    } catch (err) {
+   706→      console.warn(`[LanceDB] Failed to delete embeddings for namespace "${namespace}":`, err);
+   707→    }
+   708→    
+   709→    try {
+   710→      const table = await getNamespacesTable();
+   711→      if (table) {
+   712→        await table.delete(`namespace = '${escapeFilterValue(namespace)}'`);
+   713→        console.log(`[LanceDB] Deleted namespace record: "${namespace}"`);
+   714→      }
+   715→    } catch (err) {
+   716→      console.warn(`[LanceDB] Failed to delete namespace record "${namespace}":`, err);
+   717→    }
+   718→    
+   719→    try { if (db) await db.dropTable(namespace); } catch { /* table may not exist */ }
+   720→    return true;
+   721→  }
+   722→
+   723→  static async addEmbeddingToNamespace(namespace: string, embeddingId: string): Promise<void> {
+   724→    if (isPermanentlyUnavailable) return;
+   725→    const table = await getEmbeddingsTable();
+   726→    if (!table) return;
+   727→    const results = await tableFilter(table, `id = '${escapeFilterValue(embeddingId)}'`);
+   728→    if (results.length === 0) throw new Error(`Embedding ${embeddingId} not found`);
+   729→
+   730→    const embedding = results[0];
+   731→    await table.delete(`id = '${escapeFilterValue(embeddingId)}'`);
+   732→    await table.add([{ ...embedding, namespace, updated_at: new Date().toISOString() }]);
+   733→  }
+   734→
+   735→  static async getNamespaceEmbeddings(namespace: string, limit: number = 100): Promise<Embedding[]> {
+   736→    if (isPermanentlyUnavailable) return [];
+   737→    const table = await getEmbeddingsTable();
+   738→    if (!table) return [];
+   739→    const results = await tableFilter(table, `namespace = '${escapeFilterValue(namespace)}'`);
+   740→    return results.slice(0, limit).map((row: any) => ({
+   741→      id: row.id,
+   742→      content: row.content,
+   743→      metadata: parseMetadata(row.metadata),
+   744→      namespace: row.namespace || 'default',
+   745→      source_type: row.source_type,
+   746→      source_id: row.source_id,
+   747→      model_name: row.model_name,
+   748→      created_at: new Date(row.created_at),
+   749→      updated_at: new Date(row.updated_at),
+   750→    }));
+   751→  }
+   752→
+   753→  /**
+   754→   * Lightweight version of getNamespaceEmbeddings that does NOT load vector data.
+   755→   * Much more memory-efficient when only metadata/content is needed.
+   756→   * Returns a subset of the Embedding type without the vector field.
+   757→   */
+   758→  static async getNamespaceEmbeddingsMetadata(
+   759→    namespace: string,
+   760→    options?: {
+   761→      limit?: number;
+   762→      sourceType?: string;
+   763→    }
+   764→  ): Promise<Array<Omit<Embedding, 'vector'> & { vector?: never }>> {
+   765→    if (isPermanentlyUnavailable) return [];
+   766→    const table = await getEmbeddingsTable();
+   767→    if (!table) return [];
+   768→    const limit = options?.limit ?? 1000;
+   769→    const sourceType = options?.sourceType;
+   770→
+   771→    // Build the filter expression
+   772→    let filter = `namespace = '${escapeFilterValue(namespace)}'`;
+   773→    if (sourceType) {
+   774→      filter += ` AND source_type = '${escapeFilterValue(sourceType)}'`;
+   775→    }
+   776→
+   777→    // Use select() to exclude the vector column for memory efficiency
+   778→    // Each vector can be 4-16KB, so skipping it saves 40-160MB for 10K embeddings
+   779→    try {
+   780→      const results = await table
+   781→        .query()
+   782→        .where(filter)
+   783→        .select(['id', 'content', 'metadata', 'namespace', 'source_type', 'source_id', 'model_name', 'created_at', 'updated_at'])
+   784→        .limit(limit)
+   785→        .toArray();
+   786→
+   787→      return results.map((row: any) => ({
+   788→        id: row.id,
+   789→        content: row.content,
+   790→        metadata: parseMetadata(row.metadata),
+   791→        namespace: row.namespace || 'default',
+   792→        source_type: row.source_type,
+   793→        source_id: row.source_id,
+   794→        model_name: row.model_name,
+   795→        created_at: new Date(row.created_at),
+   796→        updated_at: new Date(row.updated_at),
+   797→      }));
+   798→    } catch {
+   799→      // Fallback: if select() fails (older LanceDB), use the filter approach
+   800→      // and manually strip the vector field
+   801→      const results = await tableFilter(table, filter);
+   802→      return results.slice(0, limit).map((row: any) => ({
+   803→        id: row.id,
+   804→        content: row.content,
+   805→        metadata: parseMetadata(row.metadata),
+   806→        namespace: row.namespace || 'default',
+   807→        source_type: row.source_type,
+   808→        source_id: row.source_id,
+   809→        model_name: row.model_name,
+   810→        created_at: new Date(row.created_at),
+   811→        updated_at: new Date(row.updated_at),
+   812→      }));
+   813→    }
+   814→  }
+   815→
+   816→  /**
+   817→   * Count embeddings in a namespace filtered by source_type, without loading full data.
+   818→   */
+   819→  static async countByNamespaceAndSourceType(namespace: string, sourceType?: string): Promise<number> {
+   820→    if (isPermanentlyUnavailable) return 0;
+   821→    const table = await getEmbeddingsTable();
+   822→    if (!table) return 0;
+   823→    let filter = `namespace = '${escapeFilterValue(namespace)}'`;
+   824→    if (sourceType) {
+   825→      filter += ` AND source_type = '${escapeFilterValue(sourceType)}'`;
+   826→    }
+   827→    try {
+   828→      const results = await table.query().where(filter).select(['id']).toArray();
+   829→      return results.length;
+   830→    } catch {
+   831→      // Fallback
+   832→      const results = await tableFilter(table, filter);
+   833→      return results.length;
+   834→    }
+   835→  }
+   836→
+   837→  static async searchInNamespace(params: {
+   838→    namespace: string;
+   839→    queryVector: number[];
+   840→    limit?: number;
+   841→    threshold?: number;
+   842→  }): Promise<SearchResult[]> {
+   843→    if (isPermanentlyUnavailable) return [];
+   844→    const { namespace, queryVector, limit = 10, threshold = 0.3 } = params;
+   845→    const table = await getEmbeddingsTable();
+   846→    if (!table) return [];
+   847→    const normalizedQueryVector = normalizeVector(queryVector);
+   848→
+   849→    const results = await table
+   850→      .vectorSearch(normalizedQueryVector)
+   851→      .limit(limit * 5)
+   852→      .toArray();
+   853→
+   854→    return results
+   855→      .filter((row: any) => (row.namespace || 'default') === namespace)
+   856→      .map((row: any) => ({
+   857→        id: row.id,
+   858→        content: row.content,
+   859→        metadata: parseMetadata(row.metadata),
+   860→        namespace: row.namespace || 'default',
+   861→        source_type: row.source_type,
+   862→        source_id: row.source_id,
+   863→        similarity: l2SquaredToCosineSimilarity(row._distance || 0),
+   864→      }))
+   865→      .filter((r: any) => r.similarity >= threshold)
+   866→      .slice(0, limit);
+   867→  }
+   868→
+   869→  static async getAllEmbeddings(limit: number = 100): Promise<Embedding[]> {
+   870→    if (isPermanentlyUnavailable) return [];
+   871→    const table = await getEmbeddingsTable();
+   872→    if (!table) return [];
+   873→    const results = await tableToArray(table);
+   874→    return results.slice(0, limit).map((row: any) => ({
+   875→      id: row.id,
+   876→      content: row.content,
+   877→      metadata: parseMetadata(row.metadata),
+   878→      namespace: row.namespace || 'default',
+   879→      source_type: row.source_type,
+   880→      source_id: row.source_id,
+   881→      model_name: row.model_name,
+   882→      created_at: new Date(row.created_at),
+   883→      updated_at: new Date(row.updated_at),
+   884→    }));
+   885→  }
+   886→
+   887→  static async getStats(): Promise<EmbeddingStats> {
+   888→    if (isPermanentlyUnavailable) {
+   889→      return {
+   890→        totalEmbeddings: 0,
+   891→        totalNamespaces: 0,
+   892→        embeddingsByNamespace: {},
+   893→        embeddingsBySourceType: {},
+   894→      };
+   895→    }
+   896→    const table = await getEmbeddingsTable();
+   897→    if (!table) {
+   898→      return {
+   899→        totalEmbeddings: 0,
+   900→        totalNamespaces: 0,
+   901→        embeddingsByNamespace: {},
+   902→        embeddingsBySourceType: {},
+   903→      };
+   904→    }
+   905→    const namespaces = await this.getAllNamespaces();
+   906→
+   907→    const embeddingsByNamespace: Record<string, number> = {};
+   908→    const embeddingsBySourceType: Record<string, number> = {};
+   909→    let totalEmbeddings = 0;
+   910→
+   911→    // Count per-namespace to avoid loading all vectors into memory at once
+   912→    for (const ns of namespaces) {
+   913→      try {
+   914→        const count = await this.countByNamespace(ns.namespace);
+   915→        if (count > 0) {
+   916→          embeddingsByNamespace[ns.namespace] = count;
+   917→          totalEmbeddings += count;
+   918→        }
+   919→      } catch { /* skip */ }
+   920→    }
+   921→
+   922→    // Also count 'default' namespace if not listed
+   923→    if (!embeddingsByNamespace['default']) {
+   924→      try {
+   925→        const defaultCount = await this.countByNamespace('default');
+   926→        if (defaultCount > 0) {
+   927→          embeddingsByNamespace['default'] = defaultCount;
+   928→          totalEmbeddings += defaultCount;
+   929→        }
+   930→      } catch { /* skip */ }
+   931→    }
+   932→
+   933→    // For source_type breakdown, we need to scan but we can use lightweight queries
+   934→    // Only load id + source_type (not full vectors) via filter
+   935→    const sourceTypes = ['character', 'world', 'lorebook', 'session', 'memory', 'custom', 'system'];
+   936→    for (const st of sourceTypes) {
+   937→      try {
+   938→        const matching = await tableFilter(table, `source_type = '${st}'`);
+   939→        if (matching.length > 0) {
+   940→          embeddingsBySourceType[st] = matching.length;
+   941→        }
+   942→      } catch { /* skip */ }
+   943→    }
+   944→
+   945→    return {
+   946→      totalEmbeddings,
+   947→      totalNamespaces: namespaces.length,
+   948→      embeddingsByNamespace,
+   949→      embeddingsBySourceType,
+   950→    };
+   951→  }
+   952→
+   953→  static async resetAll(): Promise<{ deletedEmbeddings: number; deletedNamespaces: number }> {
+   954→    if (isPermanentlyUnavailable) return { deletedEmbeddings: 0, deletedNamespaces: 0 };
+   955→    // Count before dropping to report accurate numbers
+   956→    let deletedEmbeddings = 0;
+   957→    let deletedNamespaces = 0;
+   958→
+   959→    try {
+   960→      const allEmbeddings = await tableToArray(await getEmbeddingsTable());
+   961→      deletedEmbeddings = allEmbeddings.length;
+   962→    } catch { /* table may not exist */ }
+   963→
+   964→    try {
+   965→      const allNamespaces = await tableToArray(await getNamespacesTable());
+   966→      deletedNamespaces = allNamespaces.length;
+   967→    } catch { /* table may not exist */ }
+   968→
+   969→    // Drop and recreate the embeddings table (much faster than individual deletes)
+   970→    if (db) {
+   971→      try { await db.dropTable(EMBEDDINGS_TABLE); } catch { /* ignore */ }
+   972→      try { await db.dropTable(NAMESPACES_TABLE); } catch { /* ignore */ }
+   973→
+   974→      // Drop any extra tables
+   975→      try {
+   976→        const tables = await db.tableNames();
+   977→        for (const tableName of tables) {
+   978→          if (tableName !== EMBEDDINGS_TABLE && tableName !== NAMESPACES_TABLE) {
+   979→            try { await db.dropTable(tableName); } catch { /* ignore */ }
+   980→          }
+   981→        }
+   982→      } catch { /* ignore */ }
+   983→
+   984→      // Reinitialize with fresh tables
+   985→      await initializeTables();
+   986→    }
+   987→
+   988→    return { deletedEmbeddings, deletedNamespaces };
+   989→  }
+   990→
+   991→  /**
+   992→   * Delete multiple embeddings by their IDs in batch.
+   993→   */
+   994→  static async deleteByIds(ids: string[]): Promise<number> {
+   995→    if (isPermanentlyUnavailable) return 0;
+   996→    if (ids.length === 0) return 0;
+   997→    const table = await getEmbeddingsTable();
+   998→    if (!table) return 0;
+   999→    let deleted = 0;
+  1000→    for (const id of ids) {
+  1001→      try {
+  1002→        await table.delete(`id = '${escapeFilterValue(id)}'`);
+  1003→        deleted++;
+  1004→      } catch { /* skip */ }
+  1005→    }
+  1006→    return deleted;
+  1007→  }
+  1008→
+  1009→  /**
+  1010→   * Delete all embeddings in a specific namespace from the main embeddings table.
+  1011→   * NOTE: This does NOT delete the namespace record itself.
+  1012→   */
+  1013→  static async deleteAllByNamespace(namespace: string): Promise<number> {
+  1014→    if (isPermanentlyUnavailable) return 0;
+  1015→    const table = await getEmbeddingsTable();
+  1016→    if (!table) return 0;
+  1017→    const embeddings = await tableFilter(table, `namespace = '${escapeFilterValue(namespace)}'`);
+  1018→    for (const emb of embeddings) {
+  1019→      try { await table.delete(`id = '${escapeFilterValue(emb.id)}'`); } catch { /* skip */ }
+  1020→    }
+  1021→    return embeddings.length;
+  1022→  }
+  1023→
+  1024→  /**
+  1025→   * Count embeddings in a specific namespace without loading full content.
+  1026→   * Returns the count and optionally basic metadata of each embedding.
+  1027→   */
+  1028→  static async countByNamespace(namespace: string): Promise<number> {
+  1029→    if (isPermanentlyUnavailable) return 0;
+  1030→    const table = await getEmbeddingsTable();
+  1031→    if (!table) return 0;
+  1032→    const results = await tableFilter(table, `namespace = '${escapeFilterValue(namespace)}'`);
+  1033→    return results.length;
+  1034→  }
+  1035→}
+  1036→
+  1037→export default LanceDBWrapper;
+  1038→

@@ -54,11 +54,12 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useState, useRef, useMemo, useEffect } from 'react';
-import type { GroupMember, GroupActivationStrategy, NarratorResponseMode, NarratorSettings } from '@/types';
+import type { GroupMember, GroupActivationStrategy, NarratorResponseMode, NarratorSettings, GroupQuickReply } from '@/types';
 import { HUDSelector } from './hud-selector';
 import { LorebookSelector } from './lorebook-selector';
 import { QuestSelector } from './quest-selector';
 import { NamespaceSelector } from './namespace-selector';
+import { QuickRepliesPanel } from './quick-replies-panel';
 import { useToast } from '@/hooks/use-toast';
 
 // Strategy color helper
@@ -167,6 +168,7 @@ const groupEditorTabs = [
   { value: 'members', label: 'Miembros', icon: Users },
   { value: 'strategy', label: 'Estrategia', icon: Settings },
   { value: 'prompts', label: 'Prompts', icon: FileText },
+  { value: 'replies', label: 'Respuestas', icon: MessageSquare },
 ];
 
 export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
@@ -181,7 +183,9 @@ export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
     toggleGroupMemberActive,
     toggleGroupMemberPresent,
     toggleGroupMemberNarrator,
-    updateGroupMember
+    updateGroupMember,
+    getActivePersona,
+    spritePacksV2,
   } = useTavernStore();
 
   const { toast } = useToast();
@@ -221,7 +225,8 @@ export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
         embeddingNamespaces: existingGroup?.embeddingNamespaces || [],
         narratorSettings: existingGroup?.narratorSettings || DEFAULT_NARRATOR_SETTINGS,
         firstMes: existingGroup?.firstMes || '',
-        alternateGreetings: existingGroup?.alternateGreetings || []
+        alternateGreetings: existingGroup?.alternateGreetings || [],
+        quickReplies: existingGroup?.quickReplies || []
       };
     }
     return {
@@ -241,7 +246,8 @@ export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
       embeddingNamespaces: [],
       narratorSettings: DEFAULT_NARRATOR_SETTINGS,
       firstMes: '',
-      alternateGreetings: []
+      alternateGreetings: [],
+      quickReplies: []
     };
   }, [existingGroup]);
 
@@ -264,6 +270,7 @@ export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
   const [narratorSettings, setNarratorSettings] = useState<NarratorSettings>(initialValues.narratorSettings);
   const [firstMes, setFirstMes] = useState(initialValues.firstMes);
   const [alternateGreetings, setAlternateGreetings] = useState<string[]>(initialValues.alternateGreetings);
+  const [localQuickReplies, setLocalQuickReplies] = useState<GroupQuickReply[]>(initialValues.quickReplies || []);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(initialValues.avatar);
@@ -447,7 +454,8 @@ export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
       // Always include narratorSettings to preserve config even if narrator is temporarily removed
       narratorSettings,
       firstMes: firstMes || undefined,
-      alternateGreetings: alternateGreetings.length > 0 ? alternateGreetings : undefined
+      alternateGreetings: alternateGreetings.length > 0 ? alternateGreetings : undefined,
+      quickReplies: localQuickReplies.length > 0 ? localQuickReplies : undefined,
     };
 
     if (isNewGroup) {
@@ -1442,6 +1450,43 @@ export function GroupEditor({ groupId, open, onClose }: GroupEditorProps) {
       case 'members': return renderMembersTab();
       case 'strategy': return renderStrategyTab();
       case 'prompts': return renderPromptsTab();
+      case 'replies': {
+        // Build available targets from member characters for cross-character conditions
+        const memberTargets = memberCharacters.map(mc => ({
+          id: mc.characterId,
+          name: mc.character?.name || 'Unknown',
+          attributes: mc.character?.statsConfig?.attributes || []
+        }));
+        // Add user/persona as a target too
+        const activePersona = getActivePersona();
+        const allTargets = [
+          { id: '__user__', name: activePersona?.name || 'Usuario', attributes: [] as any[] },
+          ...memberTargets
+        ];
+
+        // Get attributes from the first member character (for self mode - not applicable for groups, but needed by the panel)
+        const firstMemberStatsConfig = memberCharacters.length > 0
+          ? memberCharacters[0].character?.statsConfig
+          : undefined;
+
+        // Collect trigger collections from all member characters
+        const allTriggerCollections = memberCharacters
+          .map(mc => mc.character?.triggerCollections || [])
+          .flat();
+
+        return (
+          <div className="space-y-4">
+            <QuickRepliesPanel
+              quickReplies={localQuickReplies as any}
+              statsConfig={firstMemberStatsConfig}
+              spritePacksV2={spritePacksV2}
+              triggerCollections={allTriggerCollections.length > 0 ? allTriggerCollections : undefined}
+              availableTargets={allTargets}
+              onChange={(replies) => setLocalQuickReplies(replies as GroupQuickReply[])}
+            />
+          </div>
+        );
+      }
       default: return renderInfoTab();
     }
   };

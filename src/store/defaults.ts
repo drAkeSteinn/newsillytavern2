@@ -4,6 +4,7 @@
 
 import type { LLMConfig, AppSettings, PromptTemplate, Persona, LorebookSettings, ContextSettings } from '@/types';
 import { DEFAULT_CHATBOX_APPEARANCE, DEFAULT_HANDY_SETTINGS, DEFAULT_COMIC_SOUND_SETTINGS } from '@/types';
+import { DEFAULT_EMBEDDINGS_CHAT } from '@/lib/embeddings/constants';
 
 export const defaultLLMConfig: LLMConfig = {
   id: 'default',
@@ -87,40 +88,7 @@ export const defaultSettings: AppSettings = {
   },
   context: defaultContextSettings,
   chatboxAppearance: DEFAULT_CHATBOX_APPEARANCE,
-  embeddingsChat: {
-    enabled: false,
-    maxTokenBudget: 1024,
-    namespaceStrategy: 'character',
-    showInPromptViewer: true,
-    // Memory extraction settings
-    memoryExtractionEnabled: false,
-    memoryExtractionFrequency: 5,
-    memoryExtractionMinImportance: 2,
-    // Memory consolidation settings
-    memoryConsolidationEnabled: false,
-    memoryConsolidationThreshold: 50,
-    memoryConsolidationKeepRecent: 10,
-    memoryConsolidationKeepHighImportance: 4,
-    // Custom memory extraction prompt
-    memoryExtractionPrompt: `Eres un analista de memoria para un personaje de rol. Tu ÚNICA tarea es extraer hechos memorables del mensaje de un personaje.\n\nReglas estrictas:\n- Solo extrae información NUEVA y RELEVANTE sobre el jugador, relaciones, eventos importantes, secretos o preferencias\n- Ignora saludos, descripciones genéricas, acciones rutinarias y narrativa decorativa\n- Ignora información que ya es conocimiento general del personaje\n- Cada hecho debe ser una FRASE concisa (máximo 50 palabras) en tercera persona\n- Si NO hay nada memorable, responde EXACTAMENTE: []\n\nResponde SOLO con un JSON array, sin explicaciones, sin markdown, sin texto adicional.\n\nEjemplos:\n\nMensaje del personaje:\n"*mira con recelo* No confío en ti desde que robaste las gemas del templo. Y sé que le debes dinero a Claudec."\n\nRespuesta correcta:\n[{"contenido":"El personaje no confía en el jugador desde que robó las gemas del templo","tipo":"relacion","importancia":4},{"contenido":"El jugador le debe dinero a Claudec","tipo":"hecho","importancia":3}]\n\nMensaje del personaje:\n"¡Buenos días! ¿En qué puedo ayudarte hoy?"\n\nRespuesta correcta:\n[]\n\nAhora analiza este mensaje:\n\nNombre del personaje: {characterName}\n{lastMessage}`,
-    // Context depth for memory extraction (0 = only last response, N = include N recent messages)
-    memoryExtractionContextDepth: 2,
-    // Context depth for embedding search query (0 = only user message, N = include N recent messages)
-    searchContextDepth: 2,
-    // Group dynamics extraction (extracts inter-character relationships in group chats)
-    groupDynamicsExtraction: false,
-    // Separate extraction model (uses a different LLM for memory extraction/consolidation)
-    extractionModelEnabled: false,
-    extractionModelProvider: 'ollama',
-    extractionModelEndpoint: 'http://localhost:11434',
-    extractionModelApiKey: '',
-    extractionModelName: 'llama3.1:8b',
-    // Memory reinforcement settings
-    memoryReinforcementEnabled: false,
-    memoryReinforcementThreshold: 0.7,
-    // User message extraction settings
-    memoryExtractionFromUserEnabled: false,
-  },
+  embeddingsChat: DEFAULT_EMBEDDINGS_CHAT,
   handy: DEFAULT_HANDY_SETTINGS,
 };
 

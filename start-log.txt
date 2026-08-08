@@ -1,6 +1,6 @@
 =========================================
 HP App LanceDB Windows unified start/install log
-Fecha: 04/06/2026 10:22:23.78
+Fecha: 07/08/2026  0:59:22.51
 Puerto: 3000
 APP_URL: http://localhost:3000
 LANCEDB_PLATFORM: win32-x64-msvc
@@ -13,3 +13,20 @@ PRISMA_VERSION: 6.19.3
 [OK] npm detectado. 
 Versiones detectadas: 
 v24.16.0
+11.13.0
+ 
+[3/7] Verificando servidor en http://localhost:3000 
+[INFO] No hay servidor activo en el puerto 3000. 
+[4/7] Verificando archivos de entorno... 
+[OK] .env.local ya existe. No se modifica. 
+[OK] .env ya existe. No se modifica. 
+[5/7] Verificando carpetas locales... 
+[OK] Carpetas locales verificadas. 
+[6/7] Verificando dependencias... 
+[OK] node_modules existe. Saltando npm install. 
+[7/7] Verificando Prisma... 
+[INFO] npx --yes prisma@6.19.3 generate 
+[INFO] npx --yes prisma@6.19.3 db push 
+[OK] Prisma preparado correctamente. 
+[INFO] Abriendo navegador automatico en http://localhost:3000 
+[INFO] Ejecutando npm run dev:windows 

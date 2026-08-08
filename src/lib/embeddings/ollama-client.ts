@@ -13,6 +13,77 @@ import type { EmbeddingsConfig } from './types';
 import { EmbeddingError, MODEL_CONTEXT_LENGTHS, DEFAULT_CONTEXT_LENGTH, CHARS_PER_TOKEN } from './types';
 import { getConfig } from './config-persistence';
 
+/**
+ * Auto-detect a model's context length by querying Ollama's /api/show endpoint.
+ *
+ * Priority:
+ * 1. model_info keys ending in .context_length (e.g. bert.context_length, nomic.context_length)
+ * 2. parameters.num_ctx (older Ollama versions)
+ * 3. Falls back to MODEL_CONTEXT_LENGTHS map → DEFAULT_CONTEXT_LENGTH (512)
+ *
+ * @param ollamaUrl - Base URL of the Ollama server (e.g. http://localhost:11434)
+ * @param model - Model name (e.g. "bge-m3:567m")
+ * @returns Detected context length in tokens
+ */
+export async function detectModelContextLength(ollamaUrl: string, model: string): Promise<number> {
+  // Hardcoded fallback first
+  const hardcodedFallback = MODEL_CONTEXT_LENGTHS[model]
+    || MODEL_CONTEXT_LENGTHS[model.split(':')[0]]
+    || DEFAULT_CONTEXT_LENGTH;
+
+  try {
+    const response = await fetch(`${ollamaUrl}/api/show`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: model }),
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!response.ok) return hardcodedFallback;
+
+    const data: any = await response.json();
+
+    // 1. Check model_info for keys ending in .context_length
+    const modelInfo = data?.model_info || {};
+    for (const [key, value] of Object.entries(modelInfo as Record<string, unknown>)) {
+      if (key.endsWith('.context_length') || key.endsWith('.context_length ')) {
+        const numValue = Number(value);
+        if (numValue > 0 && numValue <= 1000000) {
+          console.log(`[Embeddings] Auto-detected context length for "${model}": ${numValue} tokens (from ${key})`);
+          return numValue;
+        }
+      }
+    }
+
+    // 2. Check parameters for num_ctx (older Ollama versions return string)
+    const params = data?.parameters;
+    if (params) {
+      if (typeof params === 'object' && params.num_ctx) {
+        const numCtx = Number(params.num_ctx);
+        if (numCtx > 0 && numCtx <= 1000000) {
+          console.log(`[Embeddings] Auto-detected context length for "${model}": ${numCtx} tokens (from parameters.num_ctx)`);
+          return numCtx;
+        }
+      }
+      if (typeof params === 'string') {
+        const numCtxMatch = params.match(/num_ctx\s+(\d+)/);
+        if (numCtxMatch) {
+          const numCtx = parseInt(numCtxMatch[1]);
+          if (numCtx > 0 && numCtx <= 1000000) {
+            console.log(`[Embeddings] Auto-detected context length for "${model}": ${numCtx} tokens (from parameters string)`);
+            return numCtx;
+          }
+        }
+      }
+    }
+
+    return hardcodedFallback;
+  } catch (error) {
+    console.warn(`[Embeddings] Failed to detect context length for "${model}":`, error);
+    return hardcodedFallback;
+  }
+}
+
 export class OllamaEmbeddingClient {
   private config: EmbeddingsConfig;
   /** Cached max context length for the current model (in tokens) */
@@ -41,76 +112,42 @@ export class OllamaEmbeddingClient {
 
   /**
    * Get the maximum context length in tokens for the current model.
-   * 
+   *
    * Priority:
-   * 1. Cached value from Ollama /api/show (queried once)
-   * 2. Known MODEL_CONTEXT_LENGTHS map
-   * 3. Conservative DEFAULT_CONTEXT_LENGTH (512 tokens)
+   * 1. Config's modelContextLength (auto-detected and persisted)
+   * 2. Cached value from previous detection
+   * 3. Known MODEL_CONTEXT_LENGTHS map
+   * 4. Query Ollama /api/show via detectModelContextLength()
+   * 5. Conservative DEFAULT_CONTEXT_LENGTH (512 tokens)
    */
   async getMaxContextTokens(): Promise<number> {
     if (this.cachedMaxContextTokens) return this.cachedMaxContextTokens;
 
-    // 1. Try known models map
+    // 1. Use persisted config value if available
+    if (this.config.modelContextLength && this.config.modelContextLength > 0) {
+      this.cachedMaxContextTokens = this.config.modelContextLength;
+      return this.cachedMaxContextTokens;
+    }
+
+    // 2. Try known models map
     const modelKey = this.config.model;
     if (MODEL_CONTEXT_LENGTHS[modelKey]) {
       this.cachedMaxContextTokens = MODEL_CONTEXT_LENGTHS[modelKey];
       return this.cachedMaxContextTokens;
     }
 
-    // 2. Try base model name (strip :tag)
+    // 3. Try base model name (strip :tag)
     const baseModel = modelKey.split(':')[0];
     if (MODEL_CONTEXT_LENGTHS[baseModel]) {
       this.cachedMaxContextTokens = MODEL_CONTEXT_LENGTHS[baseModel];
       return this.cachedMaxContextTokens;
     }
 
-    // 3. Query Ollama /api/show for the model's parameters (contains num_ctx)
-    try {
-      const response = await fetch(`${this.config.ollamaUrl}/api/show`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: this.config.model }),
-        signal: AbortSignal.timeout(5000),
-      });
-
-      if (response.ok) {
-        const data: any = await response.json();
-        // Ollama returns parameters as a string like "num_ctx\t8192\n..."
-        const params = data?.parameters || data?.model_info?.parameters || '';
-        const numCtxMatch = typeof params === 'string'
-          ? params.match(/num_ctx\s+(\d+)/)
-          : null;
-        
-        if (numCtxMatch) {
-          this.cachedMaxContextTokens = parseInt(numCtxMatch[1]);
-          console.log(`[Embeddings] Detected model context length from Ollama: ${this.cachedMaxContextTokens} tokens`);
-          return this.cachedMaxContextTokens;
-        }
-
-        // Try model_info format (newer Ollama versions)
-        const modelInfo = data?.model_info || {};
-        for (const key of Object.keys(modelInfo)) {
-          if (key.includes('context_length') || key.includes('n_ctx')) {
-            const val = modelInfo[key];
-            if (typeof val === 'number' && val > 0) {
-              this.cachedMaxContextTokens = val;
-              console.log(`[Embeddings] Detected model context length from model_info: ${val} tokens`);
-              return val;
-            }
-          }
-        }
-      }
-    } catch {
-      // Failed to query Ollama, use fallback
-    }
-
-    // 4. Conservative fallback for unknown models
-    console.warn(
-      `[Embeddings] Unknown model "${modelKey}" context length. ` +
-      `Using safe default: ${DEFAULT_CONTEXT_LENGTH} tokens. ` +
-      `Consider adding it to MODEL_CONTEXT_LENGTHS in types.ts.`
+    // 4. Query Ollama /api/show via the shared detection function
+    this.cachedMaxContextTokens = await detectModelContextLength(
+      this.config.ollamaUrl,
+      this.config.model,
     );
-    this.cachedMaxContextTokens = DEFAULT_CONTEXT_LENGTH;
     return this.cachedMaxContextTokens;
   }
 
@@ -287,9 +324,10 @@ export class OllamaEmbeddingClient {
 
   getConfig(): EmbeddingsConfig { return { ...this.config }; }
   updateConfig(updates: Partial<EmbeddingsConfig>): void {
+    const oldModel = this.config.model;
     this.config = { ...this.config, ...updates };
     // Reset cached context when model changes
-    if (updates.model && updates.model !== this.config.model) {
+    if (updates.model && updates.model !== oldModel) {
       this.cachedMaxContextTokens = null;
     }
   }

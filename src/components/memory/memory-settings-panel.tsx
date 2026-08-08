@@ -62,39 +62,9 @@ import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { DEFAULT_SUMMARY_SETTINGS } from '@/types';
 import { DEFAULT_MEMORY_EXTRACTION_PROMPT, DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT } from '@/lib/embeddings/memory-extraction-prompts';
+import { DEFAULT_EMBEDDINGS_CHAT } from '@/lib/embeddings/constants';
 import { CharacterMemoryEditor } from '@/components/memory/character-memory-editor';
 import { SummaryViewer } from '@/components/memory/summary-viewer';
-
-// ============================================
-// Default embeddings chat settings (shared constant)
-// ============================================
-
-const DEFAULT_EMBEDDINGS_CHAT = {
-  enabled: false,
-  maxTokenBudget: 1024,
-  namespaceStrategy: 'character' as const,
-  showInPromptViewer: true,
-  memoryExtractionEnabled: false,
-  memoryExtractionFrequency: 5,
-  memoryExtractionMinImportance: 2,
-  memoryConsolidationEnabled: false,
-  memoryConsolidationThreshold: 50,
-  memoryConsolidationKeepRecent: 10,
-  memoryConsolidationKeepHighImportance: 4,
-  memoryExtractionPrompt: DEFAULT_MEMORY_EXTRACTION_PROMPT,
-  groupMemoryExtractionPrompt: DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT,
-  memoryExtractionContextDepth: 2,
-  searchContextDepth: 2,
-  groupDynamicsExtraction: false,
-  memoryReinforcementEnabled: false,
-  memoryReinforcementThreshold: 0.7,
-  memoryExtractionFromUserEnabled: false,
-  extractionModelEnabled: false,
-  extractionModelProvider: 'ollama',
-  extractionModelEndpoint: 'http://localhost:11434',
-  extractionModelApiKey: '',
-  extractionModelName: 'llama3.1:8b',
-};
 
 // ============================================
 // Preview data for extraction prompts
@@ -487,8 +457,24 @@ function PersonajeTab() {
 // ============================================
 
 function ExtraccionTab() {
-  const embeddingsChat = useTavernStore((state) => state.settings.embeddingsChat) ?? DEFAULT_EMBEDDINGS_CHAT;
+  const settings = useTavernStore((s) => s.settings);
+  const embeddingsChat = settings.embeddingsChat ?? DEFAULT_EMBEDDINGS_CHAT;
   const updateSettings = useTavernStore((state) => state.updateSettings);
+
+  // Context settings with defaults
+  const contextSettings = settings.context ?? {
+    maxMessages: 50,
+    maxTokens: 4096,
+    keepFirstN: 1,
+    keepLastN: 20,
+  };
+
+  // Update context settings helper
+  const updateContextSettings = useCallback((updates: Partial<typeof contextSettings>) => {
+    updateSettings({
+      context: { ...contextSettings, ...updates }
+    });
+  }, [contextSettings, updateSettings]);
 
   // Prompt editor state
   const [activePromptTab, setActivePromptTab] = useState<'normal' | 'group'>('normal');
@@ -1228,37 +1214,8 @@ function ExtraccionTab() {
           )}
         </CardContent>
       </Card>
-    </div>
-  );
-}
 
-// ============================================
-// Sub-tab 4: Contexto
-// ============================================
-
-function ContextoTab() {
-  const settings = useTavernStore((s) => s.settings);
-  const updateSettings = useTavernStore((s) => s.updateSettings);
-  const embeddingsChat = settings.embeddingsChat ?? DEFAULT_EMBEDDINGS_CHAT;
-
-  // Context settings with defaults
-  const contextSettings = settings.context ?? {
-    maxMessages: 50,
-    maxTokens: 4096,
-    keepFirstN: 1,
-    keepLastN: 20,
-  };
-
-  // Update context settings helper
-  const updateContextSettings = useCallback((updates: Partial<typeof contextSettings>) => {
-    updateSettings({
-      context: { ...contextSettings, ...updates }
-    });
-  }, [contextSettings, updateSettings]);
-
-  return (
-    <div className="space-y-6">
-      {/* Context Limits Card */}
+      {/* Límites de Contexto — moved from old ContextoTab */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -1348,7 +1305,7 @@ function ContextoTab() {
         </CardContent>
       </Card>
 
-      {/* Embeddings Chat Context */}
+      {/* Contexto de Embeddings en Chat — moved from old ContextoTab */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -1467,7 +1424,7 @@ export function MemorySettingsPanel() {
   return (
     <div className="space-y-4">
       <Tabs defaultValue="resumenes" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="resumenes" className="flex items-center gap-1.5 text-xs sm:text-sm">
             <FileText className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Resúmenes</span>
@@ -1480,13 +1437,8 @@ export function MemorySettingsPanel() {
           </TabsTrigger>
           <TabsTrigger value="extraccion" className="flex items-center gap-1.5 text-xs sm:text-sm">
             <Brain className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Extracción</span>
-            <span className="sm:hidden">Ext.</span>
-          </TabsTrigger>
-          <TabsTrigger value="contexto" className="flex items-center gap-1.5 text-xs sm:text-sm">
-            <Database className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Contexto</span>
-            <span className="sm:hidden">Ctx.</span>
+            <span className="hidden sm:inline">Extracción y Contexto</span>
+            <span className="sm:hidden">Ext. Ctx.</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1500,10 +1452,6 @@ export function MemorySettingsPanel() {
 
         <TabsContent value="extraccion" className="mt-4">
           <ExtraccionTab />
-        </TabsContent>
-
-        <TabsContent value="contexto" className="mt-4">
-          <ContextoTab />
         </TabsContent>
       </Tabs>
     </div>

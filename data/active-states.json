@@ -1,6 +1,6 @@
 {
-  "activeSessionId": "2c8572cc-9d59-4a3c-b73a-c9228ee93dec",
-  "activeCharacterId": "33bbd96a-3533-43b9-84b8-653f401db619",
+  "activeSessionId": "13b9843e-675c-41fd-b73d-ab8db70eea32",
+  "activeCharacterId": "be42648b-b892-4284-b90c-207627b8569b",
   "activeGroupId": null,
   "activeBackground": "/backgrounds/Room/Room (1).png",
   "activeOverlayBack": "",
@@ -15,6 +15,7 @@
     "7f1410a6-06ba-4009-959c-a23b7883a114",
     "ef0383c0-ffb9-4b9a-ab20-f552c45a24c8",
     "275a584d-f697-4002-afc2-0c19b2b68b91",
-    "272bfce2-1a68-41c0-9043-cd548cc8de58"
+    "272bfce2-1a68-41c0-9043-cd548cc8de58",
+    "57bc4f03-f53a-48d9-8ab9-5113e9d4f86a"
   ]
 }

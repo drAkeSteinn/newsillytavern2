@@ -1,0 +1,502 @@
+  2501→                                  )}
+  2502→                                  title="Desactivar misión"
+  2503→                                >
+  2504→                                  <Pause className="w-3.5 h-3.5" />
+  2505→                                </button>
+  2506→                              </div>
+  2507→                              
+  2508→                              {/* Objectives (Expanded) */}
+  2509→                              {isExpanded && objectives.length > 0 && (
+  2510→                                <div className="border-t border-white/10 p-2 pt-2">
+  2511→                                  <div className="space-y-1">
+  2512→                                    {objectives.map((obj) => {
+  2513→                                      const objProgress = obj.targetCount > 0 
+  2514→                                        ? Math.min(100, (obj.currentCount / obj.targetCount) * 100)
+  2515→                                        : (obj.isCompleted ? 100 : 0);
+  2516→                                      
+  2517→                                      return (
+  2518→                                        <div 
+  2519→                                          key={obj.id}
+  2520→                                          className={cn(
+  2521→                                            'flex items-center gap-2 rounded px-1.5 py-1',
+  2522→                                            obj.isCompleted 
+  2523→                                              ? 'bg-green-500/10 text-green-400' 
+  2524→                                              : 'bg-white/5 text-white/70',
+  2525→                                            'transition-colors'
+  2526→                                          )}
+  2527→                                        >
+  2528→                                          {/* Checkbox */}
+  2529→                                          <div className={cn(
+  2530→                                            'flex items-center justify-center rounded-full shrink-0 transition-all w-5 h-5',
+  2531→                                            obj.isCompleted 
+  2532→                                              ? 'bg-green-500 text-white' 
+  2533→                                              : 'border border-white/30'
+  2534→                                          )}>
+  2535→                                            {obj.isCompleted && <Check className="w-3 h-3" />}
+  2536→                                          </div>
+  2537→                                          
+  2538→                                          {/* Description */}
+  2539→                                          <span className={cn(
+  2540→                                            'flex-1 truncate text-xs',
+  2541→                                            obj.isCompleted && 'line-through opacity-70'
+  2542→                                          )}>
+  2543→                                            {obj.description}
+  2544→                                          </span>
+  2545→                                          
+  2546→                                          {/* Counter (if multi-target) */}
+  2547→                                          {obj.targetCount > 1 && (
+  2548→                                            <span className={cn(
+  2549→                                              'text-[10px] font-medium px-1.5 py-0.5 rounded',
+  2550→                                              obj.isCompleted 
+  2551→                                                ? 'bg-green-500/20 text-green-400'
+  2552→                                                : 'bg-white/10 text-white/50'
+  2553→                                            )}>
+  2554→                                              {obj.currentCount}/{obj.targetCount}
+  2555→                                            </span>
+  2556→                                          )}
+  2557→                                          
+  2558→                                          {/* Optional badge */}
+  2559→                                          {obj.isOptional && !obj.isCompleted && (
+  2560→                                            <span className="text-[8px] text-white/30 uppercase tracking-wider">
+  2561→                                              opt
+  2562→                                            </span>
+  2563→                                          )}
+  2564→                                        </div>
+  2565→                                      );
+  2566→                                    })}
+  2567→                                  </div>
+  2568→                                </div>
+  2569→                              )}
+  2570→                              
+  2571→                              {/* Description (if expanded) */}
+  2572→                              {isExpanded && template.description && (
+  2573→                                <div className="px-2 pb-2">
+  2574→                                  <p className="text-[10px] text-white/40 line-clamp-2">
+  2575→                                    {template.description}
+  2576→                                  </p>
+  2577→                                </div>
+  2578→                              )}
+  2579→                            </div>
+  2580→                          );
+  2581→                        })}
+  2582→                      </div>
+  2583→                    )}
+  2584→                    
+  2585→                    {/* Available Quests */}
+  2586→                    {sessionQuests.filter(q => q.status === 'available').length > 0 && (
+  2587→                      <div className="space-y-2">
+  2588→                        <button
+  2589→                          onClick={() => setShowAvailableQuests(!showAvailableQuests)}
+  2590→                          className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-blue-400 hover:bg-white/5 rounded transition-colors"
+  2591→                        >
+  2592→                          <Circle className="w-3 h-3" />
+  2593→                          <span className="flex-1 text-left">{t('chatbox.availableQuests')} ({sessionQuests.filter(q => q.status === 'available').length})</span>
+  2594→                          {showAvailableQuests ? (
+  2595→                            <ChevronUp className="w-3 h-3" />
+  2596→                          ) : (
+  2597→                            <ChevronDown className="w-3 h-3" />
+  2598→                          )}
+  2599→                        </button>
+  2600→                        
+  2601→                        {showAvailableQuests && (
+  2602→                          <div className="space-y-1">
+  2603→                            {sessionQuests.filter(q => q.status === 'available').map(quest => {
+  2604→                              const template = questTemplates.find(t => t.id === quest.templateId);
+  2605→                              if (!template) return null;
+  2606→                              
+  2607→                              const colors = priorityColors[template.priority] || priorityColors.main;
+  2608→                              
+  2609→                              return (
+  2610→                                <button
+  2611→                                  key={quest.templateId}
+  2612→                                  onClick={() => handleQuestToggle(template.id, 'available')}
+  2613→                                  className={cn(
+  2614→                                    'w-full flex items-center gap-2 p-2 rounded-lg border transition-all',
+  2615→                                    'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20',
+  2616→                                    'group'
+  2617→                                  )}
+  2618→                                >
+  2619→                                  {/* Icon */}
+  2620→                                  <div className={cn(
+  2621→                                    'flex items-center justify-center rounded-lg w-8 h-8 shrink-0',
+  2622→                                    colors.bg,
+  2623→                                    'border',
+  2624→                                    colors.border,
+  2625→                                    'group-hover:border-white/30'
+  2626→                                  )}>
+  2627→                                    <span className="text-lg">{template.icon || '📜'}</span>
+  2628→                                  </div>
+  2629→                                  
+  2630→                                  {/* Info */}
+  2631→                                  <div className="flex-1 min-w-0 text-left">
+  2632→                                    <div className="flex items-center gap-1">
+  2633→                                      <span className={cn('font-medium truncate text-xs', colors.text)}>
+  2634→                                        {template.name}
+  2635→                                      </span>
+  2636→                                      {template.priority === 'main' && (
+  2637→                                        <Star className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+  2638→                                      )}
+  2639→                                    </div>
+  2640→                                    {template.description && (
+  2641→                                      <p className="text-[10px] text-white/40 truncate mt-0.5">
+  2642→                                        {template.description}
+  2643→                                      </p>
+  2644→                                    )}
+  2645→                                  </div>
+  2646→                                  
+  2647→                                  {/* Activate Button */}
+  2648→                                  <div className={cn(
+  2649→                                    'p-1.5 rounded-lg transition-all',
+  2650→                                    'bg-green-500/10 text-green-400 group-hover:bg-green-500/20'
+  2651→                                  )}>
+  2652→                                    <Play className="w-3.5 h-3.5" />
+  2653→                                  </div>
+  2654→                                </button>
+  2655→                              );
+  2656→                            })}
+  2657→                          </div>
+  2658→                        )}
+  2659→                      </div>
+  2660→                    )}
+  2661→                    
+  2662→                    {/* Completed Quests */}
+  2663→                    {sessionQuests.filter(q => q.status === 'completed').length > 0 && (
+  2664→                      <div className="space-y-2">
+  2665→                        <div className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium px-1 mt-4 pt-3 border-t">
+  2666→                          {t('chatbox.completedQuests')}
+  2667→                        </div>
+  2668→                        {sessionQuests.filter(q => q.status === 'completed').slice(0, 5).map(quest => {
+  2669→                          const template = questTemplates.find(t => t.id === quest.templateId);
+  2670→                          if (!template) return null;
+  2671→                          
+  2672→                          return (
+  2673→                            <div
+  2674→                              key={quest.templateId}
+  2675→                              className="p-3 rounded-lg border bg-green-500/10 border-green-500/30"
+  2676→                            >
+  2677→                              <div className="flex items-center gap-3">
+  2678→                                <span className="text-lg">{template.icon || '📜'}</span>
+  2679→                                <span className="text-sm truncate flex-1 line-through opacity-70">{template.name}</span>
+  2680→                                <Check className="w-4 h-4 text-green-500" />
+  2681→                              </div>
+  2682→                            </div>
+  2683→                          );
+  2684→                        })}
+  2685→                      </div>
+  2686→                    )}
+  2687→                    
+  2688→                    {/* Auto Quest Configuration */}
+  2689→                    <div className="pt-3 border-t border-white/10">
+  2690→                      <button
+  2691→                        onClick={() => setShowAutoQuestConfig(!showAutoQuestConfig)}
+  2692→                        className={cn(
+  2693→                          'w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded transition-colors',
+  2694→                          questSettings.autoQuestEnabled
+  2695→                            ? 'text-violet-400 hover:bg-violet-500/10'
+  2696→                            : 'text-white/50 hover:bg-white/5'
+  2697→                        )}
+  2698→                      >
+  2699→                        <Zap className={cn(
+  2700→                          'w-3 h-3',
+  2701→                          questSettings.autoQuestEnabled && 'animate-pulse'
+  2702→                        )} />
+  2703→                        <span className="flex-1 text-left">Auto Quest</span>
+  2704→                        {questSettings.autoQuestEnabled && (
+  2705→                          <Badge className="bg-violet-500/20 text-violet-400 border-violet-500/30 text-[10px]">
+  2706→                            ON
+  2707→                          </Badge>
+  2708→                        )}
+  2709→                        {showAutoQuestConfig ? (
+  2710→                          <ChevronUp className="w-3 h-3" />
+  2711→                        ) : (
+  2712→                          <ChevronDown className="w-3 h-3" />
+  2713→                        )}
+  2714→                      </button>
+  2715→                      
+  2716→                      {showAutoQuestConfig && (
+  2717→                        <div className="mt-2 p-2 rounded-lg bg-violet-500/10 border border-violet-500/20 space-y-3">
+  2718→                          {/* Enable Switch */}
+  2719→                          <div className="flex items-center justify-between">
+  2720→                            <span className="text-xs text-white/70">Activar automáticamente</span>
+  2721→                            <button
+  2722→                              onClick={() => handleAutoQuestChange({ autoQuestEnabled: !questSettings.autoQuestEnabled })}
+  2723→                              className={cn(
+  2724→                                'relative w-10 h-5 rounded-full transition-colors',
+  2725→                                questSettings.autoQuestEnabled ? 'bg-violet-500' : 'bg-white/20'
+  2726→                              )}
+  2727→                            >
+  2728→                              <div className={cn(
+  2729→                                'absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform',
+  2730→                                questSettings.autoQuestEnabled ? 'translate-x-5' : 'translate-x-0.5'
+  2731→                              )} />
+  2732→                            </button>
+  2733→                          </div>
+  2734→                          
+  2735→                          {/* Interval Setting */}
+  2736→                          <div className="space-y-1">
+  2737→                            <label className="text-xs text-white/50">
+  2738→                              Cada X turnos/mensajes:
+  2739→                            </label>
+  2740→                            <input
+  2741→                              type="number"
+  2742→                              min={1}
+  2743→                              max={100}
+  2744→                              value={questSettings.autoQuestInterval}
+  2745→                              onChange={(e) => handleAutoQuestChange({ 
+  2746→                                autoQuestInterval: Math.max(1, parseInt(e.target.value) || 5) 
+  2747→                              })}
+  2748→                              className="w-full px-2 py-1 text-xs bg-black/30 border border-white/10 rounded text-white/80 focus:outline-none focus:border-violet-500/50"
+  2749→                              disabled={!questSettings.autoQuestEnabled}
+  2750→                            />
+  2751→                          </div>
+  2752→                          
+  2753→                          {/* Mode Selection */}
+  2754→                          <div className="space-y-1">
+  2755→                            <label className="text-xs text-white/50">Modo de selección:</label>
+  2756→                            <div className="flex gap-1">
+  2757→                              <button
+  2758→                                onClick={() => handleAutoQuestChange({ autoQuestMode: 'random' })}
+  2759→                                disabled={!questSettings.autoQuestEnabled}
+  2760→                                className={cn(
+  2761→                                  'flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded transition-colors',
+  2762→                                  questSettings.autoQuestMode === 'random'
+  2763→                                    ? 'bg-violet-500/30 text-violet-300 border border-violet-500/50'
+  2764→                                    : 'bg-white/5 text-white/50 border border-white/10',
+  2765→                                  !questSettings.autoQuestEnabled && 'opacity-50 cursor-not-allowed'
+  2766→                                )}
+  2767→                              >
+  2768→                                <Shuffle className="w-3 h-3" />
+  2769→                                Random
+  2770→                              </button>
+  2771→                              <button
+  2772→                                onClick={() => handleAutoQuestChange({ autoQuestMode: 'list' })}
+  2773→                                disabled={!questSettings.autoQuestEnabled}
+  2774→                                className={cn(
+  2775→                                  'flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded transition-colors',
+  2776→                                  questSettings.autoQuestMode === 'list'
+  2777→                                    ? 'bg-violet-500/30 text-violet-300 border border-violet-500/50'
+  2778→                                    : 'bg-white/5 text-white/50 border border-white/10',
+  2779→                                  !questSettings.autoQuestEnabled && 'opacity-50 cursor-not-allowed'
+  2780→                                )}
+  2781→                              >
+  2782→                                <List className="w-3 h-3" />
+  2783→                                Lista
+  2784→                              </button>
+  2785→                            </div>
+  2786→                          </div>
+  2787→                        </div>
+  2788→                      )}
+  2789→                    </div>
+  2790→                  </div>
+  2791→                )}
+  2792→              </div>
+  2793→            </ScrollArea>
+  2794→          )}
+  2795→
+  2796→          {/* Memorias Tab Content */}
+  2797→          {activeTab === 'memorias' && (
+  2798→            <ScrollArea className="flex-1 min-h-0">
+  2799→              <div className="p-3 space-y-3">
+  2800→                {/* Header */}
+  2801→                <div className="flex items-center gap-2 mb-3">
+  2802→                  <Brain className="w-4 h-4 text-violet-500" />
+  2803→                  <h4 className="font-medium text-sm">Memorias del Personaje</h4>
+  2804→                  {memories.length > 0 && (
+  2805→                    <Badge variant="secondary" className="text-xs">
+  2806→                      {memories.length}
+  2807→                    </Badge>
+  2808→                  )}
+  2809→                  <div className="ml-auto flex items-center gap-1">
+  2810→                    <Button
+  2811→                      size="sm"
+  2812→                      variant="ghost"
+  2813→                      className="h-7 w-7 p-0"
+  2814→                      onClick={() => { setMemoriesLoaded(false); loadMemories(true); }}
+  2815→                      title="Recargar memorias"
+  2816→                      disabled={memoriesLoading}
+  2817→                    >
+  2818→                      <RefreshCw className={`w-3.5 h-3.5 ${memoriesLoading ? 'animate-spin' : ''}`} />
+  2819→                    </Button>
+  2820→                    <Button
+  2821→                      size="sm"
+  2822→                      variant="outline"
+  2823→                      className="h-7 text-xs gap-1"
+  2824→                      onClick={() => setAddMemoryOpen(true)}
+  2825→                    >
+  2826→                      <Plus className="w-3 h-3" />
+  2827→                      Agregar
+  2828→                    </Button>
+  2829→                  </div>
+  2830→                </div>
+  2831→
+  2832→                {/* Group mode: Character selector for adding memory */}
+  2833→                {isGroupMode && (
+  2834→                  <div className="text-[10px] text-muted-foreground bg-violet-500/10 rounded-lg p-2">
+  2835→                    En chats de grupo, usa el botón "Agregar" para añadir memorias a cada personaje.
+  2836→                  </div>
+  2837→                )}
+  2838→
+  2839→                {/* Loading */}
+  2840→                {memoriesLoading && (
+  2841→                  <div className="flex items-center justify-center py-8 text-muted-foreground text-xs">
+  2842→                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+  2843→                    Cargando memorias...
+  2844→                  </div>
+  2845→                )}
+  2846→
+  2847→                {/* Empty State */}
+  2848→                {!memoriesLoading && memories.length === 0 && (
+  2849→                  <div className="text-center py-8 text-muted-foreground">
+  2850→                    <Brain className="w-8 h-8 mx-auto mb-2 opacity-30" />
+  2851→                    <p className="text-xs">
+  2852→                      {isGroupMode 
+  2853→                        ? 'Sin memorias extraídas para este grupo'
+  2854→                        : 'Sin memorias extraídas para este personaje'
+  2855→                      }
+  2856→                    </p>
+  2857→                    <p className="text-xs mt-1 opacity-70">
+  2858→                      Las memorias se extraen automáticamente durante la conversación
+  2859→                    </p>
+  2860→                  </div>
+  2861→                )}
+  2862→
+  2863→                {/* Memories List */}
+  2864→                {!memoriesLoading && memories.length > 0 && (
+  2865→                  <div className="space-y-2">
+  2866→                    {/* Group memories by character in group mode */}
+  2867→                    {isGroupMode ? (
+  2868→                      // In group mode, group by namespace
+  2869→                      Object.entries(
+  2870→                        memories.reduce<Record<string, typeof memories>>((acc, mem) => {
+  2871→                          if (!acc[mem.namespace]) acc[mem.namespace] = [];
+  2872→                          acc[mem.namespace].push(mem);
+  2873→                          return acc;
+  2874→                        }, {})
+  2875→                      ).map(([namespace, nsMemories]) => (
+  2876→                        <div key={namespace} className="space-y-1.5">
+  2877→                          <div className="flex items-center gap-1.5 px-1 py-0.5">
+  2878→                            <div className="w-1.5 h-1.5 rounded-full bg-violet-400" />
+  2879→                            <span className="text-xs font-medium text-violet-400">
+  2880→                              {getCharacterNameForNamespace(namespace)}
+  2881→                            </span>
+  2882→                            <span className="text-xs text-muted-foreground">
+  2883→                              ({nsMemories.length})
+  2884→                            </span>
+  2885→                          </div>
+  2886→                          {nsMemories.map(memory => (
+  2887→                            <MemoryItem
+  2888→                              key={memory.id}
+  2889→                              memory={memory}
+  2890→                              onDelete={deleteMemory}
+  2891→                            />
+  2892→                          ))}
+  2893→                        </div>
+  2894→                      ))
+  2895→                    ) : (
+  2896→                      // Single mode: flat list
+  2897→                      memories.map(memory => (
+  2898→                        <MemoryItem
+  2899→                          key={memory.id}
+  2900→                          memory={memory}
+  2901→                          onDelete={deleteMemory}
+  2902→                        />
+  2903→                      ))
+  2904→                    )}
+  2905→                  </div>
+  2906→                )}
+  2907→
+  2908→                {/* Namespace Info - Always visible */}
+  2909→                {!memoriesLoading && (
+  2910→                  <div className="pt-2 border-t mt-2 space-y-2">
+  2911→                    <div className="bg-violet-500/5 rounded-lg p-2 space-y-1">
+  2912→                      <div className="flex items-center gap-1.5">
+  2913→                        <Database className="w-3 h-3 text-violet-400" />
+  2914→                        <span className="text-[10px] font-medium text-violet-400">Namespace Activo</span>
+  2915→                      </div>
+  2916→                      <p className="text-[10px] text-muted-foreground font-mono break-all" title={isGroupMode && activeGroup ? `memory-group-${activeGroup.id}${sessionId ? `-${sessionId}` : ''}` : activeCharacter ? `memory-character-${activeCharacter.id}${sessionId ? `-${sessionId}` : ''}` : ''}>
+  2917→                        {isGroupMode && activeGroup 
+  2918→                          ? `memory-group-${activeGroup.id}${sessionId ? `-${sessionId.slice(0, 8)}...` : ''}`
+  2919→                          : activeCharacter 
+  2920→                            ? `memory-character-${activeCharacter.id.slice(0, 8)}...${sessionId ? `-${sessionId.slice(0, 8)}...` : ''}`
+  2921→                            : '—'
+  2922→                        }
+  2923→                      </p>
+  2924→                      <p className="text-[10px] text-muted-foreground">
+  2925→                        {isGroupMode 
+  2926→                          ? `Las memorias se guardan por personaje del grupo en esta sesión`
+  2927→                          : `Las memorias de ${activeCharacter?.name || 'este personaje'} se guardan aquí`
+  2928→                        }
+  2929→                      </p>
+  2930→                    </div>
+  2931→                    <p className="text-[10px] text-muted-foreground text-center">
+  2932→                      💡 Usa "Agregar" para guardar memorias manualmente o déjalas extraer automáticamente
+  2933→                    </p>
+  2934→                  </div>
+  2935→                )}
+  2936→
+  2937→                {/* Empty state - more helpful info */}
+  2938→                {!memoriesLoading && memories.length === 0 && (
+  2939→                  <div className="pt-2 border-t mt-2 space-y-2">
+  2940→                    <div className="bg-muted/30 rounded-lg p-2.5 space-y-1.5">
+  2941→                      <p className="text-[10px] font-medium text-foreground">Para activar la extracción automática:</p>
+  2942→                      <ol className="text-[10px] text-muted-foreground space-y-0.5 list-decimal list-inside">
+  2943→                        <li>Ollama debe estar corriendo con un modelo de embeddings</li>
+  2944→                        <li>Configuración → Embeddings → Usar embeddings en chat ✅</li>
+  2945→                        <li>Configuración → Embeddings → Extracción Automática ✅</li>
+  2946→                      </ol>
+  2947→                    </div>
+  2948→                  </div>
+  2949→                )}
+  2950→              </div>
+  2951→            </ScrollArea>
+  2952→          )}
+  2953→
+  2954→          {/* Tienda Tab Content */}
+  2955→          {activeTab === 'tienda' && (
+  2956→            <ScrollArea className="flex-1 min-h-0">
+  2957→              <div className="p-3 space-y-3">
+  2958→                {/* Header with currency */}
+  2959→                <div className="flex items-center gap-2 mb-3">
+  2960→                  <ShoppingCart className="w-4 h-4 text-amber-500" />
+  2961→                  <h4 className="font-medium text-sm">Tienda</h4>
+  2962→                  <div className="ml-auto flex items-center gap-1.5 bg-amber-500/10 rounded-full px-2.5 py-1">
+  2963→                    <span className="text-sm">{activePersona?.currencyIcon || '💰'}</span>
+  2964→                    <span className="text-xs font-medium text-amber-400">{activePersona?.currencyName || 'Divisa'}:</span>
+  2965→                    <span className="text-xs font-bold text-amber-300">{activePersona?.currency || 0}</span>
+  2966→                  </div>
+  2967→                </div>
+  2968→
+  2969→                {/* Shop Items */}
+  2970→                {(() => {
+  2971→                  const shopItems = getShopItems();
+  2972→                  if (shopItems.length === 0) {
+  2973→                    return (
+  2974→                      <div className="text-center py-8 text-muted-foreground">
+  2975→                        <ShoppingCart className="w-8 h-8 mx-auto mb-2 opacity-30" />
+  2976→                        <p className="text-xs">No hay items disponibles en la tienda.</p>
+  2977→                        <p className="text-xs mt-1 opacity-70">Configura precios en el registro de items.</p>
+  2978→                      </div>
+  2979→                    );
+  2980→                  }
+  2981→                  return (
+  2982→                    <div className="space-y-2">
+  2983→                      {shopItems.map(item => {
+  2984→                        const canAfford = (activePersona?.currency || 0) >= (item.price || 0);
+  2985→                        return (
+  2986→                          <div
+  2987→                            key={item.id}
+  2988→                            className={cn(
+  2989→                              "group flex items-start gap-2.5 p-2.5 rounded-lg border transition-colors",
+  2990→                              getRarityBgColor(item.rarity),
+  2991→                              canAfford ? "hover:bg-white/5" : "opacity-60"
+  2992→                            )}
+  2993→                          >
+  2994→                            {/* Rarity color indicator bar */}
+  2995→                            <div className={cn("w-1 h-full min-h-[2.5rem] rounded-full flex-shrink-0 mt-0.5", getRarityBgColor(item.rarity).replace('/10', '/40'))} />
+  2996→
+  2997→                            {/* Item info */}
+  2998→                            <div className="flex-1 min-w-0">
+  2999→                              {/* Top row: name + type badge */}
+  3000→                              <div className="flex items-center gap-1.5 mb-1">
+
+[showing lines 2501-3000 of 3192; use offset=3001 with limit to continue reading]

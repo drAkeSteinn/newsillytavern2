@@ -983,15 +983,30 @@ export function CharacterEditor({ characterId, open, onClose }: CharacterEditorP
     />
   );
 
-  const renderQuickRepliesTab = () => (
-    <QuickRepliesPanel
-      quickReplies={character.quickReplies}
-      statsConfig={character.statsConfig}
-      spritePacksV2={character.spritePacksV2}
-      triggerCollections={character.triggerCollections}
-      onChange={(quickReplies) => setCharacter(prev => ({ ...prev, quickReplies }))}
-    />
-  );
+  const renderQuickRepliesTab = () => {
+    // Build available targets for cross-character conditions
+    const availableTargets = [
+      { id: '__user__', name: activePersona?.name || 'Usuario', attributes: activePersona?.statsConfig?.attributes || [] },
+      ...characters
+        .filter(c => c.id !== characterId)
+        .map(c => ({
+          id: c.id,
+          name: c.name,
+          attributes: c.statsConfig?.attributes || []
+        }))
+    ];
+
+    return (
+      <QuickRepliesPanel
+        quickReplies={character.quickReplies}
+        statsConfig={character.statsConfig}
+        spritePacksV2={character.spritePacksV2}
+        triggerCollections={character.triggerCollections}
+        availableTargets={availableTargets}
+        onChange={(quickReplies) => setCharacter(prev => ({ ...prev, quickReplies }))}
+      />
+    );
+  };
 
   const renderMigrationTab = () => (
     <LegacyMigrationPanel

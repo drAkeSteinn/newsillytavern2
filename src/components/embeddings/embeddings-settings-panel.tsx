@@ -14,31 +14,25 @@ import {
   XCircle,
   AlertCircle,
   Loader2,
-  MessageSquare,
   FolderOpen,
   Tag,
-  BarChart3,
-  Globe,
   FileText,
   Layers,
   Upload,
   File,
   Eye,
   ArrowLeft,
-  FileCode,
   Code,
   FileType,
   List,
   Pencil,
-  RotateCcw,
   Sparkles,
 } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -66,8 +60,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { useTavernStore } from '@/store/tavern-store';
-import { DEFAULT_MEMORY_EXTRACTION_PROMPT, DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT, MEMORY_PROMPT_VARIABLES, GROUP_MEMORY_PROMPT_VARIABLES } from '@/lib/embeddings/memory-extraction-prompts';
 
 interface EmbeddingConfig {
   ollamaUrl: string;
@@ -75,6 +67,7 @@ interface EmbeddingConfig {
   dimension: number;
   similarityThreshold: number;
   maxResults: number;
+  modelContextLength?: number;
   tableDimension?: number | null;
 }
 
@@ -183,799 +176,7 @@ const SPLITTER_OPTIONS = [
   },
 ];
 
-const DEFAULT_EMBEDDINGS_CHAT = {
-  enabled: false,
-  maxTokenBudget: 1024,
-  namespaceStrategy: 'character' as const,
-  showInPromptViewer: true,
-  memoryExtractionEnabled: false,
-  memoryExtractionFrequency: 5,
-  memoryExtractionMinImportance: 2,
-  memoryConsolidationEnabled: false,
-  memoryConsolidationThreshold: 50,
-  memoryConsolidationKeepRecent: 10,
-  memoryConsolidationKeepHighImportance: 4,
-  memoryExtractionPrompt: DEFAULT_MEMORY_EXTRACTION_PROMPT,
-  groupMemoryExtractionPrompt: DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT,
-  memoryExtractionContextDepth: 2,
-  searchContextDepth: 1,
-  groupDynamicsExtraction: false,
-  memoryReinforcementEnabled: false,
-  memoryReinforcementThreshold: 0.7,
-  // Separate extraction model
-  extractionModelEnabled: false,
-  extractionModelProvider: 'ollama',
-  extractionModelEndpoint: 'http://localhost:11434',
-  extractionModelApiKey: '',
-  extractionModelName: 'llama3.1:8b',
-};
 
-// ============================================
-// Chat Integration Sub-component (inline content, no Collapsible)
-// ============================================
-
-function EmbeddingsChatIntegrationContent() {
-  const embeddingsChat = useTavernStore((state) => state.settings.embeddingsChat) ?? DEFAULT_EMBEDDINGS_CHAT;
-  const updateSettings = useTavernStore((state) => state.updateSettings);
-
-  const handleToggleEnabled = (enabled: boolean) => {
-    updateSettings({
-      embeddingsChat: { ...embeddingsChat, enabled },
-    });
-  };
-
-  const handleStrategyChange = (strategy: 'global' | 'character' | 'session') => {
-    updateSettings({
-      embeddingsChat: { ...embeddingsChat, namespaceStrategy: strategy },
-    });
-  };
-
-  const handleBudgetChange = (value: number) => {
-    updateSettings({
-      embeddingsChat: { ...embeddingsChat, maxTokenBudget: value },
-    });
-  };
-
-  const handleToggleMemoryExtraction = (enabled: boolean) => {
-    updateSettings({
-      embeddingsChat: { ...embeddingsChat, memoryExtractionEnabled: enabled },
-    });
-  };
-
-  const handleFrequencyChange = (value: number) => {
-    updateSettings({
-      embeddingsChat: { ...embeddingsChat, memoryExtractionFrequency: value },
-    });
-  };
-
-  const handleMinImportanceChange = (value: number) => {
-    updateSettings({
-      embeddingsChat: { ...embeddingsChat, memoryExtractionMinImportance: value },
-    });
-  };
-
-  const handleToggleConsolidation = (enabled: boolean) => {
-    updateSettings({
-      embeddingsChat: { ...embeddingsChat, memoryConsolidationEnabled: enabled },
-    });
-  };
-
-  const handleThresholdChange = (value: number) => {
-    updateSettings({
-      embeddingsChat: { ...embeddingsChat, memoryConsolidationThreshold: value },
-    });
-  };
-
-  const handleKeepRecentChange = (value: number) => {
-    updateSettings({
-      embeddingsChat: { ...embeddingsChat, memoryConsolidationKeepRecent: value },
-    });
-  };
-
-  const handleKeepHighImportanceChange = (value: number) => {
-    updateSettings({
-      embeddingsChat: { ...embeddingsChat, memoryConsolidationKeepHighImportance: value },
-    });
-  };
-
-  const handleExtractionContextDepthChange = (value: number) => {
-    updateSettings({
-      embeddingsChat: { ...embeddingsChat, memoryExtractionContextDepth: value },
-    });
-  };
-
-  const handleSearchContextDepthChange = (value: number) => {
-    updateSettings({
-      embeddingsChat: { ...embeddingsChat, searchContextDepth: value },
-    });
-  };
-
-  const handleToggleGroupDynamics = (enabled: boolean) => {
-    updateSettings({
-      embeddingsChat: { ...embeddingsChat, groupDynamicsExtraction: enabled },
-    });
-  };
-
-  return (
-    <Card>
-      <CardContent className="pt-4 space-y-4">
-        <p className="text-xs text-muted-foreground">
-          Recupera automáticamente embeddings relevantes al chatear y los inyecta como contexto en el prompt de la IA.
-          Funciona tanto en chats normales como grupales.
-        </p>
-
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <Label className="text-sm">Activar en Chat</Label>
-            <p className="text-[10px] text-muted-foreground">
-              Busca embeddings en cada mensaje y agrega contexto al prompt
-            </p>
-          </div>
-          <Switch
-            checked={embeddingsChat.enabled}
-            onCheckedChange={handleToggleEnabled}
-          />
-        </div>
-
-        {embeddingsChat.enabled && (
-          <>
-            <Separator />
-
-            <div className="space-y-2">
-              <Label className="text-xs">Estrategia de Búsqueda por Namespace</Label>
-              <Select value={embeddingsChat.namespaceStrategy} onValueChange={(v) => handleStrategyChange(v as 'global' | 'character' | 'session')}>
-                <SelectTrigger className="h-8 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="character">
-                    <div className="flex flex-col">
-                      <span>Por Personaje</span>
-                      <span className="text-[10px] text-muted-foreground">Busca namespaces específicos del personaje + default + mundo</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="session">
-                    <div className="flex flex-col">
-                      <span>Por Sesión</span>
-                      <span className="text-[10px] text-muted-foreground">Busca namespaces de sesión + personaje + default</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="global">
-                    <div className="flex flex-col">
-                      <span>Global (Todos)</span>
-                      <span className="text-[10px] text-muted-foreground">Busca todos los namespaces sin importar personaje o sesión</span>
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs">Presupuesto de Tokens de Contexto: ~{embeddingsChat.maxTokenBudget} tokens</Label>
-              <Slider
-                value={[embeddingsChat.maxTokenBudget]}
-                min={128}
-                max={4096}
-                step={128}
-                onValueChange={([v]) => handleBudgetChange(v)}
-              />
-              <p className="text-[10px] text-muted-foreground">
-                Limita cuántos tokens de contexto de embeddings se agregan al prompt. Valores más altos dan más contexto pero usan más de la ventana de contexto.
-              </p>
-            </div>
-
-            <Separator />
-
-            {/* Memory Extraction Section */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="text-sm">🧠 Extracción Automática de Memoria</Label>
-                  <p className="text-[10px] text-muted-foreground">
-                    Extrae hechos memorables de las respuestas del personaje y los guarda como embeddings
-                  </p>
-                </div>
-                <Switch
-                  checked={!!embeddingsChat.memoryExtractionEnabled}
-                  onCheckedChange={handleToggleMemoryExtraction}
-                />
-              </div>
-
-              {embeddingsChat.memoryExtractionEnabled && (
-                <div className="space-y-3 pl-1 border-l-2 border-violet-300/30">
-                  <div className="space-y-2">
-                    <Label className="text-xs">Frecuencia: cada {embeddingsChat.memoryExtractionFrequency || 5} turnos</Label>
-                    <Slider
-                      value={[embeddingsChat.memoryExtractionFrequency || 5]}
-                      min={1}
-                      max={20}
-                      step={1}
-                      onValueChange={([v]) => handleFrequencyChange(v)}
-                    />
-                    <p className="text-[10px] text-muted-foreground">
-                      Un turno = 1 mensaje del usuario + respuesta(s). Más frecuente = más contexto, pero más uso del LLM.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-xs">Importancia mínima: {embeddingsChat.memoryExtractionMinImportance || 2}/5</Label>
-                    <Slider
-                      value={[embeddingsChat.memoryExtractionMinImportance || 2]}
-                      min={1}
-                      max={5}
-                      step={1}
-                      onValueChange={([v]) => handleMinImportanceChange(v)}
-                    />
-                    <p className="text-[10px] text-muted-foreground">
-                      Solo se guardan hechos con importancia igual o mayor. Más alto = solo lo más relevante.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-xs">Profundidad de contexto: {embeddingsChat.memoryExtractionContextDepth ?? 2} mensajes</Label>
-                    <Slider
-                      value={[embeddingsChat.memoryExtractionContextDepth ?? 2]}
-                      min={0}
-                      max={5}
-                      step={1}
-                      onValueChange={([v]) => handleExtractionContextDepthChange(v)}
-                    />
-                    <p className="text-[10px] text-muted-foreground">
-                      Cuántos mensajes recientes incluir como contexto para el LLM. 0 = solo la respuesta del personaje. Más contexto = mejor comprensión de referencias, pero más tokens.
-                    </p>
-                  </div>
-
-                  <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
-                    <div className="flex items-start gap-2">
-                      <Brain className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
-                      <div className="space-y-1">
-                        <p className="text-xs font-medium text-amber-600 dark:text-amber-400">Memoria con Contexto</p>
-                        <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
-                          <li>Se incluyen los últimos N mensajes como contexto para que el LLM entienda referencias implícitas</li>
-                          <li>En grupo, cada personaje ve las respuestas de los demás para capturar dinámicas de conversación</li>
-                          <li>La extracción es asíncrona — no afecta la velocidad de respuesta</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <Separator />
-
-            {/* Separate Extraction Model Section */}
-            {embeddingsChat.memoryExtractionEnabled && (
-              <>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label className="text-sm flex items-center gap-1.5">
-                        <Settings className="w-3.5 h-3.5 text-teal-500" />
-                        Modelo de Extracción Separado
-                      </Label>
-                      <p className="text-[10px] text-muted-foreground">
-                        Usa un modelo diferente (más rápido/barato) para extracción y consolidación de memoria
-                      </p>
-                    </div>
-                    <Switch
-                      checked={!!embeddingsChat.extractionModelEnabled}
-                      onCheckedChange={(enabled) => {
-                        updateSettings({
-                          embeddingsChat: { ...embeddingsChat, extractionModelEnabled: enabled },
-                        });
-                      }}
-                    />
-                  </div>
-
-                  {embeddingsChat.extractionModelEnabled && (
-                    <div className="space-y-3 pl-1 border-l-2 border-teal-300/30">
-                      <div className="space-y-2">
-                        <Label className="text-xs">Proveedor</Label>
-                        <Select
-                          value={embeddingsChat.extractionModelProvider || 'ollama'}
-                          onValueChange={(v) => {
-                            updateSettings({
-                              embeddingsChat: { ...embeddingsChat, extractionModelProvider: v },
-                            });
-                          }}
-                        >
-                          <SelectTrigger className="h-8 text-sm">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="ollama">Ollama (Local)</SelectItem>
-                            <SelectItem value="openai">OpenAI</SelectItem>
-                            <SelectItem value="grok">Grok (xAI)</SelectItem>
-                            <SelectItem value="anthropic">Anthropic</SelectItem>
-                            <SelectItem value="z-ai">Z-AI</SelectItem>
-                            <SelectItem value="lm-studio">LM Studio</SelectItem>
-                            <SelectItem value="text-generation-webui">Text Generation WebUI</SelectItem>
-                            <SelectItem value="custom">Custom</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {/* Endpoint (for providers that need it) */}
-                      {!['z-ai'].includes(embeddingsChat.extractionModelProvider || 'ollama') && (
-                        <div className="space-y-2">
-                          <Label className="text-xs">Endpoint</Label>
-                          <Input
-                            type="text"
-                            value={embeddingsChat.extractionModelEndpoint || 'http://localhost:11434'}
-                            onChange={(e) => {
-                              updateSettings({
-                                embeddingsChat: { ...embeddingsChat, extractionModelEndpoint: e.target.value },
-                              });
-                            }}
-                            className="h-8 text-sm"
-                            placeholder="http://localhost:11434"
-                          />
-                          <p className="text-[10px] text-muted-foreground">
-                            URL del servidor del modelo de extracción
-                          </p>
-                        </div>
-                      )}
-
-                      {/* API Key (for providers that need it) */}
-                      {['openai', 'grok', 'anthropic', 'custom'].includes(embeddingsChat.extractionModelProvider || 'ollama') && (
-                        <div className="space-y-2">
-                          <Label className="text-xs">API Key</Label>
-                          <Input
-                            type="password"
-                            value={embeddingsChat.extractionModelApiKey || ''}
-                            onChange={(e) => {
-                              updateSettings({
-                                embeddingsChat: { ...embeddingsChat, extractionModelApiKey: e.target.value },
-                              });
-                            }}
-                            className="h-8 text-sm"
-                            placeholder="sk-..."
-                          />
-                          <p className="text-[10px] text-muted-foreground">
-                            Clave API para el proveedor seleccionado
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Model name */}
-                      <div className="space-y-2">
-                        <Label className="text-xs">Modelo</Label>
-                        <Input
-                          type="text"
-                          value={embeddingsChat.extractionModelName || 'llama3.1:8b'}
-                          onChange={(e) => {
-                            updateSettings({
-                              embeddingsChat: { ...embeddingsChat, extractionModelName: e.target.value },
-                            });
-                          }}
-                          className="h-8 text-sm"
-                          placeholder="llama3.1:8b"
-                        />
-                        <p className="text-[10px] text-muted-foreground">
-                          Nombre del modelo para extracción. Se recomienda un modelo rápido y barato (ej: llama3.1:8b, gpt-4o-mini)
-                        </p>
-                      </div>
-
-                      <div className="bg-teal-500/5 border border-teal-500/20 rounded-lg p-3">
-                        <div className="flex items-start gap-2">
-                          <Settings className="w-4 h-4 text-teal-500 mt-0.5 shrink-0" />
-                          <div className="space-y-1">
-                            <p className="text-xs font-medium text-teal-600 dark:text-teal-400">Modelo Separado</p>
-                            <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
-                              <li>La extracción y consolidación de memoria usan este modelo en lugar del modelo de chat</li>
-                              <li>Ideal para usar un modelo local (Ollama) o barato (gpt-4o-mini) para tareas de fondo</li>
-                              <li>Ahorra tokens y costo al no usar el modelo principal de chat para extracción</li>
-                              <li>El modelo de extracción solo necesita entender texto y generar JSON</li>
-                            </ul>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <Separator />
-              </>
-            )}
-
-            <Separator />
-
-            {/* Memory Consolidation Section */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="text-sm flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5 text-violet-500" />
-                    Consolidación de Memoria
-                  </Label>
-                  <p className="text-[10px] text-muted-foreground">
-                    Comprime memorias antiguas cuando un namespace excede el límite
-                  </p>
-                </div>
-                <Switch
-                  checked={!!embeddingsChat.memoryConsolidationEnabled}
-                  onCheckedChange={handleToggleConsolidation}
-                />
-              </div>
-
-              {embeddingsChat.memoryConsolidationEnabled && (
-                <div className="space-y-3 pl-1 border-l-2 border-violet-300/30">
-                  <div className="space-y-2">
-                    <Label className="text-xs">Umbral de consolidación: {embeddingsChat.memoryConsolidationThreshold || 50} embeddings</Label>
-                    <Slider
-                      value={[embeddingsChat.memoryConsolidationThreshold || 50]}
-                      min={20}
-                      max={200}
-                      step={10}
-                      onValueChange={([v]) => handleThresholdChange(v)}
-                    />
-                    <p className="text-[10px] text-muted-foreground">
-                      Cuando un namespace supera esta cantidad, se consolida automáticamente
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-xs">Memorias recientes protegidas: {embeddingsChat.memoryConsolidationKeepRecent || 10}</Label>
-                    <Slider
-                      value={[embeddingsChat.memoryConsolidationKeepRecent || 10]}
-                      min={3}
-                      max={30}
-                      step={1}
-                      onValueChange={([v]) => handleKeepRecentChange(v)}
-                    />
-                    <p className="text-[10px] text-muted-foreground">
-                      Las N memorias más recientes nunca se consolidan
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-xs">Proteger importancia ≥ {embeddingsChat.memoryConsolidationKeepHighImportance || 4}/5</Label>
-                    <Slider
-                      value={[embeddingsChat.memoryConsolidationKeepHighImportance || 4]}
-                      min={2}
-                      max={5}
-                      step={1}
-                      onValueChange={([v]) => handleKeepHighImportanceChange(v)}
-                    />
-                    <p className="text-[10px] text-muted-foreground">
-                      Memorias con esta importancia o mayor nunca se consolidan
-                    </p>
-                  </div>
-
-                  <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-3">
-                    <div className="flex items-start gap-2">
-                      <Layers className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
-                      <div className="space-y-1">
-                        <p className="text-xs font-medium text-blue-600 dark:text-blue-400">Consolidación Inteligente</p>
-                        <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
-                          <li>Agrupa memorias antiguas por tipo (hechos, eventos, relaciones...)</li>
-                          <li>El LLM combina hechos relacionados en resúmenes concisos</li>
-                          <li>Las memorias de alta importancia y recientes siempre se preservan</li>
-                          <li>Se ejecuta automáticamente después de cada extracción que supera el umbral</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Search Context Depth */}
-            <div className="space-y-2">
-              <Label className="text-xs">Contexto de búsqueda: {embeddingsChat.searchContextDepth ?? 1} mensajes</Label>
-              <Slider
-                value={[embeddingsChat.searchContextDepth ?? 1]}
-                min={0}
-                max={5}
-                step={1}
-                onValueChange={([v]) => handleSearchContextDepthChange(v)}
-              />
-              <p className="text-[10px] text-muted-foreground">
-                Mensajes recientes que se agregan a tu pregunta para enriquecer la búsqueda de embeddings. 0 = solo tu mensaje. Valores altos = mejores resultados con referencias implícitas ("¿recuerdas eso?").
-              </p>
-            </div>
-
-            {/* Group Dynamics Extraction */}
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label className="text-sm flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5 text-fuchsia-500" />
-                  Dinámicas Grupales
-                </Label>
-                <p className="text-[10px] text-muted-foreground">
-                  Extrae relaciones entre personajes en chats de grupo
-                </p>
-              </div>
-              <Switch
-                checked={!!embeddingsChat.groupDynamicsExtraction}
-                onCheckedChange={handleToggleGroupDynamics}
-              />
-            </div>
-
-            {embeddingsChat.groupDynamicsExtraction && (
-              <div className="bg-fuchsia-500/5 border border-fuchsia-500/20 rounded-lg p-3">
-                <div className="flex items-start gap-2">
-                  <Layers className="w-4 h-4 text-fuchsia-500 mt-0.5 shrink-0" />
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium text-fuchsia-600 dark:text-fuchsia-400">Dinámicas de Grupo</p>
-                    <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
-                      <li>Analiza todo el turno de conversación para detectar interacciones entre personajes</li>
-                      <li>Extrae alianzas, conflictos, y tendencias de relación</li>
-                      <li>Se ejecuta automáticamente cuando 2+ personajes responden en el mismo turno</li>
-                      <li>Las dinámicas se guardan en el namespace del grupo</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Memory Reinforcement */}
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label className="text-sm flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                  Refuerzo de Memorias
-                </Label>
-                <p className="text-[10px] text-muted-foreground">
-                  Incrementa importancia cuando el LLM menciona memorias existentes
-                </p>
-              </div>
-              <Switch
-                checked={!!embeddingsChat.memoryReinforcementEnabled}
-                onCheckedChange={(enabled) => {
-                  updateSettings({
-                    embeddingsChat: { ...embeddingsChat, memoryReinforcementEnabled: enabled },
-                  });
-                }}
-              />
-            </div>
-
-            {embeddingsChat.memoryReinforcementEnabled && (
-              <div className="space-y-3 pl-1 border-l-2 border-amber-300/30">
-                <div className="space-y-2">
-                  <Label className="text-xs">Umbral de similitud: {Math.round((embeddingsChat.memoryReinforcementThreshold || 0.7) * 100)}%</Label>
-                  <Slider
-                    value={[embeddingsChat.memoryReinforcementThreshold || 0.7]}
-                    min={0.3}
-                    max={0.95}
-                    step={0.05}
-                    onValueChange={([v]) => {
-                      updateSettings({
-                        embeddingsChat: { ...embeddingsChat, memoryReinforcementThreshold: v },
-                      });
-                    }}
-                  />
-                  <p className="text-[10px] text-muted-foreground">
-                    Cuánta similitud para considerar que una memoria fue mencionada. Más bajo = más memorias refuerzo, pero puede haber falsos positivos.
-                  </p>
-                </div>
-                <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
-                  <div className="flex items-start gap-2">
-                    <Sparkles className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium text-amber-600 dark:text-amber-400">Refuerzo por Repetición</p>
-                      <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
-                        <li>Cuando el LLM menciona o parafrasea una memoria existente</li>
-                        <li>La importancia de esa memoria aumenta automáticamente</li>
-                        <li>Las memorias más reforzadas se preservan mejor en la consolidación</li>
-                        <li>Ayuda a que el sistema priorice memorias que el personaje "recuerda"</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="bg-violet-500/5 border border-violet-500/20 rounded-lg p-3">
-              <div className="flex items-start gap-2">
-                <Brain className="w-4 h-4 text-violet-500 mt-0.5 shrink-0" />
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-violet-600 dark:text-violet-400">Cómo funciona</p>
-                  <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc list-inside">
-                    <li>Cuando envías un mensaje, el sistema genera un vector embedding de tu texto</li>
-                    <li>Si hay contexto de búsqueda, se concatena con tu mensaje para encontrar resultados más relevantes</li>
-                    <li>Busca en los namespaces seleccionados embeddings similares</li>
-                    <li>Los mejores resultados se inyectan en el prompt de la IA como contexto</li>
-                    <li>La IA usa este contexto para generar respuestas más informadas</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-// ============================================
-// Prompts Tab Sub-component
-// ============================================
-
-/** Preview data for each prompt type */
-const NORMAL_PREVIEW = {
-  characterName: 'Alvar',
-  chatContext: 'Contexto reciente de la conversación:\n  Jugador: "Me acabo de mudar a la costa, tengo un gato llamado Milo"\n  Personaje: "¡Qué genial! ¿Y cómo te va adaptando?"\n',
-  lastMessage: '"Milo se lleva súper bien con los vecinos."',
-};
-
-const GROUP_PREVIEW = {
-  characterName: 'Kai',
-  chatContext: 'Contexto reciente del grupo:\n  Jugador: "¿Qué opinan del plan de Luna?"\n  Luna: "Yo creo que deberíamos ir por la ruta norte, es más segura."\n  Rex: "No me fío, la última vez que fuimos por ahí casi nos atrapan."\n',
-  lastMessage: '"Rex tiene razón en desconfiar, pero yo prefiero arriesgarme. Además, Kai tiene contactos en el norte que podrían ayudarnos."',
-};
-
-function PromptsTabContent() {
-  const embeddingsChat = useTavernStore((state) => state.settings.embeddingsChat) ?? DEFAULT_EMBEDDINGS_CHAT;
-  const updateSettings = useTavernStore((state) => state.updateSettings);
-  const [activePromptTab, setActivePromptTab] = useState<'normal' | 'group'>('normal');
-  const [localPrompt, setLocalPrompt] = useState(() => embeddingsChat.memoryExtractionPrompt || DEFAULT_MEMORY_EXTRACTION_PROMPT);
-  const [localGroupPrompt, setLocalGroupPrompt] = useState(() => embeddingsChat.groupMemoryExtractionPrompt || DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT);
-  const [showPreview, setShowPreview] = useState(false);
-
-  const isNormal = activePromptTab === 'normal';
-  const currentPrompt = isNormal ? localPrompt : localGroupPrompt;
-  const currentStored = isNormal ? (embeddingsChat.memoryExtractionPrompt || DEFAULT_MEMORY_EXTRACTION_PROMPT) : (embeddingsChat.groupMemoryExtractionPrompt || DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT);
-  const previewData = isNormal ? NORMAL_PREVIEW : GROUP_PREVIEW;
-
-  const handleSavePrompt = () => {
-    if (isNormal) {
-      updateSettings({ embeddingsChat: { ...embeddingsChat, memoryExtractionPrompt: localPrompt } });
-    } else {
-      updateSettings({ embeddingsChat: { ...embeddingsChat, groupMemoryExtractionPrompt: localGroupPrompt } });
-    }
-  };
-
-  const handleRestoreDefault = () => {
-    if (isNormal) {
-      setLocalPrompt(DEFAULT_MEMORY_EXTRACTION_PROMPT);
-      updateSettings({ embeddingsChat: { ...embeddingsChat, memoryExtractionPrompt: DEFAULT_MEMORY_EXTRACTION_PROMPT } });
-    } else {
-      setLocalGroupPrompt(DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT);
-      updateSettings({ embeddingsChat: { ...embeddingsChat, groupMemoryExtractionPrompt: DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT } });
-    }
-  };
-
-  const handleChange = (value: string) => {
-    if (isNormal) setLocalPrompt(value);
-    else setLocalGroupPrompt(value);
-  };
-
-  const previewText = currentPrompt
-    .replace('{characterName}', previewData.characterName)
-    .replace('{chatContext}', previewData.chatContext)
-    .replace('{lastMessage}', previewData.lastMessage);
-
-  const hasChanges = currentPrompt !== currentStored;
-
-  return (
-    <div className="space-y-4">
-      {/* Prompt type selector */}
-      <div className="bg-violet-500/5 border border-violet-500/20 rounded-lg p-3">
-        <div className="flex items-start gap-2">
-          <Pencil className="w-4 h-4 text-violet-500 mt-0.5 shrink-0" />
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-violet-600 dark:text-violet-400">Prompts de Extracción de Memoria</p>
-            <p className="text-[10px] text-muted-foreground">
-              Personaliza los prompts que el LLM usa para extraer hechos memorables. Puedes configurar un prompt diferente para chat normal y chats de grupo.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Sub-tabs for normal vs group */}
-      <div className="flex gap-1 p-1 bg-muted rounded-lg">
-        <button
-          className={cn(
-            'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
-            isNormal ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-          )}
-          onClick={() => setActivePromptTab('normal')}
-        >
-          <MessageSquare className="w-3 h-3" />
-          Chat Normal
-          {embeddingsChat.memoryExtractionPrompt && embeddingsChat.memoryExtractionPrompt !== DEFAULT_MEMORY_EXTRACTION_PROMPT && (
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Personalizado" />
-          )}
-        </button>
-        <button
-          className={cn(
-            'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
-            !isNormal ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-          )}
-          onClick={() => setActivePromptTab('group')}
-        >
-          <Layers className="w-3 h-3" />
-          Chat Grupo
-          {embeddingsChat.groupMemoryExtractionPrompt && embeddingsChat.groupMemoryExtractionPrompt !== DEFAULT_GROUP_MEMORY_EXTRACTION_PROMPT && (
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Personalizado" />
-          )}
-        </button>
-      </div>
-
-      {/* Info box for current prompt type */}
-      {isNormal ? (
-        <div className="text-[10px] text-muted-foreground space-y-1 bg-blue-500/5 border border-blue-500/20 rounded-lg p-2.5">
-          <p className="font-medium text-blue-600 dark:text-blue-400">Chat Normal (1:1)</p>
-          <p>Optimizado para la relación entre el jugador y un único personaje. Se enfoca en hechos sobre el usuario, preferencias y eventos compartidos.</p>
-          <p>Variables: <code className="bg-muted px-1 py-0.5 rounded">{'{characterName}'}</code> <code className="bg-muted px-1 py-0.5 rounded">{'{lastMessage}'}</code> <code className="bg-muted px-1 py-0.5 rounded">{'{chatContext}'}</code></p>
-        </div>
-      ) : (
-        <div className="text-[10px] text-muted-foreground space-y-1 bg-fuchsia-500/5 border border-fuchsia-500/20 rounded-lg p-2.5">
-          <p className="font-medium text-fuchsia-600 dark:text-fuchsia-400">Chat Grupo (individual por personaje)</p>
-          <p>Optimizado para capturar interacciones entre personajes. Presta atención a reacciones, opiniones sobre otros y dinámicas interpersonales del contexto grupal.</p>
-          <p>Variables: <code className="bg-muted px-1 py-0.5 rounded">{'{characterName}'}</code> <code className="bg-muted px-1 py-0.5 rounded">{'{lastMessage}'}</code> <code className="bg-muted px-1 py-0.5 rounded">{'{chatContext}'}</code> (incluye respuestas de otros personajes)</p>
-        </div>
-      )}
-
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label className="text-xs">Prompt personalizado</Label>
-          <div className="flex gap-1.5">
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 text-[10px] px-2"
-              onClick={() => setShowPreview(!showPreview)}
-            >
-              <Eye className="w-3 h-3 mr-1" />
-              {showPreview ? 'Ocultar Vista Previa' : 'Vista Previa'}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 text-[10px] px-2 text-muted-foreground hover:text-foreground"
-              onClick={handleRestoreDefault}
-            >
-              <RotateCcw className="w-3 h-3 mr-1" />
-              Restaurar Predeterminado
-            </Button>
-          </div>
-        </div>
-        <Textarea
-          value={currentPrompt}
-          onChange={(e) => handleChange(e.target.value)}
-          rows={18}
-          className="text-xs font-mono leading-relaxed"
-          placeholder={isNormal ? "Escribe el prompt personalizado para extracción de memoria en chat normal..." : "Escribe el prompt personalizado para extracción de memoria en chat de grupo..."}
-        />
-        <div className="flex items-center justify-between">
-          <p className="text-[10px] text-muted-foreground">
-            {currentPrompt.length} caracteres
-            {hasChanges && (
-              <span className="text-amber-500 ml-2">● Sin guardar</span>
-            )}
-          </p>
-          <Button
-            size="sm"
-            disabled={!hasChanges}
-            onClick={handleSavePrompt}
-          >
-            Guardar Prompt
-          </Button>
-        </div>
-      </div>
-
-      {showPreview && (
-        <div className="space-y-2">
-          <Label className="text-xs flex items-center gap-1.5">
-            <Eye className="w-3 h-3" />
-            Vista Previa — {isNormal ? 'Chat Normal' : 'Chat Grupo'} (con variables reemplazadas)
-          </Label>
-          <div className="p-3 rounded-lg border bg-muted/30 max-h-96 overflow-y-auto">
-            <pre className="text-xs font-mono whitespace-pre-wrap text-muted-foreground">{previewText}</pre>
-          </div>
-          <p className="text-[10px] text-muted-foreground">
-            Variables reemplazadas: <code className="bg-muted px-1 py-0.5 rounded text-[10px]">{'{characterName}'}</code> → &quot;{previewData.characterName}&quot;,
-            <code className="bg-muted px-1 py-0.5 rounded text-[10px] ml-1">{'{chatContext}'}</code> → contexto de ejemplo,
-            <code className="bg-muted px-1 py-0.5 rounded text-[10px] ml-1">{'{lastMessage}'}</code> → un mensaje de ejemplo.
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ============================================
 // Main Panel Component
@@ -1014,6 +215,7 @@ export function EmbeddingsSettingsPanel() {
   const [checkingOllama, setCheckingOllama] = useState(false);
   const [checkingLanceDB, setCheckingLanceDB] = useState(false);
   const [refreshingModels, setRefreshingModels] = useState(false);
+  const [detectingContext, setDetectingContext] = useState(false);
   const [searchNamespace, setSearchNamespace] = useState<string>('all');
   const [searchSourceType, setSearchSourceType] = useState<string>('all');
   const [browseSourceType, setBrowseSourceType] = useState<string>('all');
@@ -1519,7 +721,37 @@ export function EmbeddingsSettingsPanel() {
       ...prev,
       model: modelName,
       dimension: knownModel?.dimension || prev.dimension,
+      // Clear modelContextLength so the user sees the hint to re-detect
+      modelContextLength: undefined,
     }));
+  };
+
+  const handleDetectContext = async () => {
+    setDetectingContext(true);
+    try {
+      const res = await fetch('/api/embeddings/detect-context', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ollamaUrl: config.ollamaUrl, model: config.model }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setConfig(prev => ({ ...prev, modelContextLength: data.contextLength }));
+          toast({
+            title: 'Contexto detectado',
+            description: `${config.model}: ${data.contextLength.toLocaleString()} tokens de contexto`,
+          });
+        } else {
+          toast({ title: 'Error', description: data.error || 'No se pudo detectar el contexto', variant: 'destructive' });
+        }
+      } else {
+        toast({ title: 'Error', description: 'Error al detectar contexto', variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Error', description: 'Error de conexión al detectar contexto', variant: 'destructive' });
+    }
+    setDetectingContext(false);
   };
 
   const handleSelectNamespace = (ns: string | null) => {
@@ -1709,7 +941,7 @@ export function EmbeddingsSettingsPanel() {
           <div>
             <p className="text-xs font-medium text-violet-600 dark:text-violet-400">Ajustes de memoria y extracción</p>
             <p className="text-[10px] text-muted-foreground mt-0.5">
-              La configuración de extracción automática, consolidación, refuerzo y prompts de memoria se encuentra ahora en <strong>Configuración → Memoria → Extracción</strong>.
+              💡 La configuración de integración con chat, extracción de memoria, consolidación y prompts se encuentra en <strong>Configuración → Memoria → Extracción y Contexto</strong>.
             </p>
           </div>
         </div>
@@ -1870,6 +1102,31 @@ export function EmbeddingsSettingsPanel() {
                     )}
                   </SelectContent>
                 </Select>
+                {/* Detected Context Length */}
+                <div className="flex items-center gap-2">
+                  {config.modelContextLength ? (
+                    <Badge variant="secondary" className="text-[10px] h-5 gap-1">
+                      <Sparkles className="w-3 h-3" />
+                      {config.modelContextLength.toLocaleString()} tokens contexto
+                    </Badge>
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground">Contexto no detectado</span>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-5 text-[10px] px-2"
+                    onClick={handleDetectContext}
+                    disabled={detectingContext}
+                  >
+                    {detectingContext ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Search className="w-3 h-3" />
+                    )}
+                    Detectar
+                  </Button>
+                </div>
               </div>
 
               {/* Similarity Threshold + Max Results */}

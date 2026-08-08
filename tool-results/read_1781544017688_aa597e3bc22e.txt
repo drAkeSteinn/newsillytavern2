@@ -1,0 +1,2002 @@
+     1→'use client';
+     2→
+     3→import { useState, useCallback, useRef, useEffect } from 'react';
+     4→import {
+     5→  Brain,
+     6→  Search,
+     7→  Plus,
+     8→  Trash2,
+     9→  RefreshCw,
+    10→  Database,
+    11→  Settings,
+    12→  ChevronDown,
+    13→  CheckCircle,
+    14→  XCircle,
+    15→  AlertCircle,
+    16→  Loader2,
+    17→  FolderOpen,
+    18→  Tag,
+    19→  FileText,
+    20→  Layers,
+    21→  Upload,
+    22→  File,
+    23→  Eye,
+    24→  ArrowLeft,
+    25→  Code,
+    26→  FileType,
+    27→  List,
+    28→  Pencil,
+    29→  Sparkles,
+    30→} from 'lucide-react';
+    31→import { Card, CardContent } from '@/components/ui/card';
+    32→import { Button } from '@/components/ui/button';
+    33→import { Input } from '@/components/ui/input';
+    34→import { Label } from '@/components/ui/label';
+    35→import { Badge } from '@/components/ui/badge';
+    36→import { Separator } from '@/components/ui/separator';
+    37→import { Textarea } from '@/components/ui/textarea';
+    38→import {
+    39→  Select,
+    40→  SelectContent,
+    41→  SelectItem,
+    42→  SelectTrigger,
+    43→  SelectValue,
+    44→} from '@/components/ui/select';
+    45→import {
+    46→  Dialog,
+    47→  DialogContent,
+    48→  DialogDescription,
+    49→  DialogFooter,
+    50→  DialogHeader,
+    51→  DialogTitle,
+    52→} from '@/components/ui/dialog';
+    53→import {
+    54→  Collapsible,
+    55→  CollapsibleContent,
+    56→  CollapsibleTrigger,
+    57→} from '@/components/ui/collapsible';
+    58→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    59→import { ScrollArea } from '@/components/ui/scroll-area';
+    60→import { Slider } from '@/components/ui/slider';
+    61→import { useToast } from '@/hooks/use-toast';
+    62→import { cn } from '@/lib/utils';
+    63→
+    64→interface EmbeddingConfig {
+    65→  ollamaUrl: string;
+    66→  model: string;
+    67→  dimension: number;
+    68→  similarityThreshold: number;
+    69→  maxResults: number;
+    70→  modelContextLength?: number;
+    71→  tableDimension?: number | null;
+    72→}
+    73→
+    74→interface EmbeddingRecord {
+    75→  id: string;
+    76→  content: string;
+    77→  metadata: Record<string, any>;
+    78→  namespace: string;
+    79→  source_type?: string;
+    80→  source_id?: string;
+    81→  created_at: string;
+    82→}
+    83→
+    84→interface NamespaceRecord {
+    85→  id: string;
+    86→  namespace: string;
+    87→  description?: string;
+    88→  type?: string;
+    89→  created_at: string;
+    90→  updated_at: string;
+    91→  embedding_count?: number;
+    92→}
+    93→
+    94→interface DocumentRecord {
+    95→  source_id: string;
+    96→  source_type: string;
+    97→  count: number;
+    98→  firstChunk: string;
+    99→  created_at: string;
+   100→  ids: string[];
+   101→}
+   102→
+   103→interface EmbeddingStats {
+   104→  totalEmbeddings: number;
+   105→  totalNamespaces: number;
+   106→  embeddingsByNamespace: Record<string, number>;
+   107→  embeddingsBySourceType: Record<string, number>;
+   108→}
+   109→
+   110→interface SearchResult {
+   111→  id: string;
+   112→  content: string;
+   113→  namespace: string;
+   114→  source_type?: string;
+   115→  similarity: number;
+   116→}
+   117→
+   118→interface SearchMeta {
+   119→  model: string;
+   120→  threshold: number;
+   121→  limit: number;
+   122→  namespace: string;
+   123→}
+   124→
+   125→interface ChunkPreview {
+   126→  chunks: string[];
+   127→  totalChunks: number;
+   128→  totalCharacters: number;
+   129→  avgChunkSize: number;
+   130→}
+   131→
+   132→const KNOWN_MODELS = [
+   133→  { name: 'nomic-embed-text', dimension: 768 },
+   134→  { name: 'nomic-embed-text:latest', dimension: 768 },
+   135→  { name: 'nomic-embed-text-v2-moe', dimension: 768 },
+   136→  { name: 'nomic-embed-text-v2-moe:latest', dimension: 768 },
+   137→  { name: 'bge-m3', dimension: 1024 },
+   138→  { name: 'bge-m3:567m', dimension: 1024 },
+   139→  { name: 'mxbai-embed-large', dimension: 1024 },
+   140→  { name: 'all-minilm', dimension: 384 },
+   141→  { name: 'snowflake-arctic-embed', dimension: 1024 },
+   142→];
+   143→
+   144→const SPLITTER_OPTIONS = [
+   145→  {
+   146→    value: 'character',
+   147→    label: 'Divisor por Caracteres',
+   148→    icon: FileType,
+   149→    description: 'División simple por conteo de caracteres',
+   150→    defaultChunkSize: 1000,
+   151→    defaultOverlap: 200,
+   152→  },
+   153→  {
+   154→    value: 'recursive-character',
+   155→    label: 'Divisor Recursivo',
+   156→    icon: List,
+   157→    description: 'Intenta párrafos, líneas, palabras para cortes naturales',
+   158→    defaultChunkSize: 1000,
+   159→    defaultOverlap: 200,
+   160→  },
+   161→  {
+   162→    value: 'markdown',
+   163→    label: 'Divisor Markdown',
+   164→    icon: FileText,
+   165→    description: 'Divide por encabezados markdown primero',
+   166→    defaultChunkSize: 1000,
+   167→    defaultOverlap: 200,
+   168→  },
+   169→  {
+   170→    value: 'code',
+   171→    label: 'Divisor de Código',
+   172→    icon: Code,
+   173→    description: 'Divide por estructuras de código (clases, funciones)',
+   174→    defaultChunkSize: 1500,
+   175→    defaultOverlap: 300,
+   176→  },
+   177→];
+   178→
+   179→
+   180→
+   181→// ============================================
+   182→// Main Panel Component
+   183→// ============================================
+   184→
+   185→export function EmbeddingsSettingsPanel() {
+   186→  const { toast } = useToast();
+   187→
+   188→  // Config state
+   189→  const [config, setConfig] = useState<EmbeddingConfig>({
+   190→    ollamaUrl: 'http://localhost:11434',
+   191→    model: 'bge-m3:567m',
+   192→    dimension: 1024,
+   193→    similarityThreshold: 0.5,
+   194→    maxResults: 5,
+   195→  });
+   196→
+   197→  // Data state
+   198→  const [stats, setStats] = useState<EmbeddingStats | null>(null);
+   199→  const [namespaces, setNamespaces] = useState<NamespaceRecord[]>([]);
+   200→  const [embeddings, setEmbeddings] = useState<EmbeddingRecord[]>([]);
+   201→  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+   202→  const [searchMeta, setSearchMeta] = useState<SearchMeta | null>(null);
+   203→
+   204→  // UI state
+   205→  const [loading, setLoading] = useState(false);
+   206→  const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown');
+   207→  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+   208→  const [searchQuery, setSearchQuery] = useState('');
+   209→
+   210→  // Individual service status
+   211→  const [ollamaStatus, setOllamaStatus] = useState<'unknown' | 'ok' | 'error'>('unknown');
+   212→  const [ollamaError, setOllamaError] = useState<string | undefined>();
+   213→  const [lanceDBStatus, setLanceDBStatus] = useState<'unknown' | 'ok' | 'error'>('unknown');
+   214→  const [lanceDBError, setLanceDBError] = useState<string | undefined>();
+   215→  const [checkingOllama, setCheckingOllama] = useState(false);
+   216→  const [checkingLanceDB, setCheckingLanceDB] = useState(false);
+   217→  const [refreshingModels, setRefreshingModels] = useState(false);
+   218→  const [detectingContext, setDetectingContext] = useState(false);
+   219→  const [searchNamespace, setSearchNamespace] = useState<string>('all');
+   220→  const [searchSourceType, setSearchSourceType] = useState<string>('all');
+   221→  const [browseSourceType, setBrowseSourceType] = useState<string>('all');
+   222→  const [searching, setSearching] = useState(false);
+   223→  const [selectedNamespace, setSelectedNamespace] = useState<string | null>(null);
+   224→
+   225→  // Dialogs
+   226→  const [createEmbeddingOpen, setCreateEmbeddingOpen] = useState(false);
+   227→  const [createNamespaceOpen, setCreateNamespaceOpen] = useState(false);
+   228→  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+   229→  const [newEmbedding, setNewEmbedding] = useState({ content: '', namespace: 'default', source_type: 'custom' });
+   230→  const [newNamespace, setNewNamespace] = useState({ namespace: '', description: '', type: '' });
+   231→  const [editingNamespace, setEditingNamespace] = useState<NamespaceRecord | null>(null);
+   232→  const [customTypeText, setCustomTypeText] = useState('');
+   233→  const [editCustomTypeText, setEditCustomTypeText] = useState('');
+   234→
+   235→  // Advanced collapsible
+   236→  const [advancedOpen, setAdvancedOpen] = useState(false);
+   237→  const [configLoaded, setConfigLoaded] = useState(false);
+   238→
+   239→  // Namespace documents
+   240→  const [nsDocuments, setNsDocuments] = useState<DocumentRecord[]>([]);
+   241→  const [viewingNsDocuments, setViewingNsDocuments] = useState<string | null>(null);
+   242→  const [loadingDocuments, setLoadingDocuments] = useState(false);
+   243→
+   244→  // File upload state
+   245→  const [uploadedFile, setUploadedFile] = useState<{
+   246→    fileName: string;
+   247→    fileSize: number;
+   248→    content: string;
+   249→    characterCount: number;
+   250→  } | null>(null);
+   251→  const [uploadingFile, setUploadingFile] = useState(false);
+   252→  const [refreshingEmbeddings, setRefreshingEmbeddings] = useState(false);
+   253→  const [splitterType, setSplitterType] = useState('recursive-character');
+   254→  const [chunkSize, setChunkSize] = useState(1000);
+   255→  const [chunkOverlap, setChunkOverlap] = useState(200);
+   256→  const [previewChunks, setPreviewChunks] = useState<ChunkPreview | null>(null);
+   257→  const [previewingChunks, setPreviewingChunks] = useState(false);
+   258→  const [creatingEmbeddings, setCreatingEmbeddings] = useState(false);
+   259→  const [uploadNamespace, setUploadNamespace] = useState('default');
+   260→  const fileInputRef = useRef<HTMLInputElement>(null);
+   261→
+   262→  // Load config
+   263→  const fetchConfig = useCallback(async () => {
+   264→    try {
+   265→      const res = await fetch('/api/embeddings/config');
+   266→      if (res.ok) {
+   267→        const data = await res.json();
+   268→        if (data.success) {
+   269→          setConfig(data.data);
+   270→          setConfigLoaded(true);
+   271→        }
+   272→      }
+   273→    } catch {
+   274→      setConfigLoaded(true);
+   275→    }
+   276→  }, []);
+   277→
+   278→  const saveConfig = async () => {
+   279→    setLoading(true);
+   280→    try {
+   281→      const res = await fetch('/api/embeddings/config', {
+   282→        method: 'PUT',
+   283→        headers: { 'Content-Type': 'application/json' },
+   284→        body: JSON.stringify(config),
+   285→      });
+   286→      if (res.ok) {
+   287→        const data = await res.json();
+   288→        if (data.success) {
+   289→          setConfig(data.data);
+   290→          if (data.meta?.dimensionMismatch) {
+   291→            toast({
+   292→              title: 'Tabla de embeddings recreada',
+   293→              description: `Dimensión cambiada de ${data.meta.oldDimension}D a ${data.meta.newDimension}D. Los embeddings anteriores fueron eliminados automáticamente. Recrea tus embeddings con el nuevo modelo.`,
+   294→              variant: 'default',
+   295→            });
+   296→          } else if (data.meta?.modelChanged) {
+   297→            toast({
+   298→              title: 'Configuración guardada',
+   299→              description: `Modelo cambiado a ${config.model}. Los nuevos embeddings se crearán con este modelo. Los embeddings existentes pueden no ser compatibles si la dimensión es diferente.`,
+   300→            });
+   301→          } else {
+   302→            toast({ title: 'Configuración guardada', description: 'Configuración de embeddings actualizada.' });
+   303→          }
+   304→          // Refresh stats/namespaces in case data was cleared
+   305→          loadStats();
+   306→          loadNamespaces();
+   307→        }
+   308→      }
+   309→    } catch {
+   310→      toast({ title: 'Error', description: 'Error al guardar configuración.', variant: 'destructive' });
+   311→    }
+   312→    setLoading(false);
+   313→  };
+   314→
+   315→  const testConnection = async () => {
+   316→    if (!configLoaded) await fetchConfig();
+   317→    try {
+   318→      const res = await fetch('/api/embeddings/test', { method: 'POST' });
+   319→      const data = await res.json();
+   320→      if (data.success) {
+   321→        setOllamaStatus(data.data.connections.ollama ? 'ok' : 'error');
+   322→        setOllamaError(data.data.ollamaError);
+   323→        setLanceDBStatus(data.data.connections.db ? 'ok' : 'error');
+   324→        setLanceDBError(data.data.dbError);
+   325→        setConnectionStatus(data.data.connections.db && data.data.connections.ollama ? 'connected' : 'disconnected');
+   326→        setStats(data.data.stats);
+   327→        setOllamaModels(data.data.ollamaModels || []);
+   328→        toast({
+   329→          title: 'Prueba de conexión',
+   330→          description: `Ollama: ${data.data.connections.ollama ? 'Conectado' : 'Desconectado'} | LanceDB: ${data.data.connections.db ? 'Conectado' : 'Desconectado'}`,
+   331→        });
+   332→      } else {
+   333→        setConnectionStatus('disconnected');
+   334→        setOllamaStatus('error');
+   335→        setLanceDBStatus('error');
+   336→        toast({ title: 'Conexión fallida', description: data.error, variant: 'destructive' });
+   337→      }
+   338→    } catch {
+   339→      setConnectionStatus('disconnected');
+   340→      toast({ title: 'Error', description: 'Error al probar conexiones.', variant: 'destructive' });
+   341→    }
+   342→  };
+   343→
+   344→  const checkOllama = async () => {
+   345→    setCheckingOllama(true);
+   346→    try {
+   347→      const res = await fetch(config.ollamaUrl + '/api/tags', { signal: AbortSignal.timeout(8000) });
+   348→      if (res.ok) {
+   349→        const data = await res.json();
+   350→        const models = (data.models || []).map((m: any) => m.name);
+   351→        setOllamaModels(models);
+   352→        setOllamaStatus('ok');
+   353→        setOllamaError(undefined);
+   354→        toast({ title: 'Ollama conectado', description: `${models.length} modelos disponibles.` });
+   355→      } else {
+   356→        setOllamaStatus('error');
+   357→        setOllamaError(`HTTP ${res.status}`);
+   358→        toast({ title: 'Ollama error', description: `Server returned HTTP ${res.status}`, variant: 'destructive' });
+   359→      }
+   360→    } catch (e: any) {
+   361→      setOllamaStatus('error');
+   362→      setOllamaError(e.message || 'Cannot reach server');
+   363→      toast({ title: 'Ollama inalcanzable', description: e.message || 'Verifica que Ollama esté ejecutándose.', variant: 'destructive' });
+   364→    }
+   365→    setCheckingOllama(false);
+   366→  };
+   367→
+   368→  const refreshModels = async () => {
+   369→    setRefreshingModels(true);
+   370→    try {
+   371→      const res = await fetch(config.ollamaUrl + '/api/tags', { signal: AbortSignal.timeout(8000) });
+   372→      if (res.ok) {
+   373→        const data = await res.json();
+   374→        const models = (data.models || []).map((m: any) => m.name);
+   375→        setOllamaModels(models);
+   376→        setOllamaStatus('ok');
+   377→        setOllamaError(undefined);
+   378→        toast({ title: 'Modelos actualizados', description: `Se encontraron ${models.length} modelos en Ollama.` });
+   379→      } else {
+   380→        toast({ title: 'Error al actualizar', description: `HTTP ${res.status}`, variant: 'destructive' });
+   381→      }
+   382→    } catch (e: any) {
+   383→      toast({ title: 'Error al actualizar', description: e.message || 'No se puede conectar a Ollama.', variant: 'destructive' });
+   384→    }
+   385→    setRefreshingModels(false);
+   386→  };
+   387→
+   388→  const checkLanceDB = async () => {
+   389→    setCheckingLanceDB(true);
+   390→    try {
+   391→      const res = await fetch('/api/embeddings/test', { method: 'POST' });
+   392→      const data = await res.json();
+   393→      if (data.success) {
+   394→        setLanceDBStatus(data.data.connections.db ? 'ok' : 'error');
+   395→        setLanceDBError(data.data.dbError);
+   396→        setStats(data.data.stats);
+   397→        if (data.data.connections.db) {
+   398→          toast({ title: 'LanceDB activo', description: 'Base de datos conectada y funcionando.' });
+   399→        } else {
+   400→          toast({ title: 'LanceDB no disponible', description: data.data.dbError || 'No se pudo inicializar.', variant: 'destructive' });
+   401→        }
+   402→      } else {
+   403→        setLanceDBStatus('error');
+   404→        setLanceDBError(data.error);
+   405→        toast({ title: 'Error de LanceDB', description: data.error || 'Revisa los logs.', variant: 'destructive' });
+   406→      }
+   407→    } catch {
+   408→      setLanceDBStatus('error');
+   409→      setLanceDBError('Failed to test');
+   410→      toast({ title: 'Error de LanceDB', description: 'Error al probar la conexión.', variant: 'destructive' });
+   411→    }
+   412→    setCheckingLanceDB(false);
+   413→  };
+   414→
+   415→  const loadStats = async () => {
+   416→    try {
+   417→      const res = await fetch('/api/embeddings/stats');
+   418→      if (res.ok) {
+   419→        const data = await res.json();
+   420→        if (data.success) setStats(data.data);
+   421→      }
+   422→    } catch { /* ignore */ }
+   423→    setLanceDBStatus(stats !== null ? 'ok' : 'unknown');
+   424→  };
+   425→
+   426→  const loadNamespaces = async () => {
+   427→    try {
+   428→      const res = await fetch('/api/embeddings/namespaces');
+   429→      if (res.ok) {
+   430→        const data = await res.json();
+   431→        if (data.success) {
+   432→          const enriched = data.data.namespaces.map((ns: any) => ({
+   433→            ...ns,
+   434→            type: ns.metadata?.type || '',
+   435→          }));
+   436→          setNamespaces(enriched);
+   437→          if (data.data.dbAvailable === false) {
+   438→            setLanceDBStatus('error');
+   439→            setLanceDBError(data.data.dbError);
+   440→          }
+   441→        }
+   442→      }
+   443→    } catch { /* ignore */ }
+   444→  };
+   445→
+   446→  // Load config and namespaces on mount
+   447→  useEffect(() => {
+   448→    let mounted = true;
+   449→    const init = async () => {
+   450→      await fetchConfig();
+   451→      if (mounted) {
+   452→        await Promise.all([loadNamespaces(), loadStats()]);
+   453→        // Auto-check Ollama connection to show status immediately
+   454→        try {
+   455→          const currentConfig = config; // Use the config just loaded
+   456→          const res = await fetch(currentConfig.ollamaUrl + '/api/tags', { signal: AbortSignal.timeout(5000) });
+   457→          if (mounted) {
+   458→            if (res.ok) {
+   459→              const data = await res.json();
+   460→              const models = (data.models || []).map((m: any) => m.name);
+   461→              setOllamaModels(models);
+   462→              setOllamaStatus('ok');
+   463→              setOllamaError(undefined);
+   464→            } else {
+   465→              setOllamaStatus('error');
+   466→              setOllamaError(`HTTP ${res.status}`);
+   467→            }
+   468→          }
+   469→        } catch {
+   470→          if (mounted) {
+   471→            setOllamaStatus('error');
+   472→            setOllamaError('Servidor no disponible');
+   473→          }
+   474→        }
+   475→      }
+   476→    };
+   477→    init();
+   478→    return () => { mounted = false; };
+   479→  }, []);
+   480→
+   481→  const loadEmbeddings = async (namespace?: string) => {
+   482→    try {
+   483→      const params = new URLSearchParams();
+   484→      if (namespace) params.set('namespace', namespace);
+   485→      params.set('limit', '100');
+   486→      const res = await fetch(`/api/embeddings?${params}`);
+   487→      if (res.ok) {
+   488→        const data = await res.json();
+   489→        if (data.success) setEmbeddings(data.data.embeddings);
+   490→      }
+   491→    } catch { /* ignore */ }
+   492→  };
+   493→
+   494→  const loadNamespaceDocuments = async (namespace: string) => {
+   495→    setLoadingDocuments(true);
+   496→    try {
+   497→      const res = await fetch(`/api/embeddings/namespaces/${encodeURIComponent(namespace)}/documents`);
+   498→      if (res.ok) {
+   499→        const data = await res.json();
+   500→        if (data.success) {
+   501→          setNsDocuments(data.data.documents);
+   502→        }
+   503→      }
+   504→    } catch {
+   505→      toast({ title: 'Error', description: 'Error al cargar documentos.', variant: 'destructive' });
+   506→    }
+   507→    setLoadingDocuments(false);
+   508→  };
+   509→
+   510→  const handleViewNamespaceDocuments = (namespace: string) => {
+   511→    setViewingNsDocuments(namespace);
+   512→    loadNamespaceDocuments(namespace);
+   513→  };
+   514→
+   515→  const handleDeleteDocument = async (namespace: string, sourceId: string) => {
+   516→    try {
+   517→      const res = await fetch(`/api/embeddings/namespaces/${encodeURIComponent(namespace)}/documents`, {
+   518→        method: 'DELETE',
+   519→        headers: { 'Content-Type': 'application/json' },
+   520→        body: JSON.stringify({ source_id: sourceId }),
+   521→      });
+   522→      if (res.ok) {
+   523→        toast({ title: 'Documento eliminado', description: `Documento "${sourceId}" y sus embeddings eliminados.` });
+   524→        loadNamespaceDocuments(namespace);
+   525→        loadStats();
+   526→        loadNamespaces();
+   527→      }
+   528→    } catch {
+   529→      toast({ title: 'Error', description: 'Error al eliminar documento.', variant: 'destructive' });
+   530→    }
+   531→  };
+   532→
+   533→  const handleClearNamespaceDocuments = async (namespace: string) => {
+   534→    try {
+   535→      const res = await fetch(`/api/embeddings/namespaces/${encodeURIComponent(namespace)}/documents`, {
+   536→        method: 'DELETE',
+   537→      });
+   538→      if (res.ok) {
+   539→        toast({ title: 'Limpiado', description: `Todos los documentos en "${namespace}" eliminados.` });
+   540→        setNsDocuments([]);
+   541→        loadStats();
+   542→        loadNamespaces();
+   543→      }
+   544→    } catch {
+   545→      toast({ title: 'Error', description: 'Error al limpiar namespace.', variant: 'destructive' });
+   546→    }
+   547→  };
+   548→
+   549→  const handleSearch = async () => {
+   550→    if (!searchQuery.trim()) return;
+   551→    setSearching(true);
+   552→    try {
+   553→      const body: Record<string, unknown> = {
+   554→        query: searchQuery,
+   555→        model: config.model,
+   556→        namespace: searchNamespace === 'all' ? undefined : searchNamespace,
+   557→        limit: config.maxResults,
+   558→        threshold: config.similarityThreshold,
+   559→      };
+   560→      
+   561→      // Add source_type filter if not 'all'
+   562→      if (searchSourceType !== 'all') {
+   563→        body.source_type = searchSourceType;
+   564→      }
+   565→      
+   566→      const res = await fetch('/api/embeddings/search', {
+   567→        method: 'POST',
+   568→        headers: { 'Content-Type': 'application/json' },
+   569→        body: JSON.stringify(body),
+   570→      });
+   571→      const data = await res.json();
+   572→      if (data.success) {
+   573→        // Apply client-side source_type filter if namespace is 'all' (API might not support it)
+   574→        let results = data.data.results || [];
+   575→        if (searchSourceType !== 'all') {
+   576→          results = results.filter((r: SearchResult) => r.source_type === searchSourceType);
+   577→        }
+   578→        setSearchResults(results);
+   579→        setSearchMeta(data.data.meta || null);
+   580→        if (results.length === 0) {
+   581→          toast({ title: 'Sin resultados', description: 'No se encontraron embeddings similares sobre el umbral.' });
+   582→        }
+   583→      } else {
+   584→        toast({ title: 'Error de búsqueda', description: data.error || 'Error desconocido al buscar.', variant: 'destructive' });
+   585→      }
+   586→    } catch {
+   587→      toast({ title: 'Error de búsqueda', description: 'Error al buscar embeddings.', variant: 'destructive' });
+   588→    }
+   589→    setSearching(false);
+   590→  };
+   591→
+   592→  const handleCreateEmbedding = async () => {
+   593→    if (!newEmbedding.content.trim()) return;
+   594→    setLoading(true);
+   595→    try {
+   596→      const res = await fetch('/api/embeddings', {
+   597→        method: 'POST',
+   598→        headers: { 'Content-Type': 'application/json' },
+   599→        body: JSON.stringify(newEmbedding),
+   600→      });
+   601→      if (res.ok) {
+   602→        toast({ title: 'Embedding creado', description: 'Nuevo embedding almacenado.' });
+   603→        setCreateEmbeddingOpen(false);
+   604→        setNewEmbedding({ content: '', namespace: 'default', source_type: 'custom' });
+   605→        loadStats();
+   606→        if (selectedNamespace) loadEmbeddings(selectedNamespace);
+   607→      }
+   608→    } catch {
+   609→      toast({ title: 'Error', description: 'Error al crear embedding.', variant: 'destructive' });
+   610→    }
+   611→    setLoading(false);
+   612→  };
+   613→
+   614→  const handleCreateNamespace = async () => {
+   615→    if (!newNamespace.namespace.trim()) return;
+   616→    setLoading(true);
+   617→    try {
+   618→      const metadata: Record<string, any> = {};
+   619→      const typeValue = newNamespace.type === '__custom__' ? customTypeText.trim() : newNamespace.type.trim();
+   620→      if (typeValue && typeValue !== '__none__') {
+   621→        metadata.type = typeValue;
+   622→      }
+   623→      const res = await fetch('/api/embeddings/namespaces', {
+   624→        method: 'POST',
+   625→        headers: { 'Content-Type': 'application/json' },
+   626→        body: JSON.stringify({ namespace: newNamespace.namespace, description: newNamespace.description, metadata }),
+   627→      });
+   628→      if (res.ok) {
+   629→        toast({ title: 'Namespace creado', description: `Namespace "${newNamespace.namespace}" creado.` });
+   630→        setCreateNamespaceOpen(false);
+   631→        setNewNamespace({ namespace: '', description: '', type: '' });
+   632→        setCustomTypeText('');
+   633→        loadNamespaces();
+   634→      }
+   635→    } catch {
+   636→      toast({ title: 'Error', description: 'Error al crear namespace.', variant: 'destructive' });
+   637→    }
+   638→    setLoading(false);
+   639→  };
+   640→
+   641→  const handleUpdateNamespace = async () => {
+   642→    if (!editingNamespace) return;
+   643→    setLoading(true);
+   644→    try {
+   645→      const metadata: Record<string, any> = {};
+   646→      const typeValue = editingNamespace.type === '__custom__' ? editCustomTypeText.trim() : (editingNamespace.type?.trim() || '');
+   647→      if (typeValue && typeValue !== '__none__') {
+   648→        metadata.type = typeValue;
+   649→      }
+   650→      const res = await fetch('/api/embeddings/namespaces', {
+   651→        method: 'POST',
+   652→        headers: { 'Content-Type': 'application/json' },
+   653→        body: JSON.stringify({ namespace: editingNamespace.namespace, description: editingNamespace.description, metadata }),
+   654→      });
+   655→      if (res.ok) {
+   656→        toast({ title: 'Namespace actualizado', description: `Namespace "${editingNamespace.namespace}" actualizado.` });
+   657→        setEditingNamespace(null);
+   658→        loadNamespaces();
+   659→      }
+   660→    } catch {
+   661→      toast({ title: 'Error', description: 'Error al actualizar namespace.', variant: 'destructive' });
+   662→    }
+   663→    setLoading(false);
+   664→  };
+   665→
+   666→  const handleDeleteEmbedding = async (id: string) => {
+   667→    try {
+   668→      const res = await fetch(`/api/embeddings/${id}`, { method: 'DELETE' });
+   669→      if (res.ok) {
+   670→        toast({ title: 'Eliminado', description: 'Embedding eliminado.' });
+   671→        loadStats();
+   672→        if (selectedNamespace) loadEmbeddings(selectedNamespace);
+   673→      }
+   674→    } catch { /* ignore */ }
+   675→  };
+   676→
+   677→  const handleDeleteNamespace = async (namespace: string) => {
+   678→    try {
+   679→      const res = await fetch(`/api/embeddings/namespaces/${encodeURIComponent(namespace)}`, { method: 'DELETE' });
+   680→      if (res.ok) {
+   681→        const data = await res.json();
+   682→        toast({
+   683→          title: 'Eliminado',
+   684→          description: `Namespace "${namespace}" eliminado (${data.deletedEmbeddings || 0} embeddings eliminados).`,
+   685→        });
+   686→        setSelectedNamespace(null);
+   687→        setViewingNsDocuments(null);
+   688→        loadNamespaces();
+   689→        loadStats();
+   690→      }
+   691→    } catch { /* ignore */ }
+   692→  };
+   693→
+   694→  const handleResetAll = async () => {
+   695→    setLoading(true);
+   696→    try {
+   697→      const res = await fetch('/api/embeddings/reset', { method: 'POST' });
+   698→      if (res.ok) {
+   699→        const data = await res.json();
+   700→        toast({
+   701→          title: 'Reinicio completado',
+   702→          description: `Se eliminaron ${data.data.deletedEmbeddings} embeddings y ${data.data.deletedNamespaces} namespaces.`,
+   703→        });
+   704→        setResetConfirmOpen(false);
+   705→        setStats(null);
+   706→        setNamespaces([]);
+   707→        setEmbeddings([]);
+   708→        setSearchResults([]);
+   709→        setSelectedNamespace(null);
+   710→        setViewingNsDocuments(null);
+   711→      }
+   712→    } catch {
+   713→      toast({ title: 'Error', description: 'Error al reiniciar.', variant: 'destructive' });
+   714→    }
+   715→    setLoading(false);
+   716→  };
+   717→
+   718→  const handleModelChange = (modelName: string) => {
+   719→    const knownModel = KNOWN_MODELS.find(m => m.name === modelName);
+   720→    setConfig(prev => ({
+   721→      ...prev,
+   722→      model: modelName,
+   723→      dimension: knownModel?.dimension || prev.dimension,
+   724→      // Clear modelContextLength so the user sees the hint to re-detect
+   725→      modelContextLength: undefined,
+   726→    }));
+   727→  };
+   728→
+   729→  const handleDetectContext = async () => {
+   730→    setDetectingContext(true);
+   731→    try {
+   732→      const res = await fetch('/api/embeddings/detect-context', {
+   733→        method: 'POST',
+   734→        headers: { 'Content-Type': 'application/json' },
+   735→        body: JSON.stringify({ ollamaUrl: config.ollamaUrl, model: config.model }),
+   736→      });
+   737→      if (res.ok) {
+   738→        const data = await res.json();
+   739→        if (data.success) {
+   740→          setConfig(prev => ({ ...prev, modelContextLength: data.contextLength }));
+   741→          toast({
+   742→            title: 'Contexto detectado',
+   743→            description: `${config.model}: ${data.contextLength.toLocaleString()} tokens de contexto`,
+   744→          });
+   745→        } else {
+   746→          toast({ title: 'Error', description: data.error || 'No se pudo detectar el contexto', variant: 'destructive' });
+   747→        }
+   748→      } else {
+   749→        toast({ title: 'Error', description: 'Error al detectar contexto', variant: 'destructive' });
+   750→      }
+   751→    } catch {
+   752→      toast({ title: 'Error', description: 'Error de conexión al detectar contexto', variant: 'destructive' });
+   753→    }
+   754→    setDetectingContext(false);
+   755→  };
+   756→
+   757→  const handleSelectNamespace = (ns: string | null) => {
+   758→    setSelectedNamespace(ns);
+   759→    if (ns) loadEmbeddings(ns);
+   760→    else { setEmbeddings([]); loadStats(); }
+   761→  };
+   762→
+   763→  const refreshEmbeddingsTab = async () => {
+   764→    setRefreshingEmbeddings(true);
+   765→    await Promise.all([loadStats(), loadNamespaces(), loadEmbeddings(selectedNamespace || undefined)]);
+   766→    setRefreshingEmbeddings(false);
+   767→  };
+   768→
+   769→  const handleTabChange = (tab: string) => {
+   770→    if (tab === 'namespaces') { loadNamespaces(); setViewingNsDocuments(null); }
+   771→    if (tab === 'embeddings') { refreshEmbeddingsTab(); }
+   772→    if (tab === 'archivos') { loadNamespaces(); }
+   773→  };
+   774→
+   775→  // File upload handlers
+   776→  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+   777→    const file = e.target.files?.[0];
+   778→    if (!file) return;
+   779→
+   780→    setUploadingFile(true);
+   781→    try {
+   782→      const formData = new FormData();
+   783→      formData.append('file', file);
+   784→
+   785→      const res = await fetch('/api/embeddings/upload', {
+   786→        method: 'POST',
+   787→        body: formData,
+   788→      });
+   789→
+   790→      const data = await res.json();
+   791→      if (data.success) {
+   792→        setUploadedFile({
+   793→          fileName: data.data.fileName,
+   794→          fileSize: data.data.fileSize,
+   795→          content: data.data.content,
+   796→          characterCount: data.data.characterCount,
+   797→        });
+   798→        setPreviewChunks(null);
+   799→        toast({ title: 'Archivo cargado', description: `${data.data.fileName} (${data.data.characterCount.toLocaleString()} caracteres)` });
+   800→      } else {
+   801→        toast({ title: 'Error al subir', description: data.error, variant: 'destructive' });
+   802→      }
+   803→    } catch {
+   804→      toast({ title: 'Error', description: 'Error al subir archivo.', variant: 'destructive' });
+   805→    }
+   806→    setUploadingFile(false);
+   807→    if (fileInputRef.current) fileInputRef.current.value = '';
+   808→  };
+   809→
+   810→  const handleSplitterChange = (value: string) => {
+   811→    setSplitterType(value);
+   812→    const opt = SPLITTER_OPTIONS.find(o => o.value === value);
+   813→    if (opt) {
+   814→      setChunkSize(opt.defaultChunkSize);
+   815→      setChunkOverlap(opt.defaultOverlap);
+   816→    }
+   817→    setPreviewChunks(null);
+   818→  };
+   819→
+   820→  const handlePreviewChunks = async () => {
+   821→    if (!uploadedFile?.content) return;
+   822→    setPreviewingChunks(true);
+   823→    try {
+   824→      const res = await fetch('/api/embeddings/preview-chunks', {
+   825→        method: 'POST',
+   826→        headers: { 'Content-Type': 'application/json' },
+   827→        body: JSON.stringify({
+   828→          content: uploadedFile.content,
+   829→          splitterType,
+   830→          chunkSize,
+   831→          chunkOverlap,
+   832→        }),
+   833→      });
+   834→      const data = await res.json();
+   835→      if (data.success) {
+   836→        setPreviewChunks(data.data);
+   837→      } else {
+   838→        toast({ title: 'Error en vista previa', description: data.error, variant: 'destructive' });
+   839→      }
+   840→    } catch {
+   841→      toast({ title: 'Error', description: 'Error al previsualizar fragmentos.', variant: 'destructive' });
+   842→    }
+   843→    setPreviewingChunks(false);
+   844→  };
+   845→
+   846→  const handleCreateEmbeddings = async () => {
+   847→    if (!uploadedFile?.content) return;
+   848→    setCreatingEmbeddings(true);
+   849→    try {
+   850→      const res = await fetch('/api/embeddings/create-from-file', {
+   851→        method: 'POST',
+   852→        headers: { 'Content-Type': 'application/json' },
+   853→        body: JSON.stringify({
+   854→          content: uploadedFile.content,
+   855→          namespace: uploadNamespace,
+   856→          splitterType,
+   857→          chunkSize,
+   858→          chunkOverlap,
+   859→          source_type: 'file',
+   860→          source_id: uploadedFile.fileName,
+   861→        }),
+   862→      });
+   863→      const data = await res.json();
+   864→      if (data.success) {
+   865→        toast({
+   866→          title: 'Embeddings creados',
+   867→          description: `${data.data.createdCount} embeddings en "${uploadNamespace}" (${data.data.errorCount} errores)`,
+   868→        });
+   869→        setUploadedFile(null);
+   870→        setPreviewChunks(null);
+   871→        loadStats();
+   872→        loadNamespaces();
+   873→      } else {
+   874→        toast({ title: 'Fallido', description: data.error, variant: 'destructive' });
+   875→      }
+   876→    } catch {
+   877→      toast({ title: 'Error', description: 'Error al crear embeddings.', variant: 'destructive' });
+   878→    }
+   879→    setCreatingEmbeddings(false);
+   880→  };
+   881→
+   882→  const formatFileSize = (bytes: number) => {
+   883→    if (bytes < 1024) return `${bytes} B`;
+   884→    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+   885→    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+   886→  };
+   887→
+   888→  return (
+   889→    <div className="space-y-4">
+   890→      {/* Header Info Banner */}
+   891→      <div className="bg-gradient-to-r from-purple-500/10 to-fuchsia-500/10 border border-purple-500/20 rounded-lg p-3">
+   892→        <div className="flex items-start gap-3">
+   893→          <div className="p-2 bg-purple-500/20 rounded-lg">
+   894→            <Brain className="w-5 h-5 text-purple-500" />
+   895→          </div>
+   896→          <div className="flex-1">
+   897→            <h4 className="text-sm font-medium text-purple-600 dark:text-purple-400">
+   898→              Base de Conocimiento
+   899→            </h4>
+   900→            <p className="text-xs text-muted-foreground mt-1">
+   901→              Infraestructura de búsqueda semántica con <strong>Ollama</strong> + <strong>LanceDB</strong>. Almacena y busca embeddings de texto por significado. Los ajustes de memoria están en la pestaña <strong>Memoria</strong>.
+   902→            </p>
+   903→          </div>
+   904→          <div className="flex items-center gap-2">
+   905→            <Badge variant={connectionStatus === 'connected' ? 'default' : connectionStatus === 'disconnected' ? 'destructive' : 'outline'}>
+   906→              {connectionStatus === 'connected' ? <CheckCircle className="w-3 h-3 mr-1" /> :
+   907→               connectionStatus === 'disconnected' ? <XCircle className="w-3 h-3 mr-1" /> :
+   908→               <AlertCircle className="w-3 h-3 mr-1" />}
+   909→              {connectionStatus === 'connected' ? 'Todo Conectado' : connectionStatus === 'disconnected' ? 'Problemas Detectados' : 'Sin Probar'}
+   910→            </Badge>
+   911→          </div>
+   912→        </div>
+   913→      </div>
+   914→
+   915→      {/* Ollama Warning Banner - shown when Ollama is not available */}
+   916→      {ollamaStatus === 'error' && (
+   917→        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+   918→          <div className="flex items-start gap-3">
+   919→            <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+   920→            <div className="flex-1">
+   921→              <h4 className="text-sm font-medium text-amber-600 dark:text-amber-400">
+   922→                Ollama no disponible
+   923→              </h4>
+   924→              <p className="text-xs text-muted-foreground mt-1">
+   925→                El servidor de Ollama no se puede alcanzar en <code className="bg-muted px-1 rounded text-xs">{config.ollamaUrl}</code>.
+   926→                Sin Ollama, no se pueden crear embeddings vectoriales ni extraer memorias automáticamente.
+   927→              </p>
+   928→              <p className="text-xs text-muted-foreground mt-1">
+   929→                <strong>Soluciones:</strong> Instala y ejecuta Ollama localmente, o cambia la URL en Configuración.
+   930→                La <strong>memoria del personaje</strong> (eventos, relaciones, notas) funciona sin Ollama.
+   931→              </p>
+   932→            </div>
+   933→          </div>
+   934→        </div>
+   935→      )}
+   936→
+   937→      {/* Cross-link to Memory tab */}
+   938→      <div className="mb-4 p-3 rounded-lg bg-violet-500/5 border border-violet-500/20">
+   939→        <div className="flex items-start gap-2">
+   940→          <Brain className="w-4 h-4 text-violet-500 mt-0.5 shrink-0" />
+   941→          <div>
+   942→            <p className="text-xs font-medium text-violet-600 dark:text-violet-400">Ajustes de memoria y extracción</p>
+   943→            <p className="text-[10px] text-muted-foreground mt-0.5">
+   944→              💡 La configuración de integración con chat, extracción de memoria, consolidación y prompts se encuentra en <strong>Configuración → Memoria → Extracción y Contexto</strong>.
+   945→            </p>
+   946→          </div>
+   947→        </div>
+   948→      </div>
+   949→
+   950→      {/* Main Tabs - 5 tabs (memory settings moved to Memoria tab) */}
+   951→      <Tabs defaultValue="configuracion" onValueChange={handleTabChange}>
+   952→        <TabsList className="grid w-full grid-cols-5">
+   953→          <TabsTrigger value="configuracion" className="text-xs">
+   954→            <Settings className="w-3 h-3 mr-1" />Configuración
+   955→          </TabsTrigger>
+   956→          <TabsTrigger value="search" className="text-xs">
+   957→            <Search className="w-3 h-3 mr-1" />Búsqueda
+   958→          </TabsTrigger>
+   959→          <TabsTrigger value="archivos" className="text-xs">
+   960→            <Upload className="w-3 h-3 mr-1" />Archivos
+   961→          </TabsTrigger>
+   962→          <TabsTrigger value="namespaces" className="text-xs">
+   963→            <FolderOpen className="w-3 h-3 mr-1" />Namespaces
+   964→          </TabsTrigger>
+   965→          <TabsTrigger value="embeddings" className="text-xs">
+   966→            <Database className="w-3 h-3 mr-1" />Examinar
+   967→          </TabsTrigger>
+   968→        </TabsList>
+   969→
+   970→        {/* Tab 1: Configuración */}
+   971→        <TabsContent value="configuracion" className="space-y-3 mt-3">
+   972→          <Card>
+   973→            <CardContent className="pt-4 space-y-4">
+   974→
+   975→              {/* Service Status Cards */}
+   976→              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   977→                {/* Ollama Status Card */}
+   978→                <div className={cn(
+   979→                  'p-3 rounded-lg border transition-colors',
+   980→                  ollamaStatus === 'ok' ? 'border-emerald-500/30 bg-emerald-500/5' :
+   981→                  ollamaStatus === 'error' ? 'border-red-500/30 bg-red-500/5' :
+   982→                  'border-border bg-muted/20'
+   983→                )}>
+   984→                  <div className="flex items-center justify-between mb-2">
+   985→                    <div className="flex items-center gap-2">
+   986→                      {ollamaStatus === 'ok' ? <CheckCircle className="w-4 h-4 text-emerald-500" /> :
+   987→                       ollamaStatus === 'error' ? <XCircle className="w-4 h-4 text-red-500" /> :
+   988→                       <AlertCircle className="w-4 h-4 text-muted-foreground" />}
+   989→                      <span className="text-sm font-medium">Ollama</span>
+   990→                    </div>
+   991→                    <Badge variant={ollamaStatus === 'ok' ? 'default' : ollamaStatus === 'error' ? 'destructive' : 'outline'}
+   992→                      className={cn(ollamaStatus === 'ok' && 'bg-emerald-500 border-emerald-500')}>
+   993→                      {ollamaStatus === 'ok' ? 'Conectado' : ollamaStatus === 'error' ? 'Error' : 'Desconocido'}
+   994→                    </Badge>
+   995→                  </div>
+   996→                  {ollamaError && (
+   997→                    <p className="text-[10px] text-red-500/80 mb-2 line-clamp-2">{ollamaError}</p>
+   998→                  )}
+   999→                  {ollamaStatus === 'ok' && ollamaModels.length > 0 && (
+  1000→                    <p className="text-[10px] text-muted-foreground mb-2">{ollamaModels.length} modelos disponibles</p>
+  1001→                  )}
+  1002→                  <div className="flex gap-1.5">
+  1003→                    <Button size="sm" variant="outline" className="h-7 text-xs flex-1" onClick={checkOllama} disabled={checkingOllama}>
+  1004→                      {checkingOllama ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+  1005→                      Verificar
+  1006→                    </Button>
+  1007→                    <Button size="sm" variant="outline" className="h-7 text-xs flex-1" onClick={refreshModels} disabled={refreshingModels}>
+  1008→                      {refreshingModels ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+  1009→                      Actualizar Modelos
+  1010→                    </Button>
+  1011→                  </div>
+  1012→                </div>
+  1013→
+  1014→                {/* LanceDB Status Card */}
+  1015→                <div className={cn(
+  1016→                  'p-3 rounded-lg border transition-colors',
+  1017→                  lanceDBStatus === 'ok' ? 'border-emerald-500/30 bg-emerald-500/5' :
+  1018→                  lanceDBStatus === 'error' ? 'border-red-500/30 bg-red-500/5' :
+  1019→                  'border-border bg-muted/20'
+  1020→                )}>
+  1021→                  <div className="flex items-center justify-between mb-2">
+  1022→                    <div className="flex items-center gap-2">
+  1023→                      {lanceDBStatus === 'ok' ? <CheckCircle className="w-4 h-4 text-emerald-500" /> :
+  1024→                       lanceDBStatus === 'error' ? <XCircle className="w-4 h-4 text-red-500" /> :
+  1025→                       <AlertCircle className="w-4 h-4 text-muted-foreground" />}
+  1026→                      <span className="text-sm font-medium">LanceDB</span>
+  1027→                    </div>
+  1028→                    <Badge variant={lanceDBStatus === 'ok' ? 'default' : lanceDBStatus === 'error' ? 'destructive' : 'outline'}
+  1029→                      className={cn(lanceDBStatus === 'ok' && 'bg-emerald-500 border-emerald-500')}>
+  1030→                      {lanceDBStatus === 'ok' ? 'Activo' : lanceDBStatus === 'error' ? 'Error' : 'Desconocido'}
+  1031→                    </Badge>
+  1032→                  </div>
+  1033→                  {lanceDBError && (
+  1034→                    <p className="text-[10px] text-red-500/80 mb-2 line-clamp-2">{lanceDBError}</p>
+  1035→                  )}
+  1036→                  {lanceDBStatus === 'ok' && stats && (
+  1037→                    <p className="text-[10px] text-muted-foreground mb-2">{stats.totalEmbeddings} embeddings, {stats.totalNamespaces} namespaces</p>
+  1038→                  )}
+  1039→                  <Button size="sm" variant="outline" className="h-7 text-xs w-full" onClick={checkLanceDB} disabled={checkingLanceDB}>
+  1040→                    {checkingLanceDB ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Database className="w-3 h-3 mr-1" />}
+  1041→                    Verificar BD
+  1042→                  </Button>
+  1043→                </div>
+  1044→              </div>
+  1045→
+  1046→              <Separator />
+  1047→
+  1048→              {/* Ollama URL */}
+  1049→              <div className="space-y-2">
+  1050→                <Label className="text-xs">URL de Ollama</Label>
+  1051→                <Input
+  1052→                  value={config.ollamaUrl}
+  1053→                  onChange={(e) => setConfig(prev => ({ ...prev, ollamaUrl: e.target.value }))}
+  1054→                  placeholder="http://localhost:11434"
+  1055→                  className="h-8 text-sm"
+  1056→                />
+  1057→              </div>
+  1058→
+  1059→              {/* Embedding Model */}
+  1060→              <div className="space-y-2">
+  1061→                <div className="flex items-center justify-between">
+  1062→                  <Label className="text-xs">Modelo de Embedding</Label>
+  1063→                  {ollamaModels.length > 0 && (
+  1064→                    <Button size="sm" variant="ghost" className="h-5 text-[10px] px-1.5 text-muted-foreground"
+  1065→                      onClick={refreshModels} disabled={refreshingModels}>
+  1066→                      {refreshingModels ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+  1067→                    </Button>
+  1068→                  )}
+  1069→                </div>
+  1070→                <Select value={config.model} onValueChange={handleModelChange}>
+  1071→                  <SelectTrigger className="h-8 text-sm">
+  1072→                    <SelectValue />
+  1073→                  </SelectTrigger>
+  1074→                  <SelectContent>
+  1075→                    {KNOWN_MODELS.map(m => (
+  1076→                      <SelectItem key={m.name} value={m.name}>
+  1077→                        <div className="flex items-center justify-between gap-4">
+  1078→                          <span>{m.name}</span>
+  1079→                          <span className="text-[10px] text-muted-foreground">{m.dimension}D</span>
+  1080→                        </div>
+  1081→                      </SelectItem>
+  1082→                    ))}
+  1083→                    {ollamaModels.filter(m => !KNOWN_MODELS.find(k => k.name === m)).length > 0 && (
+  1084→                      <>
+  1085→                        <SelectItem value="__separator__" disabled>
+  1086→                          <Separator className="my-1" />
+  1087→                        </SelectItem>
+  1088→                        {ollamaModels.filter(m => !KNOWN_MODELS.find(k => k.name === m)).map(m => (
+  1089→                          <SelectItem key={m} value={m}>
+  1090→                            <div className="flex items-center justify-between gap-4">
+  1091→                              <span className="truncate">{m}</span>
+  1092→                              <span className="text-[10px] text-muted-foreground shrink-0">Ollama</span>
+  1093→                            </div>
+  1094→                          </SelectItem>
+  1095→                        ))}
+  1096→                      </>
+  1097→                    )}
+  1098→                    {ollamaModels.length === 0 && (
+  1099→                      <SelectItem value="no-models" disabled>
+  1100→                        <span className="text-muted-foreground">No hay modelos escaneados — haz clic en "Actualizar Modelos"</span>
+  1101→                      </SelectItem>
+  1102→                    )}
+  1103→                  </SelectContent>
+  1104→                </Select>
+  1105→                {/* Detected Context Length */}
+  1106→                <div className="flex items-center gap-2">
+  1107→                  {config.modelContextLength ? (
+  1108→                    <Badge variant="secondary" className="text-[10px] h-5 gap-1">
+  1109→                      <Sparkles className="w-3 h-3" />
+  1110→                      {config.modelContextLength.toLocaleString()} tokens contexto
+  1111→                    </Badge>
+  1112→                  ) : (
+  1113→                    <span className="text-[10px] text-muted-foreground">Contexto no detectado</span>
+  1114→                  )}
+  1115→                  <Button
+  1116→                    size="sm"
+  1117→                    variant="outline"
+  1118→                    className="h-5 text-[10px] px-2"
+  1119→                    onClick={handleDetectContext}
+  1120→                    disabled={detectingContext}
+  1121→                  >
+  1122→                    {detectingContext ? (
+  1123→                      <Loader2 className="w-3 h-3 animate-spin" />
+  1124→                    ) : (
+  1125→                      <Search className="w-3 h-3" />
+  1126→                    )}
+  1127→                    Detectar
+  1128→                  </Button>
+  1129→                </div>
+  1130→              </div>
+  1131→
+  1132→              {/* Similarity Threshold + Max Results */}
+  1133→              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  1134→                <div className="space-y-2">
+  1135→                  <Label className="text-xs">Umbral de Similitud: {(config.similarityThreshold * 100).toFixed(0)}%</Label>
+  1136→                  <Slider
+  1137→                    value={[config.similarityThreshold]}
+  1138→                    min={0} max={1} step={0.05}
+  1139→                    onValueChange={([v]) => setConfig(prev => ({ ...prev, similarityThreshold: v }))}
+  1140→                  />
+  1141→                  <p className="text-[10px] text-muted-foreground">
+  1142→                    {config.similarityThreshold === 0 ? 'Cualquier resultado' :
+  1143→                     config.similarityThreshold >= 0.9 ? 'Solo coincidencias muy cercanas' :
+  1144→                     config.similarityThreshold >= 0.7 ? 'Coincidencias moderadas' :
+  1145→                     'Resultados más amplios'}
+  1146→                  </p>
+  1147→                </div>
+  1148→                <div className="space-y-2">
+  1149→                  <Label className="text-xs">Máx. Resultados: {config.maxResults}</Label>
+  1150→                  <Slider
+  1151→                    value={[config.maxResults]}
+  1152→                    min={1} max={50} step={1}
+  1153→                    onValueChange={([v]) => setConfig(prev => ({ ...prev, maxResults: v }))}
+  1154→                  />
+  1155→                  <p className="text-[10px] text-muted-foreground">
+  1156→                    Número máximo de embeddings retornados por búsqueda
+  1157→                  </p>
+  1158→                </div>
+  1159→              </div>
+  1160→
+  1161→              {/* Advanced Settings */}
+  1162→              <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+  1163→                <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+  1164→                  <ChevronDown className={cn('w-3 h-3 transition-transform', advancedOpen && 'rotate-180')} />
+  1165→                  Ajustes Avanzados
+  1166→                </CollapsibleTrigger>
+  1167→                <CollapsibleContent className="space-y-4 mt-3">
+  1168→                  <div className="space-y-2">
+  1169→                    <Label className="text-xs">Dimensión Vectorial: {config.dimension}</Label>
+  1170→                    <Input
+  1171→                      type="number"
+  1172→                      value={config.dimension}
+  1173→                      onChange={(e) => setConfig(prev => ({ ...prev, dimension: parseInt(e.target.value) || 1024 }))}
+  1174→                      className="h-8 text-sm"
+  1175→                    />
+  1176→                  </div>
+  1177→                </CollapsibleContent>
+  1178→              </Collapsible>
+  1179→
+  1180→              {/* Dimension Mismatch Warning */}
+  1181→              {config.tableDimension != null && config.tableDimension !== config.dimension && (
+  1182→                <div className="p-3 rounded-lg border border-amber-500/30 bg-amber-500/5">
+  1183→                  <div className="flex items-start gap-2">
+  1184→                    <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+  1185→                    <div>
+  1186→                      <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+  1187→                        Incompatibilidad de dimensiones detectada
+  1188→                      </p>
+  1189→                      <p className="text-[10px] text-muted-foreground mt-1">
+  1190→                        La tabla de embeddings tiene {config.tableDimension}D pero el modelo actual usa {config.dimension}D.
+  1191→                        Guarda la configuración para recrear automáticamente la tabla con la dimensión correcta.
+  1192→                      </p>
+  1193→                    </div>
+  1194→                  </div>
+  1195→                </div>
+  1196→              )}
+  1197→
+  1198→              {/* Save Config Button */}
+  1199→              <div className="flex gap-2 pt-2">
+  1200→                <Button onClick={saveConfig} disabled={loading} size="sm" className="flex-1 sm:flex-none">
+  1201→                  {loading ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : null}
+  1202→                  Guardar Config
+  1203→                </Button>
+  1204→                <Button onClick={testConnection} size="sm" variant="outline" className="flex-1 sm:flex-none">
+  1205→                  Probar Todo
+  1206→                </Button>
+  1207→              </div>
+  1208→            </CardContent>
+  1209→          </Card>
+  1210→        </TabsContent>
+  1211→
+  1212→        {/* Tab 2: Búsqueda */}
+  1213→        <TabsContent value="search" className="space-y-3 mt-3">
+  1214→          <div className="flex gap-2">
+  1215→            <Input
+  1216→              placeholder="Buscar por significado... (ej. 'espada mágica', 'bosque antiguo')"
+  1217→              value={searchQuery}
+  1218→              onChange={(e) => setSearchQuery(e.target.value)}
+  1219→              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+  1220→              className="flex-1 h-9 text-sm"
+  1221→            />
+  1222→            <Select value={searchNamespace} onValueChange={setSearchNamespace}>
+  1223→              <SelectTrigger className="w-32 h-9 text-xs">
+  1224→                <SelectValue />
+  1225→              </SelectTrigger>
+  1226→              <SelectContent>
+  1227→                <SelectItem value="all">Todos los NS</SelectItem>
+  1228→                {namespaces.map(ns => (
+  1229→                  <SelectItem key={ns.namespace} value={ns.namespace}>{ns.namespace}</SelectItem>
+  1230→                ))}
+  1231→              </SelectContent>
+  1232→            </Select>
+  1233→            <Select value={searchSourceType} onValueChange={setSearchSourceType}>
+  1234→              <SelectTrigger className="w-32 h-9 text-xs">
+  1235→                <SelectValue />
+  1236→              </SelectTrigger>
+  1237→              <SelectContent>
+  1238→                <SelectItem value="all">Todos los Tipos</SelectItem>
+  1239→                <SelectItem value="memory">🧠 Memoria</SelectItem>
+  1240→                <SelectItem value="character">👤 Personaje</SelectItem>
+  1241→                <SelectItem value="world">🌍 Mundo</SelectItem>
+  1242→                <SelectItem value="lorebook">📖 Lorebook</SelectItem>
+  1243→                <SelectItem value="session">💬 Sesión</SelectItem>
+  1244→                <SelectItem value="file">📄 Archivo</SelectItem>
+  1245→                <SelectItem value="custom">✏️ Personalizado</SelectItem>
+  1246→              </SelectContent>
+  1247→            </Select>
+  1248→            <Button onClick={handleSearch} disabled={searching || !searchQuery.trim()} size="sm">
+  1249→              {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+  1250→            </Button>
+  1251→          </div>
+  1252→
+  1253→          {/* Search Results */}
+  1254→          {searchResults.length > 0 && (
+  1255→            <div className="space-y-2">
+  1256→              <div className="flex items-center justify-between">
+  1257→                <p className="text-xs text-muted-foreground">
+  1258→                  {searchResults.length} resultados encontrados
+  1259→                </p>
+  1260→                {searchMeta && (
+  1261→                  <div className="flex items-center gap-1.5">
+  1262→                    <Badge variant="secondary" className="text-[10px]">
+  1263→                      Modelo: {searchMeta.model}
+  1264→                    </Badge>
+  1265→                    <Badge variant="outline" className="text-[10px]">
+  1266→                      Umbral: {(searchMeta.threshold * 100).toFixed(0)}%
+  1267→                    </Badge>
+  1268→                  </div>
+  1269→                )}
+  1270→              </div>
+  1271→              <div className="max-h-80 overflow-y-auto space-y-1.5">
+  1272→                {searchResults.map((result, i) => (
+  1273→                  <div key={result.id} className="p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+  1274→                    <div className="flex items-start justify-between gap-2">
+  1275→                      <div className="flex-1 min-w-0">
+  1276→                        <p className="text-sm line-clamp-2">{result.content}</p>
+  1277→                        <div className="flex items-center gap-2 mt-1.5">
+  1278→                          <Badge variant="outline" className="text-[10px]">
+  1279→                            {(result.similarity * 100).toFixed(1)}% match
+  1280→                          </Badge>
+  1281→                          <span className="text-[10px] text-muted-foreground">{result.namespace}</span>
+  1282→                        </div>
+  1283→                      </div>
+  1284→                      <span className="text-xs text-muted-foreground font-mono">#{i + 1}</span>
+  1285→                    </div>
+  1286→                  </div>
+  1287→                ))}
+  1288→              </div>
+  1289→            </div>
+  1290→          )}
+  1291→
+  1292→          {searchQuery && searchResults.length === 0 && !searching && (
+  1293→            <div className="text-center py-8 text-muted-foreground">
+  1294→              <Search className="w-8 h-8 mx-auto mb-2 opacity-30" />
+  1295→              <p className="text-sm">No se encontraron resultados. Intenta una consulta diferente o baja el umbral.</p>
+  1296→            </div>
+  1297→          )}
+  1298→
+  1299→          {!searchQuery && (
+  1300→            <div className="text-center py-8 text-muted-foreground">
+  1301→              <Brain className="w-8 h-8 mx-auto mb-2 opacity-30" />
+  1302→              <p className="text-sm">Escribe una consulta para buscar embeddings por similitud semántica.</p>
+  1303→              <p className="text-xs mt-1">Los resultados se ordenan por similitud coseno.</p>
+  1304→            </div>
+  1305→          )}
+  1306→        </TabsContent>
+  1307→
+  1308→        {/* Tab 4: Archivos (Files) */}
+  1309→        <TabsContent value="archivos" className="mt-3">
+  1310→          <Card>
+  1311→            <CardContent className="pt-4 space-y-4">
+  1312→              {/* File Upload */}
+  1313→              <div className="space-y-2">
+  1314→                <Label className="text-xs">Subir Archivo</Label>
+  1315→                <div className="flex gap-2">
+  1316→                  <Input
+  1317→                    ref={fileInputRef}
+  1318→                    type="file"
+  1319→                    accept=".txt,.md,.json,.csv,.html,.py,.js,.ts,.java,.c,.cpp,.rb,.go,.rs,.xml,.yaml,.yml,.log"
+  1320→                    onChange={handleFileUpload}
+  1321→                    className="h-9 text-sm"
+  1322→                    disabled={uploadingFile}
+  1323→                  />
+  1324→                  {uploadingFile && (
+  1325→                    <Button size="sm" disabled>
+  1326→                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+  1327→                      Cargando...
+  1328→                    </Button>
+  1329→                  )}
+  1330→                </div>
+  1331→                <p className="text-[10px] text-muted-foreground">
+  1332→                  Soportados: .txt, .md, .json, .csv, .html, archivos de código (.py, .js, .ts, .java, etc.) — Máx. 10MB
+  1333→                </p>
+  1334→              </div>
+  1335→
+  1336→              {uploadedFile && (
+  1337→                <>
+  1338→                  <Separator />
+  1339→
+  1340→                  {/* File Info */}
+  1341→                  <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+  1342→                    <File className="w-5 h-5 text-blue-500 shrink-0" />
+  1343→                    <div className="flex-1 min-w-0">
+  1344→                      <p className="text-sm font-medium truncate">{uploadedFile.fileName}</p>
+  1345→                      <p className="text-[10px] text-muted-foreground">
+  1346→                        {formatFileSize(uploadedFile.fileSize)} · {uploadedFile.characterCount.toLocaleString()} caracteres
+  1347→                      </p>
+  1348→                    </div>
+  1349→                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setUploadedFile(null); setPreviewChunks(null); }}>
+  1350→                      Eliminar
+  1351→                    </Button>
+  1352→                  </div>
+  1353→
+  1354→                  {/* Namespace Selection */}
+  1355→                  <div className="space-y-2">
+  1356→                    <Label className="text-xs">Namespace Destino</Label>
+  1357→                    <Select value={uploadNamespace} onValueChange={setUploadNamespace}>
+  1358→                      <SelectTrigger className="h-8 text-sm">
+  1359→                        <SelectValue />
+  1360→                      </SelectTrigger>
+  1361→                      <SelectContent>
+  1362→                        {namespaces.map(ns => (
+  1363→                          <SelectItem key={ns.namespace} value={ns.namespace}>{ns.namespace}</SelectItem>
+  1364→                        ))}
+  1365→                        <SelectItem value="default">default</SelectItem>
+  1366→                      </SelectContent>
+  1367→                    </Select>
+  1368→                  </div>
+  1369→
+  1370→                  {/* Text Splitter Selection */}
+  1371→                  <div className="space-y-2">
+  1372→                    <Label className="text-xs">Divisor de Texto</Label>
+  1373→                    <Select value={splitterType} onValueChange={handleSplitterChange}>
+  1374→                      <SelectTrigger className="h-8 text-sm">
+  1375→                        <SelectValue />
+  1376→                      </SelectTrigger>
+  1377→                      <SelectContent>
+  1378→                        {SPLITTER_OPTIONS.map(opt => (
+  1379→                          <SelectItem key={opt.value} value={opt.value}>
+  1380→                            <div className="flex items-center gap-2">
+  1381→                              <opt.icon className="w-3.5 h-3.5" />
+  1382→                              <div>
+  1383→                                <span className="text-sm">{opt.label}</span>
+  1384→                                <p className="text-[10px] text-muted-foreground">{opt.description}</p>
+  1385→                              </div>
+  1386→                            </div>
+  1387→                          </SelectItem>
+  1388→                        ))}
+  1389→                      </SelectContent>
+  1390→                    </Select>
+  1391→                  </div>
+  1392→
+  1393→                  {/* Chunk Size + Overlap */}
+  1394→                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  1395→                    <div className="space-y-2">
+  1396→                      <Label className="text-xs">Tamaño de Fragmento: {chunkSize} caracteres</Label>
+  1397→                      <Slider
+  1398→                        value={[chunkSize]}
+  1399→                        min={100} max={4000} step={50}
+  1400→                        onValueChange={([v]) => { setChunkSize(v); setPreviewChunks(null); }}
+  1401→                      />
+  1402→                    </div>
+  1403→                    <div className="space-y-2">
+  1404→                      <Label className="text-xs">Solapamiento: {chunkOverlap} caracteres</Label>
+  1405→                      <Slider
+  1406→                        value={[chunkOverlap]}
+  1407→                        min={0} max={Math.min(chunkSize, 1000)} step={10}
+  1408→                        onValueChange={([v]) => { setChunkOverlap(v); setPreviewChunks(null); }}
+  1409→                      />
+  1410→                    </div>
+  1411→                  </div>
+  1412→
+  1413→                  {/* Action Buttons */}
+  1414→                  <div className="flex gap-2">
+  1415→                    <Button
+  1416→                      onClick={handlePreviewChunks}
+  1417→                      disabled={previewingChunks || !uploadedFile}
+  1418→                      size="sm"
+  1419→                      variant="outline"
+  1420→                      className="flex-1"
+  1421→                    >
+  1422→                      {previewingChunks ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Eye className="w-4 h-4 mr-1" />}
+  1423→                      Vista Previa
+  1424→                    </Button>
+  1425→                    <Button
+  1426→                      onClick={handleCreateEmbeddings}
+  1427→                      disabled={creatingEmbeddings || !uploadedFile}
+  1428→                      size="sm"
+  1429→                      className="flex-1 bg-purple-600 hover:bg-purple-700"
+  1430→                    >
+  1431→                      {creatingEmbeddings ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Layers className="w-4 h-4 mr-1" />}
+  1432→                      Crear Embeddings
+  1433→                    </Button>
+  1434→                  </div>
+  1435→
+  1436→                  {/* Preview Chunks - Fixed height scrollable */}
+  1437→                  {previewChunks && (
+  1438→                    <div className="space-y-3">
+  1439→                      <div className="flex items-center justify-between">
+  1440→                        <h4 className="text-sm font-medium flex items-center gap-2">
+  1441→                          <Layers className="w-4 h-4 text-purple-500" />
+  1442→                          Vista Previa de Fragmentos
+  1443→                        </h4>
+  1444→                        <Badge variant="outline">
+  1445→                          {previewChunks.totalChunks} fragmentos · promedio {previewChunks.avgChunkSize} caracteres
+  1446→                        </Badge>
+  1447→                      </div>
+  1448→                      <ScrollArea className="h-48 rounded-lg border">
+  1449→                        <div className="p-3 space-y-2">
+  1450→                          {previewChunks.chunks.map((chunk, i) => (
+  1451→                            <div key={i} className="p-2 rounded bg-muted/50 text-xs font-mono">
+  1452→                              <div className="flex items-center gap-2 mb-1">
+  1453→                                <Badge variant="secondary" className="text-[10px] h-4 px-1">#{i + 1}</Badge>
+  1454→                                <span className="text-[10px] text-muted-foreground">{chunk.length} caracteres</span>
+  1455→                              </div>
+  1456→                              <p className="text-xs text-muted-foreground line-clamp-3">{chunk}</p>
+  1457→                            </div>
+  1458→                          ))}
+  1459→                        </div>
+  1460→                      </ScrollArea>
+  1461→                    </div>
+  1462→                  )}
+  1463→                </>
+  1464→              )}
+  1465→
+  1466→              {!uploadedFile && (
+  1467→                <div className="text-center py-6 text-muted-foreground border-2 border-dashed rounded-lg">
+  1468→                  <Upload className="w-8 h-8 mx-auto mb-2 opacity-30" />
+  1469→                  <p className="text-sm">Sube un archivo para crear embeddings</p>
+  1470→                  <p className="text-xs mt-1">Texto, markdown, código y más</p>
+  1471→                </div>
+  1472→              )}
+  1473→            </CardContent>
+  1474→          </Card>
+  1475→        </TabsContent>
+  1476→
+  1477→        {/* Tab 5: Namespaces */}
+  1478→        <TabsContent value="namespaces" className="space-y-3 mt-3">
+  1479→          {viewingNsDocuments ? (
+  1480→            /* Documents View for selected namespace */
+  1481→            <div className="space-y-3">
+  1482→              <div className="flex items-center gap-2">
+  1483→                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setViewingNsDocuments(null)}>
+  1484→                  <ArrowLeft className="w-3 h-3 mr-1" />
+  1485→                  Volver a Namespaces
+  1486→                </Button>
+  1487→                <h3 className="text-sm font-medium">Documentos en &quot;{viewingNsDocuments}&quot;</h3>
+  1488→              </div>
+  1489→
+  1490→              <div className="flex items-center justify-between">
+  1491→                <span className="text-xs text-muted-foreground">
+  1492→                  {loadingDocuments ? 'Cargando...' : `${nsDocuments.length} documentos`}
+  1493→                </span>
+  1494→                {nsDocuments.length > 0 && (
+  1495→                  <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => handleClearNamespaceDocuments(viewingNsDocuments)}>
+  1496→                    <Trash2 className="w-3 h-3 mr-1" />Limpiar Todo
+  1497→                  </Button>
+  1498→                )}
+  1499→              </div>
+  1500→
+  1501→              {loadingDocuments ? (
+  1502→                <div className="flex items-center justify-center py-8">
+  1503→                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+  1504→                </div>
+  1505→              ) : nsDocuments.length === 0 ? (
+  1506→                <div className="text-center py-8 text-muted-foreground">
+  1507→                  <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
+  1508→                  <p className="text-sm">Sin documentos en este namespace</p>
+  1509→                </div>
+  1510→              ) : (
+  1511→                <ScrollArea className="max-h-80">
+  1512→                  <div className="space-y-1.5">
+  1513→                    {nsDocuments.map(doc => (
+  1514→                      <div key={doc.source_id} className="p-3 rounded-lg border border-border/40 hover:bg-muted/50 transition-colors">
+  1515→                        <div className="flex items-start justify-between gap-2">
+  1516→                          <div className="flex-1 min-w-0">
+  1517→                            <div className="flex items-center gap-2 mb-1">
+  1518→                              <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+  1519→                              <span className="text-sm font-medium truncate">{doc.source_id}</span>
+  1520→                              <Badge variant="secondary" className="text-[10px]">
+  1521→                                {doc.count} fragmentos
+  1522→                              </Badge>
+  1523→                              <Badge variant="outline" className="text-[10px]">
+  1524→                                {doc.source_type}
+  1525→                              </Badge>
+  1526→                            </div>
+  1527→                            <p className="text-[10px] text-muted-foreground line-clamp-2 ml-5">
+  1528→                              {doc.firstChunk}
+  1529→                            </p>
+  1530→                            <p className="text-[10px] text-muted-foreground mt-1 ml-5">
+  1531→                              {new Date(doc.created_at).toLocaleDateString()}
+  1532→                            </p>
+  1533→                          </div>
+  1534→                          <Button
+  1535→                            variant="ghost"
+  1536→                            size="icon"
+  1537→                            className="h-6 w-6 text-muted-foreground hover:text-destructive shrink-0"
+  1538→                            onClick={() => handleDeleteDocument(viewingNsDocuments, doc.source_id)}
+  1539→                          >
+  1540→                            <Trash2 className="w-3 h-3" />
+  1541→                          </Button>
+  1542→                        </div>
+  1543→                      </div>
+  1544→                    ))}
+  1545→                  </div>
+  1546→                </ScrollArea>
+  1547→              )}
+  1548→            </div>
+  1549→          ) : (
+  1550→            /* Namespace List View */
+  1551→            <>
+  1552→              <div className="flex items-center justify-between">
+  1553→                <span className="text-xs text-muted-foreground">{namespaces.length} namespaces</span>
+  1554→                <div className="flex gap-1.5">
+  1555→                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { loadNamespaces(); loadStats(); }}>
+  1556→                    <RefreshCw className="w-3 h-3 mr-1" />Actualizar
+  1557→                  </Button>
+  1558→                  <Button size="sm" className="h-7 text-xs" onClick={() => setCreateNamespaceOpen(true)}>
+  1559→                    <Plus className="w-3 h-3 mr-1" />Nuevo
+  1560→                  </Button>
+  1561→                </div>
+  1562→              </div>
+  1563→
+  1564→              <ScrollArea className="max-h-80">
+  1565→                {namespaces.length === 0 ? (
+  1566→                  <div className="text-center py-8 text-muted-foreground">
+  1567→                    <FolderOpen className="w-8 h-8 mx-auto mb-2 opacity-30" />
+  1568→                    <p className="text-sm">Sin namespaces aún. Crea uno para organizar embeddings.</p>
+  1569→                  </div>
+  1570→                ) : (
+  1571→                  <div className="space-y-1.5">
+  1572→                    {namespaces.map(ns => (
+  1573→                      <div
+  1574→                        key={ns.id}
+  1575→                        className={cn(
+  1576→                          'p-3 rounded-lg border transition-colors',
+  1577→                          selectedNamespace === ns.namespace
+  1578→                            ? 'border-primary bg-primary/5'
+  1579→                            : 'border-border/40 hover:bg-muted/50'
+  1580→                        )}
+  1581→                      >
+  1582→                        <div className="flex items-center justify-between">
+  1583→                          <div className="flex items-center gap-2 min-w-0 flex-1">
+  1584→                            <Tag className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+  1585→                            <span className="text-sm font-medium truncate">{ns.namespace}</span>
+  1586→                            {ns.type && (
+  1587→                              <Badge variant="secondary" className="text-[10px] shrink-0 bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+  1588→                                {ns.type}
+  1589→                              </Badge>
+  1590→                            )}
+  1591→                            <Badge variant="outline" className="text-[10px] shrink-0">
+  1592→                              {ns.embedding_count || 0} emb
+  1593→                            </Badge>
+  1594→                          </div>
+  1595→                          <div className="flex items-center gap-1 shrink-0">
+  1596→                            <Button
+  1597→                              variant="ghost"
+  1598→                              size="icon"
+  1599→                              className="h-6 w-6 text-muted-foreground hover:text-foreground"
+  1600→                              onClick={() => {
+  1601→                                const isCustomType = ns.type && !['MEMORIA DEL PERSONAJE', 'EVENTOS RECIENTES', 'LORE DEL MUNDO', 'REGLAS Y MECANICAS', 'RELACIONES'].includes(ns.type);
+  1602→                                setEditingNamespace({ ...ns, type: isCustomType ? '__custom__' : (ns.type || '') });
+  1603→                                setEditCustomTypeText(isCustomType ? (ns.type || '') : '');
+  1604→                              }}
+  1605→                              title="Editar tipo"
+  1606→                            >
+  1607→                              <Pencil className="w-3 h-3" />
+  1608→                            </Button>
+  1609→                            <Button
+  1610→                              variant="ghost"
+  1611→                              size="sm"
+  1612→                              className="h-6 text-xs"
+  1613→                              onClick={() => handleViewNamespaceDocuments(ns.namespace)}
+  1614→                            >
+  1615→                              <FileText className="w-3 h-3 mr-1" />
+  1616→                              Docs
+  1617→                            </Button>
+  1618→                            <Button
+  1619→                              variant="ghost"
+  1620→                              size="icon"
+  1621→                              className="h-6 w-6 text-muted-foreground hover:text-destructive"
+  1622→                              onClick={() => handleDeleteNamespace(ns.namespace)}
+  1623→                            >
+  1624→                              <Trash2 className="w-3 h-3" />
+  1625→                            </Button>
+  1626→                          </div>
+  1627→                        </div>
+  1628→                        {ns.description && (
+  1629→                          <p className="text-xs text-muted-foreground mt-1 ml-5">{ns.description}</p>
+  1630→                        )}
+  1631→                      </div>
+  1632→                    ))}
+  1633→                  </div>
+  1634→                )}
+  1635→              </ScrollArea>
+  1636→            </>
+  1637→          )}
+  1638→        </TabsContent>
+  1639→
+  1640→        {/* Tab 6: Examinar (Browse Embeddings) */}
+  1641→        <TabsContent value="embeddings" className="space-y-3 mt-3">
+  1642→          <div className="flex items-center justify-between flex-wrap gap-2">
+  1643→            <div className="flex items-center gap-2 flex-wrap">
+  1644→              <span className="text-xs text-muted-foreground">
+  1645→                {selectedNamespace ? `${embeddings.length} en "${selectedNamespace}"` : `${stats?.totalEmbeddings || 0} total`}
+  1646→              </span>
+  1647→              {selectedNamespace && (
+  1648→                <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => handleSelectNamespace(null)}>
+  1649→                  Mostrar todo
+  1650→                </Button>
+  1651→              )}
+  1652→              <Select value={browseSourceType} onValueChange={setBrowseSourceType}>
+  1653→                <SelectTrigger className="w-32 h-7 text-xs">
+  1654→                  <SelectValue />
+  1655→                </SelectTrigger>
+  1656→                <SelectContent>
+  1657→                  <SelectItem value="all">Todos los Tipos</SelectItem>
+  1658→                  <SelectItem value="memory">🧠 Memoria</SelectItem>
+  1659→                  <SelectItem value="character">👤 Personaje</SelectItem>
+  1660→                  <SelectItem value="world">🌍 Mundo</SelectItem>
+  1661→                  <SelectItem value="lorebook">📖 Lorebook</SelectItem>
+  1662→                  <SelectItem value="session">💬 Sesión</SelectItem>
+  1663→                  <SelectItem value="file">📄 Archivo</SelectItem>
+  1664→                  <SelectItem value="custom">✏️ Personalizado</SelectItem>
+  1665→                </SelectContent>
+  1666→              </Select>
+  1667→            </div>
+  1668→            <div className="flex gap-1.5">
+  1669→              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={refreshEmbeddingsTab} disabled={refreshingEmbeddings}>
+  1670→                {refreshingEmbeddings ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+  1671→                Actualizar
+  1672→              </Button>
+  1673→              <Button size="sm" className="h-7 text-xs" onClick={() => setCreateEmbeddingOpen(true)}>
+  1674→                <Plus className="w-3 h-3 mr-1" />Agregar
+  1675→              </Button>
+  1676→            </div>
+  1677→          </div>
+  1678→
+  1679→          {refreshingEmbeddings ? (
+  1680→            <div className="flex items-center justify-center py-12">
+  1681→              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+  1682→              <span className="text-sm text-muted-foreground ml-2">Cargando embeddings...</span>
+  1683→            </div>
+  1684→          ) : embeddings.length === 0 ? (
+  1685→            <div className="text-center py-8 text-muted-foreground">
+  1686→              <Database className="w-8 h-8 mx-auto mb-2 opacity-30" />
+  1687→              <p className="text-sm">Sin embeddings almacenados.</p>
+  1688→              <p className="text-xs mt-1">Agrega embeddings manualmente o importa desde archivos.</p>
+  1689→            </div>
+  1690→          ) : (
+  1691→            <div className="max-h-[400px] overflow-y-auto space-y-1.5 pr-1">
+  1692→              {embeddings
+  1693→                .filter(emb => browseSourceType === 'all' || emb.source_type === browseSourceType)
+  1694→                .map(emb => {
+  1695→                  const typeIcon = {
+  1696→                    memory: '🧠',
+  1697→                    character: '👤',
+  1698→                    world: '🌍',
+  1699→                    lorebook: '📖',
+  1700→                    session: '💬',
+  1701→                    file: '📄',
+  1702→                    custom: '✏️',
+  1703→                  }[emb.source_type || 'custom'] || '📝';
+  1704→                  
+  1705→                  const typeColor = {
+  1706→                    memory: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
+  1707→                    character: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  1708→                    world: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  1709→                    lorebook: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  1710→                    session: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
+  1711→                    file: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-300',
+  1712→                    custom: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
+  1713→                  }[emb.source_type || 'custom'];
+  1714→                  
+  1715→                  return (
+  1716→                    <div key={emb.id} className="p-3 rounded-lg border border-border/40 hover:bg-muted/50 transition-colors">
+  1717→                      <div className="flex items-start justify-between gap-2">
+  1718→                        <div className="flex-1 min-w-0">
+  1719→                          <p className="text-sm line-clamp-2">{emb.content}</p>
+  1720→                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+  1721→                            <Badge variant="outline" className="text-[10px]">
+  1722→                              <Tag className="w-2.5 h-2.5 mr-0.5" />
+  1723→                              {emb.namespace}
+  1724→                            </Badge>
+  1725→                            {emb.source_type && (
+  1726→                              <Badge className={cn('text-[10px]', typeColor)}>
+  1727→                                {typeIcon} {emb.source_type}
+  1728→                              </Badge>
+  1729→                            )}
+  1730→                            {emb.metadata?.memory_type && (
+  1731→                              <Badge variant="secondary" className="text-[10px]">
+  1732→                                {emb.metadata.memory_type}
+  1733→                              </Badge>
+  1734→                            )}
+  1735→                            <span className="text-[10px] text-muted-foreground">
+  1736→                              {new Date(emb.created_at).toLocaleDateString()}
+  1737→                            </span>
+  1738→                          </div>
+  1739→                        </div>
+  1740→                        <Button
+  1741→                          variant="ghost"
+  1742→                          size="icon"
+  1743→                          className="h-6 w-6 text-muted-foreground hover:text-destructive shrink-0"
+  1744→                          onClick={() => handleDeleteEmbedding(emb.id)}
+  1745→                        >
+  1746→                          <Trash2 className="w-3 h-3" />
+  1747→                        </Button>
+  1748→                      </div>
+  1749→                    </div>
+  1750→                  );
+  1751→                })}
+  1752→              {embeddings.filter(emb => browseSourceType === 'all' || emb.source_type === browseSourceType).length === 0 && (
+  1753→                <div className="text-center py-6 text-muted-foreground">
+  1754→                  <p className="text-sm">No hay embeddings del tipo seleccionado.</p>
+  1755→                  <Button 
+  1756→                    size="sm" 
+  1757→                    variant="ghost" 
+  1758→                    className="mt-2 text-xs" 
+  1759→                    onClick={() => setBrowseSourceType('all')}
+  1760→                  >
+  1761→                    Mostrar todos los tipos
+  1762→                  </Button>
+  1763→                </div>
+  1764→              )}
+  1765→            </div>
+  1766→          )}
+  1767→
+  1768→          {/* Danger Zone */}
+  1769→          {stats && stats.totalEmbeddings > 0 && (
+  1770→            <div className="pt-3">
+  1771→              <Separator className="mb-3" />
+  1772→              <div className="flex items-center justify-between">
+  1773→                <span className="text-xs text-destructive">Peligro: Reiniciar todo</span>
+  1774→                <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => setResetConfirmOpen(true)}>
+  1775→                  <Trash2 className="w-3 h-3 mr-1" />Reiniciar Todo
+  1776→                </Button>
+  1777→              </div>
+  1778→            </div>
+  1779→          )}
+  1780→        </TabsContent>
+  1781→
+  1782→      </Tabs>
+  1783→
+  1784→      {/* Create Embedding Dialog */}
+  1785→      <Dialog open={createEmbeddingOpen} onOpenChange={setCreateEmbeddingOpen}>
+  1786→        <DialogContent className="max-w-lg">
+  1787→          <DialogHeader>
+  1788→            <DialogTitle>Agregar Embedding</DialogTitle>
+  1789→            <DialogDescription>Almacena un nuevo embedding de texto para búsqueda semántica.</DialogDescription>
+  1790→          </DialogHeader>
+  1791→          <div className="space-y-4">
+  1792→            <div className="space-y-2">
+  1793→              <Label>Contenido</Label>
+  1794→              <Textarea
+  1795→                value={newEmbedding.content}
+  1796→                onChange={(e) => setNewEmbedding(prev => ({ ...prev, content: e.target.value }))}
+  1797→                placeholder="Ingresa el texto para incrustar..."
+  1798→                rows={4}
+  1799→                className="text-sm"
+  1800→              />
+  1801→            </div>
+  1802→            <div className="grid grid-cols-2 gap-4">
+  1803→              <div className="space-y-2">
+  1804→                <Label>Namespace</Label>
+  1805→                <Select value={newEmbedding.namespace} onValueChange={(v) => setNewEmbedding(prev => ({ ...prev, namespace: v }))}>
+  1806→                  <SelectTrigger><SelectValue /></SelectTrigger>
+  1807→                  <SelectContent>
+  1808→                    <SelectItem value="default">default</SelectItem>
+  1809→                    {namespaces.map(ns => (
+  1810→                      <SelectItem key={ns.namespace} value={ns.namespace}>{ns.namespace}</SelectItem>
+  1811→                    ))}
+  1812→                  </SelectContent>
+  1813→                </Select>
+  1814→              </div>
+  1815→              <div className="space-y-2">
+  1816→                <Label>Tipo de Origen</Label>
+  1817→                <Select value={newEmbedding.source_type} onValueChange={(v) => setNewEmbedding(prev => ({ ...prev, source_type: v }))}>
+  1818→                  <SelectTrigger><SelectValue /></SelectTrigger>
+  1819→                  <SelectContent>
+  1820→                    <SelectItem value="custom">Personalizado</SelectItem>
+  1821→                    <SelectItem value="character">Personaje</SelectItem>
+  1822→                    <SelectItem value="world">Mundo</SelectItem>
+  1823→                    <SelectItem value="lorebook">Lorebook</SelectItem>
+  1824→                    <SelectItem value="session">Sesión</SelectItem>
+  1825→                    <SelectItem value="memory">Memoria</SelectItem>
+  1826→                    <SelectItem value="file">Archivo</SelectItem>
+  1827→                  </SelectContent>
+  1828→                </Select>
+  1829→              </div>
+  1830→            </div>
+  1831→          </div>
+  1832→          <DialogFooter>
+  1833→            <Button variant="outline" onClick={() => setCreateEmbeddingOpen(false)}>Cancelar</Button>
+  1834→            <Button onClick={handleCreateEmbedding} disabled={loading || !newEmbedding.content.trim()}>
+  1835→              {loading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Plus className="w-4 h-4 mr-1" />}
+  1836→              Crear
+  1837→            </Button>
+  1838→          </DialogFooter>
+  1839→        </DialogContent>
+  1840→      </Dialog>
+  1841→
+  1842→      {/* Create Namespace Dialog */}
+  1843→      <Dialog open={createNamespaceOpen} onOpenChange={setCreateNamespaceOpen}>
+  1844→        <DialogContent className="max-w-md">
+  1845→          <DialogHeader>
+  1846→            <DialogTitle>Crear Namespace</DialogTitle>
+  1847→            <DialogDescription>Los namespaces organizan embeddings en grupos lógicos. El tipo se usa para agrupar embeddings en el prompt del chat.</DialogDescription>
+  1848→          </DialogHeader>
+  1849→          <div className="space-y-4">
+  1850→            <div className="space-y-2">
+  1851→              <Label>Nombre</Label>
+  1852→              <Input
+  1853→                value={newNamespace.namespace}
+  1854→                onChange={(e) => setNewNamespace(prev => ({ ...prev, namespace: e.target.value }))}
+  1855→                placeholder="ej. historia-personaje, eventos-recientes"
+  1856→                className="text-sm"
+  1857→              />
+  1858→            </div>
+  1859→            <div className="space-y-2">
+  1860→              <Label>Tipo <span className="text-muted-foreground text-[10px]">(agrupa en el prompt del chat)</span></Label>
+  1861→              <Select
+  1862→                value={newNamespace.type === '__custom__' || (!['__none__', 'MEMORIA DEL PERSONAJE', 'EVENTOS RECIENTES', 'LORE DEL MUNDO', 'REGLAS Y MECANICAS', 'RELACIONES'].includes(newNamespace.type) && newNamespace.type) ? '__custom__' : (newNamespace.type || '__none__')}
+  1863→                onValueChange={(v) => {
+  1864→                  if (v === '__custom__') {
+  1865→                    setCustomTypeText('');
+  1866→                  }
+  1867→                  setNewNamespace(prev => ({ ...prev, type: v }));
+  1868→                }}
+  1869→              >
+  1870→                <SelectTrigger className="text-sm">
+  1871→                  <SelectValue placeholder="Sin tipo" />
+  1872→                </SelectTrigger>
+  1873→                <SelectContent>
+  1874→                  <SelectItem value="__none__">
+  1875→                    <span className="text-muted-foreground">Sin tipo</span>
+  1876→                  </SelectItem>
+  1877→                  <SelectItem value="MEMORIA DEL PERSONAJE">
+  1878→                    <div className="flex flex-col">
+  1879→                      <span>🧠 Memoria del Personaje</span>
+  1880→                    </div>
+  1881→                  </SelectItem>
+  1882→                  <SelectItem value="EVENTOS RECIENTES">
+  1883→                    <div className="flex flex-col">
+  1884→                      <span>📅 Eventos Recientes</span>
+  1885→                    </div>
+  1886→                  </SelectItem>
+  1887→                  <SelectItem value="LORE DEL MUNDO">
+  1888→                    <div className="flex flex-col">
+  1889→                      <span>🌍 Lore del Mundo</span>
+  1890→                    </div>
+  1891→                  </SelectItem>
+  1892→                  <SelectItem value="REGLAS Y MECANICAS">
+  1893→                    <div className="flex flex-col">
+  1894→                      <span>⚙️ Reglas y Mecánicas</span>
+  1895→                    </div>
+  1896→                  </SelectItem>
+  1897→                  <SelectItem value="RELACIONES">
+  1898→                    <div className="flex flex-col">
+  1899→                      <span>👥 Relaciones</span>
+  1900→                    </div>
+  1901→                  </SelectItem>
+  1902→                  <SelectItem value="__custom__">
+  1903→                    <div className="flex flex-col">
+  1904→                      <span>✏️ Tipo personalizado...</span>
+  1905→                    </div>
+  1906→                  </SelectItem>
+  1907→                </SelectContent>
+  1908→              </Select>
+  1909→              {newNamespace.type === '__custom__' && (
+  1910→                <Input
+  1911→                  autoFocus
+  1912→                  value={customTypeText}
+  1913→                  onChange={(e) => setCustomTypeText(e.target.value)}
+  1914→                  placeholder="Escribe el tipo personalizado"
+  1915→                  className="text-sm"
+  1916→                />
+  1917→              )}
+  1918→            </div>
+  1919→            <div className="space-y-2">
+  1920→              <Label>Descripción (opcional)</Label>
+  1921→              <Input
+  1922→                value={newNamespace.description}
+  1923→                onChange={(e) => setNewNamespace(prev => ({ ...prev, description: e.target.value }))}
+  1924→                placeholder="Descripción breve de este namespace"
+  1925→                className="text-sm"
+  1926→              />
+  1927→            </div>
+  1928→          </div>
+  1929→          <DialogFooter>
+  1930→            <Button variant="outline" onClick={() => setCreateNamespaceOpen(false)}>Cancelar</Button>
+  1931→            <Button onClick={handleCreateNamespace} disabled={loading || !newNamespace.namespace.trim()}>
+  1932→              Crear
+  1933→            </Button>
+  1934→          </DialogFooter>
+  1935→        </DialogContent>
+  1936→      </Dialog>
+  1937→
+  1938→      {/* Edit Namespace Dialog */}
+  1939→      <Dialog open={!!editingNamespace} onOpenChange={(open) => { if (!open) setEditingNamespace(null); }}>
+  1940→        <DialogContent className="max-w-md">
+  1941→          <DialogHeader>
+  1942→            <DialogTitle>Editar Namespace</DialogTitle>
+  1943→            <DialogDescription>Modifica el tipo y descripción del namespace. Los embeddings no se afectan.</DialogDescription>
+  1944→          </DialogHeader>
+  1945→          <div className="space-y-4">
+  1946→            <div className="space-y-2">
+  1947→              <Label>Nombre</Label>
+  1948→              <Input
+  1949→                value={editingNamespace?.namespace || ''}
+  1950→                disabled
+  1951→                className="text-sm bg-muted"
+  1952→              />
+  1953→              <p className="text-[10px] text-muted-foreground">El nombre no se puede cambiar después de crearlo.</p>
+  1954→            </div>
+  1955→            <div className="space-y-2">
+  1956→              <Label>Tipo <span className="text-muted-foreground text-[10px]">(agrupa en el prompt del chat)</span></Label>
+  1957→              <Select
+  1958→                value={editingNamespace?.type === '__custom__' || (!['__none__', 'MEMORIA DEL PERSONAJE', 'EVENTOS RECIENTES', 'LORE DEL MUNDO', 'REGLAS Y MECANICAS', 'RELACIONES', ''].includes(editingNamespace?.type || '') && editingNamespace?.type) ? '__custom__' : (editingNamespace?.type || '__none__')}
+  1959→                onValueChange={(v) => {
+  1960→                  if (v === '__custom__') {
+  1961→                    setEditCustomTypeText('');
+  1962→                  }
+  1963→                  setEditingNamespace(prev => prev ? { ...prev, type: v } : prev);
+  1964→                }}
+  1965→              >
+  1966→                <SelectTrigger className="text-sm">
+  1967→                  <SelectValue placeholder="Sin tipo" />
+  1968→                </SelectTrigger>
+  1969→                <SelectContent>
+  1970→                  <SelectItem value="__none__">
+  1971→                    <span className="text-muted-foreground">Sin tipo</span>
+  1972→                  </SelectItem>
+  1973→                  <SelectItem value="MEMORIA DEL PERSONAJE">
+  1974→                    <div className="flex flex-col">
+  1975→                      <span>🧠 Memoria del Personaje</span>
+  1976→                    </div>
+  1977→                  </SelectItem>
+  1978→                  <SelectItem value="EVENTOS RECIENTES">
+  1979→                    <div className="flex flex-col">
+  1980→                      <span>📅 Eventos Recientes</span>
+  1981→                    </div>
+  1982→                  </SelectItem>
+  1983→                  <SelectItem value="LORE DEL MUNDO">
+  1984→                    <div className="flex flex-col">
+  1985→                      <span>🌍 Lore del Mundo</span>
+  1986→                    </div>
+  1987→                  </SelectItem>
+  1988→                  <SelectItem value="REGLAS Y MECANICAS">
+  1989→                    <div className="flex flex-col">
+  1990→                      <span>⚙️ Reglas y Mecánicas</span>
+  1991→                    </div>
+  1992→                  </SelectItem>
+  1993→                  <SelectItem value="RELACIONES">
+  1994→                    <div className="flex flex-col">
+  1995→                      <span>👥 Relaciones</span>
+  1996→                    </div>
+  1997→                  </SelectItem>
+  1998→                  <SelectItem value="__custom__">
+  1999→                    <div className="flex flex-col">
+  2000→                      <span>✏️ Tipo personalizado...</span>
+
+[showing lines 1-2000 of 2057; use offset=2001 with limit to continue reading]

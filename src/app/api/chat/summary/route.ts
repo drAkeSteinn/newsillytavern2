@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateResponse } from '@/lib/llm';
 import { getEmbeddingClient } from '@/lib/embeddings/client';
+import { PROVIDER_CONTEXT_LIMITS } from '@/lib/context-manager';
 import type { ChatMessage, SummaryData, SummarySettings, LLMConfig } from '@/types';
 
 // ============================================
@@ -135,9 +136,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<SummaryRe
     }
 
     // Filter messages to summarize
-    const visibleMessages = messages.filter(m => !m.isDeleted);
+    let messagesToSummarize = messages.filter(m => !m.isDeleted);
     
-    if (visibleMessages.length === 0) {
+    if (messagesToSummarize.length === 0) {
       return NextResponse.json({
         success: false,
         error: 'No messages to summarize',
@@ -152,9 +153,70 @@ export async function POST(request: NextRequest): Promise<NextResponse<SummaryRe
       });
     }
 
-    // Build prompts
+    // ============================================
+    // Validate context size before sending to LLM
+    // Prevents exceeding the model's context window,
+    // especially with smaller Ollama models
+    // ============================================
+
+    // Estimate tokens for the summary prompt + messages
+    const modelContextLimit = settings.maxSummaryTokens
+      ? (settings.maxSummaryTokens * 30) // Rough estimate: maxTokens * 30 = context window
+      : 4096; // Conservative default
+
+    // Get the provider-specific limit
+    const providerLimit = PROVIDER_CONTEXT_LIMITS[apiConfig.provider] || 4096;
+    const effectiveLimit = Math.min(modelContextLimit, providerLimit);
+
+    // Reserve tokens for the system prompt + output
+    const reservedForPrompt = 500; // System prompt + instructions
+    const reservedForOutput = settings.maxSummaryTokens || 512;
+    const availableForMessages = effectiveLimit - reservedForPrompt - reservedForOutput;
+
+    // Estimate current message tokens (~3.5 chars per token for Spanish text — conservative)
+    const messageText = messagesToSummarize.map(m => m.content).join('\n');
+    const estimatedTokens = Math.ceil(messageText.length / 3.5);
+
+    if (estimatedTokens > availableForMessages) {
+      // Truncate: keep the most recent messages that fit
+      console.warn(
+        `[Summary] Message context too large (${estimatedTokens} tokens > ${availableForMessages} available). Truncating.`
+      );
+
+      // Work backwards from most recent messages
+      const truncatedMessages: typeof messagesToSummarize = [];
+      let currentTokens = 0;
+      for (let i = messagesToSummarize.length - 1; i >= 0; i--) {
+        const msgTokens = Math.ceil(messagesToSummarize[i].content.length / 3.5);
+        if (currentTokens + msgTokens > availableForMessages) break;
+        truncatedMessages.unshift(messagesToSummarize[i]);
+        currentTokens += msgTokens;
+      }
+      messagesToSummarize = truncatedMessages;
+      console.log(
+        `[Summary] Truncated to ${truncatedMessages.length} messages (${currentTokens} tokens) out of ${messages.filter(m => !m.isDeleted).length} total`
+      );
+
+      // If truncation left us with no messages, return an error
+      if (messagesToSummarize.length === 0) {
+        return NextResponse.json({
+          success: false,
+          error: `Context too small for summarization: effective limit ${effectiveLimit} tokens, available for messages ${availableForMessages}`,
+          summary: {
+            id: '',
+            sessionId: sessionId || '',
+            content: '',
+            messageRange: { start: 0, end: 0 },
+            tokens: 0,
+            createdAt: new Date().toISOString(),
+          }
+        });
+      }
+    }
+
+    // Build prompts using the (potentially truncated) messages
     const { systemPrompt, userPrompt } = buildSummaryPrompt(
-      visibleMessages,
+      messagesToSummarize,
       characterName,
       userName,
       settings,
@@ -162,6 +224,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<SummaryRe
     );
 
     // Build LLM config
+    // Cap maxTokens for summaries: use the lesser of settings value or 512
+    // Summaries should be concise — never use the full context window
+    const summaryMaxTokens = Math.min(settings.maxSummaryTokens || 512, 512);
+
     const llmConfig: LLMConfig = {
       id: 'summary-config',
       name: 'Summary Generator',
@@ -173,9 +239,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<SummaryRe
         temperature: 0.3, // Lower temperature for more consistent summaries
         topP: 0.9,
         topK: 40,
-        maxTokens: settings.maxSummaryTokens,
+        maxTokens: summaryMaxTokens,
         stream: false,
-        contextSize: 4096,
+        contextSize: effectiveLimit,
         repetitionPenalty: 1.1,
         frequencyPenalty: 0,
         presencePenalty: 0,
@@ -251,7 +317,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<SummaryRe
           session_id: effectiveSessId,
           is_latest: true,
           message_range_start: 0,
-          message_range_end: visibleMessages.length - 1,
+          message_range_end: messagesToSummarize.length - 1,
           tokens: tokenCount,
           created_at: new Date().toISOString(),
         },
@@ -269,7 +335,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<SummaryRe
       content: summaryContent,
       messageRange: {
         start: 0,
-        end: visibleMessages.length - 1,
+        end: messagesToSummarize.length - 1,
       },
       tokens: tokenCount,
       createdAt: new Date().toISOString(),

@@ -1,6 +1,7 @@
 // ============================================
 // Quick Replies Panel - Character-specific quick replies
 // Each quick reply can optionally modify character attributes
+// AND support visibility conditions (requirements with AND/OR logic)
 // ============================================
 
 'use client';
@@ -18,6 +19,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   MessageSquare,
   Plus,
   Trash2,
@@ -30,6 +37,7 @@ import {
   ImageIcon,
   Timer,
   GripVertical,
+  Filter,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -59,7 +67,306 @@ import type {
   CharacterStatsConfig,
   SpritePackV2,
   TriggerCollection,
+  StatRequirement,
+  RequirementOperator,
+  GroupQuickReply,
 } from '@/types';
+
+// ============================================
+// Numeric and Text operator options (same as stats-editor)
+// ============================================
+
+const NUMERIC_OPERATOR_OPTIONS: { value: RequirementOperator; label: string; description: string }[] = [
+  { value: '>=', label: '≥', description: 'Mayor o igual que' },
+  { value: '>', label: '>', description: 'Mayor que' },
+  { value: '<=', label: '≤', description: 'Menor o igual que' },
+  { value: '<', label: '<', description: 'Menor que' },
+  { value: '==', label: '=', description: 'Exactamente igual' },
+  { value: '!=', label: '≠', description: 'Diferente de' },
+  { value: 'between', label: '∈', description: 'Entre (rango)' },
+];
+
+const TEXT_OPERATOR_OPTIONS: { value: RequirementOperator; label: string; description: string }[] = [
+  { value: '==', label: '=', description: 'Exactamente igual' },
+  { value: '!=', label: '≠', description: 'Diferente de' },
+  { value: 'contains', label: '⊂', description: 'Contiene' },
+  { value: 'not_contains', label: '⊄', description: 'No contiene' },
+];
+
+// ============================================
+// Requirement Operator Toggle (AND/OR) - same as stats-editor
+// ============================================
+
+interface RequirementOperatorToggleProps {
+  operator: 'AND' | 'OR' | undefined;
+  onChange: (operator: 'AND' | 'OR') => void;
+  requirementCount: number;
+}
+
+function RequirementOperatorToggle({ operator, onChange, requirementCount }: RequirementOperatorToggleProps) {
+  if (requirementCount < 2) return null;
+
+  const currentOperator = operator || 'AND';
+
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          className={cn(
+            'px-2 py-0.5 text-xs rounded border transition-colors',
+            currentOperator === 'AND'
+              ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+              : 'bg-muted/30 text-muted-foreground border-transparent'
+          )}
+          onClick={() => onChange('AND')}
+        >
+          Y (AND)
+        </button>
+        <button
+          type="button"
+          className={cn(
+            'px-2 py-0.5 text-xs rounded border transition-colors',
+            currentOperator === 'OR'
+              ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+              : 'bg-muted/30 text-muted-foreground border-transparent'
+          )}
+          onClick={() => onChange('OR')}
+        >
+          O (OR)
+        </button>
+      </div>
+      <span className="text-[10px] text-muted-foreground">
+        {currentOperator === 'AND' ? 'Todas deben cumplirse' : 'Al menos una debe cumplirse'}
+      </span>
+    </div>
+  );
+}
+
+// ============================================
+// Requirement Editor Component (same pattern as stats-editor)
+// ============================================
+
+interface RequirementEditorProps {
+  requirement: StatRequirement;
+  availableAttributes: AttributeDefinition[];
+  availableTargets?: { id: string; name: string; attributes: AttributeDefinition[] }[];
+  onChange: (updates: Partial<StatRequirement>) => void;
+  onDelete: () => void;
+}
+
+function RequirementEditor({ requirement, availableAttributes, availableTargets = [], onChange, onDelete }: RequirementEditorProps) {
+  const isTargetMode = requirement.targetCharacterId !== undefined;
+  const selectedTarget = isTargetMode && requirement.targetCharacterId
+    ? availableTargets.find(t => t.id === requirement.targetCharacterId)
+    : undefined;
+  const targetAttrs = selectedTarget?.attributes || [];
+
+  // Determine the selected attribute and its type
+  const selectedSelfAttr = !isTargetMode ? availableAttributes.find(a => a.key === requirement.attributeKey) : undefined;
+  const selectedTargetAttr = isTargetMode ? targetAttrs.find(a => a.key === requirement.attributeKey) : undefined;
+  const selectedAttr = selectedSelfAttr || selectedTargetAttr;
+  const attrType = selectedAttr?.type || 'number';
+  const isTextType = attrType === 'text' || attrType === 'keyword';
+
+  const operatorOptions = isTextType ? TEXT_OPERATOR_OPTIONS : NUMERIC_OPERATOR_OPTIONS;
+  const selectedOperator = operatorOptions.find(op => op.value === requirement.operator);
+
+  const hasTargets = availableTargets.length > 0;
+
+  return (
+    <div className="flex items-center gap-2 bg-muted/50 rounded p-2 flex-wrap">
+      {/* Target/Mode indicator - only show Target option when availableTargets is provided */}
+      <Select
+        value={isTargetMode ? 'target' : 'self'}
+        onValueChange={(value) => {
+          if (value === 'target') {
+            onChange({ attributeKey: '', targetCharacterId: '', targetAttributeName: '', operator: '==', value: '' });
+          } else {
+            onChange({ attributeKey: '', targetCharacterId: undefined, targetAttributeName: undefined, operator: '>=', value: 0 });
+          }
+        }}
+      >
+        <SelectTrigger className="h-7 w-16 text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="self">
+            <span className="flex items-center gap-1">🎭 Yo</span>
+          </SelectItem>
+          {hasTargets && (
+            <SelectItem value="target">
+              <span className="flex items-center gap-1">🎯 Target</span>
+            </SelectItem>
+          )}
+        </SelectContent>
+      </Select>
+
+      {isTargetMode ? (
+        <>
+          {/* Target selector */}
+          <Select
+            value={requirement.targetCharacterId || ''}
+            onValueChange={(value) => {
+              const target = availableTargets.find(t => t.id === value);
+              onChange({ targetCharacterId: value, attributeKey: '', targetAttributeName: target?.name || '' });
+            }}
+          >
+            <SelectTrigger className="h-7 w-28 text-xs">
+              <SelectValue placeholder="Target..." />
+            </SelectTrigger>
+            <SelectContent>
+              {availableTargets.map(t => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.id === '__user__' ? '👤 ' : '🎭 '}{t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Target attribute selector */}
+          <Select
+            value={requirement.attributeKey}
+            onValueChange={(value) => {
+              const attr = targetAttrs.find(a => a.key === value);
+              const isText = attr?.type === 'text' || attr?.type === 'keyword';
+              onChange({
+                attributeKey: value,
+                targetAttributeName: attr?.name || '',
+                operator: isText ? '==' : '>=',
+                value: isText ? '' : 0,
+              });
+            }}
+            disabled={!requirement.targetCharacterId}
+          >
+            <SelectTrigger className="h-7 w-28 text-xs">
+              <SelectValue placeholder="Atributo..." />
+            </SelectTrigger>
+            <SelectContent>
+              {targetAttrs.map((attr, i) => (
+                <SelectItem key={attr.key || `attr-${i}`} value={attr.key}>
+                  <span className="flex items-center gap-1">
+                    <span className={attr.type === 'text' || attr.type === 'keyword' ? 'text-blue-400' : 'text-green-400'}>
+                      {attr.type === 'text' ? '📝' : attr.type === 'keyword' ? '🏷️' : '🔢'}
+                    </span>
+                    {attr.name}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </>
+      ) : (
+        /* Self attribute selector */
+        <Select
+          value={requirement.attributeKey}
+          onValueChange={(value) => {
+            const attr = availableAttributes.find(a => a.key === value);
+            const isText = attr?.type === 'text' || attr?.type === 'keyword';
+            onChange({
+              attributeKey: value,
+              operator: isText ? '==' : '>=',
+              value: isText ? '' : 0,
+            });
+          }}
+        >
+          <SelectTrigger className="h-7 w-24 text-xs">
+            <SelectValue placeholder="Atributo" />
+          </SelectTrigger>
+          <SelectContent>
+            {availableAttributes.map(attr => (
+              <SelectItem key={attr.id} value={attr.key}>
+                <span className="flex items-center gap-1">
+                  <span className={attr.type === 'text' || attr.type === 'keyword' ? 'text-blue-400' : 'text-green-400'}>
+                    {attr.type === 'text' ? '📝' : attr.type === 'keyword' ? '🏷️' : '🔢'}
+                  </span>
+                  {attr.name}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+
+      {/* Operator selector with descriptions */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Select
+            value={operatorOptions.some(op => op.value === requirement.operator) ? requirement.operator : operatorOptions[0].value}
+            onValueChange={(value: RequirementOperator) => onChange({ operator: value })}
+          >
+            <SelectTrigger className="h-7 w-16 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {operatorOptions.map(op => (
+                <SelectItem key={op.value} value={op.value}>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono w-4">{op.label}</span>
+                    <span className="text-muted-foreground text-xs">{op.description}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs">
+          <p className="font-medium">{selectedOperator?.description}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {requirement.operator === 'between'
+              ? `El valor debe estar entre ${requirement.value} y ${requirement.valueMax || '?'}`
+              : `El valor debe ser ${selectedOperator?.description} ${requirement.value}`
+            }
+          </p>
+        </TooltipContent>
+      </Tooltip>
+
+      {/* Value input - text or number based on attribute type */}
+      {isTextType ? (
+        <Input
+          type="text"
+          value={typeof requirement.value === 'string' ? requirement.value : String(requirement.value)}
+          onChange={(e) => onChange({ value: e.target.value })}
+          placeholder="Texto..."
+          className="h-7 w-24 text-xs"
+        />
+      ) : (
+        <Input
+          type="number"
+          value={requirement.value}
+          onChange={(e) => onChange({ value: parseFloat(e.target.value) || 0 })}
+          className="h-7 w-16 text-xs"
+        />
+      )}
+
+      {/* Max value for between operator (only for numeric) */}
+      {!isTextType && requirement.operator === 'between' && (
+        <>
+          <span className="text-xs text-muted-foreground">y</span>
+          <Input
+            type="number"
+            value={requirement.valueMax ?? ''}
+            onChange={(e) => {
+              const parsed = parseFloat(e.target.value);
+              onChange({ valueMax: isNaN(parsed) ? undefined : parsed });
+            }}
+            placeholder="max"
+            className="h-7 w-16 text-xs"
+          />
+        </>
+      )}
+
+      {/* Delete button */}
+      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onDelete}>
+        <Trash2 className="w-3 h-3 text-muted-foreground" />
+      </Button>
+    </div>
+  );
+}
+
+// ============================================
+// Main Quick Replies Panel Component
+// ============================================
 
 interface QuickRepliesPanelProps {
   quickReplies: CharacterQuickReply[] | undefined;
@@ -68,6 +375,8 @@ interface QuickRepliesPanelProps {
   spritePacksV2?: SpritePackV2[];
   /** Available trigger collections for sprite activation */
   triggerCollections?: TriggerCollection[];
+  /** Available target characters for cross-character conditions (group mode) */
+  availableTargets?: { id: string; name: string; attributes: AttributeDefinition[] }[];
   onChange: (quickReplies: CharacterQuickReply[]) => void;
 }
 
@@ -89,6 +398,7 @@ export function QuickRepliesPanel({
   statsConfig,
   spritePacksV2,
   triggerCollections,
+  availableTargets,
   onChange,
 }: QuickRepliesPanelProps) {
   const replies = quickReplies || [];
@@ -98,15 +408,22 @@ export function QuickRepliesPanel({
   const [newLabel, setNewLabel] = useState('');
   const [newResponse, setNewResponse] = useState('');
   const [newModifiers, setNewModifiers] = useState<QuickReplyAttributeModifier[]>([]);
+  const [newRequirements, setNewRequirements] = useState<StatRequirement[]>([]);
+  const [newRequirementOperator, setNewRequirementOperator] = useState<'AND' | 'OR'>('AND');
 
   // State for editing existing reply
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState('');
   const [editResponse, setEditResponse] = useState('');
   const [editModifiers, setEditModifiers] = useState<QuickReplyAttributeModifier[]>([]);
+  const [editRequirements, setEditRequirements] = useState<StatRequirement[]>([]);
+  const [editRequirementOperator, setEditRequirementOperator] = useState<'AND' | 'OR'>('AND');
 
   // State for expanded modifiers section
   const [expandedModifiers, setExpandedModifiers] = useState<string | null>(null);
+
+  // State for expanded conditions section
+  const [expandedConditions, setExpandedConditions] = useState<string | null>(null);
 
   // State for sprite activation in new reply
   const [newSpriteActivation, setNewSpriteActivation] = useState<QuickReplySpriteActivation | undefined>(undefined);
@@ -130,12 +447,16 @@ export function QuickRepliesPanel({
       response: newResponse.trim(),
       modifiers: newModifiers.length > 0 ? newModifiers : undefined,
       spriteActivation: newSpriteActivation,
+      requirements: newRequirements.length > 0 ? newRequirements : undefined,
+      requirementOperator: newRequirements.length > 1 ? newRequirementOperator : undefined,
     };
     onChange([...replies, newReply]);
     setNewLabel('');
     setNewResponse('');
     setNewModifiers([]);
     setNewSpriteActivation(undefined);
+    setNewRequirements([]);
+    setNewRequirementOperator('AND');
   };
 
   const handleDelete = (id: string) => {
@@ -148,6 +469,8 @@ export function QuickRepliesPanel({
     setEditResponse(reply.response);
     setEditModifiers(reply.modifiers ? [...reply.modifiers] : []);
     setEditSpriteActivation(reply.spriteActivation ? { ...reply.spriteActivation } : undefined);
+    setEditRequirements(reply.requirements ? reply.requirements.map(r => ({ ...r })) : []);
+    setEditRequirementOperator(reply.requirementOperator || 'AND');
   };
 
   const handleSaveEdit = () => {
@@ -161,6 +484,8 @@ export function QuickRepliesPanel({
               response: editResponse.trim(),
               modifiers: editModifiers.length > 0 ? editModifiers : undefined,
               spriteActivation: editSpriteActivation,
+              requirements: editRequirements.length > 0 ? editRequirements : undefined,
+              requirementOperator: editRequirements.length > 1 ? editRequirementOperator : undefined,
             }
           : r
       )
@@ -170,6 +495,8 @@ export function QuickRepliesPanel({
     setEditResponse('');
     setEditModifiers([]);
     setEditSpriteActivation(undefined);
+    setEditRequirements([]);
+    setEditRequirementOperator('AND');
   };
 
   const handleCancelEdit = () => {
@@ -178,6 +505,8 @@ export function QuickRepliesPanel({
     setEditResponse('');
     setEditModifiers([]);
     setEditSpriteActivation(undefined);
+    setEditRequirements([]);
+    setEditRequirementOperator('AND');
   };
 
   // Add a modifier to the new reply form
@@ -486,6 +815,87 @@ export function QuickRepliesPanel({
     );
   };
 
+  // Render condition section for a quick reply (new or editing)
+  const renderConditionSection = (
+    requirements: StatRequirement[],
+    requirementOperator: 'AND' | 'OR',
+    setRequirements: (r: StatRequirement[]) => void,
+    setRequirementOperator: (op: 'AND' | 'OR') => void,
+    sectionKey: string,
+  ) => {
+    const isExpanded = expandedConditions === sectionKey;
+    const hasRequirements = requirements.length > 0;
+
+    return (
+      <TooltipProvider>
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setExpandedConditions(isExpanded ? null : sectionKey)}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Filter className="w-3.5 h-3.5 text-orange-400" />
+            <span>Condiciones de visibilidad</span>
+            {hasRequirements && (
+              <Badge variant="secondary" className="h-4 text-[10px] px-1 bg-orange-500/20 text-orange-400">
+                {requirements.length}
+              </Badge>
+            )}
+            {isExpanded ? (
+              <ChevronUp className="w-3 h-3" />
+            ) : (
+              <ChevronDown className="w-3 h-3" />
+            )}
+          </button>
+
+          {(isExpanded || hasRequirements) && (
+            <div className="ml-5 space-y-2 border-l-2 border-orange-500/20 pl-3">
+              {/* Existing requirements */}
+              {requirements.map((req, idx) => (
+                <RequirementEditor
+                  key={idx}
+                  requirement={req}
+                  availableAttributes={attributes}
+                  availableTargets={availableTargets}
+                  onChange={(updates) => {
+                    const updated = [...requirements];
+                    updated[idx] = { ...updated[idx], ...updates };
+                    setRequirements(updated);
+                  }}
+                  onDelete={() => {
+                    const updated = requirements.filter((_, i) => i !== idx);
+                    setRequirements(updated);
+                  }}
+                />
+              ))}
+
+              {/* AND/OR toggle */}
+              <RequirementOperatorToggle
+                operator={requirementOperator}
+                onChange={setRequirementOperator}
+                requirementCount={requirements.length}
+              />
+
+              {/* Add condition button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-500/10"
+                onClick={() => {
+                  const newReq: StatRequirement = { attributeKey: '', operator: '>=', value: 0 };
+                  setRequirements([...requirements, newReq]);
+                }}
+              >
+                <Plus className="w-3 h-3 mr-1" />
+                Agregar Condición
+              </Button>
+            </div>
+          )}
+        </div>
+      </TooltipProvider>
+    );
+  };
+
   // DnD sensors
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -527,7 +937,13 @@ export function QuickRepliesPanel({
             </p>
             {attributes.length > 0 && (
               <p className="text-xs text-muted-foreground mt-1">
-                Opcionalmente puedes agregar <Zap className="w-3 h-3 inline text-amber-400" /> modificadores de atributos que se aplican al usar la respuesta.
+                Opcionalmente puedes agregar <Zap className="w-3 h-3 inline text-amber-400" /> modificadores de atributos que se aplican al usar la respuesta,{' '}
+                <Filter className="w-3 h-3 inline text-orange-400" /> condiciones de visibilidad para controlar cuándo se muestra.
+              </p>
+            )}
+            {attributes.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Puedes agregar <Filter className="w-3 h-3 inline text-orange-400" /> condiciones de visibilidad para controlar cuándo se muestra cada respuesta.
               </p>
             )}
             {hasSpriteOptions && (
@@ -564,13 +980,17 @@ export function QuickRepliesPanel({
                   editLabel={editLabel}
                   editResponse={editResponse}
                   editModifiers={editModifiers}
+                  editRequirements={editRequirements}
+                  editRequirementOperator={editRequirementOperator}
                   editSpriteActivation={editSpriteActivation}
                   expandedModifiers={expandedModifiers}
+                  expandedConditions={expandedConditions}
                   expandedSpriteActivation={expandedSpriteActivation}
                   attributes={attributes}
                   hasSpriteOptions={hasSpriteOptions}
                   spritePacksV2={spritePacksV2}
                   triggerCollections={triggerCollections}
+                  availableTargets={availableTargets}
                   onStartEdit={handleStartEdit}
                   onSaveEdit={handleSaveEdit}
                   onCancelEdit={handleCancelEdit}
@@ -578,14 +998,18 @@ export function QuickRepliesPanel({
                   setEditLabel={setEditLabel}
                   setEditResponse={setEditResponse}
                   setEditModifiers={setEditModifiers}
+                  setEditRequirements={setEditRequirements}
+                  setEditRequirementOperator={setEditRequirementOperator}
                   setEditSpriteActivation={setEditSpriteActivation}
                   setExpandedModifiers={setExpandedModifiers}
+                  setExpandedConditions={setExpandedConditions}
                   setExpandedSpriteActivation={setExpandedSpriteActivation}
                   addModifierToEdit={addModifierToEdit}
                   updateEditModifier={updateEditModifier}
                   removeEditModifier={removeEditModifier}
                   renderModifierRow={renderModifierRow}
                   renderSpriteActivation={renderSpriteActivation}
+                  renderConditionSection={renderConditionSection}
                 />
               ))}
             </div>
@@ -673,6 +1097,18 @@ export function QuickRepliesPanel({
             </div>
           )}
 
+          {/* Conditions for new reply */}
+          {attributes.length > 0 && (
+            <div>
+              {renderConditionSection(newRequirements, newRequirementOperator, setNewRequirements, setNewRequirementOperator, '__new__')}
+            </div>
+          )}
+          {attributes.length === 0 && availableTargets && availableTargets.length > 0 && (
+            <div>
+              {renderConditionSection(newRequirements, newRequirementOperator, setNewRequirements, setNewRequirementOperator, '__new__')}
+            </div>
+          )}
+
           <Button
             variant="outline"
             size="sm"
@@ -713,13 +1149,17 @@ interface SortableQuickReplyItemProps {
   editLabel: string;
   editResponse: string;
   editModifiers: QuickReplyAttributeModifier[];
+  editRequirements: StatRequirement[];
+  editRequirementOperator: 'AND' | 'OR';
   editSpriteActivation: QuickReplySpriteActivation | undefined;
   expandedModifiers: string | null;
+  expandedConditions: string | null;
   expandedSpriteActivation: string | null;
   attributes: AttributeDefinition[];
   hasSpriteOptions: boolean;
   spritePacksV2?: SpritePackV2[];
   triggerCollections?: TriggerCollection[];
+  availableTargets?: { id: string; name: string; attributes: AttributeDefinition[] }[];
   onStartEdit: (reply: CharacterQuickReply) => void;
   onSaveEdit: () => void;
   onCancelEdit: () => void;
@@ -727,8 +1167,11 @@ interface SortableQuickReplyItemProps {
   setEditLabel: (v: string) => void;
   setEditResponse: (v: string) => void;
   setEditModifiers: (v: QuickReplyAttributeModifier[]) => void;
+  setEditRequirements: (v: StatRequirement[]) => void;
+  setEditRequirementOperator: (v: 'AND' | 'OR') => void;
   setEditSpriteActivation: (v: QuickReplySpriteActivation | undefined) => void;
   setExpandedModifiers: (v: string | null) => void;
+  setExpandedConditions: (v: string | null) => void;
   setExpandedSpriteActivation: (v: string | null) => void;
   addModifierToEdit: () => void;
   updateEditModifier: (index: number, field: keyof QuickReplyAttributeModifier, value: string | number) => void;
@@ -744,6 +1187,13 @@ interface SortableQuickReplyItemProps {
     setActivation: (a: QuickReplySpriteActivation | undefined) => void,
     sectionKey: string,
   ) => React.ReactNode;
+  renderConditionSection: (
+    requirements: StatRequirement[],
+    requirementOperator: 'AND' | 'OR',
+    setRequirements: (r: StatRequirement[]) => void,
+    setRequirementOperator: (op: 'AND' | 'OR') => void,
+    sectionKey: string,
+  ) => React.ReactNode;
 }
 
 function SortableQuickReplyItem({
@@ -752,13 +1202,17 @@ function SortableQuickReplyItem({
   editLabel,
   editResponse,
   editModifiers,
+  editRequirements,
+  editRequirementOperator,
   editSpriteActivation,
   expandedModifiers,
+  expandedConditions,
   expandedSpriteActivation,
   attributes,
   hasSpriteOptions,
   spritePacksV2,
   triggerCollections,
+  availableTargets,
   onStartEdit,
   onSaveEdit,
   onCancelEdit,
@@ -766,14 +1220,18 @@ function SortableQuickReplyItem({
   setEditLabel,
   setEditResponse,
   setEditModifiers,
+  setEditRequirements,
+  setEditRequirementOperator,
   setEditSpriteActivation,
   setExpandedModifiers,
+  setExpandedConditions,
   setExpandedSpriteActivation,
   addModifierToEdit,
   updateEditModifier,
   removeEditModifier,
   renderModifierRow,
   renderSpriteActivation,
+  renderConditionSection,
 }: SortableQuickReplyItemProps) {
   const {
     attributes: dndAttributes,
@@ -876,6 +1334,13 @@ function SortableQuickReplyItem({
             </div>
           )}
 
+          {/* Conditions section for editing */}
+          {(attributes.length > 0 || (availableTargets && availableTargets.length > 0)) && (
+            <div className="mt-2">
+              {renderConditionSection(editRequirements, editRequirementOperator, setEditRequirements, setEditRequirementOperator, `edit-${reply.id}`)}
+            </div>
+          )}
+
           {/* Save / Cancel */}
           <div className="flex justify-end gap-1">
             <Button
@@ -930,6 +1395,12 @@ function SortableQuickReplyItem({
                   {reply.spriteActivation.mode === 'trigger_collection' ? 'Trigger' : 'Sprite'}
                 </Badge>
               )}
+              {reply.requirements && reply.requirements.length > 0 && (
+                <Badge variant="secondary" className="h-4 text-[10px] px-1.5 gap-0.5 bg-orange-500/20 text-orange-400">
+                  <Filter className="w-2.5 h-2.5" />
+                  {reply.requirements.length}
+                </Badge>
+              )}
             </div>
             {reply.response !== reply.label && (
               <p className="text-xs text-muted-foreground truncate mt-0.5">
@@ -950,6 +1421,31 @@ function SortableQuickReplyItem({
                     </span>
                   );
                 })}
+              </div>
+            )}
+            {reply.requirements && reply.requirements.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {reply.requirements.map((req, idx) => {
+                  const attr = attributes.find((a) => a.key === req.attributeKey);
+                  const isTarget = !!req.targetCharacterId;
+                  const operatorSymbol = (() => {
+                    const allOps = [...NUMERIC_OPERATOR_OPTIONS, ...TEXT_OPERATOR_OPTIONS];
+                    return allOps.find(o => o.value === req.operator)?.label || req.operator;
+                  })();
+                  return (
+                    <span
+                      key={idx}
+                      className="text-[10px] bg-orange-500/10 text-orange-600 px-1.5 py-0.5 rounded"
+                    >
+                      {isTarget ? '🎯 ' : ''}{attr?.icon ? `${attr.icon} ` : ''}{attr?.name || req.attributeKey} {operatorSymbol} {req.value}{req.operator === 'between' && req.valueMax != null ? `─${req.valueMax}` : ''}
+                    </span>
+                  );
+                })}
+                {reply.requirements.length > 1 && (
+                  <span className="text-[10px] text-muted-foreground px-1">
+                    ({reply.requirementOperator === 'OR' ? 'O' : 'Y'})
+                  </span>
+                )}
               </div>
             )}
           </div>

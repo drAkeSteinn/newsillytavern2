@@ -16,10 +16,10 @@
 
 import type { PromptSection, EmbeddingsChatSettings } from '@/types';
 import { getEmbeddingClient } from './client';
-import { loadConfig } from './config-persistence';
+import { loadConfig, getModelContextLength } from './config-persistence';
 import { LanceDBWrapper } from './lancedb-db';
 import type { SearchResult } from './types';
-import { MODEL_CONTEXT_LENGTHS, DEFAULT_CONTEXT_LENGTH, CHARS_PER_TOKEN } from './types';
+import { CHARS_PER_TOKEN } from './types';
 
 /** Result of embeddings context retrieval — split into non-memory and memory */
 export interface EmbeddingsContextResult {
@@ -149,10 +149,9 @@ export async function retrieveEmbeddingsContext(
 
     // Smart truncation: calculate max chars based on the embedding model's context window.
     // Use 75% of the model's context as safe budget (same as ollama-client.ts).
+    // Priority: config.modelContextLength (auto-detected) > hardcoded map > default (512)
     const embeddingModel = config.model || 'bge-m3:567m';
-    const modelContextTokens = MODEL_CONTEXT_LENGTHS[embeddingModel]
-      || MODEL_CONTEXT_LENGTHS[embeddingModel.split(':')[0]]
-      || DEFAULT_CONTEXT_LENGTH;
+    const modelContextTokens = getModelContextLength();
     const safeTokenBudget = Math.floor(modelContextTokens * 0.75);
     const maxSearchQueryChars = Math.floor(safeTokenBudget * CHARS_PER_TOKEN);
 
@@ -254,6 +253,22 @@ export async function retrieveEmbeddingsContext(
     // Sort by similarity (highest first)
     allResults.sort((a, b) => b.similarity - a.similarity);
 
+    // Apply composite scoring: combine similarity with importance
+    // This ensures highly important memories get a boost even if they're slightly less similar
+    allResults.forEach(r => {
+      const importance = (r.metadata as Record<string, any>)?.importance || 3;
+      // Importance boost: +0.02 per importance level above 3, -0.02 per level below
+      // This is subtle enough not to override semantic relevance but gives important memories an edge
+      const importanceBoost = (importance - 3) * 0.02;
+      // Only boost memory-type embeddings (lore/world content uses flat importance)
+      if (r.source_type === 'memory') {
+        r.similarity = Math.min(1.0, r.similarity + importanceBoost);
+      }
+    });
+
+    // Re-sort after composite scoring
+    allResults.sort((a, b) => b.similarity - a.similarity);
+
     // Filter out the LATEST summary embedding — it's injected separately as [RECUERDOS ANTERIORES]
     // to avoid duplication. OLD summaries (is_latest=false or no is_latest flag) are KEPT
     // so they can be found via semantic search for long-term recall.
@@ -265,6 +280,18 @@ export async function retrieveEmbeddingsContext(
       return !isLatest; // Exclude latest summary (injected directly), keep old ones
     });
     let trimmed = nonLatestSummaryResults.slice(0, maxResults);
+
+    // If we hit the max results limit, prefer higher importance memories
+    if (trimmed.length >= maxResults) {
+      // Sort by importance (desc) as tiebreaker, then similarity
+      trimmed.sort((a, b) => {
+        const impA = (a.metadata as Record<string, any>)?.importance || 3;
+        const impB = (b.metadata as Record<string, any>)?.importance || 3;
+        if (impB !== impA) return impB - impA;
+        return b.similarity - a.similarity;
+      });
+      trimmed = trimmed.slice(0, maxResults);
+    }
 
     // Deduplicate: Remove memory-type embeddings that overlap with existing Character Memory events.
     // Only memory-type (source_type='memory') results are deduplicated — lore/world content is never filtered.

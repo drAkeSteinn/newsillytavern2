@@ -1,0 +1,1143 @@
+$ next dev -p 3000 2>&1 | tee dev.log
+▲ Next.js 16.1.3 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://21.0.18.52:3000
+- Environments: .env
+
+✓ Starting...
+✓ Ready in 959ms
+○ Compiling / ...
+ GET / 200 in 6.0s (compile: 5.2s, render: 743ms)
+ GET / 200 in 6.8s (compile: 6.1s, render: 699ms)
+ GET /api/quest-templates 200 in 449ms (compile: 436ms, render: 13ms)
+ GET /api/persistence 200 in 569ms (compile: 547ms, render: 22ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+[LanceDB] ⚠️ LanceDB native module not available for platform "linux". Embeddings/vector search features will be disabled. Error: Cannot find module '@lancedb/lancedb'
+[cleanup-orphaned] Cleanup complete: deleted 0, kept 0
+ POST /api/embeddings/cleanup-orphaned 200 in 578ms (compile: 566ms, render: 12ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/quest-templates 200 in 17ms (compile: 13ms, render: 4ms)
+ GET /api/tts/config 200 in 596ms (compile: 502ms, render: 94ms)
+ GET /api/backgrounds/index 200 in 602ms (compile: 528ms, render: 73ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/quest-templates 200 in 15ms (compile: 12ms, render: 4ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/quest-templates 200 in 28ms (compile: 24ms, render: 4ms)
+ GET /api/tts/config 200 in 44ms (compile: 12ms, render: 32ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/tts/config 200 in 9ms (compile: 5ms, render: 4ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ POST /api/embeddings/ensure-namespace 200 in 125ms (compile: 120ms, render: 5ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/tts/speech?endpoint=http%3A%2F%2Flocalhost%3A3900&provider=omnivoice 200 in 192ms (compile: 180ms, render: 12ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/tts/speech?endpoint=http%3A%2F%2Flocalhost%3A3900&provider=omnivoice 200 in 19ms (compile: 13ms, render: 6ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /uploads/avatar/1780667487184-xwvy10.png 404 in 725ms (compile: 637ms, render: 88ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ PUT /api/persistence 200 in 30ms (compile: 10ms, render: 20ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/persistence 200 in 41ms (compile: 20ms, render: 21ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/quest-templates 200 in 28ms (compile: 24ms, render: 4ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ POST /api/embeddings/cleanup-orphaned 200 in 20ms (compile: 17ms, render: 3ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/backgrounds/index 200 in 17ms (compile: 12ms, render: 5ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/quest-templates 200 in 14ms (compile: 10ms, render: 4ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/tts/config 200 in 15ms (compile: 11ms, render: 4ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/quest-templates 200 in 25ms (compile: 21ms, render: 4ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/tts/speech?endpoint=http%3A%2F%2Flocalhost%3A3900&provider=omnivoice 200 in 24ms (compile: 14ms, render: 10ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/quest-templates 200 in 14ms (compile: 10ms, render: 4ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/tts/config 200 in 14ms (compile: 10ms, render: 4ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ POST /api/embeddings/ensure-namespace 200 in 17ms (compile: 13ms, render: 4ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/tts/config 200 in 13ms (compile: 10ms, render: 4ms)
+ GET /uploads/avatar/1780667487184-xwvy10.png 404 in 95ms (compile: 32ms, render: 62ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/tts/speech?endpoint=http%3A%2F%2Flocalhost%3A3900&provider=omnivoice 200 in 18ms (compile: 12ms, render: 6ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ PUT /api/persistence 200 in 34ms (compile: 12ms, render: 22ms)
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/tts/config 200 in 14ms (compile: 10ms, render: 4ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ POST /api/embeddings/ensure-namespace 200 in 17ms (compile: 13ms, render: 4ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/tts/config 200 in 13ms (compile: 10ms, render: 4ms)
+ GET /uploads/avatar/1780667487184-xwvy10.png 404 in 95ms (compile: 32ms, render: 62ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ GET /api/tts/speech?endpoint=http%3A%2F%2Flocalhost%3A3900&provider=omnivoice 200 in 18ms (compile: 12ms, render: 6ms)
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/cleanup-orphaned/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+⚠ ./src/lib/embeddings/lancedb-db.ts:169:27
+Module not found: Can't resolve '@lancedb/lancedb'
+  167 |
+  168 |   try {
+> 169 |     lancedbModule = await import('@lancedb/lancedb');
+      |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  170 |     return { success: true };
+  171 |   } catch (error: any) {
+  172 |     const errorMsg = error.message || String(error);
+
+
+
+Import trace:
+  App Route:
+    ./src/lib/embeddings/lancedb-db.ts
+    ./src/app/api/embeddings/ensure-namespace/route.ts
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+ PUT /api/persistence 200 in 34ms (compile: 12ms, render: 22ms)

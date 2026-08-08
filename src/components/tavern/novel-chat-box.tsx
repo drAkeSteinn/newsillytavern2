@@ -90,8 +90,10 @@ import { pauseAllTimelines, resumeAllTimelines } from '@/hooks/use-timeline-spri
 import { stopAllSoundTriggers } from '@/hooks/use-sound-triggers';
 import { ttsService } from '@/lib/tts';
 import { resolveTemplateVariables } from '@/lib/key-resolver';
-import type { CharacterQuickReply, QuickReplyAttributeModifier, QuickReplySpriteActivation, SpritePackV2, TriggerCollection } from '@/types';
+import type { CharacterQuickReply, GroupQuickReply, QuickReplyAttributeModifier, QuickReplySpriteActivation, SpritePackV2, TriggerCollection } from '@/types';
 import { evaluatePackConditionalSprites, evaluateConditionalEntries } from '@/lib/sprites/condition-evaluator';
+import { evaluateRequirements } from '@/store/slices/statsSlice';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 
 // Tab type for the chatbox
 type ChatboxTab = 'chat' | 'solicitudes' | 'misiones' | 'memorias' | 'tienda';
@@ -146,6 +148,18 @@ const MEMORY_TYPE_CONFIG: Record<string, { label: string; color: string; bgColor
   preferencia: { label: 'Preferencia', color: 'text-green-400', bgColor: 'bg-green-500/20' },
   secreto: { label: 'Secreto', color: 'text-violet-400', bgColor: 'bg-violet-500/20' },
   otro: { label: 'Otro', color: 'text-gray-400', bgColor: 'bg-gray-500/20' },
+};
+
+// Character memory event type labels and colors
+const CHARACTER_MEM_EVENT_TYPE_CONFIG: Record<string, { label: string; textColor: string; bgColor: string; barColor: string }> = {
+  fact: { label: 'Hecho', textColor: 'text-blue-400', bgColor: 'bg-blue-500/20', barColor: 'bg-blue-500/60' },
+  relationship: { label: 'Relación', textColor: 'text-pink-400', bgColor: 'bg-pink-500/20', barColor: 'bg-pink-500/60' },
+  event: { label: 'Evento', textColor: 'text-amber-400', bgColor: 'bg-amber-500/20', barColor: 'bg-amber-500/60' },
+  emotion: { label: 'Emoción', textColor: 'text-rose-400', bgColor: 'bg-rose-500/20', barColor: 'bg-rose-500/60' },
+  location: { label: 'Ubicación', textColor: 'text-green-400', bgColor: 'bg-green-500/20', barColor: 'bg-green-500/60' },
+  item: { label: 'Objeto', textColor: 'text-cyan-400', bgColor: 'bg-cyan-500/20', barColor: 'bg-cyan-500/60' },
+  state_change: { label: 'Cambio', textColor: 'text-violet-400', bgColor: 'bg-violet-500/20', barColor: 'bg-violet-500/60' },
+  default: { label: 'Otro', textColor: 'text-gray-400', bgColor: 'bg-gray-500/20', barColor: 'bg-gray-500/60' },
 };
 
 // Memory item component (outside main component for stable identity)
@@ -259,8 +273,19 @@ export function NovelChatBox({
   const [addMemoryContent, setAddMemoryContent] = useState('');
   const [addMemoryType, setAddMemoryType] = useState<string>('hecho');
   const [addMemoryImportance, setAddMemoryImportance] = useState<number>(3);
+  const [addMemorySubject, setAddMemorySubject] = useState<string>('personaje');
   const [addMemoryCharacterId, setAddMemoryCharacterId] = useState<string>('');
   const [addingMemory, setAddingMemory] = useState(false);
+  
+  // Unified Memorias tab state
+  const [localSummaries, setLocalSummaries] = useState<Array<{id: string; content: string; createdAt: string; tokens: number; messageRange: {start: number; end: number}}>>([]);
+  const [characterMemList, setCharacterMemList] = useState<Array<{id: string; type: string; content: string; importance: number; timestamp: string; characterId?: string; metadata?: Record<string, unknown>}>>([]);
+  const [characterRelationships, setCharacterRelationships] = useState<Array<{targetId: string; targetName: string; relationship: string; sentiment: number; notes: string}>>([]);
+  const [characterNotes, setCharacterNotes] = useState<string>('');
+  const [embeddingsStatus, setEmbeddingsStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown');
+  const [summaryEmbeddings, setSummaryEmbeddings] = useState<Array<{id: string; content: string; namespace: string; metadata: Record<string, any>; created_at: string}>>([]);
+  const [expandedMemSections, setExpandedMemSections] = useState<Record<string, boolean>>({ resumenes: true, semanticas: true, personaje: true });
+  const [expandedSummaryId, setExpandedSummaryId] = useState<string | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -292,6 +317,13 @@ export function NovelChatBox({
     getShopItems,
     batchUpdateCharacterStats,
     getAttributeValue,
+    // Memory slice selectors
+    summaries: storeSummaries,
+    getSessionSummaries,
+    getCharacterMemory,
+    summarySettings,
+    deleteSummary,
+    removeMemoryEvent,
   } = useTavernStore();
 
   // ASR config state (loaded from API)
@@ -1193,6 +1225,134 @@ export function NovelChatBox({
     }
   }, [isGroupMode, activeGroup, activeCharacter, memoriesLoaded, sessionId]);
 
+  // Load summaries from Zustand store
+  const loadSummaries = useCallback(() => {
+    if (!sessionId) {
+      // No session filter — show all
+      setLocalSummaries(storeSummaries.map(s => ({
+        id: s.id,
+        content: s.content,
+        createdAt: s.createdAt,
+        tokens: s.tokens,
+        messageRange: s.messageRange,
+      })));
+      return;
+    }
+    const sessionSummaries = getSessionSummaries(sessionId);
+    setLocalSummaries(sessionSummaries.map(s => ({
+      id: s.id,
+      content: s.content,
+      createdAt: s.createdAt,
+      tokens: s.tokens,
+      messageRange: s.messageRange,
+    })));
+  }, [sessionId, storeSummaries, getSessionSummaries]);
+
+  // Load character memory events from Zustand store
+  const loadCharacterMemory = useCallback(() => {
+    if (!activeCharacter) {
+      setCharacterMemList([]);
+      setCharacterRelationships([]);
+      setCharacterNotes('');
+      return;
+    }
+    const mem = getCharacterMemory(activeCharacter.id);
+    if (mem) {
+      setCharacterMemList(mem.events.map(e => ({
+        id: e.id,
+        type: e.type,
+        content: e.content,
+        importance: e.importance,
+        timestamp: e.timestamp,
+        characterId: e.characterId,
+        metadata: e.metadata,
+      })));
+      setCharacterRelationships(mem.relationships.map(r => ({
+        targetId: r.targetId,
+        targetName: r.targetName,
+        relationship: r.relationship,
+        sentiment: r.sentiment,
+        notes: r.notes,
+      })));
+      setCharacterNotes(mem.notes);
+    } else {
+      setCharacterMemList([]);
+      setCharacterRelationships([]);
+      setCharacterNotes('');
+    }
+  }, [activeCharacter, getCharacterMemory]);
+
+  // Check embeddings / Ollama status
+  const checkEmbeddingsStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/embeddings/stats');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.data?.dbAvailable) {
+          setEmbeddingsStatus('connected');
+        } else {
+          setEmbeddingsStatus('disconnected');
+        }
+      } else {
+        setEmbeddingsStatus('disconnected');
+      }
+    } catch {
+      setEmbeddingsStatus('disconnected');
+    }
+  }, []);
+
+  // Load summary embeddings from LanceDB (source_type='summary')
+  const loadSummaryEmbeddings = useCallback(async () => {
+    try {
+      const sessionSuffix = sessionId ? `-${sessionId}` : '';
+      let namespacesToFetch: string[] = [];
+      if (isGroupMode && activeGroup) {
+        const memberIds = activeGroup.members?.map(m => m.characterId) || activeGroup.characterIds || [];
+        namespacesToFetch = [
+          `memory-group-${activeGroup.id}${sessionSuffix}`,
+          ...memberIds.map(id => `memory-character-${id}${sessionSuffix}`),
+        ];
+        if (sessionSuffix) {
+          namespacesToFetch.push(`memory-group-${activeGroup.id}`);
+          namespacesToFetch.push(...memberIds.map(id => `memory-character-${id}`));
+        }
+      } else if (activeCharacter) {
+        namespacesToFetch = [`memory-character-${activeCharacter.id}${sessionSuffix}`];
+        if (sessionSuffix) {
+          namespacesToFetch.push(`memory-character-${activeCharacter.id}`);
+        }
+      }
+      if (namespacesToFetch.length === 0) {
+        setSummaryEmbeddings([]);
+        return;
+      }
+      const uniqueNamespaces = [...new Set(namespacesToFetch)];
+      const results = await Promise.all(
+        uniqueNamespaces.map(ns =>
+          fetch(`/api/embeddings?namespace=${encodeURIComponent(ns)}&source_type=summary&limit=50`)
+            .then(r => r.json())
+            .then(data => (data.success ? data.data.embeddings : []))
+            .catch(() => [])
+        )
+      );
+      const seenIds = new Set<string>();
+      const allSummaryEmb = results
+        .flat()
+        .filter((m: any) => {
+          if (seenIds.has(m.id)) return false;
+          seenIds.add(m.id);
+          return true;
+        })
+        .sort((a: any, b: any) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+      setSummaryEmbeddings(allSummaryEmb);
+    } catch (error) {
+      console.error('[NovelChatBox] Failed to load summary embeddings:', error);
+      setSummaryEmbeddings([]);
+    }
+  }, [isGroupMode, activeGroup, activeCharacter, sessionId]);
+
   // Add memory function
   const addMemory = useCallback(async () => {
     if (!addMemoryContent.trim()) return;
@@ -1237,6 +1397,7 @@ export function NovelChatBox({
           source_id: sessionId || 'unknown',
           metadata: {
             memory_type: addMemoryType,
+            memory_subject: addMemorySubject,
             importance: addMemoryImportance,
             manually_created: true,
             character_id: targetCharacterId,
@@ -1251,6 +1412,7 @@ export function NovelChatBox({
         setAddMemoryContent('');
         setAddMemoryType('hecho');
         setAddMemoryImportance(3);
+        setAddMemorySubject('personaje');
         setAddMemoryCharacterId('');
         setAddMemoryOpen(false);
         
@@ -1265,7 +1427,7 @@ export function NovelChatBox({
     } finally {
       setAddingMemory(false);
     }
-  }, [addMemoryContent, addMemoryType, addMemoryImportance, addMemoryCharacterId, activeCharacter, isGroupMode, sessionId, characters, loadMemories]);
+  }, [addMemoryContent, addMemoryType, addMemoryImportance, addMemorySubject, addMemoryCharacterId, activeCharacter, isGroupMode, sessionId, characters, loadMemories]);
 
   const deleteMemory = useCallback(async (memoryId: string) => {
     try {
@@ -1288,8 +1450,12 @@ export function NovelChatBox({
   useEffect(() => {
     if (activeTab === 'memorias') {
       loadMemories();
+      loadSummaries();
+      loadCharacterMemory();
+      checkEmbeddingsStatus();
+      loadSummaryEmbeddings();
     }
-  }, [activeTab, loadMemories]);
+  }, [activeTab, loadMemories, loadSummaries, loadCharacterMemory, checkEmbeddingsStatus, loadSummaryEmbeddings]);
 
   // Auto-refresh memories after extraction completes
   // When memoryExtracting goes from true → false, wait a few seconds then refresh
@@ -1991,15 +2157,42 @@ export function NovelChatBox({
                 </div>
               </ScrollArea>
 
-              {/* Quick Replies - From character card */}
-              {activeCharacter?.quickReplies && activeCharacter.quickReplies.length > 0 && (() => {
+              {/* Quick Replies - From character card (single mode) or group (group mode) */}
+              {(() => {
+                // In group mode, use group quick replies instead of character quick replies
+                const quickReplies = isGroupMode && activeGroup?.quickReplies
+                  ? activeGroup.quickReplies
+                  : (activeCharacter?.quickReplies || []);
+
+                if (quickReplies.length === 0) return <></>;
+
+                // Determine which character's attributes to use for condition evaluation
+                const primaryCharacterId = activeCharacter?.id;
+                const characterAttributeValues = primaryCharacterId && sessionStats?.characterStats?.[primaryCharacterId]
+                  ? sessionStats.characterStats[primaryCharacterId].attributeValues
+                  : {};
+
                 const qrContext = {
                   user: activePersona?.name || 'User',
-                  char: activeCharacter?.name || 'Character',
+                  char: activeCharacter?.name || (isGroupMode ? activeGroup?.name : 'Character') || 'Character',
                 };
+
+                // Filter quick replies by conditions
+                const visibleReplies = quickReplies.filter((item) => {
+                  if (!item.requirements || item.requirements.length === 0) return true;
+                  return evaluateRequirements(
+                    item.requirements,
+                    characterAttributeValues,
+                    sessionStats || null,
+                    item.requirementOperator
+                  );
+                });
+
+                if (visibleReplies.length === 0) return <></>;
+
                 return (
                 <div className="px-2 py-1 flex gap-1 overflow-x-auto border-t bg-background/30 flex-shrink-0">
-                  {activeCharacter.quickReplies.map((item) => {
+                  {visibleReplies.map((item) => {
                     const resolvedLabel = resolveTemplateVariables(item.label, qrContext);
                     const resolvedResponse = resolveTemplateVariables(item.response, qrContext);
                     const hasUnresolved = item.response !== resolvedResponse || item.label !== resolvedLabel;
@@ -2769,156 +2962,421 @@ export function NovelChatBox({
           {activeTab === 'memorias' && (
             <ScrollArea className="flex-1 min-h-0">
               <div className="p-3 space-y-3">
-                {/* Header */}
-                <div className="flex items-center gap-2 mb-3">
-                  <Brain className="w-4 h-4 text-violet-500" />
-                  <h4 className="font-medium text-sm">Memorias del Personaje</h4>
-                  {memories.length > 0 && (
-                    <Badge variant="secondary" className="text-xs">
-                      {memories.length}
-                    </Badge>
-                  )}
-                  <div className="ml-auto flex items-center gap-1">
+                {/* System Status Indicator */}
+                <div className="flex items-center gap-2 text-xs">
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${embeddingsStatus === 'connected' ? 'bg-green-500' : embeddingsStatus === 'disconnected' ? 'bg-red-500' : 'bg-gray-400'}`} />
+                  <span className="text-muted-foreground">
+                    {embeddingsStatus === 'connected' ? 'Ollama + LanceDB conectados' : 
+                     embeddingsStatus === 'disconnected' ? 'Sin conexión a Ollama/LanceDB' : 
+                     'Verificando conexión...'}
+                  </span>
+                  {embeddingsStatus === 'disconnected' && (
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-7 w-7 p-0"
-                      onClick={() => { setMemoriesLoaded(false); loadMemories(true); }}
-                      title="Recargar memorias"
-                      disabled={memoriesLoading}
+                      className="h-5 text-[10px] ml-auto px-1.5"
+                      onClick={checkEmbeddingsStatus}
                     >
-                      <RefreshCw className={`w-3.5 h-3.5 ${memoriesLoading ? 'animate-spin' : ''}`} />
+                      Reintentar
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs gap-1"
-                      onClick={() => setAddMemoryOpen(true)}
-                    >
-                      <Plus className="w-3 h-3" />
-                      Agregar
-                    </Button>
-                  </div>
+                  )}
                 </div>
 
-                {/* Group mode: Character selector for adding memory */}
-                {isGroupMode && (
-                  <div className="text-[10px] text-muted-foreground bg-violet-500/10 rounded-lg p-2">
-                    En chats de grupo, usa el botón "Agregar" para añadir memorias a cada personaje.
+                {/* ============================================ */}
+                {/* Section 1: Resúmenes (Summaries from Zustand) */}
+                {/* ============================================ */}
+                <Collapsible
+                  open={expandedMemSections.resumenes}
+                  onOpenChange={(open) => setExpandedMemSections(prev => ({ ...prev, resumenes: open }))}
+                >
+                  <div className="flex items-center gap-2">
+                    <CollapsibleTrigger asChild>
+                      <button className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                        {expandedMemSections.resumenes ? (
+                          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                        )}
+                        <ScrollText className="w-4 h-4 text-purple-500" />
+                        <h4 className="font-medium text-sm">Resúmenes</h4>
+                        {localSummaries.length > 0 && (
+                          <Badge variant="secondary" className="text-xs">{localSummaries.length}</Badge>
+                        )}
+                      </button>
+                    </CollapsibleTrigger>
                   </div>
-                )}
+                  <CollapsibleContent>
+                    {localSummaries.length === 0 ? (
+                      <p className="text-xs text-muted-foreground pl-9 pt-2">Sin resúmenes generados</p>
+                    ) : (
+                      <div className="space-y-1.5 pl-9 pt-2">
+                        {localSummaries.map(s => {
+                          const isExpanded = expandedSummaryId === s.id;
+                          return (
+                            <div key={s.id} className="group rounded-md bg-white/5 hover:bg-white/10 transition-colors overflow-hidden">
+                              <button
+                                className="w-full flex items-center gap-2 p-2 text-left"
+                                onClick={() => setExpandedSummaryId(isExpanded ? null : s.id)}
+                              >
+                                <ScrollText className="w-3 h-3 text-purple-400 flex-shrink-0" />
+                                <span className="text-xs font-medium text-foreground/90 truncate flex-1">
+                                  Mensajes {s.messageRange.start + 1}–{s.messageRange.end + 1}
+                                </span>
+                                <Badge variant="secondary" className="text-[10px] flex-shrink-0">
+                                  {s.tokens} tok
+                                </Badge>
+                                <span className="text-[9px] text-muted-foreground flex-shrink-0">
+                                  {formatMemoryDate(new Date(s.createdAt))}
+                                </span>
+                                {isExpanded ? (
+                                  <ChevronUp className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                                ) : (
+                                  <ChevronDown className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                                )}
+                              </button>
+                              {isExpanded && (
+                                <div className="px-2 pb-2 pl-7">
+                                  <div className="rounded bg-white/5 p-2 max-h-40 overflow-y-auto text-xs text-foreground/90 whitespace-pre-wrap leading-relaxed">
+                                    {s.content}
+                                  </div>
+                                  <div className="flex items-center justify-end mt-1.5">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 text-[10px] text-destructive hover:text-destructive px-1.5"
+                                      onClick={() => { deleteSummary(s.id); loadSummaries(); }}
+                                    >
+                                      <Trash2 className="w-3 h-3 mr-1" />
+                                      Eliminar
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CollapsibleContent>
+                </Collapsible>
 
-                {/* Loading */}
-                {memoriesLoading && (
-                  <div className="flex items-center justify-center py-8 text-muted-foreground text-xs">
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Cargando memorias...
+                {/* ============================================ */}
+                {/* Section 2: Memorias Semánticas (LanceDB) */}
+                {/* ============================================ */}
+                <Collapsible
+                  open={expandedMemSections.semanticas}
+                  onOpenChange={(open) => setExpandedMemSections(prev => ({ ...prev, semanticas: open }))}
+                >
+                  <div className="flex items-center justify-between">
+                    <CollapsibleTrigger asChild>
+                      <button className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                        {expandedMemSections.semanticas ? (
+                          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                        )}
+                        <Brain className="w-4 h-4 text-violet-500" />
+                        <h4 className="font-medium text-sm">Memorias Semánticas</h4>
+                        {(memories.length + summaryEmbeddings.length) > 0 && (
+                          <Badge variant="secondary" className="text-xs">{memories.length + summaryEmbeddings.length}</Badge>
+                        )}
+                      </button>
+                    </CollapsibleTrigger>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0"
+                        onClick={() => { setMemoriesLoaded(false); loadMemories(true); loadSummaryEmbeddings(); }}
+                        title="Recargar memorias"
+                        disabled={memoriesLoading}
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${memoriesLoading ? 'animate-spin' : ''}`} />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1"
+                        onClick={() => setAddMemoryOpen(true)}
+                      >
+                        <Plus className="w-3 h-3" />
+                        Agregar
+                      </Button>
+                    </div>
                   </div>
-                )}
+                  <CollapsibleContent>
+                    {/* Group mode hint */}
+                    {isGroupMode && (
+                      <div className="text-[10px] text-muted-foreground bg-violet-500/10 rounded-lg p-2 mt-2">
+                        En chats de grupo, usa el botón "Agregar" para añadir memorias a cada personaje.
+                      </div>
+                    )}
 
-                {/* Empty State */}
-                {!memoriesLoading && memories.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Brain className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-xs">
-                      {isGroupMode 
-                        ? 'Sin memorias extraídas para este grupo'
-                        : 'Sin memorias extraídas para este personaje'
-                      }
-                    </p>
-                    <p className="text-xs mt-1 opacity-70">
-                      Las memorias se extraen automáticamente durante la conversación
-                    </p>
-                  </div>
-                )}
+                    {/* Loading */}
+                    {memoriesLoading && (
+                      <div className="flex items-center justify-center py-6 text-muted-foreground text-xs">
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Cargando memorias...
+                      </div>
+                    )}
 
-                {/* Memories List */}
-                {!memoriesLoading && memories.length > 0 && (
-                  <div className="space-y-2">
-                    {/* Group memories by character in group mode */}
-                    {isGroupMode ? (
-                      // In group mode, group by namespace
-                      Object.entries(
-                        memories.reduce<Record<string, typeof memories>>((acc, mem) => {
-                          if (!acc[mem.namespace]) acc[mem.namespace] = [];
-                          acc[mem.namespace].push(mem);
-                          return acc;
-                        }, {})
-                      ).map(([namespace, nsMemories]) => (
-                        <div key={namespace} className="space-y-1.5">
-                          <div className="flex items-center gap-1.5 px-1 py-0.5">
-                            <div className="w-1.5 h-1.5 rounded-full bg-violet-400" />
-                            <span className="text-xs font-medium text-violet-400">
-                              {getCharacterNameForNamespace(namespace)}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              ({nsMemories.length})
-                            </span>
-                          </div>
-                          {nsMemories.map(memory => (
+                    {/* Empty State */}
+                    {!memoriesLoading && memories.length === 0 && summaryEmbeddings.length === 0 && (
+                      <div className="text-center py-6 text-muted-foreground">
+                        <Brain className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                        <p className="text-xs">
+                          {isGroupMode 
+                            ? 'Sin memorias extraídas para este grupo'
+                            : 'Sin memorias extraídas para este personaje'
+                          }
+                        </p>
+                        <p className="text-xs mt-1 opacity-70">
+                          Las memorias se extraen automáticamente durante la conversación
+                        </p>
+                        <div className="mt-3 bg-muted/30 rounded-lg p-2.5 space-y-1.5 text-left">
+                          <p className="text-[10px] font-medium text-foreground">Para activar la extracción automática:</p>
+                          <ol className="text-[10px] text-muted-foreground space-y-0.5 list-decimal list-inside">
+                            <li>Ollama debe estar corriendo con un modelo de embeddings</li>
+                            <li>Configuración → Embeddings → Usar embeddings en chat ✅</li>
+                            <li>Configuración → Embeddings → Extracción Automática ✅</li>
+                          </ol>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Memories List */}
+                    {!memoriesLoading && memories.length > 0 && (
+                      <div className="space-y-2 mt-2">
+                        {/* Group memories by character in group mode */}
+                        {isGroupMode ? (
+                          Object.entries(
+                            memories.reduce<Record<string, typeof memories>>((acc, mem) => {
+                              if (!acc[mem.namespace]) acc[mem.namespace] = [];
+                              acc[mem.namespace].push(mem);
+                              return acc;
+                            }, {})
+                          ).map(([namespace, nsMemories]) => (
+                            <div key={namespace} className="space-y-1.5">
+                              <div className="flex items-center gap-1.5 px-1 py-0.5">
+                                <div className="w-1.5 h-1.5 rounded-full bg-violet-400" />
+                                <span className="text-xs font-medium text-violet-400">
+                                  {getCharacterNameForNamespace(namespace)}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  ({nsMemories.length})
+                                </span>
+                              </div>
+                              {nsMemories.map(memory => (
+                                <MemoryItem
+                                  key={memory.id}
+                                  memory={memory}
+                                  onDelete={deleteMemory}
+                                />
+                              ))}
+                            </div>
+                          ))
+                        ) : (
+                          memories.map(memory => (
                             <MemoryItem
                               key={memory.id}
                               memory={memory}
                               onDelete={deleteMemory}
                             />
-                          ))}
-                        </div>
-                      ))
-                    ) : (
-                      // Single mode: flat list
-                      memories.map(memory => (
-                        <MemoryItem
-                          key={memory.id}
-                          memory={memory}
-                          onDelete={deleteMemory}
-                        />
-                      ))
-                    )}
-                  </div>
-                )}
-
-                {/* Namespace Info - Always visible */}
-                {!memoriesLoading && (
-                  <div className="pt-2 border-t mt-2 space-y-2">
-                    <div className="bg-violet-500/5 rounded-lg p-2 space-y-1">
-                      <div className="flex items-center gap-1.5">
-                        <Database className="w-3 h-3 text-violet-400" />
-                        <span className="text-[10px] font-medium text-violet-400">Namespace Activo</span>
+                          ))
+                        )}
                       </div>
-                      <p className="text-[10px] text-muted-foreground font-mono break-all" title={isGroupMode && activeGroup ? `memory-group-${activeGroup.id}${sessionId ? `-${sessionId}` : ''}` : activeCharacter ? `memory-character-${activeCharacter.id}${sessionId ? `-${sessionId}` : ''}` : ''}>
-                        {isGroupMode && activeGroup 
-                          ? `memory-group-${activeGroup.id}${sessionId ? `-${sessionId.slice(0, 8)}...` : ''}`
-                          : activeCharacter 
-                            ? `memory-character-${activeCharacter.id.slice(0, 8)}...${sessionId ? `-${sessionId.slice(0, 8)}...` : ''}`
-                            : '—'
-                        }
-                      </p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {isGroupMode 
-                          ? `Las memorias se guardan por personaje del grupo en esta sesión`
-                          : `Las memorias de ${activeCharacter?.name || 'este personaje'} se guardan aquí`
-                        }
-                      </p>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground text-center">
-                      💡 Usa "Agregar" para guardar memorias manualmente o déjalas extraer automáticamente
-                    </p>
-                  </div>
-                )}
+                    )}
 
-                {/* Empty state - more helpful info */}
-                {!memoriesLoading && memories.length === 0 && (
-                  <div className="pt-2 border-t mt-2 space-y-2">
-                    <div className="bg-muted/30 rounded-lg p-2.5 space-y-1.5">
-                      <p className="text-[10px] font-medium text-foreground">Para activar la extracción automática:</p>
-                      <ol className="text-[10px] text-muted-foreground space-y-0.5 list-decimal list-inside">
-                        <li>Ollama debe estar corriendo con un modelo de embeddings</li>
-                        <li>Configuración → Embeddings → Usar embeddings en chat ✅</li>
-                        <li>Configuración → Embeddings → Extracción Automática ✅</li>
-                      </ol>
-                    </div>
+                    {/* Summary Embeddings Sub-section */}
+                    {summaryEmbeddings.length > 0 && (
+                      <div className="mt-3 space-y-1.5">
+                        <div className="flex items-center gap-1.5 px-1 py-0.5">
+                          <ScrollText className="w-3 h-3 text-cyan-400" />
+                          <span className="text-xs font-medium text-cyan-400">
+                            Resúmenes indexados (búsqueda semántica)
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            ({summaryEmbeddings.length})
+                          </span>
+                        </div>
+                        {summaryEmbeddings.map(emb => (
+                          <div key={emb.id} className="group flex items-start gap-2 p-2 rounded-md bg-cyan-500/5 hover:bg-cyan-500/10 transition-colors">
+                            <div className="w-1 h-full min-h-[1.5rem] rounded-full flex-shrink-0 mt-0.5 bg-cyan-500/40" />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <span className="text-[10px] text-cyan-400 bg-cyan-500/20 px-1.5 py-0.5 rounded">Resumen</span>
+                                <span className="text-[9px] text-muted-foreground">
+                                  {formatMemoryDate(new Date(emb.created_at))}
+                                </span>
+                              </div>
+                              <p className="text-xs leading-relaxed text-foreground/80 line-clamp-2">
+                                {emb.content}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => deleteMemory(emb.id)}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-500/20 text-muted-foreground hover:text-red-400 flex-shrink-0"
+                              title="Eliminar resumen indexado"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Namespace Info */}
+                    {!memoriesLoading && (
+                      <div className="pt-2 border-t mt-3 space-y-2">
+                        <div className="bg-violet-500/5 rounded-lg p-2 space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <Database className="w-3 h-3 text-violet-400" />
+                            <span className="text-[10px] font-medium text-violet-400">Namespace Activo</span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground font-mono break-all" title={isGroupMode && activeGroup ? `memory-group-${activeGroup.id}${sessionId ? `-${sessionId}` : ''}` : activeCharacter ? `memory-character-${activeCharacter.id}${sessionId ? `-${sessionId}` : ''}` : ''}>
+                            {isGroupMode && activeGroup 
+                              ? `memory-group-${activeGroup.id}${sessionId ? `-${sessionId.slice(0, 8)}...` : ''}`
+                              : activeCharacter 
+                                ? `memory-character-${activeCharacter.id.slice(0, 8)}...${sessionId ? `-${sessionId.slice(0, 8)}...` : ''}`
+                                : '—'
+                            }
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {isGroupMode 
+                              ? `Las memorias se guardan por personaje del grupo en esta sesión`
+                              : `Las memorias de ${activeCharacter?.name || 'este personaje'} se guardan aquí`
+                            }
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </CollapsibleContent>
+                </Collapsible>
+
+                {/* ============================================ */}
+                {/* Section 3: Memoria del Personaje (Zustand) */}
+                {/* ============================================ */}
+                <Collapsible
+                  open={expandedMemSections.personaje}
+                  onOpenChange={(open) => setExpandedMemSections(prev => ({ ...prev, personaje: open }))}
+                >
+                  <div className="flex items-center gap-2">
+                    <CollapsibleTrigger asChild>
+                      <button className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                        {expandedMemSections.personaje ? (
+                          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                        )}
+                        <Sparkles className="w-4 h-4 text-amber-500" />
+                        <h4 className="font-medium text-sm">Memoria del Personaje</h4>
+                        {characterMemList.length > 0 && (
+                          <Badge variant="secondary" className="text-xs">{characterMemList.length}</Badge>
+                        )}
+                      </button>
+                    </CollapsibleTrigger>
                   </div>
-                )}
+                  <CollapsibleContent>
+                    {!activeCharacter ? (
+                      <p className="text-xs text-muted-foreground pl-9 pt-2">Selecciona un personaje para ver su memoria</p>
+                    ) : characterMemList.length === 0 && characterRelationships.length === 0 && !characterNotes ? (
+                      <p className="text-xs text-muted-foreground pl-9 pt-2">Sin eventos en memoria del personaje</p>
+                    ) : (
+                      <div className="space-y-2 pl-9 pt-2">
+                        {/* Events */}
+                        {characterMemList.length > 0 && (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Eventos</span>
+                              <span className="text-[10px] text-muted-foreground">({characterMemList.length})</span>
+                            </div>
+                            {characterMemList.map(event => {
+                              const typeConfig = CHARACTER_MEM_EVENT_TYPE_CONFIG[event.type] || CHARACTER_MEM_EVENT_TYPE_CONFIG.default;
+                              return (
+                                <div key={event.id} className="group flex items-start gap-2 p-2 rounded-md bg-white/5 hover:bg-white/10 transition-colors">
+                                  <div className={cn("w-1 h-full min-h-[1.5rem] rounded-full flex-shrink-0 mt-0.5", typeConfig.barColor)} />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-1.5 mb-0.5">
+                                      <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", typeConfig.bgColor, typeConfig.textColor)}>
+                                        {typeConfig.label}
+                                      </span>
+                                      <span className="text-[10px] text-amber-400">
+                                        {'★'.repeat(Math.min(event.importance, 5))}{'☆'.repeat(Math.max(0, 5 - event.importance))}
+                                      </span>
+                                      <span className="text-[9px] text-muted-foreground ml-auto">
+                                        {formatMemoryDate(new Date(event.timestamp))}
+                                      </span>
+                                    </div>
+                                    <p className="text-xs leading-relaxed text-foreground/90 line-clamp-2">
+                                      {event.content}
+                                    </p>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      if (activeCharacter) {
+                                        removeMemoryEvent(activeCharacter.id, event.id);
+                                        loadCharacterMemory();
+                                      }
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-500/20 text-muted-foreground hover:text-red-400 flex-shrink-0"
+                                    title="Eliminar evento"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Relationships */}
+                        {characterRelationships.length > 0 && (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Relaciones</span>
+                              <span className="text-[10px] text-muted-foreground">({characterRelationships.length})</span>
+                            </div>
+                            {characterRelationships.map((rel, idx) => {
+                              const sentimentColor = rel.sentiment > 30 ? 'text-green-400' : rel.sentiment < -30 ? 'text-red-400' : 'text-yellow-400';
+                              const sentimentBg = rel.sentiment > 30 ? 'bg-green-500/20' : rel.sentiment < -30 ? 'bg-red-500/20' : 'bg-yellow-500/20';
+                              return (
+                                <div key={`${rel.targetId}-${idx}`} className="p-2 rounded-md bg-white/5">
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <span className="text-xs font-medium text-foreground/90">{rel.targetName}</span>
+                                    <span className={cn("text-[10px] px-1.5 py-0.5 rounded", sentimentBg, sentimentColor)}>
+                                      {rel.relationship}
+                                    </span>
+                                    <span className="text-[10px] text-muted-foreground ml-auto">
+                                      Sentimiento: {rel.sentiment > 0 ? '+' : ''}{rel.sentiment}
+                                    </span>
+                                  </div>
+                                  {rel.notes && (
+                                    <p className="text-[10px] text-muted-foreground line-clamp-2">{rel.notes}</p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Notes */}
+                        {characterNotes && (
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Notas</span>
+                            <div className="p-2 rounded-md bg-white/5">
+                              <p className="text-xs text-foreground/80 whitespace-pre-wrap">{characterNotes}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CollapsibleContent>
+                </Collapsible>
+
+                {/* Bottom hint */}
+                <p className="text-[10px] text-muted-foreground text-center pt-1">
+                  💡 Usa "Agregar" para guardar memorias manualmente o déjalas extraer automáticamente
+                </p>
               </div>
             </ScrollArea>
           )}
@@ -3102,6 +3560,24 @@ export function NovelChatBox({
                       <SelectItem value="otro">📝 Otro</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                {/* Subject */}
+                <div className="space-y-2">
+                  <Label className="text-xs">Sujeto</Label>
+                  <Select value={addMemorySubject} onValueChange={setAddMemorySubject}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="personaje">🧑 Sobre el personaje</SelectItem>
+                      <SelectItem value="usuario">👤 Sobre el usuario</SelectItem>
+                      <SelectItem value="otro">🌐 Sobre otro personaje</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground">
+                    Indica de quién trata esta memoria
+                  </p>
                 </div>
 
                 {/* Importance */}

@@ -4,6 +4,7 @@
   "dimension": 768,
   "similarityThreshold": 0.15,
   "maxResults": 5,
-  "updatedAt": "2026-06-07T13:05:08.039Z",
-  "tableDimension": null
+  "updatedAt": "2026-06-15T15:38:30.377Z",
+  "tableDimension": null,
+  "modelContextLength": 2048
 }

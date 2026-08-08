@@ -23,6 +23,8 @@
 import { generateResponse } from '@/lib/llm/generation';
 import type { LLMConfig, ChatApiMessage } from '@/lib/llm/types';
 import { getEmbeddingClient } from '@/lib/embeddings/client';
+import { getModelContextLength } from '@/lib/embeddings/config-persistence';
+import { CHARS_PER_TOKEN } from './types';
 
 // ============================================
 // Types
@@ -242,9 +244,18 @@ async function consolidateGroup(
     .map((e, i) => `${i + 1}. [${e.metadata?.memory_type || 'otro'}] (imp:${e.metadata?.importance || 3}) ${e.content}`)
     .join('\n');
 
+  // Truncate the facts list to fit within the embedding model's context window.
+  // The consolidation prompt + facts will be sent to the LLM, but the resulting
+  // consolidated memories will be re-embedded, so we keep the input within bounds.
+  const modelContextTokens = getModelContextLength();
+  const maxFactsChars = Math.floor(modelContextTokens * CHARS_PER_TOKEN * 0.6); // 60% budget for facts
+  const truncatedFactsList = factsList.length > maxFactsChars
+    ? factsList.slice(0, maxFactsChars)
+    : factsList;
+
   const prompt = CONSOLIDATION_PROMPT
     .replace('{groupName}', `${groupName} (${namespace})`)
-    .replace('{factsList}', factsList);
+    .replace('{factsList}', truncatedFactsList);
 
   try {
     const extractionConfig: LLMConfig = {
